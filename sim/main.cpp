@@ -154,15 +154,19 @@ int main(int argc, char** argv) {
 
   // Ist der Port belegt, die nächsten neun versuchen. Ein fehlgeschlagener
   // Bind legt einen httplib-Server still, darum je Versuch ein neuer. Ohne
-  // SO_REUSEPORT (POSIX) bzw. mit SO_EXCLUSIVEADDRUSE (Windows), sonst bindet
-  // ein zweiter Simulator denselben Port, statt auszuweichen.
+  // SO_REUSEPORT, sonst bindet ein zweiter Simulator denselben Port, statt
+  // auszuweichen: Windows exklusiv, Linux SO_REUSEADDR (meldet belegte Ports
+  // trotzdem), macOS ohne Option (BSD erlaubte sonst 127.0.0.1 neben einem
+  // Programm auf 0.0.0.0 und finge dessen Anfragen ab).
   std::unique_ptr<httplib::Server> server;
   int bound = -1;
   for (int p = port; p < port + 10 && bound < 0; ++p) {
     auto s = std::make_unique<httplib::Server>();
     s->set_socket_options([](socket_t sock) {
-#ifdef _WIN32
+#if defined(_WIN32)
       httplib::set_socket_opt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#elif defined(__APPLE__)
+      (void)sock;
 #else
       httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
 #endif

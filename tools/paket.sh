@@ -20,8 +20,11 @@ cp "$src" "dist/$d/$bin"
 cp sim/LIESMICH.txt "dist/$d/"
 node tools/third_party.mjs "dist/$d/THIRD_PARTY_LICENSES.txt"
 
+# Unter Windows (Git-Bash, auch lokal) beendet taskkill das Programm
+# zuverlässig; es trifft alle Simulatoren gleichen Namens.
+case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) windows=1 ;; *) windows=0 ;; esac
 stop() {
-  if [ "${RUNNER_OS:-}" = "Windows" ]; then taskkill //F //IM "$bin" > /dev/null 2>&1 || true; else kill "$1" 2> /dev/null || true; fi
+  if [ "$windows" = 1 ]; then taskkill //F //IM "$bin" > /dev/null 2>&1 || true; else kill "$1" 2> /dev/null || true; fi
   wait "$1" 2> /dev/null || true
 }
 logs() { echo "--- sim.log"; cat build-pkg/sim.log 2> /dev/null || true; echo "--- einfach.log"; cat build-pkg/einfach.log 2> /dev/null || true; }

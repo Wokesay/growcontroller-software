@@ -43,6 +43,7 @@ jobs:
         run: |
           v="${GITHUB_REF_NAME#v}"
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
           tar -C web -czf "dist/growcontroller-web-$v.tar.gz" dist
           (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
           (cd dist && sha256sum * > SHA256SUMS)

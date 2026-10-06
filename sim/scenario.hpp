@@ -24,6 +24,7 @@ class FileStorage : public gc::IStorage {
 
  private:
   std::string dir_;
+  bool memoryOnly_ = false;  // Ordner nicht beschreibbar: lesen ja, schreiben nein
   std::map<std::string, std::string> cache_;
   std::set<std::string> dirty_;
   std::mutex m_;
