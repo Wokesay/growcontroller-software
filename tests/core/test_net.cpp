@@ -309,7 +309,34 @@ TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemelde
   CHECK(n == 1);
 }
 
-TEST_CASE("Gießpumpe: Ausschalten scheitert, Zustand bleibt „an“ → trotzdem nur einmal gemeldet") {
+namespace {
+
+int countEvents(Client& c, const std::string& title) {
+  auto ev = c.ok("GET", "/api/v1/events?limit=200");
+  int n = 0;
+  for (const auto& e : ev["events"]) n += e["title"] == title;
+  return n;
+}
+
+// Schutzabschaltung an einer Dose, die Schaltbefehle ablehnt: einmal „Aus
+// nicht bestätigt“, keine Erfolgsmeldung, kein Eintrag je Takt; die Dose
+// bleibt an. Danach Störung weg: Hub schaltet aus und meldet es einmal.
+void checkCutNotConfirmed(sim::Simulation& s, Client& c, const std::string& id, const std::string& label,
+                          const std::string& okTitle, gc::Ms settle = 60000) {
+  REQUIRE(until(s, [&] { return countEvents(c, label + ": Aus nicht bestätigt") > 0; }, 400000));
+  s.step(settle);
+  CHECK(outlet(s, id, 0).on);
+  CHECK(countEvents(c, label + ": Aus nicht bestätigt") == 1);
+  CHECK(countEvents(c, okTitle) == 0);
+  fault(s, id, "none");
+  REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));
+  s.step(5000);
+  CHECK(countEvents(c, label + ": Aus bestätigt") == 1);
+}
+
+}  // namespace
+
+TEST_CASE("Gießpumpe: Ausschalten scheitert → einmal „Aus nicht bestätigt“, nicht „aus“") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -318,16 +345,119 @@ TEST_CASE("Gießpumpe: Ausschalten scheitert, Zustand bleibt „an“ → trotzd
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
   fault(s, id, "stuck");  // Schaltbefehle scheitern, die Dose bleibt an
   fault(s, "LVL-77B210", "offline");
-  auto count = [&] {
-    auto ev = c.ok("GET", "/api/v1/events?limit=200");
-    int n = 0;
-    for (const auto& e : ev["events"]) n += e["title"] == "Gießpumpe aus: Trockenlaufschutz";
-    return n;
-  };
-  REQUIRE(until(s, [&] { return count() > 0; }, 300000));
-  s.step(60000);
+  checkCutNotConfirmed(s, c, id, "Gießpumpe", "Gießpumpe aus: Trockenlaufschutz");
+}
+
+TEST_CASE("Umwälzpumpe an der Dose: Ausschalten scheitert → einmal „Aus nicht bestätigt“") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");
+  checkCutNotConfirmed(s, c, id, "Umwälzpumpe", "Umwälzpumpe aus");
+}
+
+TEST_CASE("Zulauf an der Dose: Ausschalten scheitert → einmal „Aus nicht bestätigt“, Rastung bleibt") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");
+  checkCutNotConfirmed(s, c, id, "Zulaufventil", "Zulauf-Notabschaltung");
+  CHECK(c.state()["latches"].contains("inlet.fault"));
+}
+
+TEST_CASE("Höchstlaufzeit: Ausschalten scheitert → einmal „Aus nicht bestätigt“, Hub versucht es weiter") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  fault(s, id, "stuck");  // Höchstlaufzeit 5 min, Auto-Off im Gerät erst nach 6 min
+  checkCutNotConfirmed(s, c, id, "Befeuchter", "Befeuchter aus: Höchstlaufzeit", 20000);
+}
+
+TEST_CASE("Höchstlaufzeit: Gerät schaltet selbst ab, Befehle weiter abgelehnt → keine Meldung je Takt") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") > 0; }, 400000));
+  s.step(180000);  // über das Auto-Off im Gerät (6 min) hinaus, Störung bleibt
+  CHECK_FALSE(outlet(s, id, 0).on);
+  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") == 1);
+  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 1);
+}
+
+TEST_CASE("Höchstlaufzeit: nach Umzuordnen keine falsche Entwarnung, neuer Ausgang bleibt unberührt") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto a = addPlug(s, c, "shelly_plug", json::array());
+  auto b = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", a}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  fault(s, a, "stuck");
+  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") > 0; }, 400000));
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", b}, {"channel", 0}});  // alter Ausgang klemmt weiter
+  s.step(20000);
+  CHECK(outlet(s, a, 0).on);
+  CHECK_FALSE(outlet(s, b, 0).on);
+  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 0);
+  CHECK(countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 0);
+}
+
+TEST_CASE("Zwei Schutzgründe an einer klemmenden Dose: je Grund eine Meldung, kein Wechsel je Takt") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");  // Grund 1: Füllstand ungültig
+  s.step(650000);                     // Grund 2: Höchstlaufzeit 10 min; Auto-Off im Gerät erst nach 12 min
   CHECK(outlet(s, id, 0).on);
-  CHECK(count() == 1);
+  CHECK(countEvents(c, "Gießpumpe: Aus nicht bestätigt") == 2);
+}
+
+TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pumpe aus") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");  // erst „Füllstand ungültig“
+  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 1; }, 300000));
+  fault(s, "LVL-77B210", "none");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});  // dann echter Trockenlauf: neuer Grund, neue Meldung
+  }
+  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2; }, 120000));
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 31.0}});  // Pegel wieder gut, Rastung nicht quittiert
+  }
+  s.step(30000);
+  fault(s, id, "none");
+  REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));  // Hub hält die Rastung durch
+  s.step(5000);
+  CHECK(countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2);
+  CHECK(countEvents(c, "Umwälzpumpe: Aus bestätigt") == 1);
 }
 
 TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätigt“ im Protokoll") {
@@ -345,4 +475,95 @@ TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätig
   bool seen = false;
   for (const auto& e : ev["events"]) seen = seen || e["title"] == "Licht: Aus nicht bestätigt";
   CHECK(seen);
+}
+
+TEST_CASE("Zulauf: Grund weg, Rastung steht, Ventil klemmt offen → Hub schaltet weiter aus") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");
+  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1; }, 300000));
+  fault(s, "LVL-77B210", "none");  // Pegel wieder gültig, Rastung nicht quittiert
+  s.step(30000);
+  CHECK(outlet(s, id, 0).on);
+  CHECK(countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1);  // Fortsetzung, keine neue Meldung
+  fault(s, id, "none");
+  REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));
+  s.step(2000);
+  CHECK(countEvents(c, "Zulaufventil: Aus bestätigt") == 1);
+}
+
+TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  fault(s, "LVL-77B210", "offline");
+  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1; }, 300000));
+  fault(s, "LVL-77B210", "none");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 61.0}});  // über der Notgrenze (60 L)
+  }
+  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 2; }, 60000));
+  auto ev = c.ok("GET", "/api/v1/events?limit=50");
+  bool capacity = false;
+  for (const auto& e : ev["events"])
+    capacity = capacity || (e["title"] == "Zulaufventil: Aus nicht bestätigt" && e["text"].get<std::string>().find("Notgrenze") != std::string::npos);
+  CHECK(capacity);
+  // Rastungsgrund bleibt eingefroren (RAT-062)
+  CHECK(c.state()["latches"]["inlet.fault"]["why"] == "Füllstand ungültig");
+}
+
+TEST_CASE("Umwälzpumpe klemmt: neuer Trockenlauf nach Quittierung meldet neu") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 1; }, 120000));
+  c.ok("POST", "/api/v1/latches/circulation.dry/ack");  // quittiert, Pumpe klemmt weiter, Pegel noch zu tief
+  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2; }, 10000));
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+}
+
+TEST_CASE("Höchstlaufzeit: gleich wieder eingeschaltet → die nächste Abschaltung wird wieder gemeldet") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  // until prüft nach jedem Takt: Der Schnitt ist gemeldet, sein Abschluss im nächsten Takt steht noch aus.
+  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 1; }, 400000));
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 2; }, 400000));
+}
+
+TEST_CASE("Lösen während „Aus nicht bestätigt“ → Meldung, nicht still") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  fault(s, id, "stuck");
+  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") == 1; }, 400000));
+  c.ok("DELETE", "/api/v1/roles/zone.humidifier");
+  s.step(5000);
+  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") == 2);
+  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 0);
 }

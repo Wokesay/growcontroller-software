@@ -43,10 +43,13 @@ bool SimNetBus::setSwitch(const std::string& dev, int channel, bool on, std::str
   NetOutlet* o = outlet(dev, channel, err);
   if (!o) return false;
   if (w_.netPlug(dev)->fault == "stuck") {
-    err = "Schaltbefehl abgelehnt";  // z. B. Relais klemmt: Zustand bleibt
+    err = "Schaltbefehl abgelehnt";  // nur Befehle; Auto-Off im Gerät und Stromausfall wirken weiter
     return false;
   }
-  if (on && !o->on) o->onSince = w_.now();
+  if (on && !o->on) {
+    o->onSince = w_.now();
+    ++o->switchOns;
+  }
   o->on = on;
   return true;
 }

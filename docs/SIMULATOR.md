@@ -79,7 +79,7 @@ Standardpasswort (EN 18031-1).
 | Last je Dose | Umwälzpumpe 18 W, Licht 240 W, Abluft 35 W, Umluft 15 W, Befeuchter 30 W | **Annahme** |
 | Auto-Off | wirkt im Gerät, auch ohne Hub | RAT-019, RAT-060 |
 | Dose ohne WLAN | Last läuft weiter; zählt für Raumklima und Umwälzung | **Annahme** (Strom fließt unabhängig vom WLAN) |
-| Störungen | WLAN weg (`offline`), Einstellung abgelehnt (`readonly`), Einstellung ignoriert (`ignore`), Schaltbefehl abgelehnt, Dose bleibt im Zustand (`stuck`, z. B. Relais klemmt) | Testfälle |
+| Störungen | WLAN weg (`offline`), Einstellung abgelehnt (`readonly`), Einstellung ignoriert (`ignore`), Schaltbefehl abgelehnt, Dose bleibt im Zustand (`stuck`; Auto-Off im Gerät und Stromausfall schalten trotzdem aus) | Testfälle |
 
 ## Raumklima
 

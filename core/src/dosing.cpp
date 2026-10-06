@@ -193,6 +193,7 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
   }
   if (on) {
     onSince_[role] = c.now;
+    cuts_.erase(role);  // neuer Lauf: eine spätere Abschaltung wird wieder gemeldet
   } else {
     onSince_.erase(role);
     offSince_[role] = c.now;
@@ -216,73 +217,146 @@ void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now) {
   onSince_.clear();
 }
 
+bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
+                    const std::string& severity, const std::string& title, const std::string& text) {
+  const Binding* b = c.cfg.binding(role);
+  if (!b) return false;
+  std::string e;
+  const bool ok = sw(b->device, b->channel, false, e);
+  auto it = cuts_.find(role);
+  if (it == cuts_.end()) it = cuts_.emplace(role, Cut{{}, b->device, b->channel, false}).first;
+  if (it->second.keys.insert(key).second) {
+    if (ok) {
+      c.log.add(c.epoch, type, severity, title, text, {{"role", role}});
+    } else {
+      const RoleDef* rd = c.cat.role(role);
+      c.log.add(c.epoch, "block", "alarm", (rd ? rd->label : role) + ": Aus nicht bestätigt",
+                text + " Ausschalten gescheitert: " + e + ".", {{"role", role}, {"device", b->device}});
+    }
+  }
+  if (!ok) it->second.failed = true;
+  return ok;
+}
+
+void Actuators::rearm(const std::string& role, const std::string& key) {
+  if (auto it = cuts_.find(role); it != cuts_.end()) it->second.keys.erase(key);
+}
+
+void Actuators::noteReported(const std::string& role, const std::string& key) {
+  if (auto it = cuts_.find(role); it != cuts_.end()) it->second.keys.insert(key);
+}
+
 void Actuators::enforce(const Ctx& c) {
   const auto& level = c.truth.get("tank.level");
   const bool levelBound = c.cfg.binding("tank.level") != nullptr;
   const auto& tank = c.cfg.tank();
-  std::string e;
+
+  // Gemeldete Abschaltungen abschließen. Umgehängt oder gelöst: ohne
+  // Entwarnung (bindRole und unbindRole melden einen alten Ausgang, der
+  // nicht aus ging); onSince_ bleibt, die Höchstlaufzeit räumt es selbst ab.
+  // Als aus gelesen: war das Ausschalten gescheitert, jetzt bestätigen.
+  for (auto it = cuts_.begin(); it != cuts_.end();) {
+    const std::string& role = it->first;
+    const Binding* b = c.cfg.binding(role);
+    if (!b || b->device != it->second.device || b->channel != it->second.channel) {
+      it = cuts_.erase(it);
+      continue;
+    }
+    auto st = swState(b->device, b->channel);
+    if (!st || *st) {
+      ++it;
+      continue;
+    }
+    if (it->second.failed) {
+      const RoleDef* rd = c.cat.role(role);
+      c.log.add(c.epoch, "block", "info", (rd ? rd->label : role) + ": Aus bestätigt", "Der Ausgang ist jetzt aus.", {{"role", role}});
+      offSince_[role] = c.now;
+    }
+    onSince_.erase(role);
+    it = cuts_.erase(it);
+  }
 
   // Trockenlaufschutz: schaltet nur aus. Läuft die Pumpe beim Unterschreiten,
   // rastet die Sperre und meldet; war sie aus, gilt nur die Einschaltsperre
-  // (Quelle: RAT-062, Testfälle M11-1/M11-2/M11-4).
+  // (Quelle: RAT-062, Testfälle M11-1/M11-2/M11-4). Läuft sie trotz
+  // Rastung (Ausschalten gescheitert, Taster am Gerät), schaltet der Hub sie
+  // erneut aus.
   auto circ = roleState(c.cfg, "tank.circulation");
-  if (circ && *circ && levelBound) {
-    const Binding* b = c.cfg.binding("tank.circulation");
-    bool low = level.usable() && isNum(tank.minL) && *level.value < tank.minL;
-    if (!level.usable() || low) {
-      sw(b->device, b->channel, false, e);
-      onSince_.erase("tank.circulation");
-      if (low) {
+  const bool dryLatched = c.rt.latches.count("circulation.dry") > 0;
+  if (circ && *circ && (levelBound || dryLatched)) {
+    const bool low = levelBound && level.usable() && isNum(tank.minL) && *level.value < tank.minL;
+    bool ok = true, acted = true;
+    if (low || dryLatched) {
+      if (!dryLatched) {
         c.rt.latches["circulation.dry"] = {{"at", c.epoch}, {"levelL", *level.value}};
-        c.log.add(c.epoch, "alarm", "alarm", "Umwälzpumpe aus: Trockenlauf",
-                  "Füllstand " + fmt(*level.value, 1) + " L unter " + fmt(tank.minL, 1) + " L. Gerastet bis zur Quittierung.");
-      } else {
-        c.log.add(c.epoch, "block", "warn", "Umwälzpumpe aus", "Füllstand ungültig: " + level.reason.text);
+        rearm("tank.circulation", "circulation.dry");  // neue Rastung, z. B. nach Quittierung: neu melden
       }
+      ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", "Umwälzpumpe aus: Trockenlauf",
+               low ? "Füllstand " + fmt(*level.value, 1) + " L unter " + fmt(tank.minL, 1) + " L. Gerastet bis zur Quittierung."
+                   : std::string("Trockenlauf gerastet, noch nicht quittiert."));
+    } else if (!level.usable()) {
+      ok = cut(c, "tank.circulation", "circulation.level", "block", "warn", "Umwälzpumpe aus", "Füllstand ungültig: " + level.reason.text + ".");
+    } else {
+      acted = false;
+    }
+    if (acted) {
+      if (ok) onSince_.erase("tank.circulation");
       // Ohne Durchmischung keine Regel-Dosierung (RAT-051).
       if (runningPurpose_ == "ph" || runningPurpose_ == "ec") bus_.stopAllPumps();
     }
   }
 
   // Zulauf: Notgrenze folgt dem Ventil, nicht dem Auftrag (RAT-032); nach einem
-  // Fehler kein automatischer Neuanlauf (RAT-031).
+  // Fehler kein automatischer Neuanlauf (RAT-031). Offen trotz Rastung →
+  // erneut zu.
   auto inlet = roleState(c.cfg, "tank.inlet");
   if (inlet && *inlet) {
-    const Binding* b = c.cfg.binding("tank.inlet");
-    std::string why;
-    if (!level.usable()) why = "Füllstand ungültig";
-    else if (isNum(tank.capacityL) && *level.value >= tank.capacityL) why = "Notgrenze erreicht (" + fmt(*level.value, 1) + " L)";
-    else {
+    std::string why, key;  // je Grund ein eigener Meldeschlüssel
+    if (!level.usable()) {
+      why = "Füllstand ungültig";
+      key = "inlet.level";
+    } else if (isNum(tank.capacityL) && *level.value >= tank.capacityL) {
+      why = "Notgrenze erreicht bei " + fmt(*level.value, 1) + " L";
+      key = "inlet.capacity";
+    } else {
       auto p = effectiveParams(c.cat, c.cfg, "refill");
       double maxOpen = p.num("max_open_min");
       auto since = onSince_.find("tank.inlet");
-      if (isNum(maxOpen) && since != onSince_.end() && c.now - since->second > static_cast<Ms>(maxOpen * kMinute))
+      if (isNum(maxOpen) && since != onSince_.end() && c.now - since->second > static_cast<Ms>(maxOpen * kMinute)) {
         why = "Ventil länger als " + fmt(maxOpen, 0) + " min offen";
+        key = "inlet.open";
+      }
     }
+    auto latch = c.rt.latches.find("inlet.fault");
     if (!why.empty()) {
-      sw(b->device, b->channel, false, e);
-      onSince_.erase("tank.inlet");
-      c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
-      c.log.add(c.epoch, "alarm", "alarm", "Zulauf-Notabschaltung", why + ". Gerastet bis zur Quittierung.");
+      // Grund und Zeitpunkt werden beim Rasten eingefroren (RAT-062); ein
+      // späterer Grund steht in seiner eigenen Meldung.
+      if (latch == c.rt.latches.end()) {
+        c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
+        rearm("tank.inlet", key);
+      }
+      if (cut(c, "tank.inlet", key, "alarm", "alarm", "Zulauf-Notabschaltung", why + ". Gerastet bis zur Quittierung."))
+        onSince_.erase("tank.inlet");
+      noteReported("tank.inlet", "inlet.latched");  // Fortsetzung über die Rastung ist damit gemeldet
+    } else if (latch != c.rt.latches.end()) {
+      // Grund weg, Rastung steht: offen trotz Rastung (Ausschalten gescheitert, Taster) → erneut zu
+      const json& l = latch->second;
+      const std::string was = l.is_object() && l.contains("why") && l["why"].is_string() ? l["why"].get<std::string>() : "Zulauf-Notabschaltung";
+      if (cut(c, "tank.inlet", "inlet.latched", "alarm", "alarm", "Zulauf-Notabschaltung", "Gerastet: " + was + ", noch nicht quittiert."))
+        onSince_.erase("tank.inlet");
     }
   }
 
   // Gießpumpe im Lauf: Füllstand ungültig oder unter dem Mindestfüllstand →
   // aus (Trockenlauf), mit Meldung.
   auto irr = roleState(c.cfg, "zone.irrigation_pump");
-  if (irr && !*irr) cutLogged_.erase("zone.irrigation_pump");
   if (irr.value_or(false)) {
     std::string why;
     if (!levelBound || !level.usable()) why = "Füllstand ungültig";
     else if (isNum(tank.minL) && *level.value < tank.minL) why = "Füllstand " + fmt(*level.value, 1) + " L unter dem Mindestfüllstand";
-    if (!why.empty()) {
-      const Binding* b = c.cfg.binding("zone.irrigation_pump");
-      sw(b->device, b->channel, false, e);
+    if (!why.empty() && cut(c, "zone.irrigation_pump", "irrigation.level", "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".")) {
       onSince_.erase("zone.irrigation_pump");
       offSince_["zone.irrigation_pump"] = c.now;
-      // Einmal melden, auch wenn das Ausschalten scheitert und der Zustand „an“ bleibt
-      if (cutLogged_.insert("zone.irrigation_pump").second)
-        c.log.add(c.epoch, "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".", {{"role", "zone.irrigation_pump"}});
     }
   }
 
@@ -292,11 +366,17 @@ void Actuators::enforce(const Ctx& c) {
     if (!isNum(rd.maxOnS)) continue;
     auto since = onSince_.find(role);
     if (since == onSince_.end() || c.now - since->second <= static_cast<Ms>(rd.maxOnS * kSecond)) continue;
-    const Binding* b = c.cfg.binding(role);
-    if (b) sw(b->device, b->channel, false, e);
-    onSince_.erase(role);
-    offSince_[role] = c.now;
-    c.log.add(c.epoch, "block", "warn", rd.label + " aus: Höchstlaufzeit", "Nach " + fmt(rd.maxOnS / 60, 0) + " min abgeschaltet.", {{"role", role}});
+    // Gelöst oder schon aus (z. B. Auto-Off im Gerät): nichts mehr zu schalten.
+    auto st = roleState(c.cfg, role);
+    if (!c.cfg.binding(role) || (st && !*st)) {
+      onSince_.erase(since);
+      continue;
+    }
+    // Scheitert das Ausschalten, bleibt onSince_ stehen: der nächste Takt versucht es erneut.
+    if (cut(c, role, "maxon", "block", "warn", rd.label + " aus: Höchstlaufzeit", "Höchstlaufzeit " + fmt(rd.maxOnS / 60, 0) + " min erreicht.")) {
+      onSince_.erase(role);
+      offSince_[role] = c.now;
+    }
   }
 }
 

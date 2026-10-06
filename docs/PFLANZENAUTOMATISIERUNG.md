@@ -79,9 +79,12 @@ Software bindet sie trotzdem an.
     Quelle: RAT-060) und `power_limit`;
   - Profil „versorgen“ für Geräte mit eigenem Thermostat (RAT-069);
   - Finden per mDNS und Digest auf dem Gerät, „Aus nicht bestätigt“ mit
-    Wiederholung, Watchdog über die Leistung („soll aus, zieht > 2 W“);
+    Wiederholung beim Not-Halt (bei Schutzabschaltungen umgesetzt),
+    Watchdog über die Leistung („soll aus, zieht > 2 W“);
   - Taster und App am Shelly umgehen die Sperren: „an ohne Befehl des Hubs“
-    als Handbetrieb behandeln;
+    als Handbetrieb behandeln (eine nicht quittierte Rastung von
+    Umwälzpumpe oder Zulauf schaltet schon jetzt wieder aus); `auto_on` im
+    Gerät abschalten und prüfen; Wiederholungen drosseln;
   - Gesamtlast je Leiste (16 A gesamt, 12 A je Dose: Suchtreffer vom
     06.10.2026, u. a. Conrad-Datenblatt
     https://asset.conrad.com/media10/add/160267/c1/-/gl/003593788IN00/informacije-3593788-shelly-power-strip-4-gen4-schwarz-uticnica.pdf,
@@ -126,8 +129,9 @@ Fest im Code (R7):
   Puls, Zulauf) werden nicht fortgesetzt. Zustandsfunktionen (Licht, Lüfter,
   Klima) rechnen erst neu, wenn Uhrzeit und Sensorwahrheit gesichert sind.
   Ohne gesicherte Uhrzeit bleibt das Licht aus (Präzisierung von R6).
-- Not-Halt schaltet alles aus, auch die Lüfter. Nicht erreichbare Ausgänge
-  zeigen „Aus nicht bestätigt“, und der Hub wiederholt den Befehl.
+- Not-Halt schaltet alles aus, auch die Lüfter. Ziel: Nicht erreichbare
+  Ausgänge zeigen „Aus nicht bestätigt“, und der Hub wiederholt den Befehl
+  (beim Not-Halt offen, bei Schutzabschaltungen umgesetzt).
 
 Der Watchdog bewertet zusätzlich:
 

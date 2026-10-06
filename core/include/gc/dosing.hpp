@@ -78,11 +78,31 @@ class Actuators {
  private:
   bool sw(const std::string& dev, int channel, bool on, std::string& err);
   std::optional<bool> swState(const std::string& dev, int channel) const;
+  // Schutzabschaltung einer Rolle, je Grund (`key`) einmal gemeldet, bis die
+  // Rolle aus ist oder umgehängt wird (zwei Gründe wechseln sich nicht je
+  // Takt ab).
+  // Scheitert das Ausschalten, lautet die Meldung „Aus nicht bestätigt“;
+  // enforce versucht es weiter, solange Grund oder Rastung bestehen, und
+  // meldet „Aus bestätigt“, sobald der Ausgang aus ist.
+  bool cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
+           const std::string& severity, const std::string& title, const std::string& text);
+  // Grund wieder scharf (neue Rastung) bzw. als schon gemeldet vermerken.
+  void rearm(const std::string& role, const std::string& key);
+  void noteReported(const std::string& role, const std::string& key);
 
   IBus& bus_;
   INetBus* net_ = nullptr;
   std::map<std::string, Ms> offSince_;  // Rolle → aus seit (Mindestpause Kompressor)
-  std::set<std::string> cutLogged_;     // Abschaltung schon gemeldet (kein Protokoll je Takt)
+  // Gemeldete Schutzabschaltung je Rolle (kein Protokoll je Takt). Gerät und
+  // Kanal vom Zeitpunkt des Schnitts: Wird umgehängt, endet die Verfolgung
+  // ohne Entwarnung (der alte Ausgang ist nicht mehr im Blick).
+  struct Cut {
+    std::set<std::string> keys;  // schon gemeldete Gründe
+    std::string device;
+    int channel = 0;
+    bool failed = false;  // Ausschalten gescheitert, noch nicht als aus gelesen
+  };
+  std::map<std::string, Cut> cuts_;
   std::string runningPump_;
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit

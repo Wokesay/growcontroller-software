@@ -371,7 +371,7 @@ json World::toJson() const {
                json outs = json::array();
                for (const auto& o : p.outlets)
                  outs.push_back({{"on", o.on}, {"load", o.load}, {"loadW", o.loadW}, {"initialOff", o.initialOff},
-                                 {"autoOffS", gc::numOrNull(o.autoOffS)}});
+                                 {"autoOffS", gc::numOrNull(o.autoOffS)}, {"switchOns", o.switchOns}});
                a.push_back({{"id", p.id}, {"class", p.cls}, {"ip", p.ip}, {"fault", p.fault}, {"outlets", outs}});
              }
              return a;

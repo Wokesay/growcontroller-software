@@ -70,8 +70,10 @@ stehen in jedem Release unter „Sicherheit“.
   Annahmen); Klima- und CO2-Kopf liefern Werte. Die Demo hat einen
   Klima-Kopf und eine Steckdosenleiste mit Licht, Abluft, Umluft und
   Befeuchter. Eine Dose ohne WLAN versorgt ihre Last weiter (Raumklima,
-  Umwälzung). Neue Störung `stuck`: Schaltbefehl abgelehnt, die Dose
-  bleibt im Zustand.
+  Umwälzung). Neue Störung `stuck`: Die Dose lehnt Schaltbefehle ab
+  und bleibt im Zustand; Auto-Off im Gerät und Stromausfall wirken weiter.
+  Der Simulator zählt je Dose die Einschaltvorgänge (`switchOns`), damit
+  Tests kurze Pulse sicher erkennen.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -92,6 +94,24 @@ stehen in jedem Release unter „Sicherheit“.
     unter 85 % (Annahme).
   - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus; klappt
     das nicht, steht „Aus nicht bestätigt“ im Ereignisprotokoll.
+  - Schutzabschaltungen (Trockenlauf der Umwälzpumpe, Zulauf-Notgrenze,
+    Gießpumpe, Höchstlaufzeit): Scheitert das Ausschalten, meldet der Hub
+    „Aus nicht bestätigt“ statt „aus“, einmal je Grund; der Zulauf
+    unterscheidet Füllstand, Notgrenze und Öffnungsdauer. Er versucht es
+    weiter, solange der Grund oder die Rastung besteht, und meldet „Aus
+    bestätigt“, sobald der Ausgang als aus gelesen wird. Vorher stand „aus“
+    im Protokoll, bei Umwälzpumpe und Zulauf in jedem Takt ein neuer
+    Eintrag.
+  - Läuft die Umwälzpumpe oder steht der Zulauf offen, obwohl die Rastung
+    noch nicht quittiert ist (Ausschalten gescheitert, Taster am Gerät),
+    schaltet der Hub sie erneut aus.
+  - Höchstlaufzeit: Hat das Gerät schon selbst abgeschaltet (Auto-Off), gibt
+    es keinen weiteren Schaltversuch. Nach dem Umzuordnen endet die
+    Verfolgung des alten Ausgangs ohne Entwarnung. Not-Halt beendet die
+    Wiederholung bei der Höchstlaufzeit (offen; Rückfall: Auto-Off im
+    Gerät).
+  - Lösen einer Zuordnung: Geht der Ausgang nicht aus, steht „Aus nicht
+    bestätigt“ im Protokoll (wie beim Umzuordnen).
   - Not-Halt und Neustart schalten alle Schaltrollen aus;
     laufen Umluft und Abluft nicht nach (Quelle: RAT-036).
   - Heizungen gibt es noch nicht als Rolle: erst mit der rastenden

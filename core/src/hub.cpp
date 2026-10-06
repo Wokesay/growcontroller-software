@@ -767,7 +767,9 @@ Result Hub::unbindRole(const std::string& role) {
   if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
     Msg e;
     Ctx c = ctx();
-    act_.setRole(c, role, false, "Zuordnung entfernt", e);
+    const Binding* old = cfg_.binding(role);
+    if (old && !act_.setRole(c, role, false, "Zuordnung entfernt", e))
+      log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Zuordnung entfernt: " + e.text, {{"role", role}, {"device", old->device}});
   }
   cfg_.rolesFor(role).erase(role);
   saveConfig("Zuordnung entfernt: " + role);

@@ -27,7 +27,12 @@ test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen",
     return world.world.netPlugs.find((p: { id: string }) => p.id === id).outlets[0];
   };
   expect((await outlet()).initialOff).toBe(true);
+  const before = (await outlet()).switchOns;
   await page.getByTestId(`outlets-${id}`).getByRole("button", { name: "Testen" }).click();
-  // Der Klick geht asynchron an den Hub: auf den Zustand warten, nicht sofort lesen
-  await expect.poll(async () => (await outlet()).on).toBe(true);
+  // „Testen“ schaltet 3 s ein. Statt den kurzen Zustand abzufragen (verpasst
+  // ihn, wenn eine Abfrage länger dauert), auf die bleibende Spur warten.
+  await expect.poll(async () => (await outlet()).switchOns).toBeGreaterThan(before);
+  await expect.poll(async () => (await outlet()).on, { timeout: 10_000 }).toBe(false);
+  const ev = await (await page.request.get("/api/v1/events?limit=50")).json();
+  expect(ev.events.filter((e: { title: string }) => e.title.startsWith("Umwälzpumpe aus") || e.title.includes("Aus nicht bestätigt"))).toHaveLength(0);
 });

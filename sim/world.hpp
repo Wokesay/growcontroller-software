@@ -57,6 +57,7 @@ struct NetOutlet {
   double autoOffS = gc::kNaN;
   double powerLimitW = gc::kNaN;
   Ms onSince = 0;
+  int switchOns = 0;  // Einschaltvorgänge (bleibende Spur für Tests, auch bei kurzen Pulsen)
 };
 
 struct NetPlug {
