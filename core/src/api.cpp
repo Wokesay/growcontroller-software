@@ -233,6 +233,7 @@ ApiResponse Api::route(const ApiRequest& req) {
   }
   if (is("DELETE", {"roles", "*"})) return fromResult(hub_.unbindRole(p[1]));
   if (is("PUT", {"tank"})) return fromResult(hub_.putTank(body));
+  if (is("PUT", {"zone"})) return fromResult(hub_.putZone(body));
   if (is("POST", {"canisters"})) return fromResult(hub_.putCanister(body));
   if (is("DELETE", {"canisters", "*"})) return fromResult(hub_.deleteCanister(p[1]));
   if (is("POST", {"canisters", "*", "stock"})) return fromResult(hub_.setStock(p[1], jnum(body, "ml")));

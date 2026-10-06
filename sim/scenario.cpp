@@ -297,8 +297,8 @@ json Simulation::control(const std::string& action, const json& b) {
     } else if (Device* d = world_.device(dev)) {
       d->fault = f == "none" ? "" : f;
       if (f == "frozen") {
-        d->frozenPh = world_.rawPh();
-        d->frozenEc = world_.rawEc();
+        d->frozenPh = world_.rawPh(d);
+        d->frozenEc = world_.rawEc(d);
       }
     } else {
       return err("Gerät nicht gefunden");

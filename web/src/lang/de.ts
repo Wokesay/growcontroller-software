@@ -108,7 +108,7 @@ export const de = {
   "setup.step.calibrate": "Einmessen",
   "setup.step.done": "Fertig",
   "setup.start.h": "Willkommen",
-  "setup.start.intro": "In fünf Schritten zur ersten Nährlösung: Geräte erkennen, Tank angeben, Nährstoffe zuordnen, Pumpen einmessen. Licht, Klima und Bewässerung kommen mit den nächsten Updates dazu.",
+  "setup.start.intro": "In fünf Schritten zur ersten Nährlösung: Geräte erkennen, Tank angeben, Nährstoffe zuordnen, Pumpen einmessen. Licht, Klima und Bewässerung kommen später dazu.",
   "setup.start.pw": "Das Passwort ist gesetzt. Auf dem Hub wählst du hier auch dein WLAN; der Hub zeigt danach seine neue Adresse. Im Simulator entfällt das.",
   "setup.start.name": "Name des Hubs",
   "setup.start.nameHint": "z. B. „Gewächshaus“ oder „Raum 1“",
@@ -125,7 +125,7 @@ export const de = {
   "setup.dev.stateFound": "erkannt",
   "setup.dev.needBlock": "Weiter geht es, sobald ein Dosierblock mit mindestens einer Pumpe erkannt und übernommen ist.",
   "setup.dev.needPump": "Noch keine Pumpe auf dem Dosierblock.",
-  "setup.dev.plugs": "Schaltbare Steckdosen für 230-V-Geräte (z. B. Umwälzpumpe, Licht, Lüfter) kommen mit einem der nächsten Updates. Bis dahin schaltet der Hub nur seine eigenen 12-V-Ausgänge.",
+  "setup.dev.plugs": "Schaltbare Steckdosen für 230-V-Geräte (z. B. Umwälzpumpe, Licht, Lüfter) kommen später dazu. Bis dahin schaltet der Hub nur seine eigenen 12-V-Ausgänge.",
   "setup.tank.h": "Tank",
   "setup.tank.name": "Name",
   "setup.tank.water": "Wasser",
@@ -214,4 +214,12 @@ export const de = {
   "shell.watchdogStale": "Überwachung ohne Bewertung",
   "shell.connecting": "Verbinde mit dem Hub …",
   "shell.loading": "Lade …",
+
+  // Anbaubereich (Zone)
+  "zone.room": "Raum",
+  "zone.tent": "Zelt",
+  "zone.greenhouse": "Gewächshaus",
+  "setup.start.zoneKind": "Wo stehen die Pflanzen?",
+  "setup.start.zoneName": "Name des Bereichs",
+  "setup.start.zoneHint": "z. B. „Keller“ oder „Gewächshaus Süd“",
 } as const;

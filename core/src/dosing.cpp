@@ -130,13 +130,12 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
 
 void Actuators::stopAll(const Config& cfg) {
   bus_.stopAllPumps();
-  for (const auto& t : cfg.tanks)
-    for (const auto& [role, b] : t.roles) {
-      std::string e;
-      // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox nicht lesbar).
-      auto st = bus_.switchState(b.device, b.channel);
-      if (st || role == "tank.circulation" || role == "tank.inlet") bus_.setSwitch(b.device, b.channel, false, e);
-    }
+  cfg.forEachBinding([&](const std::string& role, const Binding& b) {
+    std::string e;
+    // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox nicht lesbar).
+    auto st = bus_.switchState(b.device, b.channel);
+    if (st || role == "tank.circulation" || role == "tank.inlet") bus_.setSwitch(b.device, b.channel, false, e);
+  });
   onSince_.clear();
 }
 

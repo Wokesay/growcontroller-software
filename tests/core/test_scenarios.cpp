@@ -377,3 +377,41 @@ TEST_CASE("Ablage: nicht beschreibbarer Datenordner bricht den Simulator nicht a
   CHECK_NOTHROW(st.flush());
   std::filesystem::remove_all(base);
 }
+
+TEST_CASE("Sonden: pH und EC als getrennte Köpfe, Wassertemperatur vom EC-Kopf") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("plug", {{"port", 3}, {"class", "head_ph"}});
+    s.control("plug", {{"port", 4}, {"class", "head_ec"}});
+  }
+  std::string ph, ec;
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    for (const auto& d : st["devices"]) {
+      if (d["class"] == "head_ph" && d["online"] == true) ph = d["id"];
+      if (d["class"] == "head_ec" && d["online"] == true) ec = d["id"];
+    }
+    return !ph.empty() && !ec.empty();
+  }, 30000));
+  c.ok("POST", "/api/v1/devices/" + ph + "/accept", {{"name", ""}});
+  c.ok("POST", "/api/v1/devices/" + ec + "/accept", {{"name", ""}});
+  auto roles = c.ok("GET", "/api/v1/config")["tanks"][0]["roles"];
+  CHECK(roles["tank.ph"]["device"] == ph);
+  CHECK(roles["tank.ec"]["device"] == ec);
+  CHECK(roles["tank.water_temp"]["device"] == ec);
+  // Beide liefern Werte
+  REQUIRE(until(s, [&] {
+    auto r = c.state()["readings"];
+    return r["tank.ph"]["value"].is_number() && r["tank.ec"]["value"].is_number();
+  }, 60000));
+  // Fehler am pH-Kopf trifft nur pH
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", ph}, {"fault", "offline"}});
+  }
+  REQUIRE(until(s, [&] { return !c.state()["readings"]["tank.ph"]["value"].is_number(); }, 180000));
+  CHECK(c.state()["readings"]["tank.ec"]["value"].is_number());
+}

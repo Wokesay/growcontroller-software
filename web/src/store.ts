@@ -110,4 +110,7 @@ export const tank = computed(() => config.value?.tanks?.[0]);
 export const canisters = computed(() => config.value?.canisters ?? []);
 export const recipes = computed(() => config.value?.recipes ?? []);
 export const fn = (id: string) => state.value?.functions.find((f) => f.id === id);
-export const hasRole = (role: string) => !!tank.value?.roles?.[role]?.device;
+export const zone = computed(() => config.value?.zones?.[0]);
+/** Zuordnung einer Rolle: „zone.*“ liegt an der Zone, alles andere am Tank. */
+export const binding = (role: string) => (role.startsWith("zone.") ? zone.value?.roles?.[role] : tank.value?.roles?.[role]);
+export const hasRole = (role: string) => !!binding(role)?.device;

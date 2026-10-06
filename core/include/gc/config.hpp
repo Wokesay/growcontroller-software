@@ -13,12 +13,13 @@
 
 namespace gc {
 
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 
 struct Binding {
   std::string device;
   int channel = 0;
 };
+using RoleMap = std::map<std::string, Binding>;
 
 struct TankCfg {
   std::string id = "t1";
@@ -26,7 +27,18 @@ struct TankCfg {
   double capacityL = kNaN;  // Nutzvolumen, Plausibilitätsgrenze beim Mischen
   double minL = kNaN;       // Trockenlaufgrenze der Umwälzpumpe
   std::string water = "ro"; // ro | tap
-  std::map<std::string, Binding> roles;  // "tank.ph" → Gerät
+  RoleMap roles;            // "tank.ph" → Gerät
+};
+
+// Bereich, in dem die Pflanzen stehen: Raum, Zelt oder Gewächshaus. Das
+// Datenmodell erlaubt mehrere, v1 nutzt eine. Rollen heißen „zone.*“
+// (Schema v2; vorher „tent.*“ am Tank).
+struct ZoneCfg {
+  std::string id = "z1";
+  std::string name = "Raum 1";
+  std::string kind = "room";  // room | tent | greenhouse
+  std::string tank = "t1";    // Tank, der diesen Bereich versorgt
+  RoleMap roles;              // "zone.air_temp" → Gerät
 };
 
 struct DeviceCfg {
@@ -109,6 +121,7 @@ struct Config {
   Limits limits;
   std::vector<DeviceCfg> devices;
   std::vector<TankCfg> tanks;  // Datenmodell als Liste, UI und Logik v0: ein Tank
+  std::vector<ZoneCfg> zones;  // ebenso: eine Zone
   std::vector<CanisterCfg> canisters;
   std::vector<RecipeCfg> recipes;
   std::map<std::string, FunctionCfg> functions;
@@ -119,6 +132,18 @@ struct Config {
 
   TankCfg& tank();
   const TankCfg& tank() const;
+  ZoneCfg& zone();
+  const ZoneCfg& zone() const;
+  // Rollen liegen dort, wo sie wirken: „zone.*“ an der Zone, sonst am Tank.
+  RoleMap& rolesFor(const std::string& role);
+  const RoleMap& rolesFor(const std::string& role) const;
+  template <typename F>
+  void forEachBinding(F f) const {
+    for (const auto& t : tanks)
+      for (const auto& [r, b] : t.roles) f(r, b);
+    for (const auto& z : zones)
+      for (const auto& [r, b] : z.roles) f(r, b);
+  }
   const DeviceCfg* device(const std::string& id) const;
   const CanisterCfg* canister(const std::string& id) const;
   const CanisterCfg* canisterByPump(const std::string& pumpId) const;

@@ -72,6 +72,7 @@ class Hub {
   Result bindRole(const std::string& role, const std::string& device, int channel);
   Result unbindRole(const std::string& role);
   Result putTank(const json& j);
+  Result putZone(const json& j);
   Result putCanister(const json& j);
   Result deleteCanister(const std::string& id);
   Result setStock(const std::string& id, double ml);
@@ -108,6 +109,7 @@ class Hub {
  private:
   Ctx ctx();
   void saveConfig(const std::string& what);
+  void autoBindMeasures();
   void saveState();
   void saveJob();
   void sampleHistory(Epoch epoch);

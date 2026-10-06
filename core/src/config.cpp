@@ -47,8 +47,20 @@ const RecipeCfg* Config::recipe(const std::string& id) const {
     if (r.id == id) return &r;
   return nullptr;
 }
+ZoneCfg& Config::zone() {
+  if (zones.empty()) zones.emplace_back();
+  return zones.front();
+}
+const ZoneCfg& Config::zone() const {
+  static const ZoneCfg empty;
+  return zones.empty() ? empty : zones.front();
+}
+static bool isZoneRole(const std::string& role) { return role.rfind("zone.", 0) == 0; }
+RoleMap& Config::rolesFor(const std::string& role) { return isZoneRole(role) ? zone().roles : tank().roles; }
+const RoleMap& Config::rolesFor(const std::string& role) const { return isZoneRole(role) ? zone().roles : tank().roles; }
+
 const Binding* Config::binding(const std::string& role) const {
-  const auto& roles = tank().roles;
+  const auto& roles = rolesFor(role);
   auto it = roles.find(role);
   if (it == roles.end() || it->second.device.empty()) return nullptr;
   return &it->second;
@@ -87,6 +99,15 @@ void to_json(json& j, const Config& c) {
                           {"minL", numOrNull(t.minL)},
                           {"water", t.water},
                           {"roles", roles}});
+  }
+  j["zones"] = json::array();
+  // Ohne Zone gilt die Standardzone (wie beim Lesen), damit der Hin- und
+  // Rückweg über JSON dasselbe ergibt.
+  const std::vector<ZoneCfg> zones = c.zones.empty() ? std::vector<ZoneCfg>{c.zone()} : c.zones;
+  for (const auto& z : zones) {
+    json roles = json::object();
+    for (const auto& [r, b] : z.roles) roles[r] = {{"device", b.device}, {"channel", b.channel}};
+    j["zones"].push_back({{"id", z.id}, {"name", z.name}, {"kind", z.kind}, {"tank", z.tank}, {"roles", roles}});
   }
   j["canisters"] = json::array();
   for (const auto& k : c.canisters)
@@ -129,6 +150,25 @@ json migrateConfig(json j) {
     }
     j["schemaVersion"] = 1;
   }
+  // v1 → v2: Zonen. Rollen „tent.*“ am Tank werden „zone.*“ an der ersten Zone.
+  if (j.value("schemaVersion", 0) < 2) {
+    json zone = {{"id", "z1"}, {"name", "Raum 1"}, {"kind", "room"}, {"tank", "t1"}, {"roles", json::object()}};
+    if (j.contains("tanks") && j["tanks"].is_array()) {
+      for (auto& t : j["tanks"]) {
+        if (!t.is_object()) continue;
+        if (zone["tank"] == "t1" && t.contains("id") && t["id"].is_string()) zone["tank"] = t["id"];
+        if (!t.contains("roles") || !t["roles"].is_object()) continue;
+        json keep = json::object();
+        for (const auto& [r, b] : t["roles"].items()) {
+          if (r.rfind("tent.", 0) == 0) zone["roles"]["zone." + r.substr(5)] = b;
+          else keep[r] = b;
+        }
+        t["roles"] = keep;
+      }
+    }
+    if (!j.contains("zones") || !j["zones"].is_array() || j["zones"].empty()) j["zones"] = json::array({zone});
+    j["schemaVersion"] = 2;
+  }
   return j;
 }
 
@@ -169,6 +209,20 @@ Config configFromJson(const json& in) {
     c.tanks.push_back(tc);
   }
   if (c.tanks.empty()) c.tanks.emplace_back();
+  for (const auto& z : j.value("zones", json::array())) {
+    ZoneCfg zc;
+    zc.id = z.value("id", zc.id);
+    zc.name = z.value("name", zc.name);
+    zc.kind = z.value("kind", zc.kind);
+    zc.tank = z.value("tank", c.tanks.front().id);
+    if (z.contains("roles") && z["roles"].is_object())
+      for (const auto& [r, b] : z["roles"].items()) zc.roles[r] = {jstr(b, "device"), b.value("channel", 0)};
+    c.zones.push_back(zc);
+  }
+  if (c.zones.empty()) {
+    c.zones.emplace_back();
+    c.zones.front().tank = c.tanks.front().id;
+  }
   for (const auto& k : j.value("canisters", json::array())) {
     CanisterCfg cc;
     cc.id = jstr(k, "id");
@@ -244,7 +298,19 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   if (isNum(t.capacityL) && t.capacityL <= 0) err("cfg.tank.capacity", "Nutzvolumen muss größer als 0 sein");
   if (isNum(t.minL) && isNum(t.capacityL) && t.minL >= t.capacityL)
     err("cfg.tank.min", "Trockenlaufgrenze muss unter dem Nutzvolumen liegen");
-  for (const auto& [role, b] : t.roles) {
+  for (const auto& z : c.zones) {
+    if (z.kind != "room" && z.kind != "tent" && z.kind != "greenhouse") err("cfg.zone.kind", z.name + ": Art muss Raum, Zelt oder Gewächshaus sein");
+    bool tankKnown = false;
+    for (const auto& tk : c.tanks) tankKnown = tankKnown || tk.id == z.tank;
+    if (!tankKnown) err("cfg.zone.tank", z.name + ": Tank " + z.tank + " gibt es nicht");
+    for (const auto& [role, b] : z.roles)
+      if (role.rfind("zone.", 0) != 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an die Zone");
+  }
+  for (const auto& [role, b] : t.roles)
+    if (role.rfind("zone.", 0) == 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an den Tank");
+  std::vector<std::pair<std::string, Binding>> all;
+  c.forEachBinding([&](const std::string& r, const Binding& b) { all.emplace_back(r, b); });
+  for (const auto& [role, b] : all) {
     const RoleDef* rd = cat.role(role);
     if (!rd) {
       err("cfg.role.unknown", "Unbekannte Rolle " + role);

@@ -95,7 +95,8 @@ Software bindet sie trotzdem an.
 | dauer | Licht, Umluft, Abluft, Umwälzpumpe | aus (Lüfter V: an) | – | – |
 | puls | Befeuchter, Gießpumpe, Zulauf | aus | **Auto-Off Pflicht**, knapp über der Software-Grenze | Höchstlaufzeit, Wartezeit |
 | kompressor | Entfeuchter | aus | – | Mindestlauf 10 min, Mindestpause 5 min (Quelle: RAT-034) |
-| heizen | Heizung (Zone, Tank) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
+| heizen | Heizung ohne eigenen Thermostat (z. B. Heizstab) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
+| versorgen | Gerät mit eigenem Thermostat, das Relais gibt nur Strom | aus | kein Auto-Off (Quelle: RAT-069) | Bewertung durch den Watchdog |
 
 Fest im Code (R7):
 
@@ -122,8 +123,9 @@ Er schaltet nichts (R2).
 
 - Netzgeräte stehen außerhalb des Pflanzraums.
 - Alles im Wasser hängt hinter einem FI-Schutzschalter mit 30 mA.
-- Heizgeräte mit dem Warnhinweis aus EN 60335-2-30 (Norm nicht eingesehen, Angabe des `hardware`-Entwurfs) („nicht mit Zeitschaltuhr
-  betreiben“) werden nicht angeschlossen.
+- Heizgeräte mit dem Warnhinweis „nicht mit Zeitschaltuhr betreiben“ aus
+  EN 60335-2-30 werden nicht angeschlossen (Norm nicht eingesehen, Angabe
+  des `hardware`-Entwurfs).
 - Einbaugeräte schließt nur eine Elektrofachkraft an.
 
 ## 4. Neue Funktionen (Katalog)
@@ -159,8 +161,10 @@ Einstellungen“.
 | Gaben je Tag | 6 | 8–9 | RAT-010 (Steinwolle) |
 
 Sinkt das EC-Ziel beim Phasenwechsel, weist die App darauf hin, den Tank
-abzulassen – ganz (Quelle: RAT-012) oder, wenn Rest und Nachfüllung
-reichen, teilweise (Quelle: RAT-065). Der Hub kann nicht verdünnen.
+ganz abzulassen (Quelle: RAT-012). Liegen Rest und Frischwasser schon
+unter dem neuen Ziel, entfällt das Ablassen (Quelle: RAT-065).
+Teilweises Ablassen wäre eine eigene Annahme und ist nicht vorgesehen. Der
+Hub kann nicht verdünnen.
 
 ## 6. Bedienung
 
@@ -219,9 +223,9 @@ gibt drei Geräteklassen:
 - `head_ph`;
 - `head_ec` (EC, Wassertemperatur).
 
-Die Rollen bleiben gleich. Liefern zwei Köpfe die Wassertemperatur, wählt der
-Nutzer; vorgeschlagen ist der EC-Kopf, weil EC die Temperaturkompensation
-braucht. Zwei Köpfe brauchen zwei Anschlüsse und je eine eigene galvanische
+Die Rollen bleiben gleich. Der Hub ordnet eine Messrolle nur zu, wenn genau
+ein Gerät sie liefert; liefern zwei Köpfe dasselbe, wählt der Nutzer unter
+Geräte › Zuordnung. Umgesetzt im Simulator (Schema v2). Zwei Köpfe brauchen zwei Anschlüsse und je eine eigene galvanische
 Trennung.
 
 ## 8. Reihenfolge der Umsetzung

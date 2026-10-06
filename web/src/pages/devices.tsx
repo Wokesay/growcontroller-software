@@ -2,10 +2,10 @@
 // Zuordnung der Messstellen und Ausgänge, „Erweitern“.
 import { useEffect, useState } from "preact/hooks";
 import { Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
-import { del, patch, post, put, type Device } from "../api";
+import { del, patch, post, probeKinds, put, type Device } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
-import { canisters, catalog, config, refreshConfig, refreshState, state, tank, toast } from "../store";
+import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, PortGrid, devicePlace } from "../widgets";
 
@@ -59,21 +59,12 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
                 Einmessen
               </Button>
             )}
-            {d.class === "head_ph_ec" && d.online && (
-              <>
-                <Button size="sm" onClick={() => p.onCal(d, "ph")}>
-                  pH kalibrieren
+            {d.online &&
+              probeKinds(catalog.value, d.class).map((k) => (
+                <Button size="sm" onClick={() => p.onCal(d, k)}>
+                  {k === "ph" ? "pH kalibrieren" : k === "ec" ? "EC kalibrieren" : "Kennlinie"}
                 </Button>
-                <Button size="sm" onClick={() => p.onCal(d, "ec")}>
-                  EC kalibrieren
-                </Button>
-              </>
-            )}
-            {d.class === "head_level" && d.online && (
-              <Button size="sm" onClick={() => p.onCal(d, "tank_curve")}>
-                Kennlinie
-              </Button>
-            )}
+              ))}
             <Button size="sm" variant="ghost" onClick={() => setEdit(true)} title="Umbenennen">
               <Pencil size={15} />
             </Button>
@@ -123,7 +114,6 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
 function Roles() {
   const st = state.value!;
   const cat = catalog.value!;
-  const t = tank.value!;
   const devs = config.value!.devices;
   const rolesUsed = Object.entries(cat.roles).filter(([, r]) => devs.some((d) => cat.deviceClasses[d.class]?.provides.includes(r.capability)));
   return (
@@ -139,7 +129,7 @@ function Roles() {
         </thead>
         <tbody>
           {rolesUsed.map(([id, r]) => {
-            const b = t.roles[id];
+            const b = binding(id);
             const cands = devs.filter((d) => cat.deviceClasses[d.class]?.provides.includes(r.capability));
             const channels = (cls: string) => cat.deviceClasses[cls]?.channels ?? 1;
             const opts: [string, string][] = [["", "– nicht zugeordnet –"]];

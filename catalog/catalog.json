@@ -1,5 +1,5 @@
 {
-  "catalogVersion": 1,
+  "catalogVersion": 2,
   "capabilities": {
     "measure.ph": { "label": "pH", "unit": "", "kind": "measure", "decimals": 2, "plausible": [3.0, 9.0], "maxAgeS": 60, "jump": 1.0 },
     "measure.ec": { "label": "EC", "unit": "mS/cm", "kind": "measure", "decimals": 2, "plausible": [0.0, 8.0], "maxAgeS": 60, "jump": 0.5 },
@@ -28,6 +28,18 @@
       "provides": ["measure.ph", "measure.ec", "measure.water_temp"], "calibrations": ["ph", "ec"],
       "shop": "pH/EC-Kopf mit galvanischer Trennung und Sonden",
       "text": "Misst pH, EC und Wassertemperatur im Tank, galvanisch getrennt."
+    },
+    "head_ph": {
+      "label": "Sensorkopf pH", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ph"], "calibrations": ["ph"],
+      "shop": "pH-Kopf mit galvanischer Trennung und Sonde",
+      "text": "Misst pH im Tank, galvanisch getrennt. Zusammen mit einem EC-Kopf, wenn pH und EC getrennte Sonden haben."
+    },
+    "head_ec": {
+      "label": "Sensorkopf EC", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ec", "measure.water_temp"], "calibrations": ["ec"],
+      "shop": "EC-Kopf mit galvanischer Trennung, Sonde und Temperaturfühler",
+      "text": "Misst EC und Wassertemperatur im Tank, galvanisch getrennt."
     },
     "head_level": {
       "label": "Sensorkopf Füllstand", "stage": 2, "attach": "hub_port",
@@ -58,9 +70,9 @@
     "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
     "tank.circulation": { "label": "Umwälzpumpe", "capability": "switch.12v" },
     "tank.inlet": { "label": "Zulaufventil", "capability": "switch.12v" },
-    "tent.air_temp": { "label": "Lufttemperatur Raum", "capability": "measure.air_temp", "series": true },
-    "tent.humidity": { "label": "Luftfeuchte Raum", "capability": "measure.humidity", "series": true },
-    "tent.co2": { "label": "CO2 Raum", "capability": "measure.co2", "series": true }
+    "zone.air_temp": { "label": "Lufttemperatur", "capability": "measure.air_temp", "series": true },
+    "zone.humidity": { "label": "Luftfeuchte", "capability": "measure.humidity", "series": true },
+    "zone.co2": { "label": "CO2", "capability": "measure.co2", "series": true }
   },
 
   "functions": [
@@ -160,7 +172,7 @@
     {
       "id": "climate_watch", "label": "Klima bewerten", "stage": 4, "group": "Messen",
       "text": "Bewertet Lufttemperatur und Luftfeuchte im Raum. Steuert nichts.",
-      "requires": [ { "role": "tent.air_temp" }, { "role": "tent.humidity" } ]
+      "requires": [ { "role": "zone.air_temp" }, { "role": "zone.humidity" } ]
     }
   ],
 
@@ -183,6 +195,7 @@
         "note": "Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
         "noteEn": "Vegetative weeks 1–4. Check against the current manufacturer chart.",
         "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
         "basis": "RAT-066",
         "ec": 2.1, "ph": [5.8, 6.2],
         "steps": [
@@ -196,6 +209,7 @@
         "note": "Blüte Woche 1–2 (ab Woche 3 höher, mit PK). Mit dem aktuellen Herstellerplan abgleichen.",
         "noteEn": "Flowering weeks 1–2 (higher from week 3, with PK). Check against the current manufacturer chart.",
         "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
         "basis": "RAT-066",
         "ec": 2.3, "ph": [5.8, 6.2],
         "steps": [

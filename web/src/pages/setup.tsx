@@ -6,7 +6,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { ArrowLeft, ArrowRight, Check, PackagePlus, Sprout } from "lucide-preact";
-import { del, post, put, type Canister, type RecipeTemplate } from "../api";
+import { del, post, probeKinds, put, type Canister, type ProbeKind, type RecipeTemplate } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { num } from "../format";
 import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
@@ -94,9 +94,14 @@ function Page(p: { aside?: ComponentChildren; children: ComponentChildren; foot:
 
 // ---------- 1 Start
 
+type ZoneKind = "room" | "tent" | "greenhouse";
+
 function StepStart(p: { step: number; next: () => void }) {
   const cfg = config.value!;
   const [name, setName] = useState(cfg.system.name);
+  const z = cfg.zones?.[0];
+  const [zoneName, setZoneName] = useState(z?.name ?? "");
+  const [zoneKind, setZoneKind] = useState<ZoneKind>(z?.kind ?? "room");
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
   const pick = (l: Lang) => setLang(l);
   return (
@@ -105,6 +110,7 @@ function StepStart(p: { step: number; next: () => void }) {
         step: p.step,
         onNext: async () => {
           await put("/system", { name, timezone: tz, language: lang.value });
+          await put("/zone", { name: zoneName.trim() || t(`zone.${zoneKind}`), kind: zoneKind });
           await refreshConfig();
           p.next();
         },
@@ -121,6 +127,21 @@ function StepStart(p: { step: number; next: () => void }) {
           <span>{t("common.language")}</span>
           <Seg<Lang> value={lang.value} onChange={pick} options={[["de", "Deutsch"], ["en", "English"]]} />
         </div>
+        <div class="field">
+          <span>{t("setup.start.zoneKind")}</span>
+          <Seg<ZoneKind>
+            value={zoneKind}
+            onChange={setZoneKind}
+            options={[
+              ["room", t("zone.room")],
+              ["tent", t("zone.tent")],
+              ["greenhouse", t("zone.greenhouse")],
+            ]}
+          />
+        </div>
+        <Field label={t("setup.start.zoneName")} hint={t("setup.start.zoneHint")}>
+          <input class="input" name="zonename" value={zoneName} placeholder={t(`zone.${zoneKind}`)} onInput={(e) => setZoneName((e.target as HTMLInputElement).value)} />
+        </Field>
         <Field label={t("setup.start.tz")} hint={t("setup.start.tzHint")}>
           <input class="input" value={tz} disabled />
         </Field>
@@ -389,7 +410,7 @@ function StepNutrients(p: { step: number; next: () => void }) {
         </Field>
       )}
       {named.length === 0 && <Banner tone="warn">{t("setup.nut.needOne")}</Banner>}
-      {cur?.source && <p class="faint small">{t("setup.nut.source", { s: cur.source })}</p>}
+      {cur?.source && <p class="faint small">{t("setup.nut.source", { s: lang.value === "en" && cur.sourceEn ? cur.sourceEn : cur.source })}</p>}
     </Page>
   );
 }
@@ -400,13 +421,14 @@ function StepCalibrate(p: { step: number; next: () => void }) {
   const st = state.value!;
   const cfg = config.value!;
   const [cal, setCal] = useState<{ id: string; name: string } | null>(null);
-  const [probe, setProbe] = useState<{ dev: string; kind: "ph" | "ec" | "tank_curve"; name: string } | null>(null);
+  const [probe, setProbe] = useState<{ dev: string; kind: ProbeKind; name: string } | null>(null);
   const assigned = canisters.value.filter((k) => k.pump);
   const allCal = assigned.length > 0 && assigned.every((k) => st.devices.find((d) => d.id === k.pump)?.info?.flowMlPerMin);
-  const head = cfg.devices.find((d) => d.class === "head_ph_ec");
-  const level = cfg.devices.find((d) => d.class === "head_level");
+  // Alle Sondenköpfe mit Kalibrierung: ein pH/EC-Kopf oder zwei einzelne, Füllstand
+  const probes = cfg.devices.flatMap((d) => probeKinds(catalog.value, d.class).map((k) => ({ dev: d.id, kind: k })));
+  const probeLabel = (k: ProbeKind) => (k === "ph" ? t("setup.cal.ph") : k === "ec" ? t("setup.cal.ecProbe") : t("setup.cal.level"));
   const cals = cfg.calibrations;
-  const probeRow = (dev: string, kind: "ph" | "ec" | "tank_curve", label: string) => (
+  const probeRow = (dev: string, kind: ProbeKind, label: string) => (
     <div class="item">
       <span class="grow">
         <strong>{label}</strong>
@@ -446,14 +468,10 @@ function StepCalibrate(p: { step: number; next: () => void }) {
       </div>
       {!allCal && assigned.length > 0 && <Banner tone="warn">{t("setup.cal.warn")}</Banner>}
       <div class="section-title">{t("setup.cal.probes")}</div>
-      {!head && !level ? (
+      {probes.length === 0 ? (
         <p class="muted">{t("setup.cal.noProbes")}</p>
       ) : (
-        <div class="list">
-          {head && probeRow(head.id, "ph", t("setup.cal.ph"))}
-          {head && probeRow(head.id, "ec", t("setup.cal.ecProbe"))}
-          {level && probeRow(level.id, "tank_curve", t("setup.cal.level"))}
-        </div>
+        <div class="list">{probes.map((x) => probeRow(x.dev, x.kind, probeLabel(x.kind)))}</div>
       )}
       {cal && <PumpCalibration pump={cal.id} name={cal.name} onClose={() => setCal(null)} />}
       {probe && <ProbeCalibration device={probe.dev} kind={probe.kind} name={probe.name} onClose={() => setProbe(null)} />}

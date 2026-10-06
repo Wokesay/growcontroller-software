@@ -85,11 +85,12 @@ std::optional<gc::Sample> SimBus::sample(const std::string& dev, const std::stri
   auto it = cache_.find(key);
   if (it != cache_.end() && it->second.first == d->lastSample) return gc::Sample{it->second.second, d->lastSample};
   double v = gc::kNaN;
-  if (d->cls == "head_ph_ec") {
-    if (cap == "measure.ph") v = w_.rawPh();
-    else if (cap == "measure.ec") v = w_.rawEc();
-    else if (cap == "measure.water_temp") v = w_.rawTemp();
-  } else if (d->cls == "head_level" && cap == "measure.level") {
+  const bool ph = d->cls == "head_ph_ec" || d->cls == "head_ph";
+  const bool ec = d->cls == "head_ph_ec" || d->cls == "head_ec";
+  if (ph && cap == "measure.ph") v = w_.rawPh(d);
+  else if (ec && cap == "measure.ec") v = w_.rawEc(d);
+  else if (ec && cap == "measure.water_temp") v = w_.rawTemp();
+  else if (d->cls == "head_level" && cap == "measure.level") {
     v = w_.rawLevelV();
   }
   if (!gc::isNum(v)) return std::nullopt;

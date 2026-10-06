@@ -80,6 +80,7 @@ export type Config = {
   limits: { handDoseMaxMl: number; minRunS: number; maxRunS: number; maxPartialRuns: number };
   devices: { id: string; class: string; name: string }[];
   tanks: { id: string; name: string; capacityL: number | null; minL: number | null; water: string; roles: Record<string, { device: string; channel: number }> }[];
+  zones: { id: string; name: string; kind: "room" | "tent" | "greenhouse"; tank: string; roles: Record<string, { device: string; channel: number }> }[];
   canisters: Canister[]; recipes: Recipe[];
   functions: Record<string, { enabled: boolean; params: Record<string, unknown> }>;
   calibrations: Record<string, Record<string, unknown>>;
@@ -90,7 +91,7 @@ export type ParamDef = { key: string; label: string; type: "number" | "enum" | "
 export type Catalog = {
   catalogVersion: number;
   capabilities: Record<string, { label: string; unit?: string; kind: string; decimals?: number }>;
-  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
+  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
   roles: Record<string, { label: string; capability: string; series?: boolean }>;
   functions: { id: string; label: string; stage: number; group: string; text: string; params?: ParamDef[] }[];
   templates: { recipes: RecipeTemplate[] };
@@ -155,6 +156,11 @@ export const sim = (action: string, body: unknown = {}) => api("POST", `/sim/${a
 
 export type TemplateStep = { role: string; name: string; nameEn?: string; pair?: string; mlPerL: number };
 export type RecipeTemplate = {
-  id: string; name: string; nameEn?: string; note?: string; noteEn?: string; source?: string;
+  id: string; name: string; nameEn?: string; note?: string; noteEn?: string; source?: string; sourceEn?: string;
   ec?: number; ph?: [number, number]; steps: TemplateStep[];
 };
+
+/** Kalibrierarten einer Sonde (ohne Pumpen-Einmessen, das ist eigener Ablauf). */
+export type ProbeKind = "ph" | "ec" | "tank_curve";
+export const probeKinds = (cat: Catalog | null, cls: string): ProbeKind[] =>
+  ((cat?.deviceClasses[cls]?.calibrations ?? []).filter((k) => k === "ph" || k === "ec" || k === "tank_curve") as ProbeKind[]);

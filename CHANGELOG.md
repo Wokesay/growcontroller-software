@@ -25,11 +25,21 @@ stehen in jedem Release unter „Sicherheit“.
   Vorschau, vorhandene Rezepte sind sichtbar.
 - **Rezept-Vorlagen** mit Vorschau und Zuordnung zu den eigenen Kanistern
   statt Namensabgleich: Zweikomponenten-Dünger, Athena Blended Wachstum und
-  Blüte (Quelle: RAT-066). API: `POST /recipes/template` nimmt `map`
+  Blüte (nach Feed Program A01.004). API: `POST /recipes/template` nimmt `map`
   (Teil → Kanister), meldet fehlende Teile in `missing` und lehnt einen
   Kanister für zwei Teile ab; ein Paar der Vorlage geht auf Kanister ohne
-  eigenes Paar über. Die bisherigen Vorlagen `athena_pro_veg` und
+  eigenes Paar über, bei schon vergebenem Namen als „AB2“ usw. Die bisherigen Vorlagen `athena_pro_veg` und
   `ab_basic` entfallen.
+- **Anbaubereich (Schema v2):** Die Einrichtung fragt, wo die Pflanzen
+  stehen (Raum, Zelt, Gewächshaus), mit eigenem Namen. Im Datenmodell ist das
+  eine Zone mit eigenen Rollen (`zone.*`, vorher `tent.*` am Tank); die
+  Konfiguration wird beim Start migriert. API: `PUT /zone`.
+- **pH und EC als ein Kopf oder zwei:** neue Geräteklassen „Sensorkopf pH“
+  und „Sensorkopf EC“ (mit Wassertemperatur) neben dem gemeinsamen
+  pH/EC-Kopf. Messrollen werden nur zugeordnet, wenn genau ein Gerät passt.
+  Einmessen und Geräte zeigen die Kalibrierungen je Kopf aus dem Katalog; im
+  Simulator lassen sich beide Varianten stecken, Störungen treffen den
+  passenden Kopf.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -37,6 +47,8 @@ stehen in jedem Release unter „Sicherheit“.
 ### Geändert
 - Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
   auch mit MSVC übersetzt.
+- Katalog Version 2 (Rollen `zone.*`, Köpfe pH und EC einzeln),
+  Konfiguration Schema 2.
 - Benennung: „Anschluss 1–8“ am Hub, „Pumpe 1–6“ am Dosierblock,
   „Sensorkopf“, „Raum“ statt „Zelt“, Untertitel „Pflanzenautomatisierung“.
   Anschlüsse zeigen das Symbol des Geräts.

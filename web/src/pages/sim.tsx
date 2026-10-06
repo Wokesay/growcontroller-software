@@ -41,7 +41,21 @@ export function SimPanel() {
       </button>
     );
   const w = world?.world;
-  const head = w?.ports?.find((p: any) => p.class === "head_ph_ec");
+  // Sonden: ein gemeinsamer pH/EC-Kopf oder zwei einzelne Köpfe
+  const heads = (w?.ports ?? []).filter((p: any) => p.class === "head_ph_ec" || p.class === "head_ph" || p.class === "head_ec");
+  const head = heads[0];
+  const phHead = heads.find((p: any) => p.class !== "head_ec");
+  const ecHead = heads.find((p: any) => p.class !== "head_ph");
+  const allHeads = async (fault: string, msg: string) => {
+    try {
+      for (const h of heads) await sim("fault", { device: h.id, fault });
+      await load();
+      await refreshState();
+      toast(msg, "info");
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  };
   const lvl = w?.ports?.find((p: any) => p.class === "head_level");
   const block = w?.ports?.find((p: any) => p.class === "dosing_block");
   return (
@@ -85,19 +99,23 @@ export function SimPanel() {
         <div class="row">
           {head && (
             <>
-              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "jump" }, "pH-Sonde springt")}>
-                <Zap size={14} /> pH-Sprung
-              </Button>
-              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "ec_zero" }, "EC-Sonde trocken")}>
-                EC 0
-              </Button>
-              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "frozen" }, "Werte eingefroren")}>
+              {phHead && (
+                <Button size="sm" onClick={() => act("fault", { device: phHead.id, fault: "jump" }, "pH-Sonde springt")}>
+                  <Zap size={14} /> pH-Sprung
+                </Button>
+              )}
+              {ecHead && (
+                <Button size="sm" onClick={() => act("fault", { device: ecHead.id, fault: "ec_zero" }, "EC-Sonde trocken")}>
+                  EC 0
+                </Button>
+              )}
+              <Button size="sm" onClick={() => allHeads("frozen", "Werte eingefroren")}>
                 Wert friert
               </Button>
-              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "offline" }, "Sensorkopf antwortet nicht")}>
+              <Button size="sm" onClick={() => allHeads("offline", "Sensorkopf antwortet nicht")}>
                 Sensorkopf offline
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => act("fault", { device: head.id, fault: "none" }, "Sensorkopf wieder normal")}>
+              <Button size="sm" variant="ghost" onClick={() => allHeads("none", "Sensorkopf wieder normal")}>
                 Sensorkopf normal
               </Button>
             </>
@@ -143,10 +161,21 @@ export function SimPanel() {
           </Button>
         </div>
         <div class="row">
-          {!head && (
-            <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, "pH/EC-Sensorkopf an Anschluss 3")}>
-              pH/EC-Sensorkopf an Anschluss 3
-            </Button>
+          {heads.length === 0 && (
+            <>
+              <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, "pH/EC-Sensorkopf an Anschluss 3")}>
+                pH/EC-Sensorkopf an Anschluss 3
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await act("plug", { port: 3, class: "head_ph" });
+                  await act("plug", { port: 4, class: "head_ec" }, "pH-Kopf an Anschluss 3, EC-Kopf an Anschluss 4");
+                }}
+              >
+                pH und EC getrennt (Anschluss 3 und 4)
+              </Button>
+            </>
           )}
           {!lvl && (
             <Button size="sm" onClick={() => act("plug", { port: 5, class: "head_level" }, "Füllstandssensor an Anschluss 5")}>

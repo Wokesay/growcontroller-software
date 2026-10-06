@@ -274,8 +274,9 @@ void Hub::tickImpl() {
     for (const auto& [role, def] : cat_.roles) truth_.expectChange(role, now + (maintenanceUntil_ - epoch) * kSecond);
   for (const auto& [key, sess] : probeSessions_) {
     std::string dev = jstr(sess, "device");
-    for (const auto& [role, b] : cfg_.tank().roles)
+    cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
       if (b.device == dev) truth_.expectChange(role, now + 10 * kMinute);
+    });
   }
   auto locksBefore = rt_.jumpLocks;
   truth_.update(cfg_, bus_, rt_, now, epoch);
@@ -608,22 +609,27 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
   if (cfg_.device(id)) return Result::ok();
   const DeviceClassDef* dc = cat_.deviceClass(d->cls);
   cfg_.devices.push_back({id, d->cls, name.empty() ? dc->label : name});
-  // Genau ein Kandidat → Rolle automatisch vorschlagen (nie bei Dosierrollen).
+  // Messrollen automatisch zuordnen, wenn genau ein Gerät passt (nie bei
+  // Dosier- oder Schaltrollen). Sonst wählt der Nutzer unter Zuordnung.
+  autoBindMeasures();
+  saveConfig("Gerät übernommen: " + cfg_.devices.back().name);
+  return Result::ok();
+}
+
+void Hub::autoBindMeasures() {
+  auto provides = [&](const DeviceCfg& d, const std::string& cap) {
+    const DeviceClassDef* c = cat_.deviceClass(d.cls);
+    return c && std::find(c->provides.begin(), c->provides.end(), cap) != c->provides.end();
+  };
   for (const auto& [roleId, role] : cat_.roles) {
     if (cfg_.binding(roleId)) continue;
     const CapabilityDef* cap = cat_.capability(role.capability);
     if (!cap || cap->kind != "measure") continue;
-    for (const auto& p : dc->provides)
-      if (p == role.capability) {
-        int candidates = 0;
-        for (const auto& cd : cfg_.devices)
-          if (const auto* cc = cat_.deviceClass(cd.cls))
-            for (const auto& pp : cc->provides) candidates += pp == role.capability;
-        if (candidates == 1) cfg_.tank().roles[roleId] = {id, 0};
-      }
+    std::vector<const DeviceCfg*> cand;
+    for (const auto& d : cfg_.devices)
+      if (provides(d, role.capability)) cand.push_back(&d);
+    if (cand.size() == 1) cfg_.rolesFor(roleId)[roleId] = {cand.front()->id, 0};
   }
-  saveConfig("Gerät übernommen: " + cfg_.devices.back().name);
-  return Result::ok();
 }
 
 Result Hub::renameDevice(const std::string& id, const std::string& name) {
@@ -643,8 +649,11 @@ Result Hub::removeDevice(const std::string& id) {
   if (it == cfg_.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
   std::string name = it->name;
   cfg_.devices.erase(it);
-  for (auto& t : cfg_.tanks)
-    for (auto r = t.roles.begin(); r != t.roles.end();) r = r->second.device == id ? t.roles.erase(r) : std::next(r);
+  auto unbind = [&](RoleMap& roles) {
+    for (auto r = roles.begin(); r != roles.end();) r = r->second.device == id ? roles.erase(r) : std::next(r);
+  };
+  for (auto& t : cfg_.tanks) unbind(t.roles);
+  for (auto& z : cfg_.zones) unbind(z.roles);
   for (auto& k : cfg_.canisters)
     if (k.pump == id) k.pump.clear();
   cfg_.calibrations.erase(id);
@@ -655,7 +664,7 @@ Result Hub::removeDevice(const std::string& id) {
 Result Hub::bindRole(const std::string& role, const std::string& device, int channel) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
-  next.tank().roles[role] = {device, channel};
+  next.rolesFor(role)[role] = {device, channel};
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
@@ -671,7 +680,7 @@ Result Hub::unbindRole(const std::string& role) {
     Ctx c = ctx();
     act_.setRole(c, role, false, "Zuordnung entfernt", e);
   }
-  cfg_.tank().roles.erase(role);
+  cfg_.rolesFor(role).erase(role);
   saveConfig("Zuordnung entfernt: " + role);
   return Result::ok();
 }
@@ -689,6 +698,19 @@ Result Hub::putTank(const json& j) {
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
   saveConfig("Tank: " + t.name);
+  return Result::ok();
+}
+
+Result Hub::putZone(const json& j) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  Config next = cfg_;
+  auto& z = next.zone();
+  if (j.contains("name") && j["name"].is_string()) z.name = j["name"].get<std::string>().substr(0, 40);
+  if (j.contains("kind") && j["kind"].is_string()) z.kind = j["kind"];
+  auto errs = validateConfig(next, cat_);
+  if (!errs.empty()) return errors(errs);
+  cfg_ = next;
+  saveConfig("Bereich: " + z.name);
   return Result::ok();
 }
 
@@ -830,11 +852,25 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) 
     }
     Result r = putRecipe({{"name", jstr(t, "name")}, {"note", jstr(t, "note")}, {"steps", steps}});
     if (r.status != 200) return r;
+    // Ist der Paarname schon an anderen Kanistern vergeben, einen freien
+    // wählen (AB2, AB3, …), sonst zählte das Paar vier Kanister.
     Config next = cfg_;
+    std::map<std::string, std::string> rename;  // Paar der Vorlage → freier Name
+    for (const auto& [id, p] : pairs) {
+      if (rename.count(p)) continue;
+      auto takenByOthers = [&](const std::string& name) {
+        for (const auto& k : next.canisters)
+          if (k.pair == name && !pairs.count(k.id)) return true;
+        return false;
+      };
+      std::string name = p;
+      for (int n = 2; takenByOthers(name); ++n) name = p + std::to_string(n);
+      rename[p] = name;
+    }
     bool changed = false;
     for (auto& k : next.canisters)
       if (pairs.count(k.id) && k.pair.empty() && k.kind == "nutrient") {
-        k.pair = pairs[k.id];
+        k.pair = rename[pairs[k.id]];
         changed = true;
       }
     if (changed && validateConfig(next, cat_).empty()) {

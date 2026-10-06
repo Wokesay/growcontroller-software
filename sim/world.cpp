@@ -50,8 +50,9 @@ bool World::plug(int port, const std::string& cls, std::string id) {
   d.cls = cls;
   d.port = port;
   if (id.empty()) {
-    std::string prefix = cls == "dosing_block" ? "DB" : cls == "head_ph_ec" ? "PHEC" : cls == "head_level" ? "LVL"
-                         : cls == "pump_cap" ? "CAP" : cls == "head_climate" ? "CLIM" : "DEV";
+    std::string prefix = cls == "dosing_block" ? "DB" : cls == "head_ph_ec" ? "PHEC" : cls == "head_ph" ? "PH"
+                         : cls == "head_ec" ? "EC" : cls == "head_level" ? "LVL" : cls == "pump_cap" ? "CAP"
+                         : cls == "head_climate" ? "CLIM" : "DEV";
     id = newId(prefix);
   }
   d.id = id;
@@ -240,29 +241,27 @@ void World::step(Ms dt) {
   }
 }
 
-double World::rawPh() const {
+double World::rawPh(const Device* d) const {
   double truth = phTrail_.empty() ? tank.ph : phTrail_.front().second;
   if (probeBuffer && probeKind == "ph") truth = *probeBuffer;
   if (tank.volumeL < 0.5 && !probeBuffer) truth = 7.3 + noise(0.2);  // Sonde trocken
   double raw = 7.0 + (truth - 7.0) / phSlope + phOffset + noise(0.006);
-  for (const auto& [p, d] : ports)
-    if (d.cls == "head_ph_ec") {
-      if (d.fault == "jump") raw += 2.1;
-      if (d.fault == "frozen") return d.frozenPh;
-    }
+  if (d) {
+    if (d->fault == "jump") raw += 2.1;
+    if (d->fault == "frozen") return d->frozenPh;
+  }
   return std::round(raw * 1000.0) / 1000.0;
 }
 
-double World::rawEc() const {
+double World::rawEc(const Device* d) const {
   double truth = tank.ec;
   if (probeBuffer && probeKind == "ec") truth = *probeBuffer;
   if (tank.volumeL < 0.5 && !probeBuffer) truth = 0.0;
   double raw = truth * ecFactor + noise(0.004);
-  for (const auto& [p, d] : ports)
-    if (d.cls == "head_ph_ec") {
-      if (d.fault == "ec_zero") return 0.003;
-      if (d.fault == "frozen") return d.frozenEc;
-    }
+  if (d) {
+    if (d->fault == "ec_zero") return 0.003;
+    if (d->fault == "frozen") return d->frozenEc;
+  }
   return std::max(0.0, std::round(raw * 1000.0) / 1000.0);
 }
 

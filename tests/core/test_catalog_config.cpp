@@ -13,7 +13,9 @@ TEST_CASE("Katalog: eingebetteter Katalog lädt und ist in sich stimmig") {
   for (const auto& f : c.functions)
     for (const auto& r : f.hard)
       if (r.kind == Requirement::Kind::Role) CHECK(c.role(r.role) != nullptr);
-  CHECK(c.classesProviding("measure.ph").size() == 1);
+  CHECK(c.classesProviding("measure.ph").size() == 2);  // pH/EC-Kopf oder eigener pH-Kopf
+  CHECK(c.role("zone.air_temp") != nullptr);
+  CHECK(c.role("tent.air_temp") == nullptr);
 }
 
 TEST_CASE("Katalog: unbekannte Capability wird abgelehnt") {
@@ -47,7 +49,7 @@ TEST_CASE("Konfiguration: Hin- und Rückweg über JSON, fehlende Zahl bleibt feh
 TEST_CASE("Konfiguration: Migration v0 → v1 (einzelner Tank → Liste)") {
   json v0 = {{"tank", {{"id", "t1"}, {"name", "Alt"}, {"capacityL", 40}}}};
   Config c = configFromJson(v0);
-  CHECK(c.schemaVersion == 1);
+  CHECK(c.schemaVersion == kSchemaVersion);
   CHECK(c.tanks.size() == 1);
   CHECK(c.tank().name == "Alt");
   CHECK_THROWS(configFromJson(json{{"schemaVersion", 99}}));
@@ -147,5 +149,40 @@ TEST_CASE("Konfiguration: Phasenparameter im Katalogbereich (RAT-008, RAT-076)")
   c.grow.phases[0].params = {{"ec_floor", 2.0}};  // nicht phasenabhängig
   CHECK_FALSE(validateConfig(c, cat).empty());
   c.grow.phases[0].params = {{"ph_target", "sauer"}};
+  CHECK_FALSE(validateConfig(c, cat).empty());
+}
+
+TEST_CASE("Konfiguration: Migration v1 → v2 (Zelt-Rollen werden Rollen der Zone)") {
+  json v1 = {{"schemaVersion", 1},
+             {"devices", {{{"id", "CLIM-1"}, {"class", "head_climate"}, {"name", "Klima"}}, {{"id", "PHEC-1"}, {"class", "head_ph_ec"}, {"name", "pH/EC"}}}},
+             {"tanks", {{{"id", "t1"},
+                         {"name", "Tank"},
+                         {"roles", {{"tank.ph", {{"device", "PHEC-1"}, {"channel", 0}}},
+                                    {"tent.air_temp", {{"device", "CLIM-1"}, {"channel", 0}}},
+                                    {"tent.humidity", {{"device", "CLIM-1"}, {"channel", 0}}}}}}}}};
+  Config c = configFromJson(v1);
+  CHECK(c.schemaVersion == 2);
+  REQUIRE(c.zones.size() == 1);
+  CHECK(c.zone().tank == "t1");
+  CHECK(c.zone().roles.count("zone.air_temp") == 1);
+  CHECK(c.zone().roles.count("zone.humidity") == 1);
+  CHECK(c.tank().roles.count("tent.air_temp") == 0);
+  CHECK(c.tank().roles.count("tank.ph") == 1);
+  REQUIRE(c.binding("zone.air_temp") != nullptr);
+  CHECK(c.binding("zone.air_temp")->device == "CLIM-1");
+  CHECK(c.binding("tank.ph")->device == "PHEC-1");
+  CHECK(validateConfig(c, Catalog::builtin()).empty());
+}
+
+TEST_CASE("Konfiguration: Rollen am falschen Ort und unbekannte Zonenart werden abgelehnt") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  c.devices.push_back({"CLIM-1", "head_climate", "Klima"});
+  c.tank().roles["zone.air_temp"] = {"CLIM-1", 0};
+  CHECK_FALSE(validateConfig(c, cat).empty());
+  c.tank().roles.erase("zone.air_temp");
+  c.zone().roles["zone.air_temp"] = {"CLIM-1", 0};
+  CHECK(validateConfig(c, cat).empty());
+  c.zone().kind = "keller";
   CHECK_FALSE(validateConfig(c, cat).empty());
 }

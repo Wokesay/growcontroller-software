@@ -76,8 +76,9 @@ class World {
   bool out[2] = {false, false};
 
   // Sensoren (Rohwerte, wie der Kopf sie liefert)
-  double rawPh() const;
-  double rawEc() const;
+  // Rohwerte einer Sonde; Fehlerbilder (jump, frozen, ec_zero) gelten je Gerät.
+  double rawPh(const Device* d = nullptr) const;
+  double rawEc(const Device* d = nullptr) const;
   double rawLevelV() const;
   double rawTemp() const;
   Ms sampleTs(const Device& d) const { return d.lastSample; }

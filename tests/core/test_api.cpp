@@ -244,3 +244,40 @@ TEST_CASE("System: abgelehnte Änderung lässt alles unverändert") {
   CHECK(c.call("PUT", "/api/v1/system", {{"name", "Neu"}, {"language", "fr"}}).first == 422);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "growcontroller");
 }
+
+TEST_CASE("Zone: Name und Art setzen, unbekannte Art abgelehnt") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto z = c.ok("GET", "/api/v1/config")["zones"];
+  REQUIRE(z.size() == 1);
+  CHECK(z[0]["kind"] == "room");
+  c.ok("PUT", "/api/v1/zone", {{"name", "Gewächshaus Süd"}, {"kind", "greenhouse"}});
+  z = c.ok("GET", "/api/v1/config")["zones"];
+  CHECK(z[0]["name"] == "Gewächshaus Süd");
+  CHECK(z[0]["kind"] == "greenhouse");
+  CHECK(c.call("PUT", "/api/v1/zone", {{"kind", "keller"}}).first == 422);
+  CHECK(c.ok("GET", "/api/v1/config")["zones"][0]["kind"] == "greenhouse");
+}
+
+TEST_CASE("Vorlagen: Paarname schon vergeben → freier Name, A/B skalieren gemeinsam") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // Demo: Teil A/B tragen Paar AB. Zwei neue, ungepaarte Kanister auf freien Pumpen
+  c.ok("DELETE", "/api/v1/canisters/ph");  // pH− räumt Pumpe 4
+  auto a2 = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom A"}, {"kind", "nutrient"}, {"pump", "CAP-1F02D9"}})["id"];
+  auto b2 = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom B"}, {"kind", "nutrient"}, {"pump", ""}})["id"];
+  c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_bloom"}, {"map", {{"a", a2}, {"b", b2}, {"calmag", "calmag"}}}});
+  auto cfg = c.ok("GET", "/api/v1/config");
+  std::string pa, pb, pTeilA;
+  for (const auto& k : cfg["canisters"]) {
+    if (k["id"] == a2) pa = k["pair"];
+    if (k["id"] == b2) pb = k["pair"];
+    if (k["id"] == "teil-a") pTeilA = k["pair"];
+  }
+  CHECK(pTeilA == "AB");
+  CHECK_FALSE(pa.empty());
+  CHECK(pa == pb);
+  CHECK(pa != "AB");
+}
