@@ -1,16 +1,32 @@
-# Release: aus einem Tag vX.Y.Z[-...] entstehen Simulator, Web-App, SBOM und
-# Prüfsummen als GitHub-Release mit dem passenden CHANGELOG-Abschnitt.
-# Firmware-Bündel und Signatur kommen hinzu, sobald firmware/ baut; signiert
-# wird offline nach manueller Freigabe (docs/RELEASE.md) – nie in der CI.
+# Release: aus einem Tag vX.Y.Z[-...] entstehen die Downloads (Simulator für
+# Windows, macOS und Linux, Web-App, Firmware-Image), SBOM und Prüfsummen als
+# GitHub-Release mit dem passenden CHANGELOG-Abschnitt. Signiert wird offline
+# nach manueller Freigabe (docs/RELEASE.md) – nie in der CI.
 name: Release
 on:
   push:
     tags: ["v*"]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  release:
+  pruefen:
     runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Version prüfen
+        run: test "v$(tr -d '\r\n' < VERSION)" = "${GITHUB_REF_NAME}"
+
+  pakete:
+    needs: pruefen
+    uses: ./.github/workflows/pakete.yml
+
+  firmware:
+    needs: pruefen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container: espressif/idf:v5.4.1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,28 +34,53 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
-      - name: Version prüfen
-        run: test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
-      - name: Bauen
+      - name: Web-App bauen und einbetten
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF
-          cmake --build build
-          (cd web && npm ci --ignore-scripts && npm run build)
-      - name: Paket, SBOM, Prüfsummen
+          cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
+          node tools/embed_web.mjs
+      - name: Firmware für ESP32-S3 bauen
+        shell: bash
         run: |
-          mkdir -p dist
-          tar -C web -czf dist/growcontroller-web-${GITHUB_REF_NAME}.tar.gz dist
-          tar -czf dist/growcontroller-simulator-linux-x64-${GITHUB_REF_NAME}.tar.gz -C build gc_sim_server -C .. web/dist
-          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
-          (cd dist && sha256sum * > SHA256SUMS)
-      - name: Release-Notiz aus dem CHANGELOG
+          . $IDF_PATH/export.sh
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
+          v=$(tr -d '\r\n' < ../VERSION)
+          mkdir -p ../dist/fw && cp build/growcontroller_hub.bin build/bootloader/bootloader.bin build/partition_table/partition-table.bin ../dist/fw/
+          cd ../dist && tar -czf "growcontroller-firmware-esp32s3-$v.tar.gz" fw
+      - uses: actions/upload-artifact@v4
+        with:
+          name: growcontroller-firmware
+          path: dist/*.tar.gz
+
+  veroeffentlichen:
+    needs: [pakete, firmware]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Web-App, SBOM, Prüfsummen, Release-Notiz
         run: |
           v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > dist/NOTES.md
+          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          tar -C web -czf "dist/growcontroller-web-$v.tar.gz" dist
+          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
+          (cd dist && sha256sum * > SHA256SUMS)
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
+          printf '\n---\n**Ausprobieren ohne Hardware:** Simulator für dein System laden, entpacken, starten (siehe LIESMICH.txt im Paket). Passwort der Demo: `demo-passwort`.\n' >> NOTES.md
       - name: GitHub-Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease";; esac
-          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file dist/NOTES.md dist/*.tar.gz dist/sbom-web.cdx.json dist/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file NOTES.md dist/*

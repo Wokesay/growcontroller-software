@@ -15,6 +15,13 @@ option(GC_BUILD_SIM "Simulator mit Host-Server bauen" ON)
 option(GC_BUILD_TESTS "Tests bauen" ON)
 option(GC_SANITIZE "AddressSanitizer und UBSan in Tests und Simulator" OFF)
 option(GC_WERROR "Warnungen als Fehler" ON)
+set(GC_SIM_WEB_ASSETS "" CACHE FILEPATH "Erzeugte web_assets.cpp: Web-App in den Simulator einbetten (Download-Fassung)")
+
+if(MSVC)
+  # Umlaute in Quelltexten, große Objektdateien (JSON, httplib), Standardverhalten
+  add_compile_options(/utf-8 /bigobj /EHsc /permissive- /Zc:__cplusplus)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
 
 include(cmake/deps.cmake)
 
@@ -32,9 +39,16 @@ add_custom_command(
   DEPENDS catalog/catalog.json CHANGELOG.md VERSION cmake/embed.cmake
   COMMENT "Bette Katalog, Changelog und Version ein")
 
-set(GC_WARN -Wall -Wextra -Wpedantic -Wshadow)
-if(GC_WERROR)
-  list(APPEND GC_WARN -Werror)
+if(MSVC)
+  set(GC_WARN /W3)
+  if(GC_WERROR)
+    list(APPEND GC_WARN /WX)
+  endif()
+else()
+  set(GC_WARN -Wall -Wextra -Wpedantic -Wshadow)
+  if(GC_WERROR)
+    list(APPEND GC_WARN -Werror)
+  endif()
 endif()
 
 add_library(gc_core
@@ -73,7 +87,16 @@ if(GC_BUILD_SIM)
   add_executable(gc_sim_server sim/main.cpp)
   target_link_libraries(gc_sim_server PRIVATE gc_sim Threads::Threads)
   # httplib.h erzeugt mit -Wconversion/-Wshadow viele Warnungen; nur für main.cpp gelockert.
-  target_compile_options(gc_sim_server PRIVATE -Wall -Wextra)
+  if(NOT MSVC)
+    target_compile_options(gc_sim_server PRIVATE -Wall -Wextra)
+  endif()
+  if(GC_SIM_WEB_ASSETS)
+    target_sources(gc_sim_server PRIVATE "${GC_SIM_WEB_ASSETS}")
+    target_compile_definitions(gc_sim_server PRIVATE GC_EMBEDDED_WEB=1)
+  endif()
+  if(WIN32)
+    target_link_libraries(gc_sim_server PRIVATE ws2_32)
+  endif()
 endif()
 
 if(GC_BUILD_TESTS)
@@ -90,6 +113,8 @@ if(GC_BUILD_TESTS)
     tests/core/test_api.cpp
     tests/core/test_scenarios.cpp)
   target_link_libraries(gc_tests PRIVATE gc_sim)
-  target_compile_options(gc_tests PRIVATE -Wall -Wextra)
+  if(NOT MSVC)
+    target_compile_options(gc_tests PRIVATE -Wall -Wextra)
+  endif()
   add_test(NAME core COMMAND gc_tests)
 endif()

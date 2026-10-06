@@ -8,11 +8,15 @@
 #include <esp_log.h>
 
 #include "esp_platform.hpp"
-#include "web_assets.hpp"
+#include "gc/web_assets.hpp"
 
 namespace gcfw {
 
 namespace {
+
+using gc::kWebAssetCount;
+using gc::kWebAssets;
+using gc::WebAsset;
 
 constexpr const char* kTag = "gc.web";
 constexpr size_t kMaxBody = 64 * 1024;

@@ -7,6 +7,16 @@ stehen in jedem Release unter „Sicherheit“.
 
 ## [Unreleased]
 
+### Neu
+- Simulator als Download für Windows, macOS (Apple-Chip und Intel) und
+  Linux: eine Datei mit eingebetteter Web-App; Doppelklick startet die Demo
+  und öffnet den Browser, die Daten liegen neben dem Programm. Releases
+  hängen die Pakete automatisch an.
+
+### Geändert
+- Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
+  auch mit MSVC übersetzt.
+
 ## [0.1.0-proto.1] – 2026-10-06
 
 Erster Prototyp. Läuft im Simulator; die Firmware für den ESP32-S3 ist ein

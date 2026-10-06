@@ -1,6 +1,14 @@
 // Host-Server des Simulators: liefert die Web-App aus, bindet die REST-API
 // des Kerns an HTTP und schickt den Live-Zustand per Server-Sent Events.
 // Auf dem Hub übernimmt esp_http_server diese Rolle (firmware/README.md).
+//
+// Download-Fassung: Mit eingebetteter Web-App (GC_EMBEDDED_WEB) reicht eine
+// Datei. Ohne Argumente gestartet (Doppelklick) läuft die Demo, die Daten
+// liegen neben dem Programm, und der Browser öffnet sich.
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <atomic>
 #include <csignal>
 #include <cstdio>
@@ -15,6 +23,12 @@
 
 #include "gc/embedded.hpp"
 #include "scenario.hpp"
+#ifndef GC_EMBEDDED_WEB
+#define GC_EMBEDDED_WEB 0
+#endif
+#if GC_EMBEDDED_WEB
+#include "gc/web_assets.hpp"
+#endif
 
 namespace {
 
@@ -52,18 +66,49 @@ void usage() {
             << "  --speed X           Zeitraffer (1)\n"
             << "  --password PW       Passwort für das Demo-Szenario\n"
             << "  --prefill H         Stunden Verlauf vorrechnen (48)\n"
-            << "  --allow-reset       Szenario ohne Anmeldung wechseln (nur für automatische Tests)\n";
+            << "  --allow-reset       Szenario ohne Anmeldung wechseln (nur für automatische Tests)\n"
+            << "  --open              Browser öffnen\n"
+            << "Ohne Argumente: Demo, Daten neben dem Programm, Browser öffnet sich.\n";
+}
+
+// Browser mit der Adresse öffnen (nur Simulator, nie auf dem Gerät).
+void openBrowser(const std::string& url) {
+#if defined(_WIN32)
+  std::string cmd = "start \"\" \"" + url + "\"";
+#elif defined(__APPLE__)
+  std::string cmd = "open \"" + url + "\" >/dev/null 2>&1";
+#else
+  std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1";
+#endif
+  std::thread([cmd] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    int rc = std::system(cmd.c_str());
+    (void)rc;
+  }).detach();
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+  SetConsoleOutputCP(CP_UTF8);  // Umlaute in der Konsole
+#endif
   sim::Options opts;
   int port = 8080;
   std::string host = "127.0.0.1";
-  std::string web = "web/dist";
+  std::string web;
   double speed = 1.0;
   bool allowReset = false;
+  bool open = false;
+  if (argc == 1) {
+    // Einfachstart (Doppelklick): Demo mit Daten neben dem Programm
+    std::error_code ec;
+    auto exe = std::filesystem::absolute(argv[0], ec);
+    opts.scenario = "demo";
+    opts.password = "demo-passwort";
+    opts.dataDir = ((ec ? std::filesystem::current_path() : exe.parent_path()) / "growcontroller-daten").lexically_normal().string();
+    open = true;
+  }
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string {
@@ -82,6 +127,7 @@ int main(int argc, char** argv) {
     else if (a == "--password") opts.password = next();
     else if (a == "--prefill") opts.prefillHours = std::stod(next());
     else if (a == "--allow-reset") allowReset = true;
+    else if (a == "--open") open = true;
     else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -190,11 +236,33 @@ int main(int argc, char** argv) {
   svr.Patch(R"(/api/v1/.*)", apiHandler);
   svr.Delete(R"(/api/v1/.*)", apiHandler);
 
-  // Web-App mit Rückfall auf index.html (Single-Page-App)
-  bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html");
-  if (haveWeb) svr.set_mount_point("/", web);
-  svr.Get(R"(/(?!api/).*)", [&](const httplib::Request&, httplib::Response& res) {
-    if (!haveWeb) {
+  // Web-App: Ordner (--web, Entwicklung) oder eingebettet (Download-Fassung),
+  // jeweils mit Rückfall auf index.html (Single-Page-App).
+  if (web.empty() && !GC_EMBEDDED_WEB) web = "web/dist";
+  const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html");
+  const bool haveWeb = haveDir || GC_EMBEDDED_WEB;
+  if (haveDir) svr.set_mount_point("/", web);
+  svr.Get(R"(/(?!api/).*)", [&](const httplib::Request& req, httplib::Response& res) {
+#if GC_EMBEDDED_WEB
+    if (!haveDir) {
+      const gc::WebAsset* hit = nullptr;
+      const gc::WebAsset* index = nullptr;
+      for (size_t i = 0; i < gc::kWebAssetCount; ++i) {
+        if (req.path == gc::kWebAssets[i].path) hit = &gc::kWebAssets[i];
+        if (std::string(gc::kWebAssets[i].path) == "/index.html") index = &gc::kWebAssets[i];
+      }
+      if (!hit) hit = index;
+      if (hit) {
+        res.set_header("Content-Encoding", "gzip");
+        res.set_header("Cache-Control", hit == index ? "no-cache" : "public, max-age=31536000, immutable");
+        res.set_content(std::string(reinterpret_cast<const char*>(hit->data), hit->size), hit->type);
+        return;
+      }
+    }
+#else
+    (void)req;
+#endif
+    if (!haveDir) {
       res.set_content("Web-App nicht gebaut: cd web && npm ci && npm run build", "text/plain; charset=utf-8");
       return;
     }
@@ -226,14 +294,25 @@ int main(int argc, char** argv) {
     svr.stop();
   });
 
-  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " auf http://" << host << ":" << port << "\n";
+  // Ist der Port belegt, die nächsten zehn versuchen
+  int bound = -1;
+  for (int p = port; p < port + 10 && bound < 0; ++p)
+    if (svr.bind_to_port(host, p)) bound = p;
+  if (bound < 0) {
+    std::cerr << "Port " << port << "–" << port + 9 << " nicht verfügbar\n";
+    g_running = false;
+    loop.join();
+    return 1;
+  }
+  const std::string url = "http://" + (host == "0.0.0.0" ? std::string("127.0.0.1") : host) + ":" + std::to_string(bound);
+  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
+  if (!opts.dataDir.empty()) std::cout << "Daten: " << opts.dataDir << "\n";
   if (!haveWeb) std::cout << "Hinweis: Web-App nicht gefunden unter " << web << "\n";
-  if (!svr.listen(host, port)) {
-    std::cerr << "Port " << port << " nicht verfügbar\n";
-    g_running = false;
-  }
+  std::cout << "Beenden: Strg+C oder dieses Fenster schließen.\n" << std::flush;
+  if (open) openBrowser(url);
+  svr.listen_after_bind();
   g_running = false;
   loop.join();
   return 0;

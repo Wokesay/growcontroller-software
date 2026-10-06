@@ -1,14 +1,24 @@
 # growcontroller – Software
 
-Fertigations-Controller für den Homegrow: Nährlösung mischen, pH und EC
-regeln, Tank füllen. Die Software läuft auf dem Hub (ESP32-S3) und bringt
-ihre eigene Web-App mit – ohne Cloud, ohne Konto, ohne Home Assistant.
+Universelle Pflanzenautomatisierung für Gewächshaus, Indoor-Anbau und
+Hydroponik: Nährlösung mischen, pH und EC regeln, Tank füllen – und Schritt
+für Schritt Licht, Klima und Bewässerung. Die Software läuft auf dem Hub
+(ESP32-S3) und bringt ihre eigene Web-App mit – ohne Cloud, ohne Konto, ohne
+Home Assistant.
 
 > **Status: Prototyp `0.1.0-proto.1`.** Kern, Simulator und Web-App laufen;
 > die Portierung auf den ESP32-S3 folgt (`firmware/README.md`). Nicht an
 > echter Hardware einsetzen.
 
-## Ausprobieren in 2 Minuten (ohne Hardware)
+## Ausprobieren ohne Installation
+
+Unter **Releases** liegt der Simulator für Windows, macOS und Linux: eine
+Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
+(Passwort `demo-passwort`). Hinweise zu Windows-SmartScreen und macOS stehen in
+`LIESMICH.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
+Artefakte ab.
+
+## Selbst bauen (ohne Hardware)
 
 Voraussetzungen: CMake ≥ 3.20, Ninja, C++17-Compiler, Node.js 22.
 
