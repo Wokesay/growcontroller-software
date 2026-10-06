@@ -65,10 +65,20 @@ void Actuators::clearRun(const std::string& pump) {
 
 void Actuators::stopPumps() { bus_.stopAllPumps(); }
 
+bool Actuators::sw(const std::string& dev, int channel, bool on, std::string& err) {
+  if (net_ && net_->owns(dev)) return net_->setSwitch(dev, channel, on, err);
+  return bus_.setSwitch(dev, channel, on, err);
+}
+
+std::optional<bool> Actuators::swState(const std::string& dev, int channel) const {
+  if (net_ && net_->owns(dev)) return net_->switchState(dev, channel);
+  return bus_.switchState(dev, channel);
+}
+
 std::optional<bool> Actuators::roleState(const Config& cfg, const std::string& role) const {
   const Binding* b = cfg.binding(role);
   if (!b) return std::nullopt;
-  return bus_.switchState(b->device, b->channel);
+  return swState(b->device, b->channel);
 }
 
 std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) const {
@@ -95,6 +105,18 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     if (!isNum(tank.capacityL)) return msg("act.inlet.capacity", "Nutzvolumen des Tanks fehlt");
     return std::nullopt;
   }
+  // Befeuchter und Entfeuchter nie zugleich (R7, Quelle: RAT-034).
+  if (role == "zone.humidifier" && roleState(c.cfg, "zone.dehumidifier").value_or(false))
+    return msg("act.climate.pair", "Entfeuchter läuft – Befeuchter bleibt aus");
+  if (role == "zone.dehumidifier" && roleState(c.cfg, "zone.humidifier").value_or(false))
+    return msg("act.climate.pair", "Befeuchter läuft – Entfeuchter bleibt aus");
+  // Kompressor: Mindestpause für den Druckausgleich (Quelle: RAT-034).
+  // Den Mindestlauf hält die Funktion ein; Ausschalten geht immer.
+  if (const RoleDef* rd = c.cat.role(role); rd && rd->profile == "kompressor") {
+    auto off = offSince_.find(role);
+    if (off != offSince_.end() && c.now - off->second < kCompressorPause)
+      return msg("act.compressor.pause", rd->label + ": Mindestpause " + fmt(kCompressorPause / kMinute, 0) + " min nach dem Ausschalten");
+  }
   return std::nullopt;
 }
 
@@ -114,15 +136,19 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
       return false;
     }
   }
-  auto cur = bus_.switchState(b->device, b->channel);
+  auto cur = swState(b->device, b->channel);
   if (cur && *cur == on) return true;
   std::string e;
-  if (!bus_.setSwitch(b->device, b->channel, on, e)) {
+  if (!sw(b->device, b->channel, on, e)) {
     err = msg("act.bus", "Ausgang lehnt ab: " + e);
     return false;
   }
-  if (on) onSince_[role] = c.now;
-  else onSince_.erase(role);
+  if (on) {
+    onSince_[role] = c.now;
+  } else {
+    onSince_.erase(role);
+    offSince_[role] = c.now;
+  }
   if (role == "tank.inlet")
     c.log.add(c.epoch, "tank", "info", on ? "Zulauf auf" : "Zulauf zu", who, {{"role", role}, {"on", on}});
   return true;
@@ -133,8 +159,8 @@ void Actuators::stopAll(const Config& cfg) {
   cfg.forEachBinding([&](const std::string& role, const Binding& b) {
     std::string e;
     // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox nicht lesbar).
-    auto st = bus_.switchState(b.device, b.channel);
-    if (st || role == "tank.circulation" || role == "tank.inlet") bus_.setSwitch(b.device, b.channel, false, e);
+    auto st = swState(b.device, b.channel);
+    if (st || role == "tank.circulation" || role == "tank.inlet") sw(b.device, b.channel, false, e);
   });
   onSince_.clear();
 }
@@ -153,7 +179,7 @@ void Actuators::enforce(const Ctx& c) {
     const Binding* b = c.cfg.binding("tank.circulation");
     bool low = level.usable() && isNum(tank.minL) && *level.value < tank.minL;
     if (!level.usable() || low) {
-      bus_.setSwitch(b->device, b->channel, false, e);
+      sw(b->device, b->channel, false, e);
       onSince_.erase("tank.circulation");
       if (low) {
         c.rt.latches["circulation.dry"] = {{"at", c.epoch}, {"levelL", *level.value}};
@@ -183,11 +209,24 @@ void Actuators::enforce(const Ctx& c) {
         why = "Ventil länger als " + fmt(maxOpen, 0) + " min offen";
     }
     if (!why.empty()) {
-      bus_.setSwitch(b->device, b->channel, false, e);
+      sw(b->device, b->channel, false, e);
       onSince_.erase("tank.inlet");
       c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
       c.log.add(c.epoch, "alarm", "alarm", "Zulauf-Notabschaltung", why + ". Gerastet bis zur Quittierung.");
     }
+  }
+
+  // Höchstlaufzeit je Rolle (Profile puls und heizen). Das Gerät schaltet
+  // knapp danach selbst ab (Auto-Off), falls der Hub ausfällt.
+  for (const auto& [role, rd] : c.cat.roles) {
+    if (!isNum(rd.maxOnS)) continue;
+    auto since = onSince_.find(role);
+    if (since == onSince_.end() || c.now - since->second <= static_cast<Ms>(rd.maxOnS * kSecond)) continue;
+    const Binding* b = c.cfg.binding(role);
+    if (b) sw(b->device, b->channel, false, e);
+    onSince_.erase(role);
+    offSince_[role] = c.now;
+    c.log.add(c.epoch, "block", "warn", rd.label + " aus: Höchstlaufzeit", "Nach " + fmt(rd.maxOnS / 60, 0) + " min abgeschaltet.", {{"role", role}});
   }
 }
 

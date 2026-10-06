@@ -68,7 +68,7 @@ nicht „nicht verfügbar“. Es zeigt „gesperrt: Gerät antwortet nicht“.
 
 ```
 config {schemaVersion, revision}
-├─ system      Name, Zeitzone, Update-Kanal, Update-Prüfung
+├─ system      Name, Zeitzone, Sprache, Update-Kanal, Update-Prüfung
 ├─ limits      Grenze je Handgabe, Laufzeitgrenzen
 ├─ devices[]   Geräte-ID → Klasse, Name   (flaches Inventar)
 ├─ tanks[]     Nutzvolumen, Mindestfüllstand, Wasser, roles{tank.* → Gerät/Kanal}
@@ -110,7 +110,8 @@ Getrennt davon liegen:
    - Paare vollständig;
    - eine Pumpe nur an einem Kanister;
    - ein Kanister nur einmal je Rezept;
-   - Rollen am richtigen Ort (`tank.*` am Tank, `zone.*` an der Zone), höchstens eine Zone;
+   - Rollen am richtigen Ort (`tank.*` am Tank, `zone.*` an der Zone), höchstens eine Zone mit Namen;
+   - ein Schaltausgang nur für eine Rolle, Kanal im Bereich des Geräts;
    - Parameter im Bereich, Toleranz nie 0.
 
 **Phasen:** Wirksame Parameter = Katalog-Vorgabe ⊕ Einstellung ⊕ aktive Phase

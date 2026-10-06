@@ -1,12 +1,12 @@
 // Wiederverwendete Teile mehrerer Seiten: Messwert-Kachel, Regelzeile,
 // Auftragsanzeige, Ereignisliste, Vorrat.
 import { useState } from "preact/hooks";
-import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Power, RotateCcw, Square, Waves } from "lucide-preact";
+import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Plug, Power, RotateCcw, Square, Waves, Zap } from "lucide-preact";
 import { Sparkline } from "./chart";
-import { post, type CtlStatus, type Device, type HubEvent, type Job, type Reading } from "./api";
+import { del, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading } from "./api";
 import { ago, day, num, time } from "./format";
 import { msg, t } from "./i18n";
-import { canisters, refreshState, state, toast } from "./store";
+import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
 import { Button, CheckRow, Pill, ctlLabel, ctlTone } from "./ui";
 
 const qualityText: Record<string, string> = {
@@ -249,6 +249,7 @@ export function DeviceIcon(p: { cls: string; size?: number }) {
   if (p.cls === "head_ph_ec" || p.cls === "head_ph" || p.cls === "head_ec") return <FlaskConical size={size} />;
   if (p.cls === "head_level") return <Waves size={size} />;
   if (p.cls === "hub_outputs") return <Power size={size} />;
+  if (p.cls.startsWith("shelly_")) return <Plug size={size} />;
   if (p.cls.startsWith("head")) return <Gauge size={size} />;
   return <Cpu size={size} />;
 }
@@ -257,6 +258,7 @@ export function DeviceIcon(p: { cls: string; size?: number }) {
 export function devicePlace(d: Device): string {
   if (d.slot >= 0) return t("port.pump", { n: d.slot + 1 });
   if (d.port > 0) return t("port.hub", { n: d.port });
+  if (d.info?.ip) return t("port.wifi", { ip: d.info.ip });
   return "Hub";
 }
 
@@ -277,6 +279,74 @@ export function PortGrid() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Schaltrollen, die an diese Dose dürfen (Netzsteckdose oder 12-V-Ausgang). */
+export function switchRolesFor(cls: string): [string, string][] {
+  const cat = catalog.value;
+  if (!cat) return [];
+  const provides = cat.deviceClasses[cls]?.provides ?? [];
+  return Object.entries(cat.roles)
+    .filter(([, r]) => r.profile && (r.accepts ?? [r.capability]).some((a) => provides.includes(a)))
+    .map(([id, r]) => [id, r.label]);
+}
+
+/** Dosen einer Netzsteckdose: was eingesteckt ist (Rolle), Zustand, Leistung, Testen. */
+export function OutletRoles(p: { d: Device }) {
+  const outlets = p.d.info?.outlets ?? [];
+  const roles = switchRolesFor(p.d.class);
+  const roleAt = (ch: number) => roles.find(([id]) => binding(id)?.device === p.d.id && binding(id)?.channel === ch)?.[0] ?? "";
+  if (!p.d.configured) return null;
+  return (
+    <div class="outlets" data-testid={`outlets-${p.d.id}`}>
+      {outlets.map((o, ch) => {
+        const role = roleAt(ch);
+        return (
+          <div class="outlet">
+            <span class={`outlet-state ${o.on ? "on" : ""}`} title={o.on ? t("common.on") : t("common.off")}>
+              <Zap size={14} />
+            </span>
+            <span class="nowrap">{outlets.length > 1 ? t("port.outlet", { n: ch + 1 }) : t("port.socket")}</span>
+            <select
+              class="select"
+              name={`outlet-${p.d.id}-${ch}`}
+              value={role}
+              aria-label={t("net.plugged")}
+              onChange={async (e) => {
+                const v = (e.target as HTMLSelectElement).value;
+                try {
+                  if (role) await del(`/roles/${role}`);
+                  if (v) await put(`/roles/${v}`, { device: p.d.id, channel: ch });
+                  await refreshConfig();
+                  await refreshState();
+                  if (v) toast(t("net.assigned"));
+                } catch (err: any) {
+                  toast(err.message, "error");
+                  await refreshConfig();
+                }
+              }}
+            >
+              <option value="">{t("net.nothing")}</option>
+              {roles.map(([id, label]) => {
+                const taken = binding(id)?.device && !(binding(id)?.device === p.d.id && binding(id)?.channel === ch);
+                return (
+                  <option value={id} disabled={!!taken}>
+                    {label}
+                    {taken ? ` (${t("net.elsewhere")})` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <span class="faint small nowrap">{o.powerW === null ? "–" : `${num(o.powerW, 0)} W`}</span>
+            <Button size="sm" disabled={!role} onClick={() => post(`/roles/${role}/test`).then(refreshState)}>
+              {t("common.test")}
+            </Button>
+          </div>
+        );
+      })}
+      {config.value && outlets.length > 1 && <p class="faint small">{t("net.countHint")}</p>}
     </div>
   );
 }

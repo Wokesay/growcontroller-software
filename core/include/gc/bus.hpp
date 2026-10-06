@@ -66,6 +66,34 @@ class IBus {
   virtual bool writePumpCalibration(const std::string& pump, double mlPerMin, std::string& err) = 0;
 };
 
+// Schutzeinstellung eines Netz-Schaltkanals, im Gerät selbst gespeichert:
+// Sie wirkt auch, wenn der Hub ausfällt (Konzept §3, Quelle: RAT-060).
+struct SwitchSafety {
+  bool initialOff = true;    // nach Stromausfall aus
+  double autoOffS = kNaN;    // Hardware-Abschaltung nach dieser Zeit; NaN = keine
+  double powerLimitW = kNaN; // Leistungsgrenze im Gerät; NaN = keine
+};
+bool sameSafety(const SwitchSafety& a, const SwitchSafety& b);
+
+// Netzgeräte: schaltbare Steckdosen, zuerst Shelly Gen2+ lokal per RPC.
+// Kein startRun: Übers Netz wird nie dosiert (PD-010, PD-011); schon der Typ
+// schließt das aus. Geräte werden an ihrer Kennung erkannt, die IP ist nur
+// ein Laufzeitattribut (DeviceReport::info).
+class INetBus {
+ public:
+  virtual ~INetBus() = default;
+  virtual void poll(Ms now) = 0;
+  virtual std::vector<DeviceReport> devices() const = 0;
+  virtual bool owns(const std::string& dev) const = 0;
+  virtual bool setSwitch(const std::string& dev, int channel, bool on, std::string& err) = 0;
+  virtual std::optional<bool> switchState(const std::string& dev, int channel) const = 0;
+  virtual std::optional<double> powerW(const std::string& dev, int channel) const = 0;
+  // Schutzeinstellung schreiben und zurücklesen; gebunden wird erst, wenn
+  // das Rücklesen stimmt.
+  virtual bool configure(const std::string& dev, int channel, const SwitchSafety& s, std::string& err) = 0;
+  virtual std::optional<SwitchSafety> readConfig(const std::string& dev, int channel) const = 0;
+};
+
 // Ablage für Konfiguration und Zustand (Gerät: LittleFS/NVS, Host: Dateien).
 // write() muss atomar sein (erst Kopie schreiben, dann umbenennen).
 class IStorage {

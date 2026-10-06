@@ -1,5 +1,6 @@
 #include "scenario.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -94,6 +95,7 @@ Simulation::~Simulation() {
 void Simulation::createHub() {
   hub_ = std::make_unique<gc::Hub>(catalog_, *bus_, *store_, *clock_, randomBytes);
   hub_->setUpdater(updater_.get());
+  hub_->setNetBus(net_.get());
   hub_->setPlatform({{"kind", "simulator"}, {"simulated", true}, {"scenario", opts_.scenario}});
   api_ = std::make_unique<gc::Api>(*hub_, *clock_);
   hub_->boot();
@@ -106,6 +108,7 @@ void Simulation::build(bool fresh) {
                                      : realNow() - (fresh && demo ? static_cast<gc::Epoch>(opts_.prefillHours * 3600) : 0);
   clock_ = std::make_unique<SimClock>(start);
   bus_ = std::make_unique<SimBus>(world_);
+  net_ = std::make_unique<SimNetBus>(world_);
   store_ = std::make_unique<FileStorage>(opts_.dataDir);
   updater_ = std::make_unique<SimUpdater>(*clock_);
   if (!fresh) {
@@ -246,6 +249,7 @@ void Simulation::reboot() {
   hub_.reset();
   world_.stopAllPumps();
   world_.out[0] = world_.out[1] = false;
+  world_.mainsOutage();  // Steckdosen mit „nach Stromausfall aus“ gehen aus
   createHub();
 }
 
@@ -290,9 +294,24 @@ json Simulation::control(const std::string& action, const json& b) {
       return err("Steckplatz belegt oder ungültig");
   } else if (action == "uncap") {
     if (!world_.unplugCap(b.value("block", std::string()), b.value("slot", -1))) return err("Steckplatz leer");
+  } else if (action == "net_add") {
+    // Steckdose im WLAN „einschalten“: Plug S (eine Dose) oder Leiste (vier)
+    std::string cls = b.value("class", std::string("shelly_plug"));
+    if (cls != "shelly_plug" && cls != "shelly_strip4") return err("Klasse: shelly_plug oder shelly_strip4");
+    std::vector<std::pair<std::string, double>> loads;
+    for (const auto& ld : b.value("loads", json::array())) loads.emplace_back(ld.value("load", std::string()), ld.value("watts", 0.0));
+    std::string id = world_.addNetPlug(cls, loads);
+    return {{"ok", true}, {"id", id}};
+  } else if (action == "net_remove") {
+    auto& v = world_.netPlugs;
+    std::string dev = b.value("device", std::string());
+    v.erase(std::remove_if(v.begin(), v.end(), [&](const NetPlug& p) { return p.id == dev; }), v.end());
   } else if (action == "fault") {
     std::string dev = b.value("device", std::string()), f = b.value("fault", std::string());
-    if (Cap* c = world_.cap(dev)) {
+    if (NetPlug* np = world_.netPlug(dev)) {
+      if (f != "none" && f != "offline" && f != "readonly" && f != "ignore") return err("Störung: offline, readonly, ignore oder none");
+      np->fault = f == "none" ? "" : f;
+    } else if (Cap* c = world_.cap(dev)) {
       c->blocked = f == "blocked";
     } else if (Device* d = world_.device(dev)) {
       // Erst den laufenden Wert festhalten, dann einfrieren (sonst friert NaN ein).

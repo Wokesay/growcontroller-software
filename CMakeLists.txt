@@ -79,7 +79,7 @@ endif()
 
 if(GC_BUILD_SIM)
   find_package(Threads REQUIRED)
-  add_library(gc_sim STATIC sim/world.cpp sim/simbus.cpp sim/scenario.cpp sim/updater.cpp)
+  add_library(gc_sim STATIC sim/world.cpp sim/simbus.cpp sim/netbus.cpp sim/scenario.cpp sim/updater.cpp)
   target_include_directories(gc_sim PUBLIC sim)
   target_link_libraries(gc_sim PUBLIC gc_core)
   target_compile_options(gc_sim PRIVATE ${GC_WARN})
@@ -111,7 +111,8 @@ if(GC_BUILD_TESTS)
     tests/core/test_watchdog.cpp
     tests/core/test_auth.cpp
     tests/core/test_api.cpp
-    tests/core/test_scenarios.cpp)
+    tests/core/test_scenarios.cpp
+    tests/core/test_net.cpp)
   target_link_libraries(gc_tests PRIVATE gc_sim)
   if(NOT MSVC)
     target_compile_options(gc_tests PRIVATE -Wall -Wextra)

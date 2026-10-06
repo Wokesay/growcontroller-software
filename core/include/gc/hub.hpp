@@ -40,6 +40,11 @@ class Hub {
   Hub(const Catalog& cat, IBus& bus, IStorage& storage, const IClock& clock, RandomFn rng);
 
   void setUpdater(IUpdater* u) { updater_ = u; }
+  // Netzgeräte (schaltbare Steckdosen); optional.
+  void setNetBus(INetBus* n) {
+    net_ = n;
+    act_.setNet(n);
+  }
   void setPlatform(json p) { platform_ = std::move(p); }
   void boot();
   void tick();
@@ -71,6 +76,10 @@ class Hub {
   Result removeDevice(const std::string& id);
   Result bindRole(const std::string& role, const std::string& device, int channel);
   Result unbindRole(const std::string& role);
+  // Ausgang 3 s einschalten, um zu sehen, welches Gerät dran hängt.
+  Result testRole(const std::string& role);
+  // Handbetrieb: Ausgang an oder aus, mit allen Sperren und Höchstlaufzeiten.
+  Result switchRole(const std::string& role, bool on);
   Result putTank(const json& j);
   Result putZone(const json& j);
   Result putCanister(const json& j);
@@ -132,6 +141,8 @@ class Hub {
   const IClock& clock_;
   RandomFn rng_;
   IUpdater* updater_ = nullptr;
+  INetBus* net_ = nullptr;
+  std::map<std::string, Ms> testOff_;  // Rolle → aus um (Testen)
   json platform_ = json::object();
 
   Config cfg_;

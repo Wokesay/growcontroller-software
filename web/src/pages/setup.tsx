@@ -12,7 +12,7 @@ import { num } from "../format";
 import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { canisters, catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, CheckRow, Field, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
-import { DeviceIcon, PortGrid, devicePlace } from "../widgets";
+import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 
 const STEPS: TextKey[] = ["setup.step.start", "setup.step.devices", "setup.step.tank", "setup.step.nutrients", "setup.step.calibrate", "setup.step.done"];
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0"];
@@ -158,7 +158,9 @@ function StepDevices(p: { step: number; next: () => void }) {
   const hasBlock = st.devices.some((d) => d.class === "dosing_block" && d.configured);
   const pumps = st.devices.filter((d) => d.class === "pump_cap");
   const ready = hasBlock && pumps.some((d) => d.configured);
-  const list = st.devices.filter((d) => d.class !== "hub_outputs").sort((a, b) => (a.slot >= 0 ? 100 + a.slot : a.port) - (b.slot >= 0 ? 100 + b.slot : b.port));
+  const isNet = (cls: string) => catalog.value?.deviceClasses[cls]?.attach === "net";
+  const list = st.devices.filter((d) => d.class !== "hub_outputs" && !isNet(d.class)).sort((a, b) => (a.slot >= 0 ? 100 + a.slot : a.port) - (b.slot >= 0 ? 100 + b.slot : b.port));
+  const net = st.devices.filter((d) => isNet(d.class));
   return (
     <Page foot={{ step: p.step, onNext: p.next, nextDisabled: !ready }} aside={<Aside />}>
       <h2>{t("setup.dev.h")}</h2>
@@ -197,7 +199,32 @@ function StepDevices(p: { step: number; next: () => void }) {
       )}
       {!hasBlock && <Banner tone="warn">{t("setup.dev.needBlock")}</Banner>}
       {hasBlock && pumps.length === 0 && <Banner tone="warn">{t("setup.dev.needPump")}</Banner>}
-      <p class="faint small">{t("setup.dev.plugs")}</p>
+      <div class="section-title">{t("net.title")}</div>
+      <p class="muted small">{t("net.intro")}</p>
+      {net.length === 0 ? (
+        <p class="faint small" data-testid="net-none">
+          {t("net.none")}
+        </p>
+      ) : (
+        <div class="list" data-testid="net-devices">
+          {net.map((d) => (
+            <div class="item item-col">
+              <div class="row">
+                <span class="dev-ic">
+                  <DeviceIcon cls={d.class} />
+                </span>
+                <span class="grow">
+                  <strong>{d.classLabel}</strong>
+                  <div class="faint small">{devicePlace(d)}</div>
+                </span>
+                {d.configured ? <Pill tone="ok">{t("setup.dev.stateAccepted")}</Pill> : <Pill tone="info">{t("setup.dev.stateFound")}</Pill>}
+              </div>
+              <OutletRoles d={d} />
+            </div>
+          ))}
+        </div>
+      )}
+      {net.some((d) => d.configured) && <p class="faint small">{t("net.safety")}</p>}
     </Page>
   );
 }

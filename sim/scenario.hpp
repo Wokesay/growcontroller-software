@@ -8,6 +8,7 @@
 #include <string>
 
 #include "gc/api.hpp"
+#include "netbus.hpp"
 #include "simbus.hpp"
 #include "updater.hpp"
 
@@ -71,6 +72,7 @@ class Simulation {
   World world_;
   std::unique_ptr<SimClock> clock_;
   std::unique_ptr<SimBus> bus_;
+  std::unique_ptr<SimNetBus> net_;
   std::unique_ptr<FileStorage> store_;
   std::unique_ptr<SimUpdater> updater_;
   std::unique_ptr<gc::Hub> hub_;

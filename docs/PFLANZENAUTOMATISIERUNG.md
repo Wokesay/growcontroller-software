@@ -70,6 +70,10 @@ Steckergeräte in Frage: Plug S Gen3, Outdoor Plug S Gen3, Power Strip 4 Gen4.
 Einbaugeräte (1PM, Pro 4PM, Dimmer 0/1-10V) sind für Elektrofachkräfte. Die
 Software bindet sie trotzdem an.
 
+- **Stand 06.10.2026:** `INetBus` mit Shelly im Simulator, Profile im
+  Gateway, Zuordnung mit Rücklesen, Testen und Handbetrieb sind umgesetzt
+  (§8 Schritte 3–4). Offen: Finden per mDNS und Digest auf dem Gerät,
+  „Aus nicht bestätigt“, Watchdog-Bewertung über die Leistung.
 - **Eigener Netz-Bus** `INetBus` neben dem RS485-Bus `IBus`. Er hat kein
   `startRun`; damit ist schon über den Typ ausgeschlossen, dass übers Netz
   dosiert wird. Nur `Actuators` schaltet (R1).
@@ -136,7 +140,7 @@ Er schaltet nichts (R2).
 | `circulation_fan` | `zone.circulation_fan` | Modus (immer, Intervall, mit Licht) |
 | `climate_control` | Lufttemperatur, Luftfeuchte, mindestens ein Klimagerät | Temperatur Tag/Nacht P, rF oder VPD Tag/Nacht P, Hysterese, Mindestzeiten (Quelle: RAT-034), Heizungsgrenze (Quelle: RAT-060) |
 | `vpd_watch` | Lufttemperatur, Luftfeuchte | VPD-Ziel Tag/Nacht P, Toleranz, Blatt-Offset |
-| `irrigation` | `irrigation.pump`, Uhrzeit | Gaben je Tag P, Faktor der ersten Gabe P, Dauer je Gabe P (Quelle: RAT-010), Mindeststand im Tank (Quelle: RAT-067) |
+| `irrigation` | `zone.irrigation_pump`, Uhrzeit | Gaben je Tag P, Faktor der ersten Gabe P, Dauer je Gabe P (Quelle: RAT-010), Mindeststand im Tank (Quelle: RAT-067) |
 
 - „Tag“ und „Nacht“ richten sich nach dem Licht, nicht nach der Uhrzeit.
 - Bei VPD-Führung wird der rF-Sollwert aus dem VPD-Ziel und der

@@ -297,7 +297,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   const auto& t = c.tank();
   if (isNum(t.capacityL) && t.capacityL <= 0) err("cfg.tank.capacity", "Nutzvolumen muss größer als 0 sein");
   if (isNum(t.minL) && isNum(t.capacityL) && t.minL >= t.capacityL)
-    err("cfg.tank.min", "Trockenlaufgrenze muss unter dem Nutzvolumen liegen");
+    err("cfg.tank.min", "Mindestfüllstand muss unter dem Nutzvolumen liegen");
   // v1 der Logik kennt genau eine Zone; Messen und Regeln lesen nur die erste.
   if (c.zones.size() > 1) err("cfg.zone.count", "Mehrere Anbaubereiche werden noch nicht unterstützt");
   for (const auto& z : c.zones) {
@@ -314,8 +314,14 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       if (role.rfind("zone.", 0) == 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an den Tank");
   std::vector<std::pair<std::string, Binding>> all;
   c.forEachBinding([&](const std::string& r, const Binding& b) { all.emplace_back(r, b); });
+  std::map<std::pair<std::string, int>, std::string> switchUse;  // Kanal → Rolle
   for (const auto& [role, b] : all) {
     const RoleDef* rd = cat.role(role);
+    if (rd && !rd->profile.empty()) {
+      auto key = std::make_pair(b.device, b.channel);
+      if (switchUse.count(key)) err("cfg.role.shared", rd->label + ": Ausgang ist schon „" + switchUse[key] + "“ zugeordnet");
+      else switchUse[key] = rd->label;
+    }
     if (!rd) {
       err("cfg.role.unknown", "Unbekannte Rolle " + role);
       continue;
@@ -328,8 +334,10 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     const DeviceClassDef* dc = cat.deviceClass(d->cls);
     bool ok = false;
     if (dc)
-      for (const auto& p : dc->provides) ok = ok || p == rd->capability;
+      for (const auto& p : dc->provides) ok = ok || rd->allows(p);
     if (!ok) err("cfg.role.cap", rd->label + ": " + d->name + " liefert das nicht");
+    const int channels = dc && dc->channels > 0 ? dc->channels : 1;
+    if (b.channel < 0 || b.channel >= channels) err("cfg.role.channel", rd->label + ": " + d->name + " hat keinen Kanal " + std::to_string(b.channel + 1));
   }
   std::set<std::string> pumps, canIds;
   for (const auto& k : c.canisters) {

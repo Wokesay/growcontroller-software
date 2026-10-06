@@ -183,6 +183,34 @@ export function SimPanel() {
             </Button>
           )}
         </div>
+        <div class="section-title">Steckdosen im WLAN (Shelly)</div>
+        <div class="row wrap">
+          <Button size="sm" onClick={() => act("net_add", { class: "shelly_plug", loads: [{ load: "circulation", watts: 18 }] }, "Shelly Plug mit Umwälzpumpe im WLAN")}>
+            + Plug (Umwälzpumpe)
+          </Button>
+          <Button
+            size="sm"
+            onClick={() =>
+              act(
+                "net_add",
+                { class: "shelly_strip4", loads: [{ load: "light", watts: 240 }, { load: "exhaust", watts: 35 }, { load: "circulation_fan", watts: 15 }, { load: "humidifier", watts: 30 }] },
+                "Shelly-Leiste im WLAN: Licht, Abluft, Umluft, Befeuchter",
+              )
+            }
+          >
+            + Leiste (Licht, Abluft, Umluft, Befeuchter)
+          </Button>
+        </div>
+        {(w?.netPlugs ?? []).map((np: any) => (
+          <div class="row wrap">
+            <span class="grow small">
+              <span class="mono">{np.id}</span> · {np.outlets.map((o: any, i: number) => `${i + 1}: ${o.load || "–"} ${o.on ? "an" : "aus"}`).join(", ")}
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => act("fault", { device: np.id, fault: np.fault === "offline" ? "none" : "offline" })}>
+              {np.fault === "offline" ? "wieder im WLAN" : "WLAN weg"}
+            </Button>
+          </div>
+        ))}
         <Button size="sm" variant="danger-soft" onClick={() => act("reboot", {}, "Stromausfall: Hub startet neu")}>
           Stromausfall / Neustart
         </Button>

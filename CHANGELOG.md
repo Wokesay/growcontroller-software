@@ -44,6 +44,23 @@ stehen in jedem Release unter „Sicherheit“.
   Simulator lassen sich beide Varianten stecken, Störungen treffen den
   passenden Kopf. Welche Hardware-Variante es geben wird, ist offen (PD
   folgt); die Software trägt beide.
+- **Schaltbare Steckdosen (Shelly, lokal):** Der Hub findet Shelly-Steckdosen
+  (Plug S Gen3, Power Strip 4 Gen4) im WLAN. In der Einrichtung und unter
+  Geräte sagt man je Dose, was eingesteckt ist (Umwälzpumpe, Licht, Abluft,
+  Umluft, Befeuchter, Entfeuchter, Heizung, Gießpumpe, Zulauf), und testet
+  sie (3 s an). Beim Übernehmen setzt der Hub jede Dose auf „nach
+  Stromausfall aus“; beim Zuordnen schreibt er die Schutzeinstellung des
+  Profils ins Gerät (Auto-Off bei Befeuchter, Gießpumpe, Zulauf und Heizung)
+  und ordnet erst zu, wenn das Rücklesen stimmt. Im Simulator mit
+  Leistungsmessung, WLAN-Ausfall und Auto-Off. API: `POST /roles/{rolle}/test`,
+  `POST /roles/{rolle}/switch {on}` (Handbetrieb).
+- **Sicherheitsprofile im Aktor-Gateway:** dauer, puls, kompressor, heizen.
+  Befeuchter und Entfeuchter laufen nie zugleich; der Entfeuchter hält
+  5 min Pause nach dem Ausschalten (Quelle: RAT-034); puls und heizen
+  haben eine Höchstlaufzeit, das Gerät schaltet knapp danach selbst ab
+  (Verhältnis wie RAT-060). Not-Halt und Neustart schalten auch die
+  Steckdosen aus. Höchstlaufzeiten für Befeuchter und Gießpumpe sind
+  Annahmen, bis die Funktionen eigene Grenzen setzen.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -65,8 +82,9 @@ stehen in jedem Release unter „Sicherheit“.
 - Demo: Die Phase „Blüte“ verwies auf ein fehlendes Rezept. IDs schreiben
   Umlaute jetzt um („Blüte“ → „bluete“).
 - Rezepte mit demselben Kanister zweimal werden abgelehnt.
-- Namen werden auf 40 Byte gekürzt, ohne ein Zeichen zu zerschneiden;
-  vorher machte ein Umlaut an der Grenze die Konfiguration unlesbar.
+- Namen (Hub, Bereich, Tank, Gerät, Kanister, Rezept, Durchgang) werden
+  auf 40 Byte gekürzt, ohne ein Zeichen zu zerschneiden; vorher machte ein
+  Umlaut an der Grenze die Konfiguration unlesbar.
 - Übernimmt man ein Gerät, ordnet der Hub nur dessen Messrollen zu; eine
   bewusst gelöste Rolle bleibt gelöst.
 - Simulator: „Wert friert“ hält den letzten Wert fest statt „kein Wert“.

@@ -34,9 +34,14 @@ struct Ctx {
   Epoch maintenanceUntil = 0;    // Pflegemodus: Automatik ruht
 };
 
+// Mindestpause eines Kompressorgeräts nach dem Ausschalten (Quelle: RAT-034).
+constexpr Ms kCompressorPause = 5 * kMinute;
+
 class Actuators {
  public:
   explicit Actuators(IBus& bus) : bus_(bus) {}
+  // Netzgeräte (schaltbare Steckdosen); ohne Netz-Bus nur die Hub-Ausgänge.
+  void setNet(INetBus* net) { net_ = net; }
 
   bool startRun(const Ctx& c, const std::string& pump, Ms ms, const std::string& purpose, const std::string& jobId,
                 Msg& err);
@@ -45,7 +50,8 @@ class Actuators {
   void clearRun(const std::string& pump);
   void stopPumps();
 
-  // Schaltausgänge nur über Rollen (tank.circulation, tank.inlet).
+  // Schaltausgänge nur über Rollen (tank.circulation, zone.light …), je nach
+  // Gerät am Hub-Ausgang oder an einer Netzsteckdose.
   bool setRole(const Ctx& c, const std::string& role, bool on, const std::string& who, Msg& err);
   std::optional<bool> roleState(const Config& cfg, const std::string& role) const;
   // Warum eine Rolle gerade nicht eingeschaltet werden darf (Einschaltsperre).
@@ -57,7 +63,12 @@ class Actuators {
   void enforce(const Ctx& c);
 
  private:
+  bool sw(const std::string& dev, int channel, bool on, std::string& err);
+  std::optional<bool> swState(const std::string& dev, int channel) const;
+
   IBus& bus_;
+  INetBus* net_ = nullptr;
+  std::map<std::string, Ms> offSince_;  // Rolle → aus seit (Mindestpause Kompressor)
   std::string runningPump_;
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit

@@ -232,6 +232,11 @@ ApiResponse Api::route(const ApiRequest& req) {
     return fromResult(hub_.bindRole(p[1], jstr(body, "device"), static_cast<int>(ch)));
   }
   if (is("DELETE", {"roles", "*"})) return fromResult(hub_.unbindRole(p[1]));
+  if (is("POST", {"roles", "*", "test"})) return fromResult(hub_.testRole(p[1]));
+  if (is("POST", {"roles", "*", "switch"})) {
+    if (!body.contains("on") || !body["on"].is_boolean()) return fail(422, "role.switch", "„on“ muss true oder false sein");
+    return fromResult(hub_.switchRole(p[1], body["on"].get<bool>()));
+  }
   if (is("PUT", {"tank"})) return fromResult(hub_.putTank(body));
   if (is("PUT", {"zone"})) return fromResult(hub_.putZone(body));
   if (is("POST", {"canisters"})) return fromResult(hub_.putCanister(body));

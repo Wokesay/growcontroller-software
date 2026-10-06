@@ -20,7 +20,7 @@ export type Port = { port: number; state: "empty" | "checking" | "ok" | "fault" 
 export type Device = {
   id: string; class: string; classLabel: string; name: string; configured: boolean; online: boolean;
   port: number; slot: number; parent: string; fw: string; fault: string;
-  info: { flowMlPerMin?: number | null };
+  info: { flowMlPerMin?: number | null; ip?: string; outlets?: { on: boolean | null; powerW: number | null }[] };
   calibrations: Record<string, number>;
 };
 
@@ -92,7 +92,7 @@ export type Catalog = {
   catalogVersion: number;
   capabilities: Record<string, { label: string; unit?: string; kind: string; decimals?: number }>;
   deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
-  roles: Record<string, { label: string; capability: string; series?: boolean }>;
+  roles: Record<string, { label: string; capability: string; accepts?: string[]; profile?: string; maxOnS?: number; series?: boolean }>;
   functions: { id: string; label: string; stage: number; group: string; text: string; params?: ParamDef[] }[];
   templates: { recipes: RecipeTemplate[] };
 };

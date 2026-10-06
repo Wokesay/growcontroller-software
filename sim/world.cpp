@@ -1,6 +1,7 @@
 #include "world.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -20,6 +21,7 @@ void World::reset() {
   tank = Tank{};
   ports.clear();
   out[0] = out[1] = false;
+  netPlugs.clear();
   probeBuffer.reset();
   phTrail_.clear();
   runningCap_.clear();
@@ -165,6 +167,47 @@ void World::fill(double volumeL, double ec, double ph) {
   phTrail_.clear();
 }
 
+NetPlug* World::netPlug(const std::string& id) {
+  for (auto& p : netPlugs)
+    if (p.id == id) return &p;
+  return nullptr;
+}
+
+std::string World::addNetPlug(const std::string& cls, const std::vector<std::pair<std::string, double>>& loads) {
+  NetPlug p;
+  p.cls = cls;
+  // Kennung wie bei Shelly: Modell, Bindestrich, MAC in Kleinbuchstaben
+  p.id = (cls == "shelly_strip4" ? newId("shellypstripg4") : newId("shellyplugsg3")) + newId("").substr(1);
+  for (auto& ch : p.id) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  p.ip = "192.168.1." + std::to_string(60 + netPlugs.size());
+  size_t n = cls == "shelly_strip4" ? 4 : 1;
+  for (size_t i = 0; i < n; ++i) {
+    NetOutlet o;
+    if (i < loads.size()) {
+      o.load = loads[i].first;
+      o.loadW = loads[i].second;
+    }
+    p.outlets.push_back(o);
+  }
+  netPlugs.push_back(p);
+  return netPlugs.back().id;
+}
+
+void World::mainsOutage() {
+  for (auto& p : netPlugs)
+    for (auto& o : p.outlets)
+      if (o.initialOff) o.on = false;
+}
+
+bool World::circulating() const {
+  if (out[0]) return true;
+  for (const auto& p : netPlugs)
+    if (p.fault != "offline")
+      for (const auto& o : p.outlets)
+        if (o.on && o.load == "circulation") return true;
+  return false;
+}
+
 void World::advance(Ms now) {
   if (now <= now_) return;
   // in Schritten von höchstens 1 s rechnen
@@ -172,6 +215,9 @@ void World::advance(Ms now) {
     Ms dt = std::min<Ms>(1000, now - now_);
     now_ += dt;
     step(dt);
+    for (auto& p : netPlugs)
+      for (auto& o : p.outlets)
+        if (o.on && !std::isnan(o.autoOffS) && now_ - o.onSince >= static_cast<Ms>(o.autoOffS * 1000)) o.on = false;
   }
 }
 
@@ -217,7 +263,7 @@ void World::step(Ms dt) {
     tank.volumeL += dV;
   }
   // Durchmischung: mit Umwälzpumpe schnell, sonst langsam (Annahme; RAT-052: t63 26 s bei 20 L)
-  double tau = (out[0] ? 26.0 : 240.0) * std::max(0.5, tank.volumeL / 20.0);
+  double tau = (circulating() ? 26.0 : 240.0) * std::max(0.5, tank.volumeL / 20.0);
   double k = 1.0 - std::exp(-dts / tau);
   tank.ec += tank.pendingEc * k;
   tank.pendingEc *= (1.0 - k);
@@ -298,6 +344,17 @@ json World::toJson() const {
           {"tank", {{"volumeL", tank.volumeL}, {"ec", tank.ec}, {"ph", tank.ph}, {"temp", tank.temp},
                     {"pendingEc", tank.pendingEc}, {"pendingPh", tank.pendingPh}}},
           {"outputs", {out[0], out[1]}},
+          {"netPlugs", [&] {
+             json a = json::array();
+             for (const auto& p : netPlugs) {
+               json outs = json::array();
+               for (const auto& o : p.outlets)
+                 outs.push_back({{"on", o.on}, {"load", o.load}, {"loadW", o.loadW}, {"initialOff", o.initialOff},
+                                 {"autoOffS", gc::numOrNull(o.autoOffS)}});
+               a.push_back({{"id", p.id}, {"class", p.cls}, {"ip", p.ip}, {"fault", p.fault}, {"outlets", outs}});
+             }
+             return a;
+           }()},
           {"probeBuffer", probeBuffer ? json(*probeBuffer) : json(nullptr)},
           {"probeKind", probeKind},
           {"liquids", [&] {
@@ -321,7 +378,16 @@ json World::save() const {
                         : json(nullptr));
     ps.push_back({{"port", p}, {"id", d.id}, {"class", d.cls}, {"slots", slots}});
   }
+  json np = json::array();
+  for (const auto& p : netPlugs) {
+    json outs = json::array();
+    for (const auto& o : p.outlets)
+      outs.push_back({{"load", o.load}, {"loadW", o.loadW}, {"initialOff", o.initialOff},
+                      {"autoOffS", gc::numOrNull(o.autoOffS)}, {"powerLimitW", gc::numOrNull(o.powerLimitW)}});
+    np.push_back({{"id", p.id}, {"class", p.cls}, {"ip", p.ip}, {"outlets", outs}});
+  }
   return {{"ports", ps},
+          {"netPlugs", np},
           {"tank", {{"volumeL", tank.volumeL}, {"ec", tank.ec + tank.pendingEc}, {"ph", tank.ph + tank.pendingPh}}}};
 }
 
@@ -343,6 +409,22 @@ void World::restore(const json& j) {
       c.storedFlow = gc::jnum(slots[i], "storedFlow");
       d->slots[i] = c;
     }
+  }
+  for (const auto& p : j.value("netPlugs", json::array())) {
+    NetPlug np;
+    np.id = p.value("id", std::string());
+    np.cls = p.value("class", std::string());
+    np.ip = p.value("ip", std::string());
+    for (const auto& o : p.value("outlets", json::array())) {
+      NetOutlet dose;  // nach dem Neustart des Simulators aus
+      dose.load = o.value("load", std::string());
+      dose.loadW = o.value("loadW", 0.0);
+      dose.initialOff = o.value("initialOff", false);
+      dose.autoOffS = gc::jnum(o, "autoOffS");
+      dose.powerLimitW = gc::jnum(o, "powerLimitW");
+      np.outlets.push_back(dose);
+    }
+    netPlugs.push_back(np);
   }
   const auto& t = j.value("tank", json::object());
   fill(gc::jnum(t, "volumeL", 0), gc::jnum(t, "ec", 0.02), gc::jnum(t, "ph", 7.0));

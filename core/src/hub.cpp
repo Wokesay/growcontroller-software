@@ -186,11 +186,12 @@ void Hub::detectDevices() {
         if (x.id == id) d = &x;
       const DeviceClassDef* dc = d ? cat_.deviceClass(d->cls) : nullptr;
       const DeviceCfg* known = cfg_.device(id);
-      std::string where = d && d->slot >= 0 ? "Dosierblock Port " + std::to_string(d->slot + 1)
-                          : (d && d->port > 0 ? "Hub-Port " + std::to_string(d->port) : "im Hub");
+      std::string where = d && d->slot >= 0 ? "Pumpe " + std::to_string(d->slot + 1) + " am Dosierblock"
+                          : d && d->port > 0 ? "Anschluss " + std::to_string(d->port)
+                          : dc && dc->attach == "net" ? "im Netzwerk" : "im Hub";
       std::string title = (dc ? dc->label : "Unbekanntes Gerät") + (known ? " wieder da" : " erkannt");
       std::string text = where;
-      // Kappe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
+      // Pumpe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
       if (known && d && d->cls == "pump_cap")
         if (const CanisterCfg* k = cfg_.canisterByPump(id)) text += ". Sitzt sie noch auf " + k->name + "?";
       if (!seenOnline_.empty() || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
@@ -256,6 +257,10 @@ void Hub::tickImpl() {
   Epoch epoch = clock_.epoch();
   bus_.poll(now);
   devices_ = bus_.devices();
+  if (net_) {
+    net_->poll(now);
+    for (auto& d : net_->devices()) devices_.push_back(std::move(d));
+  }
   ports_ = bus_.ports();
   pumps_ = pumpsFrom(devices_);
   detectDevices();
@@ -296,6 +301,15 @@ void Hub::tickImpl() {
 
   Ctx c = ctx();
   act_.enforce(c);
+  for (auto it = testOff_.begin(); it != testOff_.end();) {
+    if (now < it->second) {
+      ++it;
+      continue;
+    }
+    Msg e;
+    act_.setRole(c, it->first, false, "Testen", e);
+    it = testOff_.erase(it);
+  }
   doser_.tick(c, act_);
   ControlEnv env{act_, doser_, truth_};
   env.userJob = userJobActive();
@@ -443,8 +457,9 @@ json Hub::state() {
                {"minL", numOrNull(cfg_.tank().minL)}};
   j["controllers"] = {{"ec", ec_.status()}, {"ph", ph_.status()}, {"refill", refill_.status()}, {"circulation", circ_.status()}};
   json outputs = json::object();
-  for (const auto& role : {"tank.circulation", "tank.inlet"})
-    if (auto st = act_.roleState(cfg_, role)) outputs[role] = *st;
+  for (const auto& [role, rd] : cat_.roles)
+    if (!rd.profile.empty())
+      if (auto st = act_.roleState(cfg_, role)) outputs[role] = *st;
   j["outputs"] = outputs;
   j["job"] = job_ ? json(*job_) : json(nullptr);
   j["lastJob"] = lastJob_ ? json(*lastJob_) : json(nullptr);
@@ -608,7 +623,14 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
   if (!cat_.deviceClass(d->cls)) return Result::fail(422, "device.class", "Unbekannte Geräteklasse – Update nötig");
   if (cfg_.device(id)) return Result::ok();
   const DeviceClassDef* dc = cat_.deviceClass(d->cls);
-  cfg_.devices.push_back({id, d->cls, name.empty() ? dc->label : name});
+  cfg_.devices.push_back({id, d->cls, name.empty() ? dc->label : utf8Prefix(name, 40)});
+  // Netzgerät: jeden Kanal „nach Stromausfall aus“ setzen (R6 gilt auch dort).
+  if (net_ && net_->owns(id))
+    for (int ch = 0; ch < std::max(1, dc->channels); ++ch) {
+      std::string e;
+      if (!net_->configure(id, ch, SwitchSafety{}, e))
+        log_.add(clock_.epoch(), "device", "warn", cfg_.devices.back().name + ": Schutz nicht gesetzt", e, {{"device", id}});
+    }
   // Messrollen automatisch zuordnen, wenn genau ein Gerät passt (nie bei
   // Dosier- oder Schaltrollen). Sonst wählt der Nutzer unter Zuordnung.
   autoBindMeasures();
@@ -666,21 +688,67 @@ Result Hub::removeDevice(const std::string& id) {
   return Result::ok();
 }
 
+// Schutzeinstellung im Netzgerät je Profil (Konzept §3): nach Stromausfall
+// immer aus; bei puls und heizen Auto-Off knapp über der Höchstlaufzeit
+// (Verhältnis 1,11, Quelle: RAT-060).
+static SwitchSafety safetyFor(const RoleDef& rd) {
+  SwitchSafety s;
+  if ((rd.profile == "puls" || rd.profile == "heizen") && isNum(rd.maxOnS)) s.autoOffS = std::ceil(rd.maxOnS * 1.11 / 60.0) * 60.0;
+  return s;
+}
+
 Result Hub::bindRole(const std::string& role, const std::string& device, int channel) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
   next.rolesFor(role)[role] = {device, channel};
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
-  cfg_ = next;
   const RoleDef* rd = cat_.role(role);
+  // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
+  if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
+    SwitchSafety want = safetyFor(*rd);
+    std::string e;
+    if (!net_->configure(device, channel, want, e))
+      return Result::fail(502, "role.net.write", "Schutzeinstellung nicht geschrieben: " + e);
+    auto got = net_->readConfig(device, channel);
+    if (!got || !sameSafety(*got, want))
+      return Result::fail(502, "role.net.verify", "Schutzeinstellung im Gerät nicht bestätigt – nicht zugeordnet");
+    log_.add(clock_.epoch(), "device", "info", rd->label + ": Schutz im Gerät gesetzt",
+             isNum(want.autoOffS) ? "Nach Stromausfall aus, Abschaltung im Gerät nach " + fmt(want.autoOffS / 60, 0) + " min"
+                                  : "Nach Stromausfall aus",
+             {{"device", device}, {"channel", channel}});
+  }
+  cfg_ = next;
   saveConfig("Zuordnung: " + (rd ? rd->label : role));
+  return Result::ok();
+}
+
+Result Hub::switchRole(const std::string& role, bool on) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  const RoleDef* rd = cat_.role(role);
+  if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
+  Ctx c = ctx();
+  Msg e;
+  if (!act_.setRole(c, role, on, "Hand", e)) return Result::fail(409, e.key, e.text);
+  testOff_.erase(role);
+  log_.add(clock_.epoch(), "manual", "info", rd->label + (on ? " an" : " aus"), "von Hand", {{"role", role}, {"on", on}});
+  return Result::ok();
+}
+
+Result Hub::testRole(const std::string& role) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  const RoleDef* rd = cat_.role(role);
+  if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
+  Ctx c = ctx();
+  Msg e;
+  if (!act_.setRole(c, role, true, "Testen", e)) return Result::fail(409, e.key, e.text);
+  testOff_[role] = c.now + 3 * kSecond;
   return Result::ok();
 }
 
 Result Hub::unbindRole(const std::string& role) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (role == "tank.circulation" || role == "tank.inlet") {
+  if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
     Msg e;
     Ctx c = ctx();
     act_.setRole(c, role, false, "Zuordnung entfernt", e);
@@ -694,7 +762,7 @@ Result Hub::putTank(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
   auto& t = next.tank();
-  if (j.contains("name") && j["name"].is_string()) t.name = j["name"];
+  if (j.contains("name") && j["name"].is_string()) t.name = utf8Prefix(j["name"].get<std::string>(), 40);
   if (j.contains("capacityL")) t.capacityL = j["capacityL"].is_number() ? j["capacityL"].get<double>() : kNaN;
   if (j.contains("minL")) t.minL = j["minL"].is_number() ? j["minL"].get<double>() : kNaN;
   if (j.contains("water") && j["water"].is_string()) t.water = j["water"];
@@ -734,7 +802,7 @@ Result Hub::putCanister(const json& j) {
     k = &next.canisters.back();
     k->id = id;
   }
-  if (j.contains("name")) k->name = jstr(j, "name");
+  if (j.contains("name")) k->name = utf8Prefix(jstr(j, "name"), 40);
   if (j.contains("kind")) k->kind = jstr(j, "kind");
   if (j.contains("pump")) k->pump = jstr(j, "pump");
   if (j.contains("pair")) k->pair = jstr(j, "pair");
@@ -794,7 +862,7 @@ Result Hub::putRecipe(const json& j) {
     r = &next.recipes.back();
     r->id = id;
   }
-  if (j.contains("name")) r->name = jstr(j, "name");
+  if (j.contains("name")) r->name = utf8Prefix(jstr(j, "name"), 40);
   if (j.contains("note")) r->note = jstr(j, "note");
   if (j.contains("steps")) {
     r->steps.clear();
@@ -1410,7 +1478,7 @@ Result Hub::growStart(const json& j) {
   if (cfg_.grow.state == "running") return Result::fail(409, "grow.running", "Es läuft bereits ein Durchgang");
   GrowCfg g;
   g.state = "running";
-  g.name = jstr(j, "name", "Durchgang");
+  g.name = utf8Prefix(jstr(j, "name", "Durchgang"), 40);
   g.startedAt = clock_.epoch();
   g.phaseStartedAt = g.startedAt;
   const json phases = j.contains("phases") && j["phases"].is_array() ? j["phases"] : json::array();

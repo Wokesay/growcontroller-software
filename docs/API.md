@@ -52,7 +52,9 @@ also auch eine Integration.
 | POST | `/setup/complete` | Einrichtung abgeschlossen |
 | PUT | `/system` | Name, Zeitzone, Sprache (`de`/`en`), Update-Kanal und -Prüfung, Grenze je Handgabe |
 | POST / PATCH / DELETE | `/devices/{id}/accept`, `/devices/{id}` | übernehmen, umbenennen, entfernen |
-| PUT / DELETE | `/roles/{rolle}` `{device, channel}` | Zuordnung |
+| PUT / DELETE | `/roles/{rolle}` `{device, channel}` | Zuordnung; bei Netzsteckdosen erst nach bestätigter Schutzeinstellung (sonst 502) |
+| POST | `/roles/{rolle}/test` | Schaltausgang 3 s an |
+| POST | `/roles/{rolle}/switch` `{on}` | Handbetrieb, mit allen Sperren (sonst 409 mit Grund) |
 | PUT | `/tank` | Name, Nutzvolumen, Mindestfüllstand, Wasser, Volumen ohne Füllstandskopf |
 | PUT | `/zone` | Anbaubereich: Name, Art (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | Kanister, Vorrat |

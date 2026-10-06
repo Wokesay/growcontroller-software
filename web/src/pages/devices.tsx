@@ -7,7 +7,7 @@ import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
-import { DeviceIcon, PortGrid, devicePlace } from "../widgets";
+import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 
 function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) {
   const d = p.d;
@@ -37,6 +37,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
           )}
           {Object.entries(d.calibrations ?? {}).map(([k, at]) => ` · ${k === "tank_curve" ? "Kennlinie" : k} kalibriert ${at ? dateTime(at) : ""}`)}
         </div>
+        {d.class.startsWith("shelly_") && <OutletRoles d={d} />}
       </div>
       <div class="row" style="gap:6px">
         {!d.configured ? (
@@ -135,7 +136,8 @@ function Roles() {
             const opts: [string, string][] = [["", "– nicht zugeordnet –"]];
             for (const d of cands) {
               const n = channels(d.class);
-              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${d.name || d.id} · Ausgang ${c + 1}`]);
+              const what = d.class.startsWith("shelly_") ? "Dose" : "Ausgang";
+              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${d.name || d.id} · ${what} ${c + 1}`]);
               else opts.push([`${d.id}|0`, d.name || d.id]);
             }
             const reading = st.readings[id];

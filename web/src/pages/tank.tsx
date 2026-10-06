@@ -24,7 +24,7 @@ function TankSettings() {
         <Field label="Nutzvolumen" hint="Obergrenze beim Mischen und Notgrenze beim Zulauf">
           <NumberInput value={cap} onValue={setCap} unit="L" />
         </Field>
-        <Field label="Trockenlaufgrenze" hint="Darunter bleibt die Umwälzpumpe aus">
+        <Field label="Mindestfüllstand" hint="Darunter bleibt die Umwälzpumpe aus" help="minLevel">
           <NumberInput value={min} onValue={setMin} unit="L" />
         </Field>
         <Field label="Wasser">

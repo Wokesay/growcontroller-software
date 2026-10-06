@@ -79,7 +79,9 @@ struct Eval {
     const RoleDef* rd = cat.role(r.role);
     const CapabilityDef* cap = rd ? cat.capability(rd->capability) : nullptr;
     if (!rd || !cap) return;
-    if (!capabilityPresent(rd->capability)) {
+    bool present = false;
+    for (const auto& a : rd->accepts) present = present || capabilityPresent(a);
+    if (!present) {
       out.push_back({"hardware", false, false, "Dafür brauchst du: " + classLabels(rd->capability), "expand",
                      shopFor(rd->capability)});
       return;

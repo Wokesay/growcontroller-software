@@ -137,9 +137,19 @@ Catalog Catalog::fromJson(const json& j) {
     r.id = id;
     r.label = jstr(v, "label");
     r.capability = jstr(v, "capability");
+    if (v.contains("accepts") && v["accepts"].is_array())
+      for (const auto& a : v["accepts"]) r.accepts.push_back(a.get<std::string>());
+    if (r.accepts.empty()) r.accepts.push_back(r.capability);
+    if (r.capability.empty()) r.capability = r.accepts.front();
     r.series = v.value("series", false);
-    if (!c.capabilities.count(r.capability))
-      throw std::runtime_error("Katalog: Rolle " + id + " mit unbekannter Capability");
+    r.profile = jstr(v, "profile");
+    r.maxOnS = jnum(v, "maxOnS");
+    for (const auto& a : r.accepts)
+      if (!c.capabilities.count(a)) throw std::runtime_error("Katalog: Rolle " + id + " mit unbekannter Capability " + a);
+    if (!r.profile.empty() && r.profile != "dauer" && r.profile != "puls" && r.profile != "kompressor" && r.profile != "heizen")
+      throw std::runtime_error("Katalog: Rolle " + id + " mit unbekanntem Profil " + r.profile);
+    if ((r.profile == "puls" || r.profile == "heizen") && !(isNum(r.maxOnS) && r.maxOnS > 0))
+      throw std::runtime_error("Katalog: Rolle " + id + " braucht eine Höchstlaufzeit (Profil " + r.profile + ")");
     c.roles[id] = r;
   }
   for (const auto& v : j.at("functions")) {
@@ -182,6 +192,12 @@ Catalog Catalog::fromJson(const json& j) {
 }
 
 Catalog Catalog::builtin() { return fromJson(json::parse(embedded::kCatalogJson)); }
+
+bool RoleDef::allows(const std::string& cap) const {
+  for (const auto& a : accepts)
+    if (a == cap) return true;
+  return false;
+}
 
 const CapabilityDef* Catalog::capability(const std::string& id) const {
   auto it = capabilities.find(id);

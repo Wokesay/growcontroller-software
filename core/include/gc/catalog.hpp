@@ -30,8 +30,15 @@ struct DeviceClassDef {
 };
 
 struct RoleDef {
-  std::string id, label, capability;
-  bool series = false;  // im Verlauf als Messreihe geführt
+  std::string id, label, capability;  // capability = erste akzeptierte
+  std::vector<std::string> accepts;   // z. B. 12-V-Ausgang oder Netzsteckdose
+  bool series = false;                // im Verlauf als Messreihe geführt
+  // Sicherheitsprofil eines Schaltausgangs (Konzept §3): dauer | puls |
+  // kompressor | heizen. puls und heizen brauchen eine Höchstlaufzeit; daraus
+  // folgt die Abschaltung im Gerät (Auto-Off) knapp darüber.
+  std::string profile;
+  double maxOnS = kNaN;
+  bool allows(const std::string& cap) const;
 };
 
 struct ParamDef {

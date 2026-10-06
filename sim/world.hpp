@@ -47,6 +47,24 @@ struct Device {
   Ms lastSample = -100000;
 };
 
+// Schaltbare Netzsteckdose (Shelly) mit dem, was eingesteckt ist. Die
+// Schutzeinstellung liegt im Gerät (Auto-Off, Zustand nach Stromausfall).
+struct NetOutlet {
+  bool on = false;
+  std::string load;      // z. B. "circulation", "light" – für die Physik und die Leistung
+  double loadW = 0;      // Leistung, wenn an (Annahme je Gerät)
+  bool initialOff = false;  // Werkseinstellung Shelly: „wie vorher“
+  double autoOffS = gc::kNaN;
+  double powerLimitW = gc::kNaN;
+  Ms onSince = 0;
+};
+
+struct NetPlug {
+  std::string id, cls, ip;
+  std::string fault;  // offline | readonly | ignore | ""
+  std::vector<NetOutlet> outlets;
+};
+
 struct Tank {
   double volumeL = 0;
   double ec = 0.02;       // durchmischter Zustand
@@ -74,6 +92,15 @@ class World {
 
   // Ausgänge des Hubs (2 Kanäle)
   bool out[2] = {false, false};
+
+  // Netzsteckdosen im WLAN (im Hub nur über den Netz-Bus sichtbar)
+  std::vector<NetPlug> netPlugs;
+  NetPlug* netPlug(const std::string& id);
+  std::string addNetPlug(const std::string& cls, const std::vector<std::pair<std::string, double>>& loads);
+  // Stromausfall im Haus: Dosen mit „nach Stromausfall aus“ gehen aus.
+  void mainsOutage();
+  // Wird umgewälzt? Hub-Ausgang 1 oder eine Dose mit der Umwälzpumpe.
+  bool circulating() const;
 
   // Sensoren (Rohwerte, wie der Kopf sie liefert)
   // Rohwerte einer Sonde; Fehlerbilder (jump, frozen, ec_zero) gelten je Gerät.
