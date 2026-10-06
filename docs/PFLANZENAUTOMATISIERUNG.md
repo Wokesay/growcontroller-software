@@ -20,7 +20,7 @@ Bisher liegen alle Rollen in `tanks[0].roles`. Neu (Schema v2, mit Migration):
 ```
 config
 ├─ tanks[]  id, Nutzvolumen, Mindestfüllstand, roles{tank.*}
-└─ zones[]  id, kind (room|tent|greenhouse), name, tank, roles{zone.*, irrigation.*}
+└─ zones[]  id, kind (room|tent|greenhouse), name, tank, roles{zone.*}
 ```
 
 - Im Datenmodell sind mehrere Zonen vorgesehen; v1 erlaubt eine Zone.
@@ -34,7 +34,7 @@ config
 | Tank | `tank.ph`, `tank.ec`, `tank.water_temp`, `tank.level`, `tank.circulation`, `tank.inlet`, `tank.heater` |
 | Licht | `zone.light` (Schalten), `zone.light_dim` (0–10 V) |
 | Klima | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` |
-| Bewässerung | `irrigation.pump` |
+| Bewässerung | `zone.irrigation_pump` |
 
 **Abgeleitete Werte** (fester Code, kein Skript): `zone.vpd` aus
 Lufttemperatur und Luftfeuchte. Er wird nur gerechnet, wenn beide Werte gültig
@@ -96,7 +96,7 @@ Software bindet sie trotzdem an.
 | puls | Befeuchter, Gießpumpe, Zulauf | aus | **Auto-Off Pflicht**, knapp über der Software-Grenze | Höchstlaufzeit, Wartezeit |
 | kompressor | Entfeuchter | aus | – | Mindestlauf 10 min, Mindestpause 5 min (Quelle: RAT-034) |
 | heizen | Heizung ohne eigenen Thermostat (z. B. Heizstab) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
-| versorgen | Gerät mit eigenem Thermostat, das Relais gibt nur Strom | aus | kein Auto-Off (Quelle: RAT-069) | Bewertung durch den Watchdog |
+| versorgen | Gerät mit eigenem Thermostat, das Relais gibt nur Strom | aus | kein Auto-Off, aber `power_limit` als Netz für einen hängenden Thermostat (Quelle: RAT-069) | Bewertung durch den Watchdog |
 
 Fest im Code (R7):
 
@@ -160,9 +160,10 @@ Einstellungen“.
 | EC-Ziel | Herstellerplan | Herstellerplan | RAT-066 |
 | Gaben je Tag | 6 | 8–9 | RAT-010 (Steinwolle) |
 
-Sinkt das EC-Ziel beim Phasenwechsel, weist die App darauf hin, den Tank
-ganz abzulassen (Quelle: RAT-012). Liegen Rest und Frischwasser schon
-unter dem neuen Ziel, entfällt das Ablassen (Quelle: RAT-065).
+Sinkt das EC-Ziel beim Phasenwechsel um mehr als 0,2 mS/cm, weist die App
+darauf hin, den Tank ganz abzulassen (Quelle: RAT-012). Liegen Rest und
+Frischwasser unter dem neuen Ziel und lässt sich aufdosieren, entfällt das
+Ablassen; beim Wechsel des Produkts bleibt es (Quelle: RAT-065, K-1).
 Teilweises Ablassen wäre eine eigene Annahme und ist nicht vorgesehen. Der
 Hub kann nicht verdünnen.
 

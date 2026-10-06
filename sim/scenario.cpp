@@ -295,11 +295,13 @@ json Simulation::control(const std::string& action, const json& b) {
     if (Cap* c = world_.cap(dev)) {
       c->blocked = f == "blocked";
     } else if (Device* d = world_.device(dev)) {
-      d->fault = f == "none" ? "" : f;
+      // Erst den laufenden Wert festhalten, dann einfrieren (sonst friert NaN ein).
       if (f == "frozen") {
+        d->fault.clear();
         d->frozenPh = world_.rawPh(d);
         d->frozenEc = world_.rawEc(d);
       }
+      d->fault = f == "none" ? "" : f;
     } else {
       return err("Gerät nicht gefunden");
     }

@@ -575,7 +575,7 @@ Result Hub::setSystem(const json& j) {
   // Erst alles prüfen, dann übernehmen: eine Ablehnung ändert nichts.
   SystemCfg sys = cfg_.system;
   Limits lim = cfg_.limits;
-  if (j.contains("name") && j["name"].is_string()) sys.name = j["name"].get<std::string>().substr(0, 40);
+  if (j.contains("name") && j["name"].is_string()) sys.name = utf8Prefix(j["name"].get<std::string>(), 40);
   if (j.contains("timezone") && j["timezone"].is_string()) sys.timezone = j["timezone"];
   if (j.contains("language") && j["language"].is_string()) {
     std::string lang = j["language"];
@@ -617,14 +617,19 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
 }
 
 void Hub::autoBindMeasures() {
+  if (cfg_.devices.empty()) return;
   auto provides = [&](const DeviceCfg& d, const std::string& cap) {
     const DeviceClassDef* c = cat_.deviceClass(d.cls);
     return c && std::find(c->provides.begin(), c->provides.end(), cap) != c->provides.end();
   };
+  const DeviceCfg& added = cfg_.devices.back();
   for (const auto& [roleId, role] : cat_.roles) {
     if (cfg_.binding(roleId)) continue;
     const CapabilityDef* cap = cat_.capability(role.capability);
     if (!cap || cap->kind != "measure") continue;
+    // Nur Rollen, die das neue Gerät liefert: Eine bewusst gelöste Rolle
+    // bleibt gelöst, wenn ein anderes Gerät dazukommt.
+    if (!provides(added, role.capability)) continue;
     std::vector<const DeviceCfg*> cand;
     for (const auto& d : cfg_.devices)
       if (provides(d, role.capability)) cand.push_back(&d);
@@ -636,7 +641,7 @@ Result Hub::renameDevice(const std::string& id, const std::string& name) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   for (auto& d : cfg_.devices)
     if (d.id == id) {
-      d.name = name.substr(0, 40);
+      d.name = utf8Prefix(name, 40);
       saveConfig("Gerät umbenannt: " + d.name);
       return Result::ok();
     }
@@ -705,7 +710,7 @@ Result Hub::putZone(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
   auto& z = next.zone();
-  if (j.contains("name") && j["name"].is_string()) z.name = j["name"].get<std::string>().substr(0, 40);
+  if (j.contains("name") && j["name"].is_string()) z.name = utf8Prefix(j["name"].get<std::string>(), 40);
   if (j.contains("kind") && j["kind"].is_string()) z.kind = j["kind"];
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);

@@ -71,7 +71,8 @@ config {schemaVersion, revision}
 ├─ system      Name, Zeitzone, Update-Kanal, Update-Prüfung
 ├─ limits      Grenze je Handgabe, Laufzeitgrenzen
 ├─ devices[]   Geräte-ID → Klasse, Name   (flaches Inventar)
-├─ tanks[]     Nutzvolumen, Trockenlaufgrenze, Wasser, roles{rolle → Gerät/Kanal}
+├─ tanks[]     Nutzvolumen, Mindestfüllstand, Wasser, roles{tank.* → Gerät/Kanal}
+├─ zones[]     Anbaubereich: Name, Art (Raum/Zelt/Gewächshaus), Tank, roles{zone.* → Gerät/Kanal}
 ├─ canisters[] Name, Typ (Nährstoff/pH−/pH+), Pumpe, Paar, Farbe, Größe
 ├─ recipes[]   Schritte in Dosierreihenfolge (Kanister, ml/L)
 ├─ functions{} eingeschaltet, Parameter
@@ -91,6 +92,9 @@ Getrennt davon liegen:
 
 - `schemaVersion` ist eine ganze Zahl. Migrationen sind reine Funktionen
   vN → vN+1 (`migrateConfig`) und getestet.
+  - v1 → v2: Rollen `tent.*` am Tank werden `zone.*` an der ersten Zone.
+    Messreihen und Sprungsperren unter den alten Namen werden nicht
+    umbenannt; der Klimaverlauf vor dem Update bleibt unter `tent.*`.
 - Ist die Datei unlesbar, startet der Hub mit Werkseinstellung, alle Aktoren
   aus. Er meldet das laut und sichert die defekte Datei als
   `config.broken.json`.
@@ -105,6 +109,8 @@ Getrennt davon liegen:
    - pH nie im Rezept;
    - Paare vollständig;
    - eine Pumpe nur an einem Kanister;
+   - ein Kanister nur einmal je Rezept;
+   - Rollen am richtigen Ort (`tank.*` am Tank, `zone.*` an der Zone), höchstens eine Zone;
    - Parameter im Bereich, Toleranz nie 0.
 
 **Phasen:** Wirksame Parameter = Katalog-Vorgabe ⊕ Einstellung ⊕ aktive Phase

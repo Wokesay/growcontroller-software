@@ -298,7 +298,10 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   if (isNum(t.capacityL) && t.capacityL <= 0) err("cfg.tank.capacity", "Nutzvolumen muss größer als 0 sein");
   if (isNum(t.minL) && isNum(t.capacityL) && t.minL >= t.capacityL)
     err("cfg.tank.min", "Trockenlaufgrenze muss unter dem Nutzvolumen liegen");
+  // v1 der Logik kennt genau eine Zone; Messen und Regeln lesen nur die erste.
+  if (c.zones.size() > 1) err("cfg.zone.count", "Mehrere Anbaubereiche werden noch nicht unterstützt");
   for (const auto& z : c.zones) {
+    if (z.name.empty()) err("cfg.zone.name", "Der Anbaubereich braucht einen Namen");
     if (z.kind != "room" && z.kind != "tent" && z.kind != "greenhouse") err("cfg.zone.kind", z.name + ": Art muss Raum, Zelt oder Gewächshaus sein");
     bool tankKnown = false;
     for (const auto& tk : c.tanks) tankKnown = tankKnown || tk.id == z.tank;
@@ -306,8 +309,9 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     for (const auto& [role, b] : z.roles)
       if (role.rfind("zone.", 0) != 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an die Zone");
   }
-  for (const auto& [role, b] : t.roles)
-    if (role.rfind("zone.", 0) == 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an den Tank");
+  for (const auto& tk : c.tanks)
+    for (const auto& [role, b] : tk.roles)
+      if (role.rfind("zone.", 0) == 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an den Tank");
   std::vector<std::pair<std::string, Binding>> all;
   c.forEachBinding([&](const std::string& r, const Binding& b) { all.emplace_back(r, b); });
   for (const auto& [role, b] : all) {

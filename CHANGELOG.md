@@ -28,18 +28,22 @@ stehen in jedem Release unter „Sicherheit“.
   Blüte (nach Feed Program A01.004). API: `POST /recipes/template` nimmt `map`
   (Teil → Kanister), meldet fehlende Teile in `missing` und lehnt einen
   Kanister für zwei Teile ab; ein Paar der Vorlage geht auf Kanister ohne
-  eigenes Paar über, bei schon vergebenem Namen als „AB2“ usw. Die bisherigen Vorlagen `athena_pro_veg` und
+  eigenes Paar über, bei schon vergebenem Namen als „AB2“ usw. Die
+  Herstellerquelle steht auch auf Englisch (`sourceEn`). Die bisherigen Vorlagen `athena_pro_veg` und
   `ab_basic` entfallen.
 - **Anbaubereich (Schema v2):** Die Einrichtung fragt, wo die Pflanzen
   stehen (Raum, Zelt, Gewächshaus), mit eigenem Namen. Im Datenmodell ist das
   eine Zone mit eigenen Rollen (`zone.*`, vorher `tent.*` am Tank); die
-  Konfiguration wird beim Start migriert. API: `PUT /zone`.
+  Konfiguration wird beim Start migriert. API: `PUT /zone`. Für fremde
+  API-Clients: `/roles/tent.*` heißt jetzt `/roles/zone.*`; Messreihen vor
+  dem Update bleiben unter dem alten Namen.
 - **pH und EC als ein Kopf oder zwei:** neue Geräteklassen „Sensorkopf pH“
   und „Sensorkopf EC“ (mit Wassertemperatur) neben dem gemeinsamen
   pH/EC-Kopf. Messrollen werden nur zugeordnet, wenn genau ein Gerät passt.
   Einmessen und Geräte zeigen die Kalibrierungen je Kopf aus dem Katalog; im
   Simulator lassen sich beide Varianten stecken, Störungen treffen den
-  passenden Kopf.
+  passenden Kopf. Welche Hardware-Variante es geben wird, ist offen (PD
+  folgt); die Software trägt beide.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -61,6 +65,11 @@ stehen in jedem Release unter „Sicherheit“.
 - Demo: Die Phase „Blüte“ verwies auf ein fehlendes Rezept. IDs schreiben
   Umlaute jetzt um („Blüte“ → „bluete“).
 - Rezepte mit demselben Kanister zweimal werden abgelehnt.
+- Namen werden auf 40 Byte gekürzt, ohne ein Zeichen zu zerschneiden;
+  vorher machte ein Umlaut an der Grenze die Konfiguration unlesbar.
+- Übernimmt man ein Gerät, ordnet der Hub nur dessen Messrollen zu; eine
+  bewusst gelöste Rolle bleibt gelöst.
+- Simulator: „Wert friert“ hält den letzten Wert fest statt „kein Wert“.
 - `PUT /system`: Eine abgelehnte Angabe ändert auch die übrigen nicht.
 - Simulator: macOS bindet ohne `SO_REUSEADDR`; ein nicht beschreibbarer
   Datenordner wird gemerkt („nur im Speicher“), statt vergessen; das

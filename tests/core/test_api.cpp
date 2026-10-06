@@ -281,3 +281,15 @@ TEST_CASE("Vorlagen: Paarname schon vergeben → freier Name, A/B skalieren geme
   CHECK(pa == pb);
   CHECK(pa != "AB");
 }
+
+TEST_CASE("Namen: Kürzen auf 40 Zeichen zerschneidet keinen Umlaut") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  const std::string lang = std::string(39, 'x') + "ü" + "ende";  // „ü“ liegt auf der 40-Byte-Grenze
+  c.ok("PUT", "/api/v1/zone", {{"name", lang}});
+  c.ok("PUT", "/api/v1/system", {{"name", lang}});
+  auto cfg = c.ok("GET", "/api/v1/config");  // muss sich weiter lesen lassen
+  CHECK(cfg["zones"][0]["name"].get<std::string>().size() <= 40);
+  CHECK(cfg["system"]["name"].get<std::string>() == std::string(39, 'x'));
+}

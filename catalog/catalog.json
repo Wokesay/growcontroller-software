@@ -49,12 +49,12 @@
     "head_climate": {
       "label": "Sensorkopf Klima", "stage": 4, "attach": "box_port",
       "provides": ["measure.air_temp", "measure.humidity"], "shop": "Klima-Kopf",
-      "text": "Misst Lufttemperatur und Luftfeuchte im Raum."
+      "text": "Misst Lufttemperatur und Luftfeuchte im Anbaubereich."
     },
     "head_co2": {
       "label": "Sensorkopf CO2", "stage": 4, "attach": "box_port",
       "provides": ["measure.co2"], "shop": "CO2-Kopf",
-      "text": "Misst CO2 im Raum."
+      "text": "Misst CO2 im Anbaubereich."
     },
     "hub_outputs": {
       "label": "12-V-Ausgänge des Hubs", "stage": 0, "attach": "builtin", "channels": 2,
@@ -171,7 +171,7 @@
     },
     {
       "id": "climate_watch", "label": "Klima bewerten", "stage": 4, "group": "Messen",
-      "text": "Bewertet Lufttemperatur und Luftfeuchte im Raum. Steuert nichts.",
+      "text": "Bewertet Lufttemperatur und Luftfeuchte im Anbaubereich. Steuert nichts.",
       "requires": [ { "role": "zone.air_temp" }, { "role": "zone.humidity" } ]
     }
   ],

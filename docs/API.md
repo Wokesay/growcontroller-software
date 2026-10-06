@@ -50,12 +50,13 @@ also auch eine Integration.
 | Methode | Pfad | |
 |---|---|---|
 | POST | `/setup/complete` | Einrichtung abgeschlossen |
-| PUT | `/system` | Name, Zeitzone, Update-Kanal und -Prüfung, Grenze je Handgabe |
+| PUT | `/system` | Name, Zeitzone, Sprache (`de`/`en`), Update-Kanal und -Prüfung, Grenze je Handgabe |
 | POST / PATCH / DELETE | `/devices/{id}/accept`, `/devices/{id}` | übernehmen, umbenennen, entfernen |
 | PUT / DELETE | `/roles/{rolle}` `{device, channel}` | Zuordnung |
-| PUT | `/tank` | Name, Nutzvolumen, Trockenlaufgrenze, Wasser, Volumen ohne Füllstandskopf |
+| PUT | `/tank` | Name, Nutzvolumen, Mindestfüllstand, Wasser, Volumen ohne Füllstandskopf |
+| PUT | `/zone` | Anbaubereich: Name, Art (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | Kanister, Vorrat |
-| POST / DELETE | `/recipes`, `/recipes/template`, `/recipes/{id}` | Rezepte, Vorlagen |
+| POST / DELETE | `/recipes`, `/recipes/template` `{id, map}`, `/recipes/{id}` | Rezepte; Vorlage mit Zuordnung Teil → Kanister (422 mit `missing`) |
 | PATCH | `/functions/{id}` `{enabled, params}` | Einschalten nur, wenn eingerichtet (sonst 409 mit „was fehlt“) |
 | POST | `/config/import` | geprüft, Aktoren vorher aus |
 

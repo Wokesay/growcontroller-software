@@ -415,3 +415,38 @@ TEST_CASE("Sonden: pH und EC als getrennte Köpfe, Wassertemperatur vom EC-Kopf"
   REQUIRE(until(s, [&] { return !c.state()["readings"]["tank.ph"]["value"].is_number(); }, 180000));
   CHECK(c.state()["readings"]["tank.ec"]["value"].is_number());
 }
+
+TEST_CASE("Zuordnung: gelöste Messrolle bleibt gelöst, wenn ein anderes Gerät übernommen wird") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("DELETE", "/api/v1/roles/tank.ph");  // z. B. Sonde defekt
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("plug", {{"port", 6}, {"class", "head_climate"}});
+  }
+  std::string clim;
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    for (const auto& d : st["devices"])
+      if (d["class"] == "head_climate" && d["online"] == true) clim = d["id"];
+    return !clim.empty();
+  }, 30000));
+  c.ok("POST", "/api/v1/devices/" + clim + "/accept", {{"name", ""}});
+  auto cfg = c.ok("GET", "/api/v1/config");
+  CHECK_FALSE(cfg["tanks"][0]["roles"].contains("tank.ph"));
+  CHECK(cfg["zones"][0]["roles"]["zone.air_temp"]["device"] == clim);
+}
+
+TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "frozen"}});
+  }
+  s.step(10000);
+  auto r = c.state()["readings"]["tank.ph"];
+  CHECK(r["value"].is_number());
+}
