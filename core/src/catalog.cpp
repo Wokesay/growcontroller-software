@@ -19,6 +19,13 @@ double jnum(const json& j, const char* key, double fallback) {
   return it->get<double>();
 }
 
+bool jbool(const json& j, const char* key, bool fallback) {
+  if (!j.is_object()) return fallback;
+  auto it = j.find(key);
+  if (it == j.end() || !it->is_boolean()) return fallback;
+  return it->get<bool>();
+}
+
 std::string jstr(const json& j, const char* key, const std::string& fallback) {
   if (!j.is_object()) return fallback;
   auto it = j.find(key);

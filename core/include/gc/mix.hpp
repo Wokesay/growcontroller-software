@@ -66,8 +66,10 @@ struct EcDose {
   double factor = 1.0;  // gemeinsamer Skalierungsfaktor durch Deckel
   std::vector<DoseStep> steps;
 };
+// Deckel je Runde in ml/L: maxEcStep / max(Startwirkung, Wirkung). Eine klein
+// gemessene Wirkung weitet den Deckel nie auf (RAT-056).
 EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& recipe, double volumeL, double gapEc,
-                  double effectPerMlL, double maxEcStep);
+                  double effectPerMlL, double startEffect, double maxEcStep);
 
 // pH-Gabe: 0,8 × Lücke / Wirkung × V, Deckel min(0,3 pH Wirkung, 0,3 ml/L,
 // Höchstmenge) (RAT-055, RAT-050).

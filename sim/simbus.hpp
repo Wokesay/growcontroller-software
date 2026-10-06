@@ -42,6 +42,7 @@ class SimBus : public gc::IBus {
  private:
   World& w_;
   mutable std::map<std::string, std::pair<gc::Ms, double>> cache_;
+  mutable std::map<std::string, gc::RunStatus> lastRun_;  // letzter gelesener Laufstatus je Pumpe
 };
 
 }  // namespace sim

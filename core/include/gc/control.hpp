@@ -36,6 +36,7 @@ struct ControlEnv {
   double volumeL = kNaN;     // Füllstand, sonst bekanntes Volumen aus Mischläufen
   Epoch lastEcDoseAt = 0;
   bool ecBusy = false;
+  bool phBusy = false;       // pH dosiert oder schwingt ein: EC-Runde wartet (RAT-057)
   bool refilling = false;    // Zulauf offen: Wirkung nicht messbar, nicht dosieren (RAT-055)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
 };
@@ -67,6 +68,7 @@ class PhController {
   void onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p);
   void reset() { phase_ = Phase::Idle; }
   const CtlStatus& status() const { return st_; }
+  bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle || pendingCirc_; }
 
  private:

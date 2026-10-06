@@ -51,7 +51,8 @@ void usage() {
             << "  --web DIR           gebaute Web-App (web/dist)\n"
             << "  --speed X           Zeitraffer (1)\n"
             << "  --password PW       Passwort für das Demo-Szenario\n"
-            << "  --prefill H         Stunden Verlauf vorrechnen (48)\n";
+            << "  --prefill H         Stunden Verlauf vorrechnen (48)\n"
+            << "  --allow-reset       Szenario ohne Anmeldung wechseln (nur für automatische Tests)\n";
 }
 
 }  // namespace
@@ -62,6 +63,7 @@ int main(int argc, char** argv) {
   std::string host = "127.0.0.1";
   std::string web = "web/dist";
   double speed = 1.0;
+  bool allowReset = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string {
@@ -79,6 +81,7 @@ int main(int argc, char** argv) {
     else if (a == "--speed") speed = std::stod(next());
     else if (a == "--password") opts.password = next();
     else if (a == "--prefill") opts.prefillHours = std::stod(next());
+    else if (a == "--allow-reset") allowReset = true;
     else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -102,6 +105,17 @@ int main(int argc, char** argv) {
                             "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
                             "connect-src 'self'; frame-ancestors 'none'"}});
   svr.set_payload_max_length(1 << 20);
+  // Herkunft prüfen, bevor irgendein Handler läuft (DNS-Rebinding, CSRF).
+  svr.set_pre_routing_handler([&](const httplib::Request& req, httplib::Response& res) {
+    const bool ok = gc::hostAllowed(req.get_header_value("Host"), host) &&
+                    gc::writeAllowed(req.method, req.get_header_value("Sec-Fetch-Site"),
+                                     req.get_header_value("Origin"), req.get_header_value("Host"));
+    if (ok) return httplib::Server::HandlerResponse::Unhandled;
+    res.status = 403;
+    res.set_content(R"({"error":{"key":"api.origin","text":"Anfrage von fremder Herkunft abgelehnt"}})",
+                    "application/json");
+    return httplib::Server::HandlerResponse::Handled;
+  });
 
   auto apiHandler = [&](const httplib::Request& req, httplib::Response& res) {
     gc::ApiResponse r;
@@ -128,8 +142,9 @@ int main(int argc, char** argv) {
   svr.Post(R"(/api/v1/sim/(\w+))", [&](const httplib::Request& req, httplib::Response& res) {
     std::lock_guard<std::recursive_mutex> l(simulation.mutex());
     std::string action = req.matches[1];
-    // Szenario wechseln geht auch ohne Anmeldung (Test-Hilfe, nur im Simulator)
-    if (action != "scenario" && !simulation.api().authorized(toApi(req))) {
+    // Szenario wechseln ohne Anmeldung nur mit --allow-reset (Playwright)
+    const bool open = action == "scenario" && allowReset;
+    if (!open && !simulation.api().authorized(toApi(req))) {
       res.status = 401;
       res.set_content(R"({"error":{"key":"auth.required","text":"Bitte anmelden"}})", "application/json");
       return;

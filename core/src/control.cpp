@@ -13,6 +13,19 @@ void to_json(json& j, const CtlStatus& s) {
 
 namespace {
 
+// Parameter als Anzahl bzw. Dauer: fehlend oder unsinnig → sichere Vorgabe, nie
+// undefiniertes Verhalten beim Umwandeln.
+int countParam(double v, int fallback) { return isNum(v) && v >= 0 && v <= 1000 ? static_cast<int>(v) : fallback; }
+Ms minutesParam(double v, double fallback) {
+  return static_cast<Ms>((isNum(v) && v > 0 && v <= 24 * 60 ? v : fallback) * kMinute);
+}
+
+// Läuft gerade eine Gabe, die nicht vom eigenen Regler stammt?
+bool foreignDose(const ControlEnv& env, const char* ownPrefix) {
+  const auto& a = env.doser.active();
+  return a && a->id.rfind(ownPrefix, 0) != 0;
+}
+
 constexpr double kPhStartEffect = 5.0;    // pH je ml/L pH− (RAT-050: kleinste Dosis)
 constexpr double kEcStartEffect = 0.275;  // mS/cm je ml/L Rezept (RAT-055)
 constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
@@ -105,14 +118,14 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.push_back({!env.userJob, env.userJob ? "Ein Auftrag läuft" : "Kein anderer Auftrag"});
 
   if (!automation(c, st_)) {
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(env.act, c.cfg);
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
     reset();
     return;
   }
   if (env.calibrating) {
     st_.state = "waiting";
     st_.line = line("ctl.calibrating", "Wartet: Sonde wird kalibriert");
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(env.act, c.cfg);
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
     reset();
     return;
   }
@@ -123,7 +136,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
 
-  if (phase_ != Phase::Idle && env.refilling) clean_ = false;
+  // Wirkung nur aus sauberen Gaben lernen: kein Zulauf, keine fremde Gabe dazwischen (RAT-057).
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ec-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = "working";
@@ -146,12 +160,13 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     if (clean_) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
     if (noEffect_ >= 2) {
       c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
+      noEffect_ = 0;  // nach dem Quittieren wieder zwei Runden
       c.log.add(c.epoch, "alarm", "alarm", "EC-Nachdosierung ohne Wirkung",
                 "EC stieg nach zwei Runden nicht. Gerastet bis zur Quittierung.");
       reset();
       return;
     }
-    if (*ec.value >= target - tol || round_ >= static_cast<int>(p.num("max_doses"))) {
+    if (*ec.value >= target - tol || round_ >= countParam(p.num("max_doses"), 1)) {
       bool reached = *ec.value >= target - tol;
       c.log.add(c.epoch, "control", reached ? "info" : "warn",
                 reached ? "EC nachdosiert" : "EC-Nachdosierung: Höchstzahl Runden",
@@ -226,13 +241,18 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = line("ec.wait_refill", "Wartet: Nachfüllen läuft");
     return;
   }
+  if (env.phBusy) {
+    st_.state = "waiting";
+    st_.line = line("ec.wait_ph", "Wartet: pH-Korrektur läuft noch");
+    return;
+  }
   if (!circOk) {
     st_.state = "blocked";
     st_.line = line("ec.no_circ", "Gesperrt: Umwälzpumpe gesperrt – ohne Durchmischung keine Dosierung");
     return;
   }
   auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value,
-                         clampEffect(c.rt.ecEffect, kEcStartEffect), p.num("max_ec_step"));
+                         clampEffect(c.rt.ecEffect, kEcStartEffect), kEcStartEffect, p.num("max_ec_step"));
   if (!plan.ok) {
     st_.state = "blocked";
     st_.line = line("ec.plan", "Gesperrt: " + plan.reason.text);
@@ -262,7 +282,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
   if (queue_.empty()) {
     auto pv = effectiveParams(c.cat, c.cfg, "ec_control");
     phase_ = Phase::Settling;
-    settleUntil_ = c.now + static_cast<Ms>(pv.num("settle_min") * kMinute);
+    settleUntil_ = c.now + minutesParam(pv.num("settle_min"), 5);
     env.truth.expectChange("tank.ec", settleUntil_ + kMinute);
     env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
   }
@@ -307,14 +327,14 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.push_back({circOk, circOk ? "Umwälzpumpe frei" : "Umwälzpumpe gesperrt"});
 
   if (!automation(c, st_)) {
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(env.act, c.cfg);
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
     reset();
     return;
   }
   if (env.calibrating) {
     st_.state = "waiting";
     st_.line = line("ctl.calibrating", "Wartet: Sonde wird kalibriert");
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(env.act, c.cfg);
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
     reset();
     return;
   }
@@ -325,7 +345,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
 
-  if (phase_ != Phase::Idle && env.refilling) clean_ = false;
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ph-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = "working";
@@ -345,11 +365,12 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     if (clean_) noEffect_ = drop < 0.03 ? noEffect_ + 1 : 0;  // RAT-020, RAT-041
     if (noEffect_ >= 2) {
       c.rt.latches["ph.no_effect"] = {{"at", c.epoch}};
+      noEffect_ = 0;
       c.log.add(c.epoch, "alarm", "alarm", "pH-Regelung ohne Wirkung", "pH bewegte sich nach zwei Gaben nicht. Gerastet.");
       reset();
       return;
     }
-    if (*ph.value <= target + tol || doses_ >= static_cast<int>(p.num("max_doses"))) {
+    if (*ph.value <= target + tol || doses_ >= countParam(p.num("max_doses"), 1)) {
       bool reached = *ph.value <= target + tol;
       c.log.add(c.epoch, "control", reached ? "info" : "warn", reached ? "pH korrigiert" : "pH-Korrektur: Höchstzahl Gaben",
                 "pH " + fmt(startPh_, 2) + " → " + fmt(*ph.value, 2) + " mit " + std::to_string(doses_) +
@@ -430,7 +451,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   s.ml = plan.ml;
   s.flowMlPerMin = flow;
   Msg err;
-  s.runs = splitRuns(plan.ml, flow, c.cfg.limits, c.cfg.limits.maxPartialRuns, err);
+  s.runs = splitRuns(plan.ml, flow, c.cfg.limits, c.cfg.limits.bounded().maxPartialRuns, err);
   if (!err.key.empty()) {
     // Gabe unter 1 s: nicht dosieren, sichtbar ruhen (RAT-050)
     st_.state = "idle";
@@ -462,7 +483,7 @@ void PhController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
   mlLast_ = p.mlDone;
   doses_++;
   phase_ = Phase::Settling;
-  settleUntil_ = c.now + static_cast<Ms>(pv.num("settle_min") * kMinute);
+  settleUntil_ = c.now + minutesParam(pv.num("settle_min"), 5);
   env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
 }
 
@@ -548,7 +569,18 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = line("refill.flow", "Gesperrt: Zulaufrate fehlt");  // kein Ersatzwert (RAT-038)
     return;
   }
+  if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
+    // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055)
+    st_.state = "waiting";
+    st_.line = line("refill.dosing", "Wartet: Dosierung läuft – Nachfüllen danach");
+    return;
+  }
   plannedL_ = target - *level.value;
+  if (plannedL_ < 0.5) {
+    st_.state = "idle";
+    st_.line = line("refill.near", "Ruht: Ziel fast erreicht");
+    return;
+  }
   plannedMs_ = static_cast<Ms>(plannedL_ / flow * kMinute);
   Msg e;
   if (!env.act.setRole(c, "tank.inlet", true, "Nachfüllen", e)) {

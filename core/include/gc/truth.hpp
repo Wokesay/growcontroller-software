@@ -31,6 +31,8 @@ class SensorTruth {
   // Einmal je Takt: liest alle gebundenen Mess-Rollen.
   void update(const Config& cfg, const IBus& bus, RuntimeState& rt, Ms now, Epoch epoch);
   // Eine eigene Dosierung erklärt einen Sprung bis zu diesem Zeitpunkt (RAT-042).
+  // Prüft importierte Kalibrierdaten; Fehlertext oder nichts.
+  static std::optional<std::string> checkCalibration(const std::string& kind, const json& data);
   void expectChange(const std::string& role, Ms until);
 
   const Reading& get(const std::string& role) const;

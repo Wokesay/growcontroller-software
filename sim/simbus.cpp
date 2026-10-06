@@ -103,12 +103,15 @@ bool SimBus::startRun(const std::string& pump, gc::Ms ms, const std::string& job
 
 gc::RunStatus SimBus::runStatus(const std::string& pump) const {
   gc::RunStatus st;
-  Cap* c = w_.cap(pump);
+  Device* block = nullptr;
+  Cap* c = w_.cap(pump, &block);
   if (!c) {
     st.state = gc::RunStatus::State::Failed;
     st.error = "Kappe getrennt";
     return st;
   }
+  // Block antwortet nicht: der Hub sieht nur den zuletzt gelesenen Stand.
+  if (block && block->fault == "offline") return lastRun_[pump];
   st.jobId = c->jobId;
   st.requestedMs = c->requested;
   st.actualMs = c->elapsed;
@@ -119,6 +122,7 @@ gc::RunStatus SimBus::runStatus(const std::string& pump) const {
     case 3: st.state = gc::RunStatus::State::Failed; break;
     default: st.state = gc::RunStatus::State::Idle;
   }
+  lastRun_[pump] = st;
   return st;
 }
 

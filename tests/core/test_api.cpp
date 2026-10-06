@@ -1,6 +1,9 @@
 #include <doctest/doctest.h>
 
+#include <cstdint>
+
 #include "client.hpp"
+#include "fakes.hpp"
 
 using test::Client;
 
@@ -72,4 +75,83 @@ TEST_CASE("API: Zustand hat die Felder, die die Web-App liest (Vertrag)") {
   auto d = c.ok("GET", "/api/v1/diagnostics");
   CHECK(d["reportId"].get<std::string>().rfind("GC-", 0) == 0);
   CHECK(d.dump().find("salt") == std::string::npos);
+}
+
+TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
+  CHECK(gc::hostAllowed("127.0.0.1:8080"));
+  CHECK(gc::hostAllowed("localhost:8080"));
+  CHECK(gc::hostAllowed("192.168.1.20"));
+  CHECK(gc::hostAllowed("growcontroller.local"));
+  CHECK(gc::hostAllowed("[::1]:8080"));
+  CHECK(gc::hostAllowed("mein-hub", "mein-hub"));
+  CHECK_FALSE(gc::hostAllowed("angreifer.example:8080"));
+  CHECK_FALSE(gc::hostAllowed("127.0.0.1.angreifer.example"));
+  // Lesen immer, Schreiben nur von derselben Herkunft
+  CHECK(gc::writeAllowed("GET", "cross-site", "https://angreifer.example", "192.168.1.20"));
+  CHECK(gc::writeAllowed("POST", "same-origin", "http://192.168.1.20", "192.168.1.20"));
+  CHECK_FALSE(gc::writeAllowed("POST", "cross-site", "https://angreifer.example", "192.168.1.20"));
+  CHECK_FALSE(gc::writeAllowed("POST", "same-site", "http://192.168.1.21", "192.168.1.20"));
+  CHECK_FALSE(gc::writeAllowed("POST", "", "https://angreifer.example", "192.168.1.20"));
+  CHECK(gc::writeAllowed("POST", "", "http://192.168.1.20", "192.168.1.20"));
+  CHECK(gc::writeAllowed("POST", "", "", "192.168.1.20"));  // kein Browser (curl, Integrationen)
+}
+
+TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines Auftrags (R7)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  if (cfg.contains("config")) cfg = cfg["config"];
+  gc::json bad = cfg;
+  bad["limits"]["maxRunS"] = 600;
+  CHECK(c.call("POST", "/api/v1/config/import", bad).first == 422);
+  bad = cfg;
+  bad["grow"]["phases"][0]["params"]["ph_tolerance"] = 0;
+  CHECK(c.call("POST", "/api/v1/config/import", bad).first == 422);
+  bad = cfg;
+  bad["calibrations"]["PHEC-3F2A91"]["ph"] = {{"points", "kaputt"}};
+  CHECK(c.call("POST", "/api/v1/config/import", bad).first == 422);
+  // Falsche Typen bringen den Server nicht zum Absturz
+  CHECK(c.call("POST", "/api/v1/mix/plan", {{"recipe", 5}, {"waterL", "zehn"}, {"confirmRepeat", "ja"}}).first < 500);
+  CHECK(c.call("PUT", "/api/v1/roles/tank.ph", {{"device", "PHEC-3F2A91"}, {"channel", 99}}).first == 422);
+  CHECK(c.call("POST", "/api/v1/grow/start", {{"phases", "viele"}}).first >= 400);
+  CHECK(c.call("GET", "/api/v1/state").first == 200);
+  // Während einer Handgabe kein Import
+  for (int i = 0; i < 600; ++i) {
+    auto now = c.state();
+    if (now["job"].is_null() && now["dosing"].is_null()) break;
+    s.step(5000);
+  }
+  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
+  CHECK(c.call("POST", "/api/v1/config/import", cfg).first == 409);
+}
+
+TEST_CASE("API: Passwort verloren → keine Ersteinrichtung über das Netz (EN 18031 AUM)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  auto rng = [](std::uint8_t* p, size_t n) {
+    static std::uint8_t x = 7;
+    for (size_t i = 0; i < n; ++i) p[i] = x += 31;
+  };
+  auto setup = [&](gc::Hub& h) {
+    gc::Api api(h, clk);
+    gc::ApiRequest r;
+    r.method = "POST";
+    r.path = "/api/v1/auth/setup";
+    r.body = R"({"password":"mein-passwort"})";
+    return api.handle(r).status;
+  };
+  {
+    gc::Hub h(cat, bus, store, clk, rng);
+    h.boot();
+    CHECK(setup(h) == 200);
+    h.flush();
+  }
+  store.write("auth.json", "{}");  // Datei beschädigt oder verloren
+  gc::Hub h(cat, bus, store, clk, rng);
+  h.boot();
+  CHECK(h.credentialsLost());
+  CHECK(setup(h) == 423);
 }

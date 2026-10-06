@@ -93,3 +93,59 @@ TEST_CASE("Phasen liefern Parameter; der Name ändert nichts (M15-1, RAT-076)") 
   c.grow.phases[0].name = "Irgendwas";
   CHECK(effectiveParams(cat, c, "ph_control").values() == p.values());
 }
+
+TEST_CASE("Konfiguration: Grenzen dürfen nur verschärfen (R7)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  auto hasKey = [&](const std::string& key) {
+    for (const auto& m : validateConfig(c, cat))
+      if (m.key == key) return true;
+    return false;
+  };
+  c.limits.maxRunS = 600;
+  CHECK(hasKey("cfg.limits.max_run"));
+  c.limits = Limits{};
+  c.limits.maxPartialRuns = 0;
+  CHECK(hasKey("cfg.limits.runs"));
+  c.limits = Limits{};
+  c.limits.handDoseMaxMl = 1e6;
+  CHECK(hasKey("cfg.limits.hand"));
+  c.limits = Limits{};
+  c.limits.minRunS = 0.1;
+  CHECK(hasKey("cfg.limits.min_run"));
+  // Gateway und Planung rechnen mit den festen Grenzen, auch wenn die Datei Unsinn enthält
+  Limits bad;
+  bad.maxRunS = 600;
+  bad.minRunS = kNaN;
+  bad.handDoseMaxMl = kNaN;
+  bad.maxPartialRuns = 0;
+  Limits b = bad.bounded();
+  CHECK(b.maxRunS == doctest::Approx(kHardMaxRunS));
+  CHECK(b.minRunS == doctest::Approx(kHardMinRunS));
+  CHECK(b.handDoseMaxMl == doctest::Approx(5.0));
+  CHECK(b.maxPartialRuns == 1);
+  // Aus JSON: falscher Typ wirft nicht; es gilt die Vorgabe, Unsinn fällt bei der Prüfung auf
+  json j = sample();
+  j["limits"]["maxPartialRuns"] = "viele";
+  Config fromFile;
+  CHECK_NOTHROW(fromFile = configFromJson(j));
+  CHECK(fromFile.limits.maxPartialRuns == kHardMaxPartialRuns);
+  j["limits"]["maxPartialRuns"] = 1e9;
+  c = configFromJson(j);
+  CHECK(hasKey("cfg.limits.runs"));
+}
+
+TEST_CASE("Konfiguration: Phasenparameter im Katalogbereich (RAT-008, RAT-076)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  c.grow.phases = {{"Blüte", 56, {{"ph_target", 5.9}, {"ec_target", 1.8}}}};
+  CHECK(validateConfig(c, cat).empty());
+  c.grow.phases[0].params["ph_tolerance"] = 0.0;
+  CHECK_FALSE(validateConfig(c, cat).empty());
+  c.grow.phases[0].params = {{"ph_target", 1.0}};
+  CHECK_FALSE(validateConfig(c, cat).empty());
+  c.grow.phases[0].params = {{"ec_floor", 2.0}};  // nicht phasenabhängig
+  CHECK_FALSE(validateConfig(c, cat).empty());
+  c.grow.phases[0].params = {{"ph_target", "sauer"}};
+  CHECK_FALSE(validateConfig(c, cat).empty());
+}

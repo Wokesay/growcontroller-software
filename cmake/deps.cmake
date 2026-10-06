@@ -29,8 +29,8 @@ gc_fetch_header(nlohmann_json
   "nlohmann/json.hpp")
 
 gc_fetch_header(cpp_httplib
-  "https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.18.3/httplib.h"
-  a0a0c13dc086663863dbe6730a19716f7d3744904b6205496e8301750814dbd5
+  "https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.54.1/httplib.h"
+  5933c14b2d0f45212925ed18ca579841f5fce717f431fc20cec712423e905b10
   "httplib.h")
 
 gc_fetch_header(doctest

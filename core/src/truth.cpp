@@ -40,7 +40,43 @@ const Reading& emptyReading() {
   return r;
 }
 
+struct PhLine {
+  double r1, s1, slope;
+};
+
+// Zwei Pufferpunkte (roh, Soll). Die Steigung muss plausibel sein (Sonde gesund).
+// Liest fremde Daten nur geprüft: kaputte Kalibrierung heißt „kein Wert“, nie Absturz.
+std::optional<PhLine> phLine(const json& calib) {
+  if (!calib.is_object()) return std::nullopt;
+  auto it = calib.find("points");
+  if (it == calib.end() || !it->is_array() || it->size() < 2) return std::nullopt;
+  auto ok = [](const json& p) { return p.is_array() && p.size() == 2 && p[0].is_number() && p[1].is_number(); };
+  const json& a = (*it)[0];
+  const json& b = (*it)[1];
+  if (!ok(a) || !ok(b)) return std::nullopt;
+  double r1 = a[0].get<double>(), s1 = a[1].get<double>();
+  double r2 = b[0].get<double>(), s2 = b[1].get<double>();
+  if (std::fabs(r2 - r1) < 0.5) return std::nullopt;
+  double slope = (s2 - s1) / (r2 - r1);
+  if (slope < 0.8 || slope > 1.25) return std::nullopt;
+  return PhLine{r1, s1, slope};
+}
+
 }  // namespace
+
+std::optional<std::string> SensorTruth::checkCalibration(const std::string& kind, const json& data) {
+  if (!data.is_object()) return std::string("Daten ungültig");
+  if (kind == "ph" && !phLine(data)) return std::string("zwei Pufferpunkte mit plausibler Steigung nötig");
+  if (kind == "ec") {
+    double f = jnum(data, "factor");
+    if (!isNum(f) || f < 0.5 || f > 2.0) return std::string("Faktor zwischen 0,5 und 2 nötig");
+  }
+  if (kind == "tank_curve") {
+    std::string err;
+    if (!Curve::fromJson(data, err)) return err;
+  }
+  return std::nullopt;
+}
 
 std::optional<Curve> Curve::fromJson(const json& j, std::string& err) {
   if (!j.is_object() || !j.contains("points") || !j["points"].is_array()) {
@@ -94,15 +130,9 @@ std::optional<double> SensorTruth::calibrate(const std::string& cap, double raw,
   if (kind.empty()) return raw;  // Kanal ohne Kalibrierbedarf
   if (!calib) return std::nullopt;
   if (kind == "ph") {
-    // Zwei Pufferpunkte (roh, Soll). Steigung muss plausibel sein (Sonde gesund).
-    const json& pts = (*calib)["points"];
-    if (!pts.is_array() || pts.size() < 2) return std::nullopt;
-    double r1 = pts[0][0].get<double>(), s1 = pts[0][1].get<double>();
-    double r2 = pts[1][0].get<double>(), s2 = pts[1][1].get<double>();
-    if (std::fabs(r2 - r1) < 0.5) return std::nullopt;
-    double slope = (s2 - s1) / (r2 - r1);
-    if (slope < 0.8 || slope > 1.25) return std::nullopt;
-    return s1 + (raw - r1) * slope;
+    auto line = phLine(*calib);
+    if (!line) return std::nullopt;
+    return line->s1 + (raw - line->r1) * line->slope;
   }
   if (kind == "ec") {
     double f = jnum(*calib, "factor");

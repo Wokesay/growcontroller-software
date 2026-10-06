@@ -67,6 +67,7 @@ void Hub::boot() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   bootEpoch_ = clock_.epoch();
   bootMs_ = clock_.nowMs();
+  doser_.setBootTag(newId("b"));  // Bus-Job-IDs über Neustarts eindeutig
   if (auto s = store_.read(kEventsFile)) {
     auto j = json::parse(*s, nullptr, false);
     if (!j.is_discarded()) log_.load(j);
@@ -87,21 +88,37 @@ void Hub::boot() {
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
-  if (auto s = store_.read(kStateFile)) rt_ = runtimeFromJson(json::parse(*s, nullptr, false));
+  if (auto s = store_.read(kStateFile)) {
+    try {
+      rt_ = runtimeFromJson(json::parse(*s, nullptr, false));
+    } catch (const std::exception& e) {
+      rt_ = RuntimeState{};
+      log_.add(bootEpoch_, "system", "alarm", "Laufzeitzustand unlesbar",
+               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Grund: ") +
+                   e.what());
+    }
+  }
   if (auto s = store_.read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
+  if (credentialsLost())
+    log_.add(bootEpoch_, "system", "alarm", "Zugangsdaten fehlen",
+             "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
   if (auto s = store_.read(kHistoryFile)) history_.load(*s);
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
   act_.stopAll(cfg_);
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
-    if (!j.is_discarded() && (j.value("state", "") == "running" || j.value("state", "") == "waiting_user" ||
-                              j.value("state", "") == "mixing")) {
-      std::string what = j.value("type", "") == "mix" ? "Mischlauf" : "Auftrag";
-      size_t idx = j.value("index", size_t{0});
-      size_t total = j.contains("steps") ? j["steps"].size() : 0;
+    const std::string state = jstr(j, "state");
+    if (state == "running" || state == "waiting_user" || state == "mixing") {
+      std::string what = jstr(j, "type") == "mix" ? "Mischlauf" : "Auftrag";
+      double idxNum = jnum(j, "index", 0);
+      size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
+      const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
+      size_t total = steps.size();
       std::string done;
-      for (const auto& st : j.value("steps", json::array()))
-        if (st.value("mlDone", 0.0) > 0) done += (done.empty() ? "" : ", ") + st.value("name", std::string()) + " " + fmt(st.value("mlDone", 0.0), 1) + " ml";
+      for (const auto& st : steps) {
+        double ml = jnum(st, "mlDone", 0);
+        if (isNum(ml) && ml > 0) done += (done.empty() ? "" : ", ") + jstr(st, "name") + " " + fmt(ml, 1) + " ml";
+      }
       log_.add(bootEpoch_, "mix", "warn", what + " durch Neustart unterbrochen",
                "Bei Schritt " + std::to_string(idx + 1) + "/" + std::to_string(total) + ". Drin: " +
                    (done.empty() ? "nichts" : done) + ". Nicht automatisch fortgesetzt.");
@@ -178,6 +195,28 @@ double Hub::tankVolume() const {
 
 void Hub::tick() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  try {
+    tickImpl();
+    if (tickFault_) {
+      tickFault_ = false;
+      log_.add(clock_.epoch(), "system", "info", "Steuerung läuft wieder", "Der Takt läuft wieder ohne Fehler.");
+    }
+  } catch (const std::exception& e) {
+    // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
+    // Dosierung abbrechen, einmal laut melden.
+    act_.stopAll(cfg_);
+    Ctx c = ctx();
+    doser_.abort(c, act_, "Interner Fehler");
+    if (!tickFault_) {
+      tickFault_ = true;
+      log_.add(clock_.epoch(), "system", "alarm", "Interner Fehler – alles aus",
+               std::string("Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet: ") +
+                   e.what());
+    }
+  }
+}
+
+void Hub::tickImpl() {
   Ms now = clock_.nowMs();
   Epoch epoch = clock_.epoch();
   bus_.poll(now);
@@ -191,6 +230,9 @@ void Hub::tick() {
     truth_.expectChange("tank.ec", now + 10 * kMinute);
     truth_.expectChange("tank.ph", now + 10 * kMinute);
   }
+  // Eigene EC-Runde: Deckel 1,0 mS/cm liegt über der Sprungschwelle 0,5 – ankündigen.
+  // pH-Gaben bleiben unangekündigt (Deckel 0,3 pH unter der Schwelle 1,0).
+  if (ec_.busy()) truth_.expectChange("tank.ec", now + 10 * kMinute);
   if (act_.roleState(cfg_, "tank.inlet").value_or(false))
     for (const char* r : {"tank.ec", "tank.ph", "tank.level"}) truth_.expectChange(r, now + 5 * kMinute);
   if (epoch < maintenanceUntil_)
@@ -235,11 +277,16 @@ void Hub::tick() {
   }
   tickJob(c);
   env.userJob = userJobActive();
+  // Nachfüllen zuerst: Es startet nur, wenn keine Gabe läuft oder einschwingt,
+  // und hält dann neue EC- und pH-Runden an (RAT-055).
+  env.ecBusy = ec_.busy();
+  env.phBusy = ph_.busy();
+  refill_.tick(c, env);
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
   ec_.tick(c, env);
   env.ecBusy = ec_.busy();
   env.lastEcDoseAt = ec_.lastDoseAt();
   ph_.tick(c, env);
-  refill_.tick(c, env);
   bool demand = ec_.wantsCirculation() || ph_.wantsCirculation() || (job_ && job_->circulation && userJobActive());
   circ_.tick(c, env, demand);
 
@@ -320,7 +367,7 @@ json Hub::state() {
     const DeviceClassDef* cls = cat_.deviceClass(d.cls);
     json cal = json::object();
     if (auto it = cfg_.calibrations.find(d.id); it != cfg_.calibrations.end())
-      for (const auto& [k, v] : it->second) cal[k] = v.value("at", Epoch{0});
+      for (const auto& [k, v] : it->second) cal[k] = static_cast<Epoch>(jnum(v, "at", 0));
     devs.push_back({{"id", d.id},
                     {"class", d.cls},
                     {"classLabel", cls ? cls->label : d.cls},
@@ -472,6 +519,13 @@ json Hub::diagnostics() {
 }
 
 // ------------------------------------------------------------------ Einrichtung
+
+void Hub::markPasswordSet() {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  if (cfg_.system.passwordSet) return;
+  cfg_.system.passwordSet = true;
+  saveConfig("");
+}
 
 Result Hub::completeSetup() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
@@ -751,7 +805,13 @@ Result Hub::importConfig(const json& j) {
     return Result::fail(422, "config.import", std::string("Datei unlesbar: ") + e.what());
   }
   auto errs = validateConfig(next, cat_);
+  for (const auto& [dev, kinds] : next.calibrations)
+    for (const auto& [kind, data] : kinds)
+      if (auto e = SensorTruth::checkCalibration(kind, data))
+        errs.push_back({"cfg.calibration", "Kalibrierung " + dev + " (" + kind + "): " + *e, json::object()});
   if (!errs.empty()) return errors(errs);
+  if (userJobActive() || doser_.busy())
+    return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
   act_.stopAll(cfg_);
   next.revision = cfg_.revision;
   cfg_ = next;
@@ -763,7 +823,7 @@ Result Hub::importConfig(const json& j) {
 
 Result Hub::mixPlan(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), req.value("confirmRepeat", false)};
+  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
@@ -775,7 +835,7 @@ Result Hub::mixStart(const json& req) {
   if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
   if (stopped_) return Result::fail(409, "job.stopped", "Not-Halt aktiv – erst fortsetzen");
-  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), req.value("confirmRepeat", false)};
+  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
@@ -788,7 +848,7 @@ Result Hub::mixStart(const json& req) {
   Job j;
   j.id = newId("mix");
   j.type = "mix";
-  j.guided = req.value("guided", true);
+  j.guided = jbool(req, "guided", true);
   j.startedAt = clock_.epoch();
   j.circulation = cfg_.binding("tank.circulation") != nullptr;
   j.info = {{"recipe", plan.recipe}, {"recipeName", plan.recipeName}, {"waterL", plan.waterL}, {"mode", plan.mode},
@@ -821,9 +881,19 @@ bool Hub::startJobStep(Ctx& c) {
     Msg err;
     o.step.ml = st.dose.ml - st.mlDone;
     o.step.runs = splitRuns(o.step.ml, o.step.flowMlPerMin, cfg_.limits, 0, err);
-    if (!err.key.empty()) {
-      st.state = "done";  // Rest unter einem genauen Lauf: als erledigt werten
+    if (err.key == "dose.too_small") {
+      // Rest unter einem genauen Lauf: als erledigt werten und weiterschalten
+      DoseProgress rest;
+      rest.state = DoseProgress::State::Done;
+      rest.orderId = o.id;
+      onJobDose(c, rest);
       return true;
+    }
+    if (!err.key.empty()) {
+      st.state = "failed";
+      j.state = "failed";
+      j.message = {"job.start_failed", st.dose.name + ": " + err.text, json::object()};
+      return false;
     }
   }
   Msg err;
@@ -956,11 +1026,9 @@ Result Hub::jobResume(const std::string& id) {
 Result Hub::jobAbort(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (!job_ || job_->id != id) return Result::fail(404, "job.unknown", "Auftrag nicht aktiv");
-  if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(act_, cfg_);
-  if (auto fin = doser_.takeFinished()) {
-    Ctx c = ctx();
-    onJobDose(c, *fin);
-  }
+  Ctx c = ctx();
+  if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(c, act_, "Auftrag abgebrochen");
+  if (auto fin = doser_.takeFinished()) onJobDose(c, *fin);
   std::string done;
   for (const auto& s : job_->steps)
     if (s.mlDone > 0) done += (done.empty() ? "" : ", ") + s.dose.name + " " + fmt(s.mlDone, 1) + " ml";
@@ -975,8 +1043,9 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   const CanisterCfg* k = cfg_.canister(canister);
   if (!k) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
   if (!isNum(ml) || ml <= 0) return Result::fail(422, "dose.amount", "Menge fehlt");
-  if (ml > cfg_.limits.handDoseMaxMl)
-    return Result::fail(422, "dose.hand_limit", "Höchstens " + fmt(cfg_.limits.handDoseMaxMl, 1) + " ml je Handgabe");
+  const Limits lim = cfg_.limits.bounded();
+  if (ml > lim.handDoseMaxMl)
+    return Result::fail(422, "dose.hand_limit", "Höchstens " + fmt(lim.handDoseMaxMl, 1) + " ml je Handgabe");
   auto pit = pumps_.find(k->pump);
   if (k->pump.empty() || pit == pumps_.end() || !pit->second.online)
     return Result::fail(422, "dose.pump", k->name + ": Pumpe nicht erkannt");
@@ -989,7 +1058,7 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   s.ml = ml;
   s.flowMlPerMin = pit->second.flowMlPerMin;
   Msg err;
-  s.runs = splitRuns(ml, s.flowMlPerMin, cfg_.limits, cfg_.limits.maxPartialRuns, err);
+  s.runs = splitRuns(ml, s.flowMlPerMin, cfg_.limits, lim.maxPartialRuns, err);
   if (!err.key.empty()) return Result::fail(422, err.key, k->name + ": " + err.text);
   Job j;
   j.id = newId("dose");
@@ -1044,7 +1113,7 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
   if (!job_ || job_->id != jobId || job_->type != "calibration" || job_->state != "waiting_user")
     return Result::fail(409, "cal.state", "Kein Einmesslauf wartet auf ein Ergebnis");
   if (!isNum(ml) || ml <= 0 || ml > 1000) return Result::fail(422, "cal.amount", "Menge ungültig – alter Wert bleibt");
-  Ms actual = job_->info.value("actualMs", Ms{0});
+  Ms actual = static_cast<Ms>(jnum(job_->info, "actualMs", 0));
   if (actual <= 0) return Result::fail(422, "cal.runtime", "Ist-Laufzeit fehlt – bitte erneut einmessen");
   // Rate aus der gemeldeten Ist-Laufzeit, nicht aus der angeforderten (RAT-070)
   double flow = ml / (static_cast<double>(actual) / 60000.0);
@@ -1162,10 +1231,12 @@ Result Hub::ackLatch(const std::string& id) {
 Result Hub::stop(const std::string& who) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // Not-Halt: aktive Abschaltkaskade, idempotent (RAT-036)
-  if (doser_.busy()) doser_.abort(act_, cfg_);
+  Ctx c = ctx();
+  if (doser_.busy()) doser_.abort(c, act_, "Not-Halt");
   if (auto fin = doser_.takeFinished()) {
-    Ctx c = ctx();
-    if (job_) onJobDose(c, *fin);
+    // Regler-Gaben gehören nicht zum Nutzerauftrag; die Regler werden unten zurückgesetzt.
+    const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
+    if (job_ && !controllerDose) onJobDose(c, *fin);
   }
   act_.stopAll(cfg_);
   ec_.reset();
@@ -1217,8 +1288,17 @@ Result Hub::growStart(const json& j) {
   g.name = jstr(j, "name", "Durchgang");
   g.startedAt = clock_.epoch();
   g.phaseStartedAt = g.startedAt;
-  for (const auto& p : j.value("phases", json::array())) g.phases.push_back({jstr(p, "name"), p.value("days", 0), p.value("params", json::object())});
+  const json phases = j.contains("phases") && j["phases"].is_array() ? j["phases"] : json::array();
+  for (const auto& p : phases) {
+    double days = jnum(p, "days", 0);
+    json params = p.is_object() && p.contains("params") ? p["params"] : json::object();
+    g.phases.push_back({jstr(p, "name"), isNum(days) && days >= 0 && days < 1000 ? static_cast<int>(days) : 0, params});
+  }
   if (g.phases.empty()) return Result::fail(422, "grow.phases", "Mindestens eine Phase anlegen");
+  Config next = cfg_;
+  next.grow = g;
+  auto errs = validateConfig(next, cat_);
+  if (!errs.empty()) return errors(errs);
   cfg_.grow = g;
   saveConfig("");
   log_.add(clock_.epoch(), "grow", "info", "Durchgang gestartet", g.name + " · Phase „" + g.phases[0].name + "“ (Tag 1)");

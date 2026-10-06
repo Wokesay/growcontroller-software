@@ -48,6 +48,9 @@ class Hub {
   std::recursive_mutex& mutex() { return mtx_; }
   const Catalog& catalog() const { return cat_; }
   const Config& config() const { return cfg_; }
+  // Passwort war gesetzt, auth.json fehlt aber: kein Setup über das Netz.
+  bool credentialsLost() const { return cfg_.system.passwordSet && !auth_.hasPassword(); }
+  void markPasswordSet();
   Auth& auth() { return auth_; }
   IUpdater* updater() { return updater_; }
 
@@ -108,6 +111,7 @@ class Hub {
   void saveState();
   void saveJob();
   void sampleHistory(Epoch epoch);
+  void tickImpl();
   void tickJob(Ctx& c);
   void onJobDose(Ctx& c, const DoseProgress& p);
   bool startJobStep(Ctx& c);
@@ -117,6 +121,7 @@ class Hub {
   std::string newId(const std::string& prefix);
   void detectDevices();
 
+  bool tickFault_ = false;  // letzter Takt mit Ausnahme: Aktoren aus, einmal melden
   mutable std::recursive_mutex mtx_;
   const Catalog& cat_;
   IBus& bus_;

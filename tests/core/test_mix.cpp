@@ -87,15 +87,29 @@ TEST_CASE("Teilläufe: gleich groß, Untergrenze 1 s (M2-6, RAT-050/RAT-055)") {
 TEST_CASE("EC-Gabe: 0,8 × Lücke, gemeinsam skaliert (M5-1, RAT-054/RAT-055)") {
   Fix f;
   f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
-  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 1.0);
+  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
   REQUIRE(d.ok);
   CHECK(d.steps[0].ml + d.steps[1].ml == doctest::Approx(58.18).epsilon(0.001));
   CHECK(d.steps[0].ml == doctest::Approx(d.steps[1].ml));
   // Deckel 0,4 mS/cm: beide gemeinsam gekürzt, Verhältnis bleibt
-  auto c = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.4);
+  auto c = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 0.4);
   REQUIRE(c.ok);
   CHECK(c.factor == doctest::Approx(0.5));
   CHECK(c.steps[0].ml / c.steps[1].ml == doctest::Approx(1.0));
+}
+
+TEST_CASE("EC-Deckel: kleine gelernte Wirkung weitet ihn nicht auf (M5-4, RAT-056)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
+  // Wirkung 0,3 × Start: roh 0,8 / 0,0825 = 9,7 ml/L; Deckel 1,0 / max(0,275; 0,0825) = 3,64 ml/L
+  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.0825, 0.275, 1.0);
+  REQUIRE(d.ok);
+  CHECK(d.steps[0].ml + d.steps[1].ml == doctest::Approx(1.0 / 0.275 * 20).epsilon(0.001));
+  CHECK(d.steps[0].ml == doctest::Approx(d.steps[1].ml));
+  // Fehlender Deckel heißt nie „ohne Deckel“
+  auto n = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 5.0, 0.275, 0.275, kNaN);
+  REQUIRE(n.ok);
+  CHECK(n.steps[0].ml + n.steps[1].ml <= doctest::Approx(1.0 / 0.275 * 20));
 }
 
 TEST_CASE("pH-Gabe: Deckel und Startwirkung (M4-1, M4-5, RAT-050)") {

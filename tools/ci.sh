@@ -17,7 +17,7 @@ cmake --build build
 end
 
 group "Web-App (Typprüfung, Build, Größenbudget)"
-(cd web && npm ci --no-audit --no-fund && npm run build)
+(cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
 end
 
 if [ "${E2E:-0}" = "1" ]; then

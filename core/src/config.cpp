@@ -1,5 +1,6 @@
 #include "gc/config.hpp"
 
+#include <algorithm>
 #include <set>
 #include <stdexcept>
 
@@ -65,6 +66,7 @@ void to_json(json& j, const Config& c) {
   j["revision"] = c.revision;
   j["system"] = {{"name", c.system.name},
                  {"setupDone", c.system.setupDone},
+                 {"passwordSet", c.system.passwordSet},
                  {"timezone", c.system.timezone},
                  {"language", c.system.language},
                  {"updateCheck", c.system.updateCheck},
@@ -139,6 +141,7 @@ Config configFromJson(const json& in) {
     const auto& s = j["system"];
     c.system.name = s.value("name", c.system.name);
     c.system.setupDone = s.value("setupDone", false);
+    c.system.passwordSet = s.value("passwordSet", false);
     c.system.timezone = s.value("timezone", c.system.timezone);
     c.system.language = s.value("language", c.system.language);
     c.system.updateCheck = s.value("updateCheck", true);
@@ -149,7 +152,8 @@ Config configFromJson(const json& in) {
     c.limits.handDoseMaxMl = jnum(l, "handDoseMaxMl", c.limits.handDoseMaxMl);
     c.limits.minRunS = jnum(l, "minRunS", c.limits.minRunS);
     c.limits.maxRunS = jnum(l, "maxRunS", c.limits.maxRunS);
-    c.limits.maxPartialRuns = l.value("maxPartialRuns", c.limits.maxPartialRuns);
+    double runs = jnum(l, "maxPartialRuns", c.limits.maxPartialRuns);
+    c.limits.maxPartialRuns = isNum(runs) && runs >= 0 && runs <= 1000 ? static_cast<int>(runs) : -1;
   }
   for (const auto& d : j.value("devices", json::array()))
     c.devices.push_back({jstr(d, "id"), jstr(d, "class"), jstr(d, "name")});
@@ -187,9 +191,10 @@ Config configFromJson(const json& in) {
   if (j.contains("functions"))
     for (const auto& [id, f] : j["functions"].items())
       c.functions[id] = {f.value("enabled", false), f.value("params", json::object())};
-  if (j.contains("calibrations"))
+  if (j.contains("calibrations") && j["calibrations"].is_object())
     for (const auto& [dev, kinds] : j["calibrations"].items())
-      for (const auto& [kind, data] : kinds.items()) c.calibrations[dev][kind] = data;
+      if (kinds.is_object())
+        for (const auto& [kind, data] : kinds.items()) c.calibrations[dev][kind] = data;
   if (j.contains("grow")) {
     const auto& g = j["grow"];
     c.grow.state = g.value("state", c.grow.state);
@@ -204,9 +209,30 @@ Config configFromJson(const json& in) {
   return c;
 }
 
+Limits Limits::bounded() const {
+  Limits b;
+  b.minRunS = isNum(minRunS) ? std::clamp(minRunS, kHardMinRunS, 10.0) : kHardMinRunS;
+  b.maxRunS = isNum(maxRunS) ? std::clamp(maxRunS, b.minRunS, kHardMaxRunS) : kHardMaxRunS;
+  b.handDoseMaxMl = isNum(handDoseMaxMl) && handDoseMaxMl > 0 ? std::min(handDoseMaxMl, kHardHandDoseMaxMl)
+                                                                : Limits{}.handDoseMaxMl;
+  b.maxPartialRuns = std::clamp(maxPartialRuns, 1, kHardMaxPartialRuns);
+  return b;
+}
+
 std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   std::vector<Msg> out;
   auto err = [&](const std::string& key, const std::string& text) { out.push_back({key, text, json::object()}); };
+
+  // Grenzen dürfen nur verschärfen (R7).
+  const auto& L = c.limits;
+  if (!isNum(L.minRunS) || L.minRunS < kHardMinRunS || L.minRunS > 10)
+    err("cfg.limits.min_run", "Kürzester Pumpenlauf muss zwischen 1 und 10 s liegen");
+  if (!isNum(L.maxRunS) || L.maxRunS > kHardMaxRunS || L.maxRunS < L.minRunS)
+    err("cfg.limits.max_run", "Längster Pumpenlauf muss zwischen dem kürzesten und 60 s liegen");
+  if (!isNum(L.handDoseMaxMl) || L.handDoseMaxMl <= 0 || L.handDoseMaxMl > kHardHandDoseMaxMl)
+    err("cfg.limits.hand", "Grenze je Handgabe muss zwischen 0 und 50 ml liegen");
+  if (L.maxPartialRuns < 1 || L.maxPartialRuns > kHardMaxPartialRuns)
+    err("cfg.limits.runs", "Teilläufe je Gabe: 1 bis 6");
 
   std::set<std::string> ids;
   for (const auto& d : c.devices) {
@@ -276,10 +302,24 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       if (inRecipe != pairCount[p]) err("cfg.recipe.pair", "Rezept " + r.name + ": Paar " + p + " unvollständig");
     }
   }
+  auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::string& where) {
+    if (pd.type != "number") return;
+    if (!val.is_number()) {
+      err("cfg.param.type", where + fd.label + ": " + pd.label + " muss eine Zahl sein");
+      return;
+    }
+    double v = val.get<double>();
+    if (!isNum(v) || (isNum(pd.min) && v < pd.min) || (isNum(pd.max) && v > pd.max))
+      err("cfg.param.range", where + fd.label + ": " + pd.label + " außerhalb " + fmt(pd.min, 2) + "–" + fmt(pd.max, 2));
+  };
   for (const auto& [id, f] : c.functions) {
     const FunctionDef* fd = cat.function(id);
     if (!fd) {
       err("cfg.function.unknown", "Unbekannte Funktion " + id);
+      continue;
+    }
+    if (!f.params.is_object()) {
+      err("cfg.param.type", fd->label + ": Parameter ungültig");
       continue;
     }
     for (const auto& [key, val] : f.params.items()) {
@@ -288,15 +328,25 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         err("cfg.param.unknown", fd->label + ": unbekannter Parameter " + key);
         continue;
       }
-      if (pd->type == "number") {
-        if (!val.is_number()) {
-          err("cfg.param.type", fd->label + ": " + pd->label + " muss eine Zahl sein");
-          continue;
-        }
-        double v = val.get<double>();
-        if ((isNum(pd->min) && v < pd->min) || (isNum(pd->max) && v > pd->max))
-          err("cfg.param.range", fd->label + ": " + pd->label + " außerhalb " + fmt(pd->min, 2) + "–" + fmt(pd->max, 2));
-      }
+      checkParam(*fd, *pd, val, "");
+    }
+  }
+  // Phasen liefern Parameter (R4): dieselben Bereiche wie in den Einstellungen.
+  for (const auto& ph : c.grow.phases) {
+    const std::string where = "Phase „" + ph.name + "“, ";
+    if (!ph.params.is_object()) {
+      err("cfg.phase.params", where + "Parameter ungültig");
+      continue;
+    }
+    for (const auto& [key, val] : ph.params.items()) {
+      bool known = false;
+      for (const auto& fd : cat.functions)
+        for (const auto& pd : fd.params)
+          if (pd.key == key && pd.phase) {
+            known = true;
+            checkParam(fd, pd, val, where);
+          }
+      if (!known) err("cfg.phase.unknown", where + "Parameter " + key + " ist nicht phasenabhängig");
     }
   }
   // Toleranz nie 0 (Quelle: RAT-008) – über die Katalog-Untergrenze abgedeckt.

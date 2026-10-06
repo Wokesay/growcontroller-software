@@ -18,7 +18,8 @@ void to_json(json& j, const MixPlan& p) {
        {"totalMl", p.totalMl}, {"totalMs", p.totalMs}};
 }
 
-std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& lim, int maxRuns, Msg& err) {
+std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, int maxRuns, Msg& err) {
+  const Limits lim = limits.bounded();
   if (!isNum(flowMlPerMin) || flowMlPerMin <= 0) {
     err = {"dose.no_flow", "Pumpe nicht eingemessen – ohne Einmesswert wird nicht dosiert", json::object()};
     return {};
@@ -33,9 +34,12 @@ std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& lim, int
            {{"ml", ml}}};
     return {};
   }
-  int n = static_cast<int>(std::ceil(totalMs / (lim.maxRunS * 1000.0)));
-  if (maxRuns > 0 && n > maxRuns) {
-    err = {"dose.too_large", fmt(ml, 1) + " ml brauchen mehr als " + std::to_string(maxRuns) + " Läufe", {{"ml", ml}}};
+  constexpr int kMaxRunsPerStep = 200;  // Schutz gegen unsinnige Mengen, auch beim Mischen
+  const int cap = maxRuns > 0 ? std::min(maxRuns, kMaxRunsPerStep) : kMaxRunsPerStep;
+  const double needed = std::ceil(totalMs / (lim.maxRunS * 1000.0));
+  const int n = needed > cap ? cap + 1 : static_cast<int>(needed);
+  if (n > cap) {
+    err = {"dose.too_large", fmt(ml, 1) + " ml brauchen mehr als " + std::to_string(cap) + " Läufe", {{"ml", ml}}};
     return {};
   }
   std::vector<Ms> runs;
@@ -138,7 +142,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
 }
 
 EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& recipe, double volumeL, double gapEc,
-                  double effectPerMlL, double maxEcStep) {
+                  double effectPerMlL, double startEffect, double maxEcStep) {
   EcDose d;
   if (!isNum(volumeL) || volumeL <= 0) {
     d.reason = {"ec.no_volume", "Tankvolumen unbekannt", json::object()};
@@ -154,9 +158,16 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
     d.reason = {"ec.recipe", "Rezept ohne Mengen", json::object()};
     return d;
   }
-  double step = std::min(0.8 * gapEc, maxEcStep);
-  d.factor = step / (0.8 * gapEc);
-  double totalMlPerL = step / effectPerMlL;  // ml/L des ganzen Rezepts
+  if (!isNum(gapEc) || gapEc <= 0) {
+    d.reason = {"ec.above", "EC liegt nicht unter dem Ziel", json::object()};
+    return d;
+  }
+  if (!isNum(maxEcStep) || maxEcStep <= 0) maxEcStep = 1.0;  // Katalog-Vorgabe, nie ohne Deckel
+  if (!isNum(startEffect) || startEffect <= 0) startEffect = effectPerMlL;
+  const double rawMlPerL = 0.8 * gapEc / effectPerMlL;
+  const double capMlPerL = maxEcStep / std::max(startEffect, effectPerMlL);
+  const double totalMlPerL = std::min(rawMlPerL, capMlPerL);  // ml/L des ganzen Rezepts
+  d.factor = totalMlPerL / rawMlPerL;
   for (const auto& s : recipe.steps) {
     const CanisterCfg* k = cfg.canister(s.canister);
     if (!k) continue;
@@ -176,7 +187,7 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
   // gemeinsam (nie einzeln kappen, RAT-054).
   for (auto& ds : d.steps) {
     Msg err;
-    ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.maxPartialRuns, err);
+    ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.bounded().maxPartialRuns, err);
     if (!err.key.empty()) {
       d.reason = {err.key, ds.name + ": " + err.text, err.args};
       d.steps.clear();

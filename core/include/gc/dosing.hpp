@@ -82,11 +82,17 @@ struct DoseProgress {
 
 class Doser {
  public:
+  // Kennung dieses Starts. Sie hängt an jeder Bus-Job-ID, damit eine ID nach
+  // einem Neustart des Hubs nie als Wiederholung eines alten Laufs gilt.
+  void setBootTag(std::string tag) { bootTag_ = std::move(tag); }
   bool busy() const { return active_.has_value(); }
   bool start(const Ctx& c, Actuators& act, DoseOrder order, Msg& err);
-  // Liefert den Fortschritt; bucht abgeschlossene Läufe.
+  // Liefert den Fortschritt; bucht abgeschlossene Läufe. Meldet der Block einen
+  // Lauf nicht in der Frist zurück, schaltet der Doser ab und bucht ihn als
+  // gelaufen (sichere Richtung: nicht nachdosieren).
   void tick(const Ctx& c, Actuators& act);
-  void abort(Actuators& act, const Config& cfg);
+  // Stoppt und bucht, was schon gelaufen ist (RAT-070).
+  void abort(const Ctx& c, Actuators& act, const std::string& reason);
   const DoseProgress& progress() const { return progress_; }
   const std::optional<DoseOrder>& active() const { return active_; }
   // Fertig/fehlgeschlagen abholen und zurücksetzen.
@@ -96,12 +102,17 @@ class Doser {
   void book(const Ctx& c, Ms ms);
   void logOrder(const Ctx& c);
   bool launch(const Ctx& c, Actuators& act);
+  void fail(const Ctx& c, Msg error);
+  std::string busJob() const;
   std::optional<DoseOrder> active_;
   DoseProgress progress_;
   std::optional<DoseProgress> finished_;
   Ms pauseUntil_ = 0;
+  Ms runStartedAt_ = 0;
+  Ms runRequestedMs_ = 0;
   bool running_ = false;
   int seq_ = 0;
+  std::string bootTag_;
 };
 
 // Sichtbare Aufträge des Nutzers: Mischen, Handgabe, Einmessen, Schlauch füllen.

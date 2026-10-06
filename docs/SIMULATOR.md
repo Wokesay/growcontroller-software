@@ -52,12 +52,13 @@ Standardpasswort (EN 18031-1).
 | EC 0 | Sonde trocken | EC-Gate, Rastung „ohne Wirkung“ |
 | Wert friert | Rohwerte stehen | Stillstandserkennung |
 | Kopf/Füllstand offline | Gerät antwortet nicht | Datenausfall, Zulauf-Notabschaltung |
-| Kappe blockieren/abziehen | Lauf scheitert nach 0,3 s | Paar-Fehler, „nachholen“ |
+| Kappe blockieren/abziehen | Lauf scheitert nach 0,3 s bzw. Kappe fehlt | Paar-Fehler, „nachholen“; Menge aus der Laufzeit geschätzt |
+| Dosierblock offline | Block antwortet nicht, Hub sieht den letzten Stand | Frist je Lauf: Pumpen aus, als gelaufen gezählt |
 | Kappe an Hub-Port 2 | Kennung passt nicht, Port wird nicht freigegeben | Fehlsteck-Meldung (PD-012) |
 | Stromausfall | Hub startet neu, Ausgänge stromlos | R6: alles aus, Ablauf gemeldet, nicht fortgesetzt |
 | Frisches Wasser | Volumen, EC und pH setzen | Mischen, EC-Gate, Trockenlauf |
 | Zeitraffer 1–300× | – | Settle-Zeiten, Verlauf |
-| Szenario | alles neu | Ersteinrichtung |
+| Szenario | alles neu; nur angemeldet, ohne Anmeldung nur mit `--allow-reset` (Playwright) | Ersteinrichtung |
 
 ## Grenzen
 

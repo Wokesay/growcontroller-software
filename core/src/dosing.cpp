@@ -40,10 +40,11 @@ bool Actuators::startRun(const Ctx& c, const std::string& pump, Ms ms, const std
   const bool noFlowNeeded = purpose == "calibration" || purpose == "prime";
   if (!noFlowNeeded && !(isNum(it->second.flowMlPerMin) && it->second.flowMlPerMin > 0))
     return fail("act.uncalibrated", "Pumpe nicht eingemessen – ohne Einmesswert wird nicht dosiert");
-  if (!noFlowNeeded && ms < static_cast<Ms>(c.cfg.limits.minRunS * 1000))
-    return fail("act.too_short", "Lauf unter " + fmt(c.cfg.limits.minRunS, 1) + " s – zu ungenau");
-  if (ms <= 0 || ms > static_cast<Ms>(c.cfg.limits.maxRunS * 1000))
-    return fail("act.too_long", "Lauf über " + fmt(c.cfg.limits.maxRunS, 0) + " s – in Teilgaben teilen");
+  const Limits lim = c.cfg.limits.bounded();  // feste Grenzen, Konfiguration verschärft nur (R7)
+  if (!noFlowNeeded && ms < static_cast<Ms>(lim.minRunS * 1000))
+    return fail("act.too_short", "Lauf unter " + fmt(lim.minRunS, 1) + " s – zu ungenau");
+  if (ms <= 0 || ms > static_cast<Ms>(lim.maxRunS * 1000))
+    return fail("act.too_long", "Lauf über " + fmt(lim.maxRunS, 0) + " s – in Teilgaben teilen");
   if (purpose == "ph" || purpose == "ec") {
     auto st = roleState(c.cfg, "tank.circulation");
     if (!st || !*st) return fail("act.no_mixing", "Ohne Durchmischung keine Dosierung");
@@ -132,8 +133,9 @@ void Actuators::stopAll(const Config& cfg) {
   for (const auto& t : cfg.tanks)
     for (const auto& [role, b] : t.roles) {
       std::string e;
+      // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox nicht lesbar).
       auto st = bus_.switchState(b.device, b.channel);
-      if (st) bus_.setSwitch(b.device, b.channel, false, e);
+      if (st || role == "tank.circulation" || role == "tank.inlet") bus_.setSwitch(b.device, b.channel, false, e);
     }
   onSince_.clear();
 }
@@ -192,17 +194,31 @@ void Actuators::enforce(const Ctx& c) {
 
 // ---------------------------------------------------------------- Doser
 
+std::string Doser::busJob() const {
+  std::string job = active_->id + "#" + std::to_string(progress_.run + 1);
+  return bootTag_.empty() ? job : job + "." + bootTag_;
+}
+
 bool Doser::launch(const Ctx& c, Actuators& act) {
   const auto& o = *active_;
   Ms ms = o.step.runs[progress_.run];
-  std::string job = o.id + "#" + std::to_string(progress_.run + 1);
   Msg e;
-  if (!act.startRun(c, o.step.pump, ms, o.purpose, job, e)) {
+  if (!act.startRun(c, o.step.pump, ms, o.purpose, busJob(), e)) {
     progress_.error = e;
     return false;
   }
   running_ = true;
+  runStartedAt_ = c.now;
+  runRequestedMs_ = ms;
   return true;
+}
+
+void Doser::fail(const Ctx& c, Msg error) {
+  progress_.state = DoseProgress::State::Failed;
+  progress_.error = std::move(error);
+  logOrder(c);
+  finished_ = progress_;
+  active_.reset();
 }
 
 bool Doser::start(const Ctx& c, Actuators& act, DoseOrder order, Msg& err) {
@@ -244,6 +260,7 @@ void Doser::book(const Ctx& c, Ms ms) {
 void Doser::logOrder(const Ctx& c) {
   const auto& o = *active_;
   if (o.purpose == "calibration" || o.purpose == "prime") return;
+  if (progress_.state == DoseProgress::State::Aborted && progress_.msDone <= 0) return;  // nichts gelaufen
   bool ok = progress_.state == DoseProgress::State::Done;
   c.log.add(c.epoch, "dose", ok ? "info" : "warn",
             o.step.name + " · " + fmt(progress_.mlDone, 1) + " ml" + (ok ? "" : " (unvollständig)"), purposeLabel(o.purpose),
@@ -262,10 +279,29 @@ void Doser::tick(const Ctx& c, Actuators& act) {
   const auto& o = *active_;
   if (running_) {
     RunStatus st = act.runStatus(o.step.pump);
-    std::string job = o.id + "#" + std::to_string(progress_.run + 1);
-    if (st.jobId != job || st.state == RunStatus::State::Running) return;
+    const bool mine = st.jobId == busJob();
+    // Fehler ohne Job-ID: Gerät getrennt oder nicht erreichbar.
+    const bool lost = !mine && st.state == RunStatus::State::Failed && st.jobId.empty();
+    if (!lost && (!mine || st.state == RunStatus::State::Running)) {
+      const Ms deadline = runStartedAt_ + runRequestedMs_ + std::max<Ms>(5 * kSecond, runRequestedMs_ / 5);
+      if (c.now <= deadline) return;
+      act.stopPumps();
+      act.clearRun(o.step.pump);
+      running_ = false;
+      book(c, mine && st.actualMs > 0 ? st.actualMs : runRequestedMs_);
+      fail(c, msg("dose.no_response",
+                  o.step.name + ": keine Rückmeldung vom Dosierblock – Pumpe abgeschaltet, Menge als gelaufen gezählt"));
+      return;
+    }
     act.clearRun(o.step.pump);
     running_ = false;
+    if (lost) {
+      act.stopPumps();
+      book(c, std::clamp<Ms>(c.now - runStartedAt_, 0, runRequestedMs_));
+      fail(c, msg("dose.lost", o.step.name + ": " + (st.error.empty() ? "Pumpe getrennt" : st.error) +
+                                   " – Menge aus der Laufzeit geschätzt"));
+      return;
+    }
     if (st.state == RunStatus::State::Done) {
       book(c, st.actualMs);
       progress_.run++;
@@ -296,15 +332,19 @@ void Doser::tick(const Ctx& c, Actuators& act) {
   }
 }
 
-void Doser::abort(Actuators& act, const Config& cfg) {
-  (void)cfg;
+void Doser::abort(const Ctx& c, Actuators& act, const std::string& reason) {
   if (!active_) return;
   act.stopPumps();
-  RunStatus st = act.runStatus(active_->step.pump);
+  if (running_) {
+    RunStatus st = act.runStatus(active_->step.pump);
+    Ms ran = st.jobId == busJob() ? st.actualMs : std::clamp<Ms>(c.now - runStartedAt_, 0, runRequestedMs_);
+    if (ran > 0) book(c, ran);
+  }
   act.clearRun(active_->step.pump);
-  progress_.state = DoseProgress::State::Aborted;
-  progress_.msDone += running_ ? st.actualMs : 0;
   running_ = false;
+  progress_.state = DoseProgress::State::Aborted;
+  progress_.error = msg("dose.aborted", active_->step.name + ": " + reason);
+  logOrder(c);
   finished_ = progress_;
   active_.reset();
 }

@@ -8,9 +8,9 @@ Funktion läuft einmal Ende zu Ende im Browser.
 | Ebene | Werkzeug | Ort | Zahl heute | prüft |
 |---|---|---|---|---|
 | Architekturregeln | Shell/grep | `tools/arch_check.sh` | 5 Regeln | Kern ohne Plattform-Header, Aktoren nur über das Gateway, Watchdog ohne Aktorpfad, keine Phasennamen in der Logik, kein `value_or(0)` |
-| Unit | doctest (C++) | `tests/core/test_*.cpp` | 41 Fälle | Katalog, Konfiguration und Migration, Sensorwahrheit, Kennlinie, Verlauf, Ereignisse, Mischplanung, Resolver, Watchdog, SHA-256/PBKDF2, Anmeldung |
-| API-Vertrag | doctest gegen den Kern | `tests/core/test_api.cpp` | 5 Fälle | Zugang, Fehlerformen, Felder, die die Web-App liest, keine Geheimnisse |
-| Szenario | doctest + Zwilling | `tests/core/test_scenarios.cpp` | 11 Fälle | Stufe 0 von Hand eingerichtet, Einmessen, Mengen und A:B ±3 %, Paar-Fehler mit Nachholen, Stromausfall, Fehlsteckung, Regelung ins Ziel, EC-Gate, Sprungsperre, Trockenlauf, Zulauf-Notabschaltung, Not-Halt |
+| Unit | doctest (C++) | `tests/core/test_*.cpp` | 44 Fälle | Katalog, Konfiguration und Migration, feste Grenzen (R7), Phasenparameter, Sensorwahrheit, Kennlinie, Verlauf, Ereignisse, Mischplanung, Resolver, Watchdog, SHA-256/PBKDF2, Anmeldung |
+| API-Vertrag | doctest gegen den Kern | `tests/core/test_api.cpp` | 8 Fälle | Zugang, Fehlerformen, Felder, die die Web-App liest, keine Geheimnisse, Herkunftsprüfung, Import-Prüfung, verlorenes Passwort |
+| Szenario | doctest + Zwilling | `tests/core/test_scenarios.cpp` | 15 Fälle | Stufe 0 von Hand eingerichtet, Einmessen, Mengen und A:B ±3 %, Paar-Fehler mit Nachholen, Stromausfall, Fehlsteckung, Regelung ins Ziel, EC-Gate, Sprungsperre, Trockenlauf, Zulauf-Notabschaltung, Not-Halt, Abbruch bucht, Kappe abgezogen, Block stumm, Job-IDs nach Neustart |
 | Speicherfehler | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | alle C++-Tests | Überläufe, Use-after-free, undefiniertes Verhalten |
 | Web | TypeScript strict, Größenbudget | `npm run build` | – | Typen, ≤ 250 KB gzip |
 | Ende zu Ende | Playwright + Chromium | `web/e2e/*.spec.ts` | 9 Fälle | Ersteinrichtung bis zum ersten Mischlauf, Not-Halt, Sprungsperre sichtbar, Funktionen und Verlauf, Fehlsteckung, Diagnosepaket, Zugangsschutz, Sicherheitskopfzeilen |

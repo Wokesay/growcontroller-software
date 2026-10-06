@@ -75,16 +75,27 @@ struct GrowCfg {
   std::vector<PhaseCfg> phases;
 };
 
+// Feste Sicherheitsgrenzen im Code. Die Konfiguration darf sie nur verschärfen
+// (R7); Gateway und Planung rechnen immer mit `bounded()`.
+constexpr double kHardMinRunS = 1.0;          // kürzere Läufe werden nicht dosiert (RAT-050)
+constexpr double kHardMaxRunS = 60.0;         // längere Gaben in Teilgaben (RAT-055)
+constexpr double kHardHandDoseMaxMl = 50.0;   // je Handgabe
+constexpr int kHardMaxPartialRuns = 6;        // Teilläufe je Regel-Gabe
+
 struct Limits {
   double handDoseMaxMl = 5.0;  // Quelle: RAT-039
-  double minRunS = 1.0;        // kürzere Läufe werden nicht dosiert (RAT-050)
-  double maxRunS = 60.0;       // längere Gaben in Teilgaben (RAT-055)
-  int maxPartialRuns = 6;
+  double minRunS = kHardMinRunS;
+  double maxRunS = kHardMaxRunS;
+  int maxPartialRuns = kHardMaxPartialRuns;
+
+  // Werte auf die festen Grenzen geklemmt; fehlende oder unsinnige Werte → feste Grenze.
+  Limits bounded() const;
 };
 
 struct SystemCfg {
   std::string name = "growcontroller";
   bool setupDone = false;
+  bool passwordSet = false;  // Erstpasswort einmal gesetzt: Setup über das Netz danach gesperrt
   std::string timezone = "Europe/Berlin";
   std::string language = "de";
   bool updateCheck = true;

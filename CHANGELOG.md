@@ -45,7 +45,15 @@ Gerüst ohne Bus. Keine Zusagen zur Kompatibilität.
 - Pflicht-Erstpasswort ohne Standardpasswort; PBKDF2-HMAC-SHA256 mit Salz;
   Sperre nach 5 Fehlversuchen; Sitzung als HttpOnly-/SameSite-Cookie.
 - Sicherheitskopfzeilen (CSP, `X-Frame-Options`, `nosniff`).
-- Aktoren nur über das Aktor-Gateway; nach dem Neustart ist alles aus;
-  ohne Einmesswert keine Dosierung.
+- Aktoren nur über das Aktor-Gateway mit festen Grenzen im Code; die
+  Konfiguration (auch per Import oder Phase) kann sie nur verschärfen. Nach
+  dem Neustart ist alles aus; ohne Einmesswert keine Dosierung.
+- Doser mit Frist je Lauf; ein Abbruch bucht, was schon gelaufen ist;
+  Bus-Job-IDs sind über Neustarts eindeutig.
+- Herkunftsprüfung gegen CSRF und DNS-Rebinding; Hash-Vergleich in
+  konstanter Zeit; ist das Passwort verloren, ist die Einrichtung über das
+  Netz gesperrt.
+- Kaputte Eingaben und Dateien führen zu 400/500 bzw. zu „alles aus“ mit
+  Alarm, nicht zum Absturz. Simulator: Szenario-Reset nur angemeldet.
 - Noch nicht enthalten: HTTPS, signiertes OTA, Secure Boot
   (`docs/SICHERHEIT.md`).

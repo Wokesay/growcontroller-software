@@ -6,6 +6,16 @@
 
 namespace gc {
 
+namespace {
+// Vergleich in konstanter Zeit: verrät nicht, ab welcher Stelle der Hash abweicht.
+bool sameHash(const std::string& a, const std::string& b) {
+  if (a.size() != b.size()) return false;
+  unsigned diff = 0;
+  for (size_t i = 0; i < a.size(); ++i) diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+  return diff == 0;
+}
+}  // namespace
+
 Msg Auth::checkStrength(const std::string& pw) {
   if (pw.size() < 8) return {"auth.too_short", "Mindestens 8 Zeichen", json::object()};
   if (pw.size() > 128) return {"auth.too_long", "Höchstens 128 Zeichen", json::object()};
@@ -30,7 +40,7 @@ Msg Auth::setInitialPassword(const std::string& pw) {
 }
 
 Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw) {
-  if (!hasPassword() || hashOf(oldPw, salt_, iterations_) != hash_)
+  if (!hasPassword() || !sameHash(hashOf(oldPw, salt_, iterations_), hash_))
     return {"auth.wrong", "Altes Passwort stimmt nicht", json::object()};
   Msg m = checkStrength(newPw);
   if (!m.key.empty()) return m;
@@ -52,7 +62,7 @@ std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err) 
            {{"waitS", (lockedUntil_ - now) / 1000 + 1}}};
     return std::nullopt;
   }
-  if (hashOf(pw, salt_, iterations_) != hash_) {
+  if (!sameHash(hashOf(pw, salt_, iterations_), hash_)) {
     failures_++;
     if (failures_ >= 5) {
       // 30 s, dann verdoppeln bis 15 min (EN 18031-1 AUM-6)
@@ -90,7 +100,8 @@ json Auth::toJson() const { return {{"salt", salt_}, {"hash", hash_}, {"iteratio
 void Auth::load(const json& j) {
   salt_ = jstr(j, "salt");
   hash_ = jstr(j, "hash");
-  iterations_ = j.value("iterations", kIterations);
+  double it = jnum(j, "iterations", kIterations);
+  iterations_ = isNum(it) && it >= 1000 && it <= 1e7 ? static_cast<std::uint32_t>(it) : kIterations;
 }
 
 }  // namespace gc

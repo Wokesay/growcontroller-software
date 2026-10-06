@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,12 +49,14 @@ jobs:
     container: espressif/idf:v5.4.1
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Web-App bauen und einbetten
         run: |
-          cd web && npm ci --no-audit --no-fund && npx vite build && cd - >/dev/null
+          cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
           node tools/embed_web.mjs
       - name: Firmware für ESP32-S3 bauen
         shell: bash

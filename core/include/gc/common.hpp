@@ -53,6 +53,7 @@ inline json numOrNull(const std::optional<double>& v) {
 }
 double jnum(const json& j, const char* key, double fallback = kNaN);
 std::string jstr(const json& j, const char* key, const std::string& fallback = "");
+bool jbool(const json& j, const char* key, bool fallback);
 
 // Deutsches Zahlformat für Klartexte ("5,8").
 std::string fmt(double v, int decimals);

@@ -1,5 +1,6 @@
 #include "gc/api.hpp"
 
+#include <cctype>
 #include <sstream>
 
 #include "gc/embedded.hpp"
@@ -57,7 +58,42 @@ bool Api::authorized(const ApiRequest& req) {
   return !req.token.empty() && hub_.auth().check(req.token, clock_.nowMs());
 }
 
+bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {
+  std::string h = hostHeader;
+  if (h.empty()) return true;  // HTTP/1.0 ohne Host: kein Browser
+  if (h.front() == '[') return h.find(']') != std::string::npos;  // IPv6-Literal
+  auto colon = h.rfind(':');
+  if (colon != std::string::npos) h.resize(colon);
+  for (auto& ch : h) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  if (h == "localhost" || (!extraHost.empty() && h == extraHost)) return true;
+  if (h.size() > 6 && h.compare(h.size() - 6, 6, ".local") == 0) return true;
+  bool ipv4 = !h.empty();
+  for (char ch : h) ipv4 = ipv4 && (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.');
+  return ipv4;
+}
+
+bool writeAllowed(const std::string& method, const std::string& secFetchSite, const std::string& origin,
+                  const std::string& hostHeader) {
+  if (method == "GET" || method == "HEAD" || method == "OPTIONS") return true;
+  if (!secFetchSite.empty()) return secFetchSite == "same-origin" || secFetchSite == "none";
+  if (!origin.empty()) {
+    auto p = origin.find("://");
+    return p != std::string::npos && origin.substr(p + 3) == hostHeader;
+  }
+  return true;
+}
+
 ApiResponse Api::handle(const ApiRequest& req) {
+  try {
+    return route(req);
+  } catch (const json::exception&) {
+    return fail(400, "api.bad_input", "Eingabe hat das falsche Format");
+  } catch (const std::exception&) {
+    return fail(500, "api.internal", "Interner Fehler – bitte als Problem melden");
+  }
+}
+
+ApiResponse Api::route(const ApiRequest& req) {
   auto p = split(req.path);
   if (p.size() < 2 || p[0] != "api" || p[1] != "v1") return fail(404, "api.not_found", "Unbekannter Pfad");
   p.erase(p.begin(), p.begin() + 2);
@@ -87,9 +123,12 @@ ApiResponse Api::handle(const ApiRequest& req) {
   if (is("POST", {"auth", "setup"})) {
     // Pflichtpasswort bei der Ersteinrichtung; danach nur noch mit Anmeldung änderbar.
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    if (hub_.credentialsLost())
+      return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
     if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
     hub_.logEvent("auth", "info", "Passwort gesetzt", "Ersteinrichtung");
+    hub_.markPasswordSet();
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
     hub_.flush();
@@ -182,7 +221,11 @@ ApiResponse Api::handle(const ApiRequest& req) {
   if (is("POST", {"devices", "*", "accept"})) return fromResult(hub_.acceptDevice(p[1], jstr(body, "name")));
   if (is("PATCH", {"devices", "*"})) return fromResult(hub_.renameDevice(p[1], jstr(body, "name")));
   if (is("DELETE", {"devices", "*"})) return fromResult(hub_.removeDevice(p[1]));
-  if (is("PUT", {"roles", "*"})) return fromResult(hub_.bindRole(p[1], jstr(body, "device"), body.value("channel", 0)));
+  if (is("PUT", {"roles", "*"})) {
+    double ch = jnum(body, "channel", 0);
+    if (!isNum(ch) || ch < 0 || ch > 15) return fail(422, "role.channel", "Kanal ungültig");
+    return fromResult(hub_.bindRole(p[1], jstr(body, "device"), static_cast<int>(ch)));
+  }
   if (is("DELETE", {"roles", "*"})) return fromResult(hub_.unbindRole(p[1]));
   if (is("PUT", {"tank"})) return fromResult(hub_.putTank(body));
   if (is("POST", {"canisters"})) return fromResult(hub_.putCanister(body));
@@ -218,15 +261,21 @@ ApiResponse Api::handle(const ApiRequest& req) {
     if (!u) return fail(501, "update.none", "Updates auf dieser Plattform nicht verfügbar");
     if (is("GET", {"update"})) return jsonResp(200, u->status());
     if (is("POST", {"update", "check"})) return jsonResp(200, u->check());
-    if (is("POST", {"update", "install"})) {
-      // Nur im sicheren Zustand: keine Dosierung, kein Auftrag (Kundensicht, regulatorik)
+    // Nur im sicheren Zustand: keine Dosierung, kein Auftrag, kein offener Zulauf
+    // (Kundensicht, regulatorik). Gilt für Installation und Rückkehr.
+    auto busy = [&] {
       json st = hub_.state();
-      if (!st["job"].is_null() || !st["dosing"].is_null())
-        return fail(409, "update.busy", "Update wartet, bis keine Dosierung und kein Auftrag läuft");
+      const json& job = st["job"];
+      const bool jobActive = !job.is_null() && jstr(job, "state") != "failed";
+      return jobActive || !st["dosing"].is_null() || jbool(st["outputs"], "tank.inlet", false);
+    };
+    if (is("POST", {"update", "install"})) {
+      if (busy()) return fail(409, "update.busy", "Update wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
       hub_.logEvent("system", "notice", "Update angefordert", jstr(body, "version"));
       return jsonResp(200, u->install(jstr(body, "version")));
     }
     if (is("POST", {"update", "rollback"})) {
+      if (busy()) return fail(409, "update.busy", "Rückkehr wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
       hub_.logEvent("system", "notice", "Rückkehr zur Vorversion angefordert", "");
       return jsonResp(200, u->rollback());
     }

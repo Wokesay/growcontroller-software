@@ -245,7 +245,8 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 600000));
   s.world().fill(25, 1.3, 5.9);
-  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 60000));
+  // Läuft gerade eine EC-Runde, wartet der Zulauf, bis sie eingeschwungen ist (RAT-055).
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 15 * 60 * 1000, 5000));
   s.control("fault", {{"device", "LVL-77B210"}, {"fault", "offline"}});
   s.step(70000);
   auto st = c.state();
@@ -270,4 +271,85 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(c.call("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}}).first != 200);
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
+}
+
+TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  double before = c.state()["stock"]["teil-a"];
+  std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}})["job"]["id"];
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 10000; }, 30000, 200));
+  c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  CHECK(s.world().cap(kA)->state != 1);
+  auto st = c.state();
+  double after = st["stock"]["teil-a"];
+  CHECK(after < before - 5);  // > 10 s bei 38–53 ml/min
+  std::string text = st["lastJob"]["message"]["text"];
+  CHECK(text.find("Drin: Teil A") != std::string::npos);
+  bool logged = false;
+  for (const auto& e : findEvents(c, "dose"))
+    logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() > 5);
+  CHECK(logged);
+}
+
+TEST_CASE("Szenario: Kappe im Lauf abgezogen → Auftrag scheitert sofort, nichts hängt") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 4}});
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 1000; }, 10000, 200));
+  int slot = -1;
+  REQUIRE(s.world().cap(kA, nullptr, &slot));
+  REQUIRE(s.world().unplugCap(kDB, slot));
+  s.step(2000);
+  auto st = c.state();
+  CHECK(st["dosing"].is_null());
+  CHECK(st["lastJob"]["state"] == "failed");
+  CHECK(st["lastJob"]["steps"][0]["mlDone"].get<double>() > 0);  // aus der Laufzeit geschätzt
+  CHECK(c.call("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 2}}).first == 200);
+}
+
+TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, als gelaufen gezählt") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  double before = c.state()["stock"]["teil-a"];
+  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 4}});
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1; }, 10000, 200));
+  s.control("fault", {{"device", kDB}, {"fault", "offline"}});
+  REQUIRE(until(s, [&] { return c.state()["lastJob"]["state"] == "failed"; }, 30000, 500));
+  CHECK(c.state()["dosing"].is_null());
+  CHECK(s.world().cap(kA)->state != 1);
+  auto st = c.state();
+  CHECK(st["lastJob"]["state"] == "failed");
+  CHECK(st["lastJob"]["message"]["text"].get<std::string>().find("keine Rückmeldung") != std::string::npos);
+  CHECK(st["stock"]["teil-a"].get<double>() <= before - 3.9);  // sichere Richtung: als gelaufen gebucht
+}
+
+TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (RAT-054)") {
+  // Ohne Kennung je Start hieße die erste EC-Gabe nach jedem Neustart gleich
+  // („ec-1#1“). Der Dosierblock hielte sie für eine Wiederholung und liefe nicht.
+  sim::Simulation s(test::opts("demo"));
+  auto job = [&] { return s.world().cap(kA)->jobId; };
+  auto ecRound = [&](const std::string& before) {
+    s.reboot();
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.world().fill(40, 1.0, 5.9);
+    REQUIRE(until(s, [&] { return job() != before && job().rfind("ec-", 0) == 0 && s.world().cap(kA)->state == 2; },
+                  60 * 60 * 1000, 5000));
+    CHECK(job().rfind("ec-1#", 0) == 0);  // erste EC-Gabe nach dem Start
+    CHECK(s.world().cap(kA)->elapsed > 0);
+    return job();
+  };
+  const std::string first = ecRound(job());
+  const std::string second = ecRound(first);
+  CHECK(first != second);
 }

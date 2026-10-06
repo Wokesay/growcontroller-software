@@ -20,7 +20,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `../build/gc_sim_server --port ${port} --scenario neu --web dist --password demo-passwort --prefill 2`,
+    command: `../build/gc_sim_server --port ${port} --scenario neu --web dist --password demo-passwort --prefill 2 --allow-reset`,
     url: `http://127.0.0.1:${port}/api/v1/info`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

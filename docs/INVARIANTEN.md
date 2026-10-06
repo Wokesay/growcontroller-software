@@ -23,8 +23,10 @@ oder mit Abweichung · **○** offen.
 |---|---|---|---|
 | Nach Neustart alles aus, nichts fortsetzen | RAT-007 | ✓ | `Hub::boot`, `Actuators::stopAll` · test_scenarios „Stromausfall“ |
 | Unter 1,0 s nicht dosieren, sichtbar | RAT-050 | ✓ | `splitRuns`, Gateway · test_mix |
-| Handgabe in ml begrenzt | RAT-039 | ◐ | `Limits::handDoseMaxMl` (5 ml) · kein eigener Test |
-| Job-ID gegen Doppeldosierung bei Wiederholung | Vorschlag `firmware` | ◐ | Dosierblock im Simulator; jeder neue Versuch eigene ID · test_scenarios „nachholen“ |
+| Handgabe in ml begrenzt | RAT-039 | ✓ | `Limits::handDoseMaxMl` (5 ml, fest höchstens 50 ml) · test_catalog_config „Grenzen“ |
+| Job-ID gegen Doppeldosierung bei Wiederholung | Vorschlag `firmware` | ✓ | Dosierblock im Simulator; jeder Versuch und jeder Start eigene ID · test_scenarios „nachholen“, „Job-IDs nach Neustart“ |
+| Frist je Lauf: ohne Rückmeldung aus, als gelaufen zählen | Vorschlag `reviewer` | ✓ | `Doser::tick` · test_scenarios „Block stumm“, „Kappe abgezogen“ |
+| Feste Grenzen im Code, Konfiguration verschärft nur | R7 | ✓ | `Limits::bounded`, `validateConfig` · test_catalog_config, test_api „Import“ |
 | Ist-Laufzeit vom Dosierblock, nicht die angeforderte | RAT-070 | ✓ | `RunStatus::actualMs`, Buchung je Lauf |
 | Zeitlimit in Hardware über dem längsten Lauf (SW 60 s / HW 90 s) | RAT-007, RAT-018 | ◐ | Gateway 60 s; Dosierblock-Zwilling 90 s. In Hardware: offen |
 | Ein Kanal zugleich | PD-010, Vorschlag `firmware` | ✓ | Gateway und Zwilling lehnen ab |
@@ -57,7 +59,7 @@ oder mit Abweichung · **○** offen.
 
 | Regel | Quelle | Status | Umsetzung / Test |
 |---|---|---|---|
-| 0,8 × Lücke / Wirkung; Deckel 1,0 mS/cm je Runde | RAT-055 | ✓ | `planEcDose` · test_mix M5-1 |
+| 0,8 × Lücke / Wirkung; Deckel 1,0 mS/cm je Runde, in ml/L über max(Start, Wirkung) | RAT-056 | ✓ | `planEcDose` · test_mix M5-1, M5-4 |
 | Startwirkung 0,275 mS/cm je ml/L Rezept | RAT-055 | ✓ | `kEcStartEffect` |
 | Vorhalt für die folgende pH−-Gabe | RAT-053 | ◐ | `EcController::tick` |
 | Keine Bewegung nach 2 Runden → Abbruch | RAT-055 | ◐ | Rastung `ec.no_effect` |
@@ -116,7 +118,7 @@ oder mit Abweichung · **○** offen.
 |---|---|---|---|
 | Heizung nur extern, rastende Notabschaltung | RAT-060, RAT-061 | ○ | nicht im Prototyp |
 | Gießen über Zahl der Gaben; Drain% führt | RAT-010, RAT-014 | ○ | Stufe 3 |
-| Verbrauch nur, was in den Tank geht; je Lauf buchen | RAT-070, RAT-040 | ✓ | `Doser::book` · test_scenarios |
+| Verbrauch nur, was in den Tank geht; je Lauf buchen, auch beim Abbruch | RAT-070, RAT-040 | ✓ | `Doser::book`, `Doser::abort` · test_scenarios „Abbruch bucht“ |
 | Unbekannter Vorrat wird nicht gebucht | RAT-015 | ✓ | `Doser::book` |
 | Mindeststand 150 ml, pH− 20 ml | RAT-071 | ✓ | Watchdog |
 | Phasen liefern Parameter, nie Namen | RAT-076 | ✓ | `effectiveParams` · test_catalog_config M15-1; `arch_check.sh` R4 |

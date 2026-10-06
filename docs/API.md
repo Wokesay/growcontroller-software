@@ -18,6 +18,16 @@ also auch eine Integration.
   sonst 401.
 - Sicherheitskopfzeilen am Server: CSP `default-src 'self'`,
   `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
+- **Herkunft:** Der `Host`-Kopf muss eine IP, `localhost` oder ein
+  `.local`-Name sein (gegen DNS-Rebinding). Schreibende Anfragen eines
+  Browsers nur von derselben Herkunft (`Sec-Fetch-Site`, sonst `Origin`
+  gegen `Host`), sonst 403 `api.origin`.
+- **Fehler:** falsches Format 400 `api.bad_input`, interner Fehler 500
+  `api.internal`; der Server läuft weiter. Ist das Passwort verloren
+  (`auth.json` fehlt, obwohl gesetzt), lehnt `/auth/setup` mit 423
+  `auth.lost` ab: Werksreset am Gerät nötig.
+- **Import** (`POST /config/import`) prüft wie jede Änderung, dazu Grenzen,
+  Phasenparameter und Kalibrierdaten; während eines Auftrags 409.
 
 ## Lesen
 

@@ -23,10 +23,13 @@ const char* statusLine(int s) {
     case 200: return "200 OK";
     case 400: return "400 Bad Request";
     case 401: return "401 Unauthorized";
+    case 403: return "403 Forbidden";
     case 404: return "404 Not Found";
+    case 408: return "408 Request Timeout";
     case 409: return "409 Conflict";
     case 413: return "413 Payload Too Large";
     case 422: return "422 Unprocessable Entity";
+    case 423: return "423 Locked";
     case 429: return "429 Too Many Requests";
     case 501: return "501 Not Implemented";
     case 502: return "502 Bad Gateway";
@@ -85,9 +88,21 @@ std::string tokenOf(httpd_req_t* req) {
   return cookie.substr(pos + 11, end == std::string::npos ? std::string::npos : end - pos - 11);
 }
 
+esp_err_t sendError(httpd_req_t* req, int status, const char* body) {
+  httpd_resp_set_status(req, statusLine(status));
+  httpd_resp_set_type(req, "application/json");
+  securityHeaders(req);
+  return httpd_resp_sendstr(req, body);
+}
+
 esp_err_t apiHandler(httpd_req_t* req) {
   gc::ApiRequest r;
   r.method = methodName(req->method);
+  // Herkunft prüfen (DNS-Rebinding, CSRF), bevor der Kern die Anfrage sieht.
+  const std::string host = header(req, "Host");
+  if (!gc::hostAllowed(host) ||
+      !gc::writeAllowed(r.method, header(req, "Sec-Fetch-Site"), header(req, "Origin"), host))
+    return sendError(req, 403, "{\"error\":{\"key\":\"api.origin\",\"text\":\"Anfrage von fremder Herkunft abgelehnt\"}}");
   std::string uri = req->uri;
   auto q = uri.find('?');
   r.path = uri.substr(0, q);
@@ -103,16 +118,18 @@ esp_err_t apiHandler(httpd_req_t* req) {
       pos = amp + 1;
     }
   }
-  if (req->content_len > kMaxBody) {
-    httpd_resp_set_status(req, statusLine(413));
-    return httpd_resp_sendstr(req, "{\"error\":{\"key\":\"api.too_large\",\"text\":\"Anfrage zu groß\"}}");
-  }
+  if (req->content_len > kMaxBody)
+    return sendError(req, 413, "{\"error\":{\"key\":\"api.too_large\",\"text\":\"Anfrage zu groß\"}}");
   r.body.resize(req->content_len);
   size_t got = 0;
+  int timeouts = 0;
   while (got < req->content_len) {
     int n = httpd_req_recv(req, r.body.data() + got, req->content_len - got);
     if (n <= 0) {
-      if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;
+      // Langsame oder stumme Gegenstelle darf den einzigen Server-Task nicht blockieren.
+      if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3) continue;
+      if (n == HTTPD_SOCK_ERR_TIMEOUT)
+        return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"Anfrage unvollständig\"}}");
       return ESP_FAIL;
     }
     got += static_cast<size_t>(n);

@@ -16,7 +16,9 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
   if(NOT embed_rc EQUAL 0)
     message(FATAL_ERROR "Einbetten von Katalog/Changelog fehlgeschlagen")
   endif()
-  set(GC_DEPS_DIR "${CMAKE_BINARY_DIR}/gc_deps")
+  # Als Cache-Eintrag setzen: ESP-IDF verlangt nur CMake 3.16 (CMP0126 alt),
+  # dort würde das set(CACHE) in deps.cmake eine normale Variable verdrängen.
+  set(GC_DEPS_DIR "${CMAKE_BINARY_DIR}/gc_deps" CACHE PATH "Header-Abhängigkeiten der Firmware" FORCE)
   include("${GC_ROOT}/cmake/deps.cmake")
 endif()
 

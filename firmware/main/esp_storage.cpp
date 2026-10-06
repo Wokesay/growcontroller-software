@@ -26,6 +26,9 @@ bool EspStorage::mount() {
 
 std::optional<std::string> EspStorage::read(const std::string& name) {
   FILE* f = std::fopen(pathOf(name).c_str(), "rb");
+  // SPIFFS kann nicht über eine bestehende Datei umbenennen; zwischen remove und
+  // rename liegt nur die fertige .tmp. Ein Stromausfall genau dort verliert nichts.
+  if (!f) f = std::fopen(pathOf(name + ".tmp").c_str(), "rb");
   if (!f) return std::nullopt;
   std::string data;
   char buf[1024];

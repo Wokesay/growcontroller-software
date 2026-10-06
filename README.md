@@ -42,7 +42,7 @@ Einstieg in die Doku: [`docs/README.md`](docs/README.md).
 ## Prüfen
 
 ```bash
-tools/ci.sh            # Architekturregeln, Kern mit Sanitizern, 57 C++-Tests, Web-Build mit Größenbudget
+tools/ci.sh            # Architekturregeln, Kern mit Sanitizern, 67 C++-Tests, Web-Build mit Größenbudget
 E2E=1 tools/ci.sh      # zusätzlich 9 Browser-Tests gegen den Simulator
 ```
 
