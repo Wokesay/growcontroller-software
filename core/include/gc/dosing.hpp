@@ -70,7 +70,7 @@ class Actuators {
 
   // Not-Halt: alle Pumpen und Ausgänge aus, idempotent (Quelle: RAT-036).
   // Zählt als Ausschalten: Mindestpausen gelten auch danach.
-  void stopAll(const Config& cfg, Ms now);
+  void stopAll(const Catalog& cat, const Config& cfg, Ms now);
   // Je Takt: Trockenlauf, Notgrenze, Zeitlimits; schaltet nur AUS, nie EIN.
   void enforce(const Ctx& c);
 

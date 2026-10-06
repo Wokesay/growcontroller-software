@@ -121,7 +121,7 @@ void Hub::boot() {
              "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
   if (auto s = store_.read(kHistoryFile)) history_.load(*s);
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
-  act_.stopAll(cfg_, clock_.nowMs());
+  act_.stopAll(cat_, cfg_, clock_.nowMs());
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
@@ -222,7 +222,7 @@ void Hub::tick() {
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
     // Dosierung abbrechen, einmal laut melden.
-    act_.stopAll(cfg_, clock_.nowMs());
+    act_.stopAll(cat_, cfg_, clock_.nowMs());
     try {
       Ctx c = ctx();
       doser_.abort(c, act_, "Interner Fehler");
@@ -684,7 +684,8 @@ Result Hub::removeDevice(const std::string& id) {
     if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
       Msg e;
       Ctx c = ctx();
-      act_.setRole(c, role, false, "Gerät entfernt", e);
+      if (!act_.setRole(c, role, false, "Gerät entfernt", e))
+        log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Gerät entfernt: " + e.text, {{"role", role}, {"device", id}});
     }
   it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
   cfg_.devices.erase(it);
@@ -726,7 +727,8 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   if (const Binding* old = cfg_.binding(role); old && rd && !rd->profile.empty() && (old->device != device || old->channel != channel)) {
     Msg e;
     Ctx c = ctx();
-    act_.setRole(c, role, false, "Zuordnung geändert", e);
+    if (!act_.setRole(c, role, false, "Zuordnung geändert", e))
+      log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Alter Ausgang: " + e.text, {{"role", role}, {"device", old->device}});
   }
   cfg_ = next;
   saveConfig("Zuordnung: " + (rd ? rd->label : role));
@@ -1008,7 +1010,7 @@ Result Hub::importConfig(const json& j) {
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
     return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
-  act_.stopAll(cfg_, clock_.nowMs());
+  act_.stopAll(cat_, cfg_, clock_.nowMs());
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
@@ -1442,7 +1444,7 @@ Result Hub::stop(const std::string& who) {
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  act_.stopAll(cfg_, clock_.nowMs());
+  act_.stopAll(cat_, cfg_, clock_.nowMs());
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", {"job.stopped", "Durch Not-Halt abgebrochen", json::object()});

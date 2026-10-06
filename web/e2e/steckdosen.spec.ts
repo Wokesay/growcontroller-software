@@ -22,9 +22,12 @@ test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen",
   await expect(select).toBeVisible();
   await select.selectOption({ label: "Umwälzpumpe" });
   await expect(page.getByText("Zugeordnet; Schutz im Gerät gesetzt")).toBeVisible();
+  const outlet = async () => {
+    const world = await (await page.request.get("/api/v1/sim")).json();
+    return world.world.netPlugs.find((p: { id: string }) => p.id === id).outlets[0];
+  };
+  expect((await outlet()).initialOff).toBe(true);
   await page.getByTestId(`outlets-${id}`).getByRole("button", { name: "Testen" }).click();
-  const world = await (await page.request.get("/api/v1/sim")).json();
-  const plug = world.world.netPlugs.find((p: { id: string }) => p.id === id);
-  expect(plug.outlets[0].on).toBe(true);
-  expect(plug.outlets[0].initialOff).toBe(true);
+  // Der Klick geht asynchron an den Hub: auf den Zustand warten, nicht sofort lesen
+  await expect.poll(async () => (await outlet()).on).toBe(true);
 });

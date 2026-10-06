@@ -134,7 +134,9 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
       return msg("act.humidifier.rh", "Luftfeuchte " + fmt(*rh.value, 0) + " % – über " + fmt(kHumidifierMaxRh, 0) + " % kein Befeuchter");
   }
   // Gießpumpe: nur mit gültigem Füllstand über dem Mindestfüllstand, sonst
-  // läuft sie trocken (Quelle: RAT-067).
+  // läuft sie trocken. Abweichung von RAT-068 („Pegel unlesbar →
+  // gießen und melden“): hier gesperrt (Annahme, Empfehlung hardware
+  // 06.10.2026; PD folgt).
   if (role == "zone.irrigation_pump") {
     if (!levelBound || !level.usable()) return msg("act.irrigation.level", "Ohne gültigen Füllstand keine Gießpumpe (Trockenlauf)");
     if (!isNum(tank.minL)) return msg("act.irrigation.level", "Mindestfüllstand des Tanks fehlt");
@@ -199,14 +201,15 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
   return true;
 }
 
-void Actuators::stopAll(const Config& cfg, Ms now) {
+void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now) {
   bus_.stopAllPumps();
   cfg.forEachBinding([&](const std::string& role, const Binding& b) {
+    // Alle Schaltrollen aus, auch wenn der Zustand unbekannt ist (Schaltbox
+    // oder Dose nicht lesbar): der Befehl kostet nichts. Messrollen nicht.
+    const RoleDef* rd = cat.role(role);
+    if (!rd || rd->profile.empty()) return;
     std::string e;
-    // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox
-    // oder Dose nicht lesbar): der Befehl kostet nichts.
-    auto st = swState(b.device, b.channel);
-    if (st || role.rfind("tank.", 0) == 0 || role.rfind("zone.", 0) == 0) sw(b.device, b.channel, false, e);
+    sw(b.device, b.channel, false, e);
     offSince_[role] = now;  // Mindestpausen gelten auch nach Not-Halt und Neustart
   });
   onSince_.clear();
@@ -260,6 +263,21 @@ void Actuators::enforce(const Ctx& c) {
       onSince_.erase("tank.inlet");
       c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
       c.log.add(c.epoch, "alarm", "alarm", "Zulauf-Notabschaltung", why + ". Gerastet bis zur Quittierung.");
+    }
+  }
+
+  // Gießpumpe im Lauf: Füllstand ungültig oder unter dem Mindestfüllstand →
+  // aus (Trockenlauf), mit Meldung.
+  if (roleState(c.cfg, "zone.irrigation_pump").value_or(false)) {
+    std::string why;
+    if (!levelBound || !level.usable()) why = "Füllstand ungültig";
+    else if (isNum(tank.minL) && *level.value < tank.minL) why = "Füllstand " + fmt(*level.value, 1) + " L unter dem Mindestfüllstand";
+    if (!why.empty()) {
+      const Binding* b = c.cfg.binding("zone.irrigation_pump");
+      sw(b->device, b->channel, false, e);
+      onSince_.erase("zone.irrigation_pump");
+      offSince_["zone.irrigation_pump"] = c.now;
+      c.log.add(c.epoch, "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".", {{"role", "zone.irrigation_pump"}});
     }
   }
 

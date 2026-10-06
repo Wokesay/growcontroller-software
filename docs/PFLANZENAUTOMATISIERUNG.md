@@ -31,9 +31,9 @@ config
 
 | Bereich | Rollen |
 |---|---|
-| Tank | `tank.ph`, `tank.ec`, `tank.water_temp`, `tank.level`, `tank.circulation`, `tank.inlet`, `tank.heater` |
+| Tank | `tank.ph`, `tank.ec`, `tank.water_temp`, `tank.level`, `tank.circulation`, `tank.inlet`, `tank.heater` (folgt mit der Notabschaltung) |
 | Licht | `zone.light` (Schalten), `zone.light_dim` (0–10 V) |
-| Klima | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` |
+| Klima | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` (folgt mit der Notabschaltung) |
 | Bewässerung | `zone.irrigation_pump` |
 
 **Abgeleitete Werte** (fester Code, kein Skript): `zone.vpd` aus
@@ -75,14 +75,18 @@ Software bindet sie trotzdem an.
   Einschalten, Testen und Handbetrieb sind umgesetzt (§8 Schritte 3–4).
   Offen:
   - Heizrollen erst mit der rastenden Notabschaltung (Pegel, Wassertemperatur,
-    Übertemperatur, Laufzeit; Quelle: RAT-060) und `power_limit`;
+    Übertemperatur, fehlende Wirkung, Ausfall der Abschaltlogik, Laufzeit;
+    Quelle: RAT-060) und `power_limit`;
   - Profil „versorgen“ für Geräte mit eigenem Thermostat (RAT-069);
   - Finden per mDNS und Digest auf dem Gerät, „Aus nicht bestätigt“ mit
     Wiederholung, Watchdog über die Leistung („soll aus, zieht > 2 W“);
   - Taster und App am Shelly umgehen die Sperren: „an ohne Befehl des Hubs“
     als Handbetrieb behandeln;
-  - Gesamtlast je Leiste (16 A) und Anlaufströme (Licht, Kompressor) – am
-    Muster messen.
+  - Gesamtlast je Leiste (16 A gesamt, 12 A je Dose laut Suchtreffern vom
+    06.10.2026, Herstellerseite nicht abgerufen) und Anlaufströme (Licht,
+    Kompressor) – am Muster messen.
+  - Gießpumpe: Sperre bei unlesbarem Pegel weicht von RAT-068 ab
+    („gießen und melden“) – PD folgt.
 - **Eigener Netz-Bus** `INetBus` neben dem RS485-Bus `IBus`. Er hat kein
   `startRun`; damit ist schon über den Typ ausgeschlossen, dass übers Netz
   dosiert wird. Nur `Actuators` schaltet (R1).

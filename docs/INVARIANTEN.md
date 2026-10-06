@@ -121,9 +121,9 @@ oder mit Abweichung · **○** offen.
 | Schutzeinstellung vor jedem Einschalten prüfen | RAT-019 (Nachträge: Inventar ≠ Gerät) | ✓ | `Actuators::setRole` · test_net „Schutzeinstellung verloren“ |
 | Befeuchter und Entfeuchter nie zugleich; unbekannter Zustand sperrt | RAT-034, R5 | ✓ | `Actuators::inhibit` · test_net „nie zugleich“, „unbekannter Zustand“. Abweichung: Gegensperre 10 min fehlt (folgt mit der Klimafunktion) |
 | Entfeuchter: Mindestpause 5 min, auch nach Not-Halt und Neustart | RAT-034 | ✓ | `kCompressorPause`, `Actuators::stopAll` · test_net „Kompressor-Pause“; Mindestlauf 10 min folgt mit der Klimafunktion |
-| Gießpumpe nur mit gültigem Füllstand über dem Mindestfüllstand | RAT-067 | ✓ | `Actuators::inhibit` · test_net „Gießpumpe“ |
+| Gießpumpe nur über dem Mindestfüllstand; im Lauf darunter → aus | RAT-068 | ◐ | `Actuators::inhibit`, `Actuators::enforce` · test_net „Gießpumpe“. Abweichung: bei unlesbarem Pegel gesperrt statt „gießen und melden“ (Annahme, Empfehlung hardware; PD folgt) |
 | Höchstlaufzeit je Rolle; Gerät schaltet knapp danach selbst ab | RAT-060 | ✓ | `Actuators::enforce` · test_net „Höchstlaufzeit“, „Auto-Off im Gerät“ |
-| Not-Halt schaltet auch Netzsteckdosen aus | RAT-036 | ✓ | `Actuators::stopAll` · test_net „Not-Halt“; „Aus nicht bestätigt“ offen |
+| Not-Halt schaltet auch Netzsteckdosen aus | RAT-036 | ◐ | `Actuators::stopAll` · test_net „Not-Halt“. Abweichung (RAT-036): hier sofort alles aus. „Aus nicht bestätigt“ mit Wiederholung offen |
 | Gießen über Zahl der Gaben; Drain% führt | RAT-010, RAT-014 | ○ | Stufe 3 |
 | Verbrauch nur, was in den Tank geht; je Lauf buchen, auch beim Abbruch | RAT-070, RAT-040 | ✓ | `Doser::book`, `Doser::abort` · test_scenarios „Abbruch bucht“ |
 | Unbekannter Vorrat wird nicht gebucht | RAT-015 | ✓ | `Doser::book` |

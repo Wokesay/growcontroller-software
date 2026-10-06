@@ -174,7 +174,20 @@ TEST_CASE("Gateway: Kompressor-Pause gilt auch nach Not-Halt") {
   c.ok("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
   c.ok("POST", "/api/v1/stop");
   c.ok("POST", "/api/v1/resume");
-  CHECK(c.call("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}}).first == 409);
+  auto [st, e] = c.call("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
+  CHECK(st == 409);
+  CHECK(e["error"]["key"] == "act.compressor.pause");
+  // Auch nach einem Neustart des Hubs
+  s.step(301 * 1000);
+  c.ok("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("reboot", json::object());
+  }
+  c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  auto [st2, e2] = c.call("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
+  CHECK(st2 == 409);
+  CHECK(e2["error"]["key"] == "act.compressor.pause");
 }
 
 TEST_CASE("Gateway: Schutzeinstellung im Gerät verloren → kein Einschalten") {
@@ -263,4 +276,19 @@ TEST_CASE("Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klart
   auto [st, e] = c.call("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
   CHECK(st == 409);
   CHECK(e["error"]["text"].get<std::string>().find("nicht erreichbar") != std::string::npos);
+}
+
+TEST_CASE("Gießpumpe: fällt der Füllstand im Lauf unter den Mindestfüllstand, geht sie aus") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});  // Demo: 31 L, Mindestfüllstand 3 L
+  CHECK(outlet(s, id, 0).on);
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 60000));
 }

@@ -81,8 +81,8 @@
     "tank.water_temp": { "label": "Wassertemperatur", "capability": "measure.water_temp", "series": true },
     "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
     "tank.circulation": { "label": "Umwälzpumpe", "accepts": ["switch.12v", "switch.mains"], "profile": "dauer" },
-    "tank.inlet": { "label": "Zulaufventil", "accepts": ["switch.12v", "switch.mains"], "profile": "puls", "maxOnS": 1800,
-      "note": "30 min Höchstlaufzeit (Quelle: RAT-019); die Funktion Nachfüllen begrenzt enger. Auto-Off allein schützt nicht vor dem Überlaufen (RAT-078)." },
+    "tank.inlet": { "label": "Zulaufventil", "accepts": ["switch.12v", "switch.mains"], "profile": "puls", "maxOnS": 1500,
+      "note": "25 min Höchstlaufzeit (Quelle: RAT-079); die Funktion Nachfüllen begrenzt enger. Auto-Off allein schützt nicht vor dem Überlaufen (RAT-078)." },
     "zone.air_temp": { "label": "Lufttemperatur", "capability": "measure.air_temp", "series": true },
     "zone.humidity": { "label": "Luftfeuchte", "capability": "measure.humidity", "series": true },
     "zone.co2": { "label": "CO2", "capability": "measure.co2", "series": true },
@@ -178,7 +178,7 @@
         { "key": "start_below_l", "label": "Nachfüllen unter", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 30 },
         { "key": "target_l", "label": "Auffüllen bis", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 40 },
         { "key": "flow_l_per_min", "label": "Zulauf (geschätzt)", "type": "number", "unit": "L/min", "min": 0.1, "max": 30, "step": 0.1, "default": 2.0 },
-        { "key": "max_open_min", "label": "Ventil höchstens offen", "type": "number", "unit": "min", "min": 1, "max": 30, "step": 1, "default": 15 }
+        { "key": "max_open_min", "label": "Ventil höchstens offen", "type": "number", "unit": "min", "min": 1, "max": 25, "step": 1, "default": 15 }
       ]
     },
     {

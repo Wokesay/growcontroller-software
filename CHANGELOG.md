@@ -55,24 +55,32 @@ stehen in jedem Release unter „Sicherheit“.
   Gerät folgen Finden per mDNS, Anmeldung und RPC. Welche Steckdosen der
   Shop führt, ist offen (PD folgt). API: `POST /roles/{rolle}/test`,
   `POST /roles/{rolle}/switch {on}` (Handbetrieb).
-- **Sicherheitsprofile im Aktor-Gateway:** dauer, puls, kompressor.
+- **Prüfung:** ein Schaltausgang nur für eine Rolle, Kanal im Bereich des
+  Geräts; „Ventil höchstens offen“ höchstens 25 min.
+- **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
+  Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
+  je Browser wählbar.
+
+### Sicherheit
+- **Sicherheitsprofile im Aktor-Gateway** für Steckdosen und 12-V-Ausgänge:
+  dauer, puls, kompressor.
   - Befeuchter und Entfeuchter laufen nie zugleich; ist der Zustand des
     Gegengeräts unbekannt, bleibt das andere aus (Quelle: RAT-034, R5).
   - Entfeuchter: 5 min Pause nach dem Ausschalten, auch nach Not-Halt und
     Neustart (Quelle: RAT-034).
   - Höchstlaufzeit für Befeuchter (5 min, Annahme), Gießpumpe (10 min,
-    Annahme) und Zulauf (30 min, Quelle: RAT-019); das Gerät schaltet
-    knapp danach selbst ab.
-  - Gießpumpe nur mit gültigem Füllstand über dem Mindestfüllstand,
-    Befeuchter nur mit gültiger Luftfeuchte unter 85 % (Annahme).
-  - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus.
+    Annahme) und Zulauf (25 min, Quelle: RAT-079); das Gerät
+    schaltet knapp danach selbst ab.
+  - Gießpumpe nur über dem Mindestfüllstand, im Lauf darunter aus; bei
+    unlesbarem Pegel gesperrt (Abweichung von RAT-068, PD folgt).
+  - Befeuchter: Ist ein Feuchtesensor zugeordnet, nur mit gültigem Wert
+    unter 85 % (Annahme).
+  - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus; klappt
+    das nicht, steht „Aus nicht bestätigt“ im Ereignisprotokoll.
+  - Not-Halt und Neustart schalten alle Schaltrollen aus;
+    laufen Umluft und Abluft nicht nach.
   - Heizungen gibt es noch nicht als Rolle: erst mit der rastenden
     Notabschaltung nach RAT-060.
-- **Prüfung:** ein Schaltausgang nur für eine Rolle, Kanal im Bereich des
-  Geräts; „Ventil höchstens offen“ höchstens 30 min.
-- **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
-  Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
-  je Browser wählbar.
 
 ### Geändert
 - Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
