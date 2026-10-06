@@ -16,33 +16,33 @@
     "dosing_block": {
       "label": "Dosierblock", "stage": 0, "attach": "hub_port", "slots": 6, "accepts": ["pump_cap"],
       "provides": [], "shop": "Dosierblock für 6 Pumpen",
-      "text": "Treibt bis zu 6 Pumpenkappen an. Zeitlimit in Hardware, immer nur ein Kanal zugleich."
+      "text": "Treibt bis zu 6 Pumpen an. Zeitlimit in Hardware, immer nur ein Kanal zugleich."
     },
     "pump_cap": {
-      "label": "Pumpenkappe", "stage": 0, "attach": "dosing_port",
-      "provides": ["dose.peristaltic"], "calibrations": ["pump_flow"], "shop": "Pumpenkappe mit Überwurf",
+      "label": "Pumpe", "stage": 0, "attach": "dosing_port",
+      "provides": ["dose.peristaltic"], "calibrations": ["pump_flow"], "shop": "Pumpe mit Überwurf",
       "text": "Peristaltikpumpe auf dem Kanister. Der ID-Chip trägt Kennung und Einmesswert."
     },
     "head_ph_ec": {
-      "label": "Kopf pH/EC", "stage": 1, "attach": "hub_port",
+      "label": "Sensorkopf pH/EC", "stage": 1, "attach": "hub_port",
       "provides": ["measure.ph", "measure.ec", "measure.water_temp"], "calibrations": ["ph", "ec"],
       "shop": "pH/EC-Kopf mit galvanischer Trennung und Sonden",
       "text": "Misst pH, EC und Wassertemperatur im Tank, galvanisch getrennt."
     },
     "head_level": {
-      "label": "Kopf Füllstand", "stage": 2, "attach": "hub_port",
+      "label": "Sensorkopf Füllstand", "stage": 2, "attach": "hub_port",
       "provides": ["measure.level"], "calibrations": ["tank_curve"], "shop": "Füllstands-Kopf",
       "text": "Misst den Füllstand. Dient als Notabschaltung beim Nachfüllen."
     },
     "head_climate": {
-      "label": "Kopf Klima", "stage": 4, "attach": "box_port",
+      "label": "Sensorkopf Klima", "stage": 4, "attach": "box_port",
       "provides": ["measure.air_temp", "measure.humidity"], "shop": "Klima-Kopf",
-      "text": "Misst Lufttemperatur und Luftfeuchte im Zelt."
+      "text": "Misst Lufttemperatur und Luftfeuchte im Raum."
     },
     "head_co2": {
-      "label": "Kopf CO2", "stage": 4, "attach": "box_port",
+      "label": "Sensorkopf CO2", "stage": 4, "attach": "box_port",
       "provides": ["measure.co2"], "shop": "CO2-Kopf",
-      "text": "Misst CO2 im Zelt."
+      "text": "Misst CO2 im Raum."
     },
     "hub_outputs": {
       "label": "12-V-Ausgänge des Hubs", "stage": 0, "attach": "builtin", "channels": 2,
@@ -58,9 +58,9 @@
     "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
     "tank.circulation": { "label": "Umwälzpumpe", "capability": "switch.12v" },
     "tank.inlet": { "label": "Zulaufventil", "capability": "switch.12v" },
-    "tent.air_temp": { "label": "Lufttemperatur Zelt", "capability": "measure.air_temp", "series": true },
-    "tent.humidity": { "label": "Luftfeuchte Zelt", "capability": "measure.humidity", "series": true },
-    "tent.co2": { "label": "CO2 Zelt", "capability": "measure.co2", "series": true }
+    "tent.air_temp": { "label": "Lufttemperatur Raum", "capability": "measure.air_temp", "series": true },
+    "tent.humidity": { "label": "Luftfeuchte Raum", "capability": "measure.humidity", "series": true },
+    "tent.co2": { "label": "CO2 Raum", "capability": "measure.co2", "series": true }
   },
 
   "functions": [
@@ -86,7 +86,7 @@
     },
     {
       "id": "monitor_tank", "label": "Tankwerte überwachen", "stage": 1, "group": "Messen", "alwaysOn": true,
-      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorwahrheit läuft immer, auch ohne Grow.",
+      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorwahrheit läuft immer, auch ohne laufenden Durchgang.",
       "requires": [ { "role": "tank.ph" }, { "role": "tank.ec" } ],
       "soft": [ { "role": "tank.water_temp", "why": "Ohne Temperatur keine Bewertung der Wassertemperatur." } ]
     },
@@ -159,7 +159,7 @@
     },
     {
       "id": "climate_watch", "label": "Klima bewerten", "stage": 4, "group": "Messen",
-      "text": "Bewertet Lufttemperatur und Luftfeuchte im Zelt. Steuert nichts.",
+      "text": "Bewertet Lufttemperatur und Luftfeuchte im Raum. Steuert nichts.",
       "requires": [ { "role": "tent.air_temp" }, { "role": "tent.humidity" } ]
     }
   ],
@@ -167,13 +167,39 @@
   "templates": {
     "recipes": [
       {
-        "id": "athena_pro_veg", "name": "Athena Pro – Wachstum (Vorlage)",
-        "note": "Vorlage, Werte vor dem Einsatz mit dem Herstellerplan abgleichen.",
-        "steps": [ { "canisterName": "Core", "mlPerL": 2.6 }, { "canisterName": "Grow", "mlPerL": 2.6 } ]
+        "id": "two_part_basic", "name": "Zweikomponenten-Dünger", "nameEn": "Two-part nutrient",
+        "note": "Startwerte für A+B-Dünger mit CalMag. An die Herstellerangabe anpassen.",
+        "noteEn": "Starting values for A+B nutrient with CalMag. Adjust to the manufacturer's chart.",
+        "ec": 1.6, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Teil B", "nameEn": "Part B", "pair": "AB", "mlPerL": 2.0 },
+          { "role": "a", "name": "Teil A", "nameEn": "Part A", "pair": "AB", "mlPerL": 2.0 },
+          { "role": "calmag", "name": "CalMag", "mlPerL": 0.5 }
+        ]
       },
       {
-        "id": "ab_basic", "name": "A+B Grundrezept",
-        "steps": [ { "canisterName": "Teil A", "mlPerL": 2.0 }, { "canisterName": "Teil B", "mlPerL": 2.0 } ]
+        "id": "athena_blended_veg", "name": "Athena Blended – Wachstum", "nameEn": "Athena Blended – Vegetative",
+        "note": "Athena Blended Feed Program A01.004 (metrisch), Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Athena Blended Feed Program A01.004 (metric), vegetative weeks 1–4. Check against the current manufacturer chart.",
+        "source": "RAT-066",
+        "ec": 2.1, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Grow B", "pair": "AB", "mlPerL": 2.9 },
+          { "role": "a", "name": "Grow A", "pair": "AB", "mlPerL": 2.9 },
+          { "role": "calmag", "name": "CaMg", "mlPerL": 1.0 }
+        ]
+      },
+      {
+        "id": "athena_blended_bloom", "name": "Athena Blended – Blüte", "nameEn": "Athena Blended – Flowering",
+        "note": "Athena Blended Feed Program A01.004 (metrisch), Blüte Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Athena Blended Feed Program A01.004 (metric), flowering weeks 1–4. Check against the current manufacturer chart.",
+        "source": "RAT-066",
+        "ec": 2.3, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Bloom B", "pair": "AB", "mlPerL": 3.2 },
+          { "role": "a", "name": "Bloom A", "pair": "AB", "mlPerL": 3.2 },
+          { "role": "calmag", "name": "CaMg", "mlPerL": 1.0 }
+        ]
       }
     ]
   }

@@ -21,7 +21,7 @@ TEST_CASE("Resolver: ohne Hardware ist eine Funktion nicht verfügbar, mit Shop-
   auto v = resolveFunctions(cat, cfg, {}, {}, truth);
   const auto& ph = fn(v, "ph_control");
   CHECK(ph.setup == "unavailable");
-  CHECK(ph.summary.text.find("Kopf pH/EC") != std::string::npos);
+  CHECK(ph.summary.text.find("Sensorkopf pH/EC") != std::string::npos);
   CHECK(fn(v, "mix").setup == "unavailable");
 }
 

@@ -77,7 +77,7 @@ class Hub {
   Result setStock(const std::string& id, double ml);
   Result putRecipe(const json& j);
   Result deleteRecipe(const std::string& id);
-  Result applyRecipeTemplate(const std::string& templateId);
+  Result applyRecipeTemplate(const std::string& templateId, const json& map = json::object());
   Result putFunction(const std::string& id, const json& j);
   Result importConfig(const json& j);
 

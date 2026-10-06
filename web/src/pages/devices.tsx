@@ -1,32 +1,13 @@
 // Geräte: Ports des Hubs, erkannte Geräte, Übernehmen, Kalibrieren,
 // Zuordnung der Messstellen und Ausgänge, „Erweitern“.
 import { useEffect, useState } from "preact/hooks";
-import { Cable, Cpu, Gauge, Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
+import { Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
 import { del, patch, post, put, type Device } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { canisters, catalog, config, refreshConfig, refreshState, state, tank, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
-
-function Ports() {
-  const st = state.value!;
-  return (
-    <div class="ports" data-testid="ports">
-      {st.ports.map((p) => {
-        const d = st.devices.find((x) => x.id === p.device);
-        return (
-          <div class={`port ${p.state}`} title={p.message?.text}>
-            <span class="pn">PORT {p.port}</span>
-            <span class="jack" />
-            <span class="pl">{p.state === "empty" ? <span class="faint">frei</span> : d?.name || d?.classLabel || p.class}</span>
-            {(p.state === "rejected" || p.state === "fault") && <span class="pm">{p.message.text}</span>}
-            {p.state === "checking" && <span class="faint small">prüft …</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import { DeviceIcon, PortGrid, devicePlace } from "../widgets";
 
 function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) {
   const d = p.d;
@@ -34,7 +15,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
   const [name, setName] = useState(d.name);
   const can = canisters.value.find((k) => k.pump === d.id);
   const flow = d.info?.flowMlPerMin ?? null;
-  const where = d.slot >= 0 ? `Dosierblock Port ${d.slot + 1}` : d.port > 0 ? `Hub-Port ${d.port}` : "im Hub";
+  const where = devicePlace(d);
   return (
     <div class="item" data-testid={`device-${d.id}`}>
       <div class="grow">
@@ -130,7 +111,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
             </>
           }
         >
-          <Field label="Name" hint="Zum Beispiel die Farbe der Kappe oder der Ort">
+          <Field label="Name" hint="Zum Beispiel die Farbe des Clips oder der Ort">
             <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
         </Modal>
@@ -271,8 +252,8 @@ export function DevicesPage() {
   const blocks = st.devices.filter((d) => d.class !== "pump_cap");
   return (
     <div class="stack">
-      <Card title="Hub-Ports" icon={<Plug size={18} />} actions={<span class="faint small">Belegung P′ (RJ45), jeder Port mit eigener Prüfmessung</span>}>
-        <Ports />
+      <Card title="Anschlüsse am Hub" icon={<Plug size={18} />} actions={<span class="faint small">RJ45, jeder Anschluss mit eigener Prüfmessung</span>}>
+        <PortGrid />
       </Card>
       <Seg
         value={tab}
@@ -312,13 +293,13 @@ export function DevicesPage() {
           {blocks.map((b) => {
             const caps = st.devices.filter((d) => d.parent === b.id);
             return (
-              <Card title={b.name || b.classLabel} icon={b.class === "dosing_block" ? <Cable size={18} /> : b.class.startsWith("head") ? <Gauge size={18} /> : <Cpu size={18} />}>
+              <Card title={b.name || b.classLabel} icon={<DeviceIcon cls={b.class} />}>
                 <div class="list">
                   <DeviceCard d={b} onCal={(d, kind) => setCal({ d, kind })} />
                   {caps.map((c) => (
                     <DeviceCard d={c} onCal={(d, kind) => setCal({ d, kind })} />
                   ))}
-                  {b.class === "dosing_block" && caps.length === 0 && <p class="muted">Keine Pumpenkappe gesteckt.</p>}
+                  {b.class === "dosing_block" && caps.length === 0 && <p class="muted">Keine Pumpe gesteckt.</p>}
                 </div>
               </Card>
             );

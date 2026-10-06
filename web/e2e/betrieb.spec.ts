@@ -39,17 +39,17 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await page.goto("/#/funktionen");
   await expect(page.getByTestId("fn-ph_control")).toBeVisible();
   await page.getByTestId("fn-climate_watch").click();
-  await expect(page.getByText("Dafür brauchst du: Kopf Klima").first()).toBeVisible();
+  await expect(page.getByText("Dafür brauchst du: Sensorkopf Klima").first()).toBeVisible();
   await page.goto("/#/verlauf");
   await expect(page.locator(".chart canvas").first()).toBeVisible();
   await expect(page.getByTestId("event").first()).toBeVisible();
 });
 
-test("Fehlsteckung: Kappe am Hub-Port wird mit Klartext gemeldet", async ({ page }) => {
+test("Fehlsteckung: Pumpe am Hub-Anschluss wird mit Klartext gemeldet", async ({ page }) => {
   await login(page);
   await page.request.post("/api/v1/sim/plug", { data: { port: 2, class: "pump_cap" } });
   await page.goto("/#/geraete");
-  await expect(page.getByTestId("ports").getByText("Bitte in den Dosierblock stecken")).toBeVisible();
+  await expect(page.getByTestId("ports").getByText("Bitte auf den Dosierblock stecken")).toBeVisible();
   await page.request.post("/api/v1/sim/unplug", { data: { port: 2 } });
 });
 
@@ -61,4 +61,41 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
+});
+
+test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/rezepte");
+  await page.getByTestId("templates").getByRole("button", { name: /Athena Blended – Wachstum/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("Grow B");
+  await expect(page.getByRole("button", { name: "Rezept anlegen" })).toBeDisabled();
+  await page.locator("select[name=map-b]").selectOption({ label: "Teil B" });
+  await page.locator("select[name=map-a]").selectOption({ label: "Teil A" });
+  await page.locator("select[name=map-calmag]").selectOption({ label: "CalMag" });
+  await page.getByRole("button", { name: "Rezept anlegen" }).click();
+  await expect(page.getByText("Rezept „Athena Blended – Wachstum“ angelegt")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("Messwert-Kacheln bei Sensorausfall: nichts ragt aus der Kachel", async ({ page }) => {
+  await login(page);
+  for (const device of ["LVL-77B210", "PHEC-3F2A91"]) await page.request.post("/api/v1/sim/fault", { data: { device, fault: "offline" } });
+  await page.request.post("/api/v1/sim/speed", { data: { speed: 60 } });
+  const outside = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll(".metric")].filter((el) => {
+        const box = el.getBoundingClientRect();
+        return [...el.querySelectorAll("*")].some((c) => {
+          const r = c.getBoundingClientRect();
+          return r.width > 0 && (r.right > box.right + 1 || r.bottom > box.bottom + 1 || r.left < box.left - 1);
+        });
+      }).length,
+    );
+  for (const hash of ["/"]) {
+    await page.goto(hash);
+    await expect(page.getByText("Sensor liefert nicht").first()).toBeVisible({ timeout: 30_000 });
+    expect(await outside()).toBe(0);
+  }
+  for (const device of ["LVL-77B210", "PHEC-3F2A91"]) await page.request.post("/api/v1/sim/fault", { data: { device, fault: "none" } });
+  await page.request.post("/api/v1/sim/speed", { data: { speed: 1 } });
 });

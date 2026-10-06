@@ -2,7 +2,8 @@
 import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
-import { AlertTriangle, Check, CheckCircle2, Info, Minus, X, XCircle } from "lucide-preact";
+import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
+import { t, type TextKey } from "./i18n";
 import { toastError, toasts } from "./store";
 
 // ---------- Router (Hash, damit die App aus dem Flash ohne Server-Routing läuft)
@@ -92,13 +93,75 @@ export function Pill(p: { tone?: Tone; dot?: boolean; pulse?: boolean; children:
   );
 }
 
-export function Field(p: { label: ComponentChildren; hint?: ComponentChildren; error?: string | null; children: ComponentChildren }) {
+// Erklärung zu einem Begriff: ⓘ öffnet Text und, falls vorhanden, „So misst du es“.
+// Ein <span role="button"> statt <button>, damit das umgebende <label> weiter
+// das Eingabefeld meint.
+export type HelpTopic = "usableVolume" | "minLevel" | "baseVolume" | "bottle" | "pair" | "calibratePump" | "prime" | "calibrateProbe" | "levelCurve" | "tolerance" | "ecGate" | "waitTime" | "latched" | "jumpLock" | "maintenance" | "phase" | "vpd";
+const MEASURE: Partial<Record<HelpTopic, TextKey>> = { usableVolume: "measure.usableVolume", minLevel: "measure.minLevel" };
+
+export function HelpButton(p: { open: boolean; onToggle: () => void; topic: HelpTopic }) {
+  const toggle = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    p.onToggle();
+  };
   return (
+    <span
+      class="help-btn"
+      role="button"
+      tabIndex={0}
+      aria-expanded={p.open}
+      aria-label={`${t("common.help")}: ${t(`term.${p.topic}` as TextKey)}`}
+      onClick={toggle}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && toggle(e)}
+    >
+      <HelpCircle size={15} />
+    </span>
+  );
+}
+
+export function HelpBox(p: { topic: HelpTopic }) {
+  const m = MEASURE[p.topic];
+  return (
+    <div class="help-box" role="note">
+      <span>{t(`help.${p.topic}` as TextKey)}</span>
+      {m && <span>{t(m)}</span>}
+    </div>
+  );
+}
+
+/** Begriff mit ⓘ und aufklappbarer Erklärung, z. B. in Überschriften und Listen. */
+export function Term(p: { topic: HelpTopic; children?: ComponentChildren }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span class="term">
+      <span class="field-label">
+        {p.children ?? t(`term.${p.topic}` as TextKey)}
+        <HelpButton topic={p.topic} open={open} onToggle={() => setOpen(!open)} />
+      </span>
+      {open && <HelpBox topic={p.topic} />}
+    </span>
+  );
+}
+
+export function Field(p: { label: ComponentChildren; hint?: ComponentChildren; error?: string | null; help?: HelpTopic; children: ComponentChildren }) {
+  const [open, setOpen] = useState(false);
+  const field = (
     <label class="field">
-      <span>{p.label}</span>
+      <span class="field-label">
+        {p.label}
+        {p.help && <HelpButton topic={p.help} open={open} onToggle={() => setOpen(!open)} />}
+      </span>
       {p.children}
       {p.error ? <small class="err">{p.error}</small> : p.hint ? <small class="hint">{p.hint}</small> : null}
     </label>
+  );
+  if (!p.help) return field;
+  return (
+    <div class="field-wrap">
+      {field}
+      {open && <HelpBox topic={p.help} />}
+    </div>
   );
 }
 

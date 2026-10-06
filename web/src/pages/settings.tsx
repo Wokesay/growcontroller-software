@@ -1,7 +1,8 @@
 // Einstellungen: System, Zugang, Darstellung, Updates mit „Was ist neu“,
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
-import { Bug, Download, FileJson, Info, KeyRound, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
+import { Bug, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
+import { lang, setLang, t, type Lang } from "../i18n";
 import { get, post, put } from "../api";
 import { dateTime, num } from "../format";
 import { config, info, logoutLocal, refreshConfig, simulated, toast } from "../store";
@@ -302,6 +303,20 @@ export function SettingsPage() {
                 <Moon size={16} /> Farbschema
               </span>
               <Seg value={theme} onChange={setThemeAll} options={[["system", "System"], ["light", "Hell"], ["dark", "Dunkel"]]} />
+            </div>
+            <div class="row-between">
+              <span class="row">
+                <Languages size={16} /> {t("common.language")}
+              </span>
+              <Seg<Lang>
+                value={lang.value}
+                onChange={async (l) => {
+                  setLang(l);
+                  await put("/system", { language: l });
+                  await refreshConfig();
+                }}
+                options={[["de", "Deutsch"], ["en", "English"]]}
+              />
             </div>
             <div class="divider" />
             <table class="table">

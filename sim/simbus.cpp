@@ -28,7 +28,7 @@ std::vector<PortReport> SimBus::ports() const {
     } else if (d.cls == "pump_cap") {
       // Kennung passt nicht zum Hub-Port: Hardware gibt den Port nicht frei (PD-012)
       r.state = PortState::Rejected;
-      r.message = {"port.cap_on_hub", "Pumpenkappe direkt am Hub. Bitte in den Dosierblock stecken.", gc::json::object()};
+      r.message = {"port.cap_on_hub", "Pumpe direkt am Hub. Bitte auf den Dosierblock stecken.", gc::json::object()};
     } else if (d.fault == "offline") {
       r.state = PortState::Fault;
       r.message = {"port.no_answer", "Gerät antwortet nicht", gc::json::object()};
@@ -107,7 +107,7 @@ gc::RunStatus SimBus::runStatus(const std::string& pump) const {
   Cap* c = w_.cap(pump, &block);
   if (!c) {
     st.state = gc::RunStatus::State::Failed;
-    st.error = "Kappe getrennt";
+    st.error = "Pumpe getrennt";
     return st;
   }
   // Block antwortet nicht: der Hub sieht nur den zuletzt gelesenen Stand.

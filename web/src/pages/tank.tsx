@@ -34,7 +34,7 @@ function TankSettings() {
           </select>
         </Field>
         {!hasRole("tank.level") && (
-          <Field label="Aktuelles Volumen" hint="Ohne Füllstands-Kopf von Hand angeben">
+          <Field label="Aktuelles Volumen" hint="Ohne Füllstandssensor von Hand angeben">
             <NumberInput value={vol} onValue={setVol} unit="L" placeholder={num(state.value?.tank.volumeL ?? null, 1)} />
           </Field>
         )}
@@ -291,7 +291,7 @@ export function TankPage() {
       </div>
       <GrowCard />
       {config.value && !hasRole("tank.ph") && (
-        <Banner>Mit einem pH/EC-Kopf misst der Hub pH und EC dauerhaft und regelt nach. Siehe Geräte › Erweitern.</Banner>
+        <Banner>Mit einem pH/EC-Sensorkopf misst der Hub pH und EC dauerhaft und regelt nach. Siehe Geräte › Erweitern.</Banner>
       )}
     </div>
   );

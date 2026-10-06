@@ -14,13 +14,34 @@ stehen in jedem Release unter „Sicherheit“.
   belegt, nimmt er den nächsten freien; ist der Ordner nicht beschreibbar,
   läuft die Demo nur im Speicher. Releases hängen die Pakete automatisch an,
   mit Lizenzhinweisen der enthaltenen Bibliotheken
-  (`THIRD_PARTY_LICENSES.txt`).
+  (`THIRD_PARTY_LICENSES.txt`). Ein Firmware-Image kommt erst ins Release,
+  wenn es offline signiert wird (`docs/RELEASE.md`).
+- **Einrichtung in fünf Schritten** (Start, Geräte, Tank, Nährstoffe,
+  Einmessen): feste Leiste mit Zurück, Überspringen und Weiter; erledigte
+  Schritte anklickbar; Erklärungen (ⓘ) zu Nutzvolumen, Mindestfüllstand,
+  Kanister, Paar und Einmessen; Nährstoffe beginnen mit einer Vorlage samt
+  Vorschau, vorhandene Rezepte sind sichtbar.
+- **Rezept-Vorlagen** mit Vorschau und Zuordnung zu den eigenen Kanistern
+  statt Namensabgleich: Zweikomponenten-Dünger, Athena Blended Wachstum und
+  Blüte (Quelle: RAT-066).
+- **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
+  Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
+  je Browser wählbar.
 
 ### Geändert
 - Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
   auch mit MSVC übersetzt.
-- Releases enthalten kein Firmware-Image mehr, bis es offline signiert wird
-  (`docs/RELEASE.md`); die CI baut die Firmware weiterhin bei jedem Lauf.
+- Benennung: „Anschluss 1–8“ am Hub, „Pumpe 1–6“ am Dosierblock,
+  „Sensorkopf“, „Raum“ statt „Zelt“, Untertitel „Pflanzenautomatisierung“.
+  Anschlüsse zeigen das Symbol des Geräts.
+- Die App nutzt die ganze Bildschirmbreite; Kacheln brechen um, Tabellen
+  der Einrichtung werden auf dem Handy zu Karten.
+
+### Behoben
+- Messwert-Kacheln: Bei Sensorausfall ragten Hinweis und Kurve aus der
+  Kachel.
+- Demo: Die Phase „Blüte“ verwies auf ein fehlendes Rezept. IDs schreiben
+  Umlaute jetzt um („Blüte“ → „bluete“).
 
 ## [0.1.0-proto.1] – 2026-10-06
 

@@ -111,7 +111,7 @@ struct Eval {
 
   void canisters(const Requirement& r, std::vector<ReqResult>& out) const {
     if (!classPresent("pump_cap")) {
-      out.push_back({"hardware", false, false, "Dafür brauchst du: Dosierblock und Pumpenkappe", "expand",
+      out.push_back({"hardware", false, false, "Dafür brauchst du: Dosierblock und Pumpe", "expand",
                      {"dosing_block", "pump_cap"}});
       return;
     }
@@ -132,7 +132,7 @@ struct Eval {
       out.push_back({"setup", ok, false,
                      ok ? std::to_string(withPump) + " × " + what + " mit Pumpe" : what + "-Kanister anlegen und Pumpe zuordnen",
                      "canisters", {}});
-      if (ok) out.push_back({"runtime", online >= r.min, false, online >= r.min ? "Pumpen erkannt" : "Pumpe nicht erkannt – Kappe gesteckt?", "", {}});
+      if (ok) out.push_back({"runtime", online >= r.min, false, online >= r.min ? "Pumpen erkannt" : "Pumpe nicht erkannt – auf den Dosierblock gesteckt?", "", {}});
     } else {
       bool ok = calibrated >= r.min;
       std::string name = firstUncal.substr(0, firstUncal.find('|'));

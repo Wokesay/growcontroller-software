@@ -43,7 +43,7 @@ function WatchdogBar() {
               ? problems.slice(0, 3).map((p) => `${p.label}: ${p.text}`).join(" · ")
               : wd.neutral > 0
                 ? `${wd.neutral} Prüfungen ruhen mit Grund. Sperren bleiben aktiv.`
-                : "Sperren und Sensorwahrheit laufen immer, auch ohne Grow."}
+                : "Sperren und Sensorwahrheit laufen immer, auch ohne laufenden Durchgang."}
         </div>
       </div>
       <a class="btn sm ghost" href="#/tank">
@@ -186,7 +186,7 @@ export function Overview() {
             {hasRole("tank.circulation") && <ControllerRow name="Umwälzen" st={st.controllers.circulation} />}
             {!hasHead && !hasRole("tank.circulation") && (
               <div class="stack-sm">
-                <p class="muted">In Stufe 0 regelt der Hub nichts selbst. Mit dem pH/EC-Kopf misst er dauerhaft und regelt nach.</p>
+                <p class="muted">In Stufe 0 regelt der Hub nichts selbst. Mit dem pH/EC-Sensorkopf misst er dauerhaft und regelt nach.</p>
                 <a href="#/geraete?tab=erweitern">Was kann ich erweitern? →</a>
               </div>
             )}

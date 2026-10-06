@@ -28,7 +28,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
     <Modal title={`Pumpe einmessen – ${p.name}`} onClose={p.onClose}>
       {result !== null ? (
         <Banner tone="ok" icon={<Check size={18} />}>
-          Gespeichert in der Kappe: <strong>{num(result, 1)} ml/min</strong>. Der Wert bleibt beim Umstecken erhalten.
+          Gespeichert in der Pumpe: <strong>{num(result, 1)} ml/min</strong>. Der Wert bleibt beim Umstecken erhalten.
         </Banner>
       ) : !jobId ? (
         <div class="stack">

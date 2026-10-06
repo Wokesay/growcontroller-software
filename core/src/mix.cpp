@@ -113,7 +113,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     }
     auto pit = pumps.find(k->pump);
     if (pit == pumps.end() || !pit->second.online) {
-      error("mix.pump_offline", k->name + ": Pumpe nicht erkannt – Kappe gesteckt?", {{"canister", k->id}});
+      error("mix.pump_offline", k->name + ": Pumpe nicht erkannt – auf den Dosierblock gesteckt?", {{"canister", k->id}});
       p.steps.push_back(d);
       continue;
     }

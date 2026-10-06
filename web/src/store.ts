@@ -1,6 +1,7 @@
 // Zustand der App: Info, Sitzung, Live-Zustand (SSE), Konfiguration, Katalog.
 import { computed, signal } from "@preact/signals";
 import { ApiError, get, setUnauthorizedHandler, type Catalog, type Config, type HubState, type Info } from "./api";
+import { hasOwnLang, setLang } from "./i18n";
 
 export const info = signal<Info | null>(null);
 export const authed = signal<boolean | null>(null);
@@ -92,6 +93,8 @@ export async function afterLogin() {
   const [cfg, cat] = await Promise.all([get<Config>("/config"), get<Catalog>("/catalog"), refreshState()]);
   config.value = cfg;
   catalog.value = cat;
+  // Ohne eigene Wahl im Browser gilt die Sprache, die am Hub eingestellt ist
+  if (!hasOwnLang() && (cfg.system.language === "de" || cfg.system.language === "en")) setLang(cfg.system.language, false);
   startLive();
 }
 

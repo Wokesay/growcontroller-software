@@ -25,10 +25,22 @@ constexpr const char* kEventsFile = "events.json";
 constexpr const char* kHistoryFile = "history.bin";
 constexpr const char* kJobFile = "job.json";
 
+// Kurzname für IDs: Kleinbuchstaben, Ziffern, Bindestrich; deutsche Umlaute
+// umschrieben („Blüte“ → „bluete“), damit IDs lesbar bleiben.
 std::string slug(const std::string& s) {
   std::string out;
-  for (char c : s) {
-    if (std::isalnum(static_cast<unsigned char>(c))) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  for (size_t i = 0; i < s.size(); ++i) {
+    const auto c = static_cast<unsigned char>(s[i]);
+    if (c == 0xC3 && i + 1 < s.size()) {
+      const auto n = static_cast<unsigned char>(s[i + 1]);
+      const char* rep = n == 0xA4 || n == 0x84 ? "ae" : n == 0xB6 || n == 0x96 ? "oe" : n == 0xBC || n == 0x9C ? "ue" : n == 0x9F ? "ss" : nullptr;
+      if (rep) {
+        out += rep;
+        ++i;
+        continue;
+      }
+    }
+    if (std::isalnum(c)) out += static_cast<char>(std::tolower(c));
     else if (!out.empty() && out.back() != '-') out += '-';
   }
   while (!out.empty() && out.back() == '-') out.pop_back();
@@ -560,6 +572,11 @@ Result Hub::setSystem(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (j.contains("name") && j["name"].is_string()) cfg_.system.name = j["name"].get<std::string>().substr(0, 40);
   if (j.contains("timezone") && j["timezone"].is_string()) cfg_.system.timezone = j["timezone"];
+  if (j.contains("language") && j["language"].is_string()) {
+    std::string lang = j["language"];
+    if (lang != "de" && lang != "en") return Result::fail(422, "system.language", "Sprache muss de oder en sein");
+    cfg_.system.language = lang;
+  }
   if (j.contains("updateCheck") && j["updateCheck"].is_boolean()) cfg_.system.updateCheck = j["updateCheck"];
   if (j.contains("updateChannel") && j["updateChannel"].is_string()) {
     std::string ch = j["updateChannel"];
@@ -768,24 +785,32 @@ Result Hub::deleteRecipe(const std::string& id) {
   return Result::ok();
 }
 
-Result Hub::applyRecipeTemplate(const std::string& templateId) {
+Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  // Zuordnung je Flasche der Vorlage: ausdrücklich (map: Rolle → Kanister),
+  // sonst über den Namen (ohne Groß/Klein). Die Reihenfolge der Vorlage ist die
+  // Mischreihenfolge (z. B. B vor A, CalMag danach; Quelle: RAT-066).
+  auto lower = [](std::string x) {
+    for (auto& ch : x) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return x;
+  };
   for (const auto& t : cat_.templates.value("recipes", json::array())) {
     if (jstr(t, "id") != templateId) continue;
     json steps = json::array();
     std::vector<std::string> missing;
-    for (const auto& s : t["steps"]) {
-      std::string name = jstr(s, "canisterName");
+    for (const auto& s : t.value("steps", json::array())) {
+      const std::string role = jstr(s, "role"), name = jstr(s, "name");
       const CanisterCfg* k = nullptr;
+      if (map.is_object() && map.contains(role) && map[role].is_string()) k = cfg_.canister(map[role].get<std::string>());
       for (const auto& x : cfg_.canisters)
-        if (x.name == name) k = &x;
+        if (!k && lower(x.name) == lower(name)) k = &x;
       if (!k) missing.push_back(name);
       else steps.push_back({{"canister", k->id}, {"mlPerL", jnum(s, "mlPerL")}});
     }
     if (!missing.empty()) {
       std::string m;
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
-      return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m);
+      return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
     return putRecipe({{"name", jstr(t, "name")}, {"note", jstr(t, "note")}, {"steps", steps}});
   }
@@ -1149,15 +1174,15 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
   double flow = ml / (static_cast<double>(actual) / 60000.0);
   std::string pump = jstr(job_->info, "pump");
   std::string e;
-  if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, "cal.write", "Schreiben in die Kappe fehlgeschlagen: " + e);
+  if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, "cal.write", "Schreiben in die Pumpe fehlgeschlagen: " + e);
   if (auto it = pumps_.find(pump); it != pumps_.end()) it->second.flowMlPerMin = flow;  // sofort gültig, nicht erst im nächsten Takt
   double prev = jnum(job_->info, "previous");
   std::string note = isNum(prev) && std::fabs(flow - prev) / prev > 0.3 ? " Deutlich anders als vorher (" + fmt(prev, 1) + ") – Schlauch prüfen." : "";
   log_.add(clock_.epoch(), "calibration", "info", "Pumpe eingemessen",
-           job_->steps[0].dose.name + ": " + fmt(flow, 1) + " ml/min, gespeichert in der Kappe." + note,
+           job_->steps[0].dose.name + ": " + fmt(flow, 1) + " ml/min, gespeichert in der Pumpe." + note,
            {{"pump", pump}, {"flowMlPerMin", flow}, {"ml", ml}, {"ms", actual}});
   job_->info["flowMlPerMin"] = flow;
-  finishJob("done", {"cal.done", "Gespeichert in der Kappe: " + fmt(flow, 1) + " ml/min. Bleibt beim Umstecken erhalten." + note,
+  finishJob("done", {"cal.done", "Gespeichert in der Pumpe: " + fmt(flow, 1) + " ml/min. Bleibt beim Umstecken erhalten." + note,
                      json::object()});
   return Result::ok({{"flowMlPerMin", flow}});
 }

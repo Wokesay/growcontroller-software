@@ -1,22 +1,26 @@
-// Formatierung für Deutsch. Ein fehlender Wert wird als „–“ gezeigt, nie als 0.
-const nf = new Map<number, Intl.NumberFormat>();
+// Formatierung in der Sprache der App. Ein fehlender Wert wird als „–“
+// gezeigt, nie als 0.
+import { locale, t } from "./i18n";
+
+const nf = new Map<string, Intl.NumberFormat>();
 export function num(v: number | null | undefined, decimals = 1): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
-  let f = nf.get(decimals);
+  const key = `${locale()}:${decimals}`;
+  let f = nf.get(key);
   if (!f) {
-    f = new Intl.NumberFormat("de-DE", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    nf.set(decimals, f);
+    f = new Intl.NumberFormat(locale(), { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    nf.set(key, f);
   }
   return f.format(v);
 }
 
 export function ago(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "";
-  if (seconds < 5) return "gerade eben";
-  if (seconds < 60) return `vor ${Math.round(seconds)} s`;
-  if (seconds < 3600) return `vor ${Math.round(seconds / 60)} min`;
-  if (seconds < 86400) return `vor ${Math.round(seconds / 3600)} h`;
-  return `vor ${Math.round(seconds / 86400)} Tagen`;
+  if (seconds < 5) return t("common.justNow");
+  if (seconds < 60) return t("common.secondsAgo", { n: Math.round(seconds) });
+  if (seconds < 3600) return t("common.minutesAgo", { n: Math.round(seconds / 60) });
+  if (seconds < 86400) return t("common.hoursAgo", { n: Math.round(seconds / 3600) });
+  return t("common.daysAgo", { n: Math.round(seconds / 86400) });
 }
 
 export function duration(ms: number): string {
@@ -28,12 +32,21 @@ export function duration(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-const dtf = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const tf = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
-const df = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long" });
-export const dateTime = (epoch: number) => dtf.format(new Date(epoch * 1000));
-export const time = (epoch: number) => tf.format(new Date(epoch * 1000));
-export const day = (epoch: number) => df.format(new Date(epoch * 1000));
+const dtfs = new Map<string, Intl.DateTimeFormat>();
+function fmt(kind: "dt" | "t" | "d") {
+  const key = `${locale()}:${kind}`;
+  let f = dtfs.get(key);
+  if (!f) {
+    const opts: Intl.DateTimeFormatOptions =
+      kind === "dt" ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" } : kind === "t" ? { hour: "2-digit", minute: "2-digit" } : { weekday: "long", day: "numeric", month: "long" };
+    f = new Intl.DateTimeFormat(locale(), opts);
+    dtfs.set(key, f);
+  }
+  return f;
+}
+export const dateTime = (epoch: number) => fmt("dt").format(new Date(epoch * 1000));
+export const time = (epoch: number) => fmt("t").format(new Date(epoch * 1000));
+export const day = (epoch: number) => fmt("d").format(new Date(epoch * 1000));
 
 export function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;

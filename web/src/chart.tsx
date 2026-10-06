@@ -3,6 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { SeriesData } from "./api";
+import { locale } from "./i18n";
 
 function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
@@ -51,17 +52,17 @@ export function TimeChart(p: {
           grid: { stroke: grid, width: 1 },
           ticks: { stroke: grid },
           size: 52,
-          values: (_u, vals) => vals.map((v) => v.toLocaleString("de-DE", { maximumFractionDigits: dec })),
+          values: (_u, vals) => vals.map((v) => v.toLocaleString(locale(), { maximumFractionDigits: dec })),
         },
       ],
       series: [
-        { value: (_u, v) => (v ? new Date(v * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
+        { value: (_u, v) => (v ? new Date(v * 1000).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
         {
           label: p.label,
           stroke: color,
           width: 2,
           spanGaps: false,
-          value: (_u, v) => (v === null || v === undefined ? "–" : `${v.toLocaleString("de-DE", { minimumFractionDigits: dec, maximumFractionDigits: dec })} ${p.unit ?? ""}`),
+          value: (_u, v) => (v === null || v === undefined ? "–" : `${v.toLocaleString(locale(), { minimumFractionDigits: dec, maximumFractionDigits: dec })} ${p.unit ?? ""}`),
         },
         ...(showMinMax
           ? [

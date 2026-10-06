@@ -269,7 +269,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!k.pump.empty()) {
       if (!pumps.insert(k.pump).second) err("cfg.canister.pump", "Eine Pumpe ist zwei Kanistern zugeordnet");
       const DeviceCfg* d = c.device(k.pump);
-      if (!d || d->cls != "pump_cap") err("cfg.canister.pumpclass", k.name + ": zugeordnete Pumpe ist keine Pumpenkappe");
+      if (!d || d->cls != "pump_cap") err("cfg.canister.pumpclass", k.name + ": zugeordnetes Gerät ist keine Pumpe des Dosierblocks");
     }
     if (!k.pair.empty() && k.kind != "nutrient") err("cfg.canister.pair", k.name + ": nur Nährstoffe bilden Paare");
   }

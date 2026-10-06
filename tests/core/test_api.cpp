@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <cstdint>
+#include <set>
 
 #include "client.hpp"
 #include "fakes.hpp"
@@ -162,4 +163,55 @@ TEST_CASE("API: Passwort verloren → keine Ersteinrichtung über das Netz (EN 1
   h.boot();
   CHECK(h.credentialsLost());
   CHECK(setup(h) == 423);
+}
+
+TEST_CASE("Demo: jede Phase verweist auf ein vorhandenes Rezept") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto cfg = c.ok("GET", "/api/v1/config");
+  std::set<std::string> ids;
+  for (const auto& r : cfg["recipes"]) ids.insert(r["id"].get<std::string>());
+  REQUIRE(cfg["grow"]["phases"].size() >= 2);
+  for (const auto& ph : cfg["grow"]["phases"]) {
+    INFO(ph["name"].get<std::string>());
+    CHECK(ids.count(ph["params"]["recipe"].get<std::string>()) == 1);
+  }
+}
+
+TEST_CASE("Kurznamen: Umlaute werden umschrieben") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto j = c.ok("POST", "/api/v1/canisters", {{"name", "Blüte Größe Ä"}, {"kind", "nutrient"}, {"pump", ""}});
+  CHECK(j["id"] == "bluete-groesse-ae");
+}
+
+TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der Fehlenden") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // Demo hat Teil A, Teil B, CalMag → die Grundvorlage passt über die Namen
+  auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}});
+  auto cfg = c.ok("GET", "/api/v1/config");
+  const gc::json* made = nullptr;
+  for (const auto& r : cfg["recipes"])
+    if (r["id"] == j["id"]) made = &r;
+  REQUIRE(made);
+  CHECK((*made)["steps"].size() == 3);
+  // Andere Namen: ohne Zuordnung 422 mit den fehlenden Rollen, mit Zuordnung angelegt
+  auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}});
+  CHECK(st == 422);
+  CHECK(err["missing"].size() == 3);
+  c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}});
+  CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}}).first == 404);
+}
+
+TEST_CASE("System: Sprache nur de oder en") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
+  CHECK(c.call("PUT", "/api/v1/system", {{"language", "fr"}}).first == 422);
 }

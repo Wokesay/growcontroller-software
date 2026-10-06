@@ -37,7 +37,7 @@ bool FileStorage::write(const std::string& name, const std::string& data) {
 
 void FileStorage::flush() {
   std::lock_guard<std::mutex> l(m_);
-  if (dir_.empty()) {
+  if (dir_.empty() || memoryOnly_) {
     dirty_.clear();
     return;
   }
@@ -58,7 +58,7 @@ void FileStorage::flush() {
   dirty_.clear();
   if (ec) {
     std::cerr << "Daten können nicht gespeichert werden (" << dir_ << ": " << ec.message() << "). Der Simulator läuft nur im Speicher weiter.\n";
-    dir_.clear();
+    memoryOnly_ = true;
   }
 }
 
@@ -151,10 +151,10 @@ void Simulation::configureDemo() {
   if (opts_.password.empty()) opts_.password = "demo-passwort";
   h.auth().setInitialPassword(opts_.password);
   h.acceptDevice("DB-7A31C0", "Dosierblock 1");
-  h.acceptDevice("CAP-1F02A4", "Kappe grün");
-  h.acceptDevice("CAP-1F02B7", "Kappe orange");
-  h.acceptDevice("CAP-1F02C1", "Kappe blau");
-  h.acceptDevice("CAP-1F02D9", "Kappe rot");
+  h.acceptDevice("CAP-1F02A4", "Pumpe grün");
+  h.acceptDevice("CAP-1F02B7", "Pumpe orange");
+  h.acceptDevice("CAP-1F02C1", "Pumpe blau");
+  h.acceptDevice("CAP-1F02D9", "Pumpe rot");
   h.acceptDevice("PHEC-3F2A91", "pH/EC Tank");
   h.acceptDevice("LVL-77B210", "Füllstand Tank");
   h.acceptDevice(SimBus::kHubOut, "Hub-Ausgänge");
@@ -173,8 +173,8 @@ void Simulation::configureDemo() {
     std::string e;
     bus_->writePumpCalibration(id, c->trueFlow * err(rng), e);
   }
-  h.putRecipe({{"name", "Wachstum"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}}}}});
-  h.putRecipe({{"name", "Blüte"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}}}}});
+  const std::string veg = h.putRecipe({{"name", "Wachstum"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}}}}}).body.value("id", "");
+  const std::string bloom = h.putRecipe({{"name", "Blüte"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}}}}}).body.value("id", "");
   // Sonden kalibrieren über den echten Ablauf (Puffer im Zwilling)
   auto probe = [&](const std::string& kind, const std::vector<std::pair<double, double>>& points) {
     h.probeCalibration({{"device", "PHEC-3F2A91"}, {"kind", kind}, {"action", "start"}});
@@ -201,13 +201,13 @@ void Simulation::configureDemo() {
   h.putFunction("circulation", {{"enabled", true}, {"params", {{"mode", "interval"}, {"on_min", 15}, {"period_min", 60}}}});
   h.putFunction("water_temp_watch", {{"enabled", true}});
   h.putFunction("refill", {{"enabled", true}, {"params", {{"start_below_l", 30}, {"target_l", 45}, {"flow_l_per_min", 2.0}}}});
-  h.mixStart({{"recipe", "wachstum"}, {"waterL", 31}, {"mode", "new"}, {"guided", false}});
-  h.putFunction("ec_control", {{"enabled", true}, {"params", {{"ec_target", 1.4}, {"recipe", "wachstum"}}}});
+  h.mixStart({{"recipe", veg}, {"waterL", 31}, {"mode", "new"}, {"guided", false}});
+  h.putFunction("ec_control", {{"enabled", true}, {"params", {{"ec_target", 1.4}, {"recipe", veg}}}});
   h.putFunction("ph_control", {{"enabled", true}, {"params", {{"ph_target", 5.8}}}});
   h.growStart({{"name", "Durchgang 1"},
                {"phases",
-                {{{"name", "Wachstum"}, {"days", 21}, {"params", {{"ec_target", 1.4}, {"ph_target", 5.8}, {"recipe", "wachstum"}}}},
-                 {{"name", "Blüte"}, {"days", 56}, {"params", {{"ec_target", 1.7}, {"ph_target", 5.9}, {"recipe", "bluete"}}}}}}});
+                {{{"name", "Wachstum"}, {"days", 21}, {"params", {{"ec_target", 1.4}, {"ph_target", 5.8}, {"recipe", veg}}}},
+                 {{"name", "Blüte"}, {"days", 56}, {"params", {{"ec_target", 1.7}, {"ph_target", 5.9}, {"recipe", bloom}}}}}}});
   h.manualMeasure({{"ph", 6.1}});
   h.completeSetup();
 }

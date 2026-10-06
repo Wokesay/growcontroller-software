@@ -1,13 +1,91 @@
-// Rezepte und Kanister: Nährstoffe den Kappen zuordnen, Paare (A:B), Vorrat,
+// Rezepte und Kanister: Nährstoffe den Pumpen zuordnen, Paare (A:B), Vorrat,
 // Rezepte mit Reihenfolge, Vorlagen.
 import { useState } from "preact/hooks";
 import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, RefreshCw, ScrollText, Trash2 } from "lucide-preact";
-import { del, post, type Canister, type Recipe } from "../api";
+import { del, post, type Canister, type Recipe, type RecipeTemplate } from "../api";
+import { lang, t } from "../i18n";
 import { num } from "../format";
 import { canisters, catalog, recipes, refreshConfig, refreshState, state, toast } from "../store";
-import { Banner, Button, Card, Empty, Field, Modal, NumberInput } from "../ui";
+import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
 
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0", "#9a8a2c", "#6b7280"];
+
+const tName = (x: { name: string; nameEn?: string }) => (lang.value === "en" && x.nameEn ? x.nameEn : x.name);
+const tNote = (x: RecipeTemplate) => (lang.value === "en" && x.noteEn ? x.noteEn : x.note);
+
+/** Vorlage übernehmen: jeder Teil der Vorlage bekommt einen eigenen Kanister
+ * (vorbelegt über den Namen), danach legt der Kern das Rezept an. */
+function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
+  const nutrients = canisters.value.filter((k) => k.kind === "nutrient");
+  const guess = (name: string) => nutrients.find((k) => k.name.trim().toLowerCase() === name.trim().toLowerCase())?.id ?? "";
+  const [map, setMap] = useState<Record<string, string>>(() => Object.fromEntries(p.tpl.steps.map((s) => [s.role, guess(s.name) || guess(s.nameEn ?? "")])));
+  const complete = p.tpl.steps.every((s) => map[s.role]);
+  const twice = new Set(Object.values(map).filter(Boolean)).size < Object.values(map).filter(Boolean).length;
+  return (
+    <Modal
+      title={tName(p.tpl)}
+      onClose={p.onClose}
+      footer={
+        <>
+          <Button onClick={p.onClose}>{t("common.cancel")}</Button>
+          <Button
+            variant="primary"
+            disabled={!complete || twice}
+            onClick={async () => {
+              await post("/recipes/template", { id: p.tpl.id, map });
+              await refreshConfig();
+              toast(t("recipes.tpl.done", { name: tName(p.tpl) }));
+              p.onClose();
+            }}
+          >
+            {t("recipes.tpl.apply")}
+          </Button>
+        </>
+      }
+    >
+      <div class="stack">
+        {tNote(p.tpl) && <p class="muted">{tNote(p.tpl)}</p>}
+        {nutrients.length === 0 ? (
+          <Banner tone="warn">
+            {t("recipes.tpl.noCanisters")}{" "}
+            <a href="#/einrichtung?s=3" onClick={() => navigate("/einrichtung?s=3")}>
+              {t("recipes.tpl.toSetup")}
+            </a>
+          </Banner>
+        ) : (
+          <table class="table">
+            <thead>
+              <tr>
+                <th>{t("recipes.tpl.part")}</th>
+                <th>ml/L</th>
+                <th>{t("recipes.tpl.canister")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.tpl.steps.map((s) => (
+                <tr>
+                  <td>{tName(s)}</td>
+                  <td class="num">{num(s.mlPerL, 1)}</td>
+                  <td>
+                    <select class="select" value={map[s.role] ?? ""} name={`map-${s.role}`} onChange={(e) => setMap({ ...map, [s.role]: (e.target as HTMLSelectElement).value })}>
+                      <option value="">–</option>
+                      {nutrients.map((k) => (
+                        <option value={k.id}>{k.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {twice && <Banner tone="warn">{t("recipes.tpl.twice")}</Banner>}
+        {p.tpl.ec && <p class="faint small">{t("setup.nut.ec", { ec: num(p.tpl.ec, 1) })}</p>}
+        {p.tpl.source && <p class="faint small">{t("setup.nut.source", { s: p.tpl.source })}</p>}
+      </div>
+    </Modal>
+  );
+}
 
 function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   const st = state.value!;
@@ -58,7 +136,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
             <option value="ph_up">pH+ (Lauge)</option>
           </select>
         </Field>
-        <Field label="Pumpenkappe" hint="Die Kappe sitzt auf diesem Kanister">
+        <Field label="Pumpe" hint="Die Pumpe sitzt auf diesem Kanister">
           <select class="select" value={v.pump} onChange={(e) => set("pump", (e.target as HTMLSelectElement).value)} name="canister-pump">
             <option value="">– keine –</option>
             {caps.map((c) => (
@@ -178,6 +256,7 @@ export function RecipesPage() {
   const cans = canisters.value;
   const rs = recipes.value;
   const templates = catalog.value?.templates?.recipes ?? [];
+  const [tpl, setTpl] = useState<RecipeTemplate | null>(null);
   const pumpFlow = (id: string) => st.devices.find((d) => d.id === id)?.info?.flowMlPerMin ?? null;
   return (
     <div class="stack">
@@ -191,7 +270,7 @@ export function RecipesPage() {
         }
       >
         {!cans.length ? (
-          <Empty icon={<FlaskConical size={34} />} title="Noch keine Kanister" text="Lege für jede Pumpenkappe den Nährstoff an, der darunter steht." />
+          <Empty icon={<FlaskConical size={34} />} title="Noch keine Kanister" text="Lege für jede Pumpe den Nährstoff an, der darunter steht." />
         ) : (
           <table class="table">
             <thead>
@@ -316,29 +395,33 @@ export function RecipesPage() {
             ))}
           </div>
           {templates.length > 0 && (
-            <div class="stack-sm">
-              <div class="section-title">Vorlagen</div>
-              <div class="row">
-                {templates.map((t) => (
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      await post("/recipes/template", { id: t.id });
-                      await refreshConfig();
-                      toast(`Vorlage „${t.name}“ übernommen`);
-                    }}
-                  >
-                    {t.name}
-                  </Button>
+            <div class="stack-sm" data-testid="templates">
+              <div class="section-title">{t("recipes.tpl.title")}</div>
+              <div class="tpl-grid">
+                {templates.map((x) => (
+                  <button type="button" class="tpl" onClick={() => setTpl(x)}>
+                    <strong>{tName(x)}</strong>
+                    <div class="tpl-rows">
+                      {x.steps.map((s) => (
+                        <div>
+                          <span>{tName(s)}</span>
+                          <span class="faint">{num(s.mlPerL, 1)} ml/L</span>
+                        </div>
+                      ))}
+                    </div>
+                    {x.ec && <span class="faint small">{t("setup.nut.ec", { ec: num(x.ec, 1) })}</span>}
+                    <span class="link small">{t("recipes.tpl.use")} →</span>
+                  </button>
                 ))}
               </div>
-              <Banner>Vorlagen brauchen Kanister mit passendem Namen (z. B. „Core“ und „Grow“ für Athena). Werte vor dem Einsatz mit dem Herstellerplan abgleichen.</Banner>
+              <p class="faint small">{t("recipes.tpl.hint")}</p>
             </div>
           )}
         </div>
       </Card>
       {editCan !== undefined && <CanisterEditor can={editCan ?? undefined} onClose={() => setEditCan(undefined)} />}
       {editRec !== undefined && <RecipeEditor recipe={editRec ?? undefined} onClose={() => setEditRec(undefined)} />}
+      {tpl && <TemplateDialog tpl={tpl} onClose={() => setTpl(null)} />}
     </div>
   );
 }

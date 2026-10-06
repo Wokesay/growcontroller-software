@@ -1,10 +1,11 @@
 // Wiederverwendete Teile mehrerer Seiten: Messwert-Kachel, Regelzeile,
 // Auftragsanzeige, Ereignisliste, Vorrat.
 import { useState } from "preact/hooks";
-import { AlertTriangle, ChevronDown, ChevronRight, CircleCheck, CircleDot, Info, Play, RotateCcw, Square } from "lucide-preact";
+import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Power, RotateCcw, Square, Waves } from "lucide-preact";
 import { Sparkline } from "./chart";
-import { post, type CtlStatus, type HubEvent, type Job, type Reading } from "./api";
+import { post, type CtlStatus, type Device, type HubEvent, type Job, type Reading } from "./api";
 import { ago, day, num, time } from "./format";
+import { msg, t } from "./i18n";
 import { canisters, refreshState, state, toast } from "./store";
 import { Button, CheckRow, Pill, ctlLabel, ctlTone } from "./ui";
 
@@ -43,10 +44,11 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
         {p.notApplicable ? <span class="faint" style="font-size:1.1rem">nicht anwendbar</span> : num(r?.value ?? null, r?.decimals ?? 2)}
         {!p.notApplicable && r?.unit && <span class="unit">{r.unit}</span>}
       </div>
-      {p.spark && <Sparkline values={p.spark} color={p.color} band={p.band} />}
+      {p.spark && !bad && <Sparkline values={p.spark} color={p.color} band={p.band} />}
+      {bad && r?.reason.text && <div class="metric-reason">{msg(r.reason)}</div>}
       <div class="metric-foot">
         <span>{p.band ? `Ziel ${num(p.band[0], 2)}–${num(p.band[1], 2)}` : p.notApplicable ?? ""}</span>
-        <span title={r?.reason.text}>{bad ? r?.reason.text : r?.ageS !== null && r?.ageS !== undefined ? ago(r.ageS) : ""}</span>
+        {!bad && <span>{r?.ageS !== null && r?.ageS !== undefined ? ago(r.ageS) : ""}</span>}
       </div>
     </div>
   );
@@ -233,6 +235,48 @@ export function StockList(p: { compact?: boolean }) {
           <span class="num small nowrap">{ml === null ? "unbekannt" : `${num(ml, 0)} ml`}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ---------- Geräte und Anschlüsse
+
+/** Symbol je Geräteklasse. */
+export function DeviceIcon(p: { cls: string; size?: number }) {
+  const size = p.size ?? 18;
+  if (p.cls === "dosing_block") return <Cable size={size} />;
+  if (p.cls === "pump_cap") return <Droplet size={size} />;
+  if (p.cls === "head_ph_ec" || p.cls === "head_ph" || p.cls === "head_ec") return <FlaskConical size={size} />;
+  if (p.cls === "head_level") return <Waves size={size} />;
+  if (p.cls === "hub_outputs") return <Power size={size} />;
+  if (p.cls.startsWith("head")) return <Gauge size={size} />;
+  return <Cpu size={size} />;
+}
+
+/** Wo ein Gerät steckt: „Pumpe 2“ auf dem Dosierblock, sonst „Anschluss 3“ am Hub. */
+export function devicePlace(d: Device): string {
+  if (d.slot >= 0) return t("port.pump", { n: d.slot + 1 });
+  if (d.port > 0) return t("port.hub", { n: d.port });
+  return "Hub";
+}
+
+/** Anschlüsse des Hubs als Kacheln; ein belegter Anschluss zeigt das Symbol des Geräts. */
+export function PortGrid() {
+  const st = state.value!;
+  return (
+    <div class="ports" data-testid="ports">
+      {st.ports.map((p) => {
+        const d = st.devices.find((x) => x.id === p.device);
+        return (
+          <div class={`port ${p.state}`} title={p.message?.text}>
+            <span class="pn">{t("port.hub", { n: p.port })}</span>
+            {p.state === "empty" ? <span class="jack" /> : <span class="pi"><DeviceIcon cls={d?.class ?? p.class} size={22} /></span>}
+            <span class="pl">{p.state === "empty" ? <span class="faint">{t("common.free")}</span> : d?.name || d?.classLabel || p.class}</span>
+            {(p.state === "rejected" || p.state === "fault") && <span class="pm">{msg(p.message)}</span>}
+            {p.state === "checking" && <span class="faint small">…</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }

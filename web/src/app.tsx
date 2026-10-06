@@ -5,6 +5,7 @@ import {
   Beaker, Cpu, Droplets, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Wrench,
 } from "lucide-preact";
 import { post } from "./api";
+import { t, type TextKey } from "./i18n";
 import { authed, config, info, live, refreshState, simulated, state, toast } from "./store";
 import { Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
@@ -19,27 +20,27 @@ import { SettingsPage } from "./pages/settings";
 import { SetupWizard } from "./pages/setup";
 import { SimPanel } from "./pages/sim";
 
-type NavItem = { path: string; label: string; icon: ComponentChildren; mobile?: boolean };
+type NavItem = { path: string; label: TextKey; icon: ComponentChildren; mobile?: boolean };
 const NAV: NavItem[] = [
-  { path: "/", label: "Übersicht", icon: <LayoutDashboard size={19} />, mobile: true },
-  { path: "/mischen", label: "Mischen", icon: <Beaker size={19} />, mobile: true },
-  { path: "/tank", label: "Tank & Regelung", icon: <Droplets size={19} />, mobile: true },
-  { path: "/verlauf", label: "Verlauf", icon: <History size={19} />, mobile: true },
-  { path: "/rezepte", label: "Rezepte & Kanister", icon: <FlaskConical size={19} /> },
-  { path: "/geraete", label: "Geräte", icon: <Cpu size={19} /> },
-  { path: "/funktionen", label: "Funktionen", icon: <SlidersHorizontal size={19} /> },
-  { path: "/einstellungen", label: "Einstellungen", icon: <Settings size={19} /> },
+  { path: "/", label: "nav.overview", icon: <LayoutDashboard size={19} />, mobile: true },
+  { path: "/mischen", label: "nav.mix", icon: <Beaker size={19} />, mobile: true },
+  { path: "/tank", label: "nav.tank", icon: <Droplets size={19} />, mobile: true },
+  { path: "/verlauf", label: "nav.history", icon: <History size={19} />, mobile: true },
+  { path: "/rezepte", label: "nav.recipes", icon: <FlaskConical size={19} /> },
+  { path: "/geraete", label: "nav.devices", icon: <Cpu size={19} /> },
+  { path: "/funktionen", label: "nav.functions", icon: <SlidersHorizontal size={19} /> },
+  { path: "/einstellungen", label: "nav.settings", icon: <Settings size={19} /> },
 ];
 
-const PAGES: Record<string, { title: string; el: () => ComponentChildren }> = {
-  "/": { title: "Übersicht", el: () => <Overview /> },
-  "/mischen": { title: "Mischen", el: () => <MixPage /> },
-  "/tank": { title: "Tank & Regelung", el: () => <TankPage /> },
-  "/verlauf": { title: "Verlauf", el: () => <HistoryPage /> },
-  "/rezepte": { title: "Rezepte & Kanister", el: () => <RecipesPage /> },
-  "/geraete": { title: "Geräte", el: () => <DevicesPage /> },
-  "/funktionen": { title: "Funktionen", el: () => <FunctionsPage /> },
-  "/einstellungen": { title: "Einstellungen", el: () => <SettingsPage /> },
+const PAGES: Record<string, { title: TextKey; el: () => ComponentChildren }> = {
+  "/": { title: "nav.overview", el: () => <Overview /> },
+  "/mischen": { title: "nav.mix", el: () => <MixPage /> },
+  "/tank": { title: "nav.tank", el: () => <TankPage /> },
+  "/verlauf": { title: "nav.history", el: () => <HistoryPage /> },
+  "/rezepte": { title: "nav.recipes", el: () => <RecipesPage /> },
+  "/geraete": { title: "nav.devices", el: () => <DevicesPage /> },
+  "/funktionen": { title: "nav.functions", el: () => <FunctionsPage /> },
+  "/einstellungen": { title: "nav.settings", el: () => <SettingsPage /> },
 };
 
 function StopButton() {
@@ -52,25 +53,25 @@ function StopButton() {
         onClick={async () => {
           await post("/resume");
           await refreshState();
-          toast("Automatik fortgesetzt");
+          toast(t("shell.resumed"));
         }}
       >
-        Fortsetzen
+        {t("shell.resume")}
       </button>
     );
   return (
     <>
-      <button class="stop-btn" onClick={() => setAsk(true)} title="Not-Halt: alle Pumpen und Ausgänge aus">
-        <OctagonX size={18} /> <span class="hide-sm">STOPP</span>
+      <button class="stop-btn" onClick={() => setAsk(true)} title={t("shell.stopTitle")}>
+        <OctagonX size={18} /> <span class="hide-sm">{t("common.stop")}</span>
       </button>
       {ask && (
         <Modal
-          title="Not-Halt auslösen?"
+          title={t("shell.stopAsk")}
           onClose={() => setAsk(false)}
           footer={
             <>
               <button class="btn" onClick={() => setAsk(false)}>
-                Abbrechen
+                {t("common.cancel")}
               </button>
               <button
                 class="btn danger"
@@ -78,16 +79,16 @@ function StopButton() {
                   await post("/stop");
                   setAsk(false);
                   await refreshState();
-                  toast("Not-Halt: alles aus", "info");
+                  toast(t("shell.stopped"), "info");
                 }}
               >
-                Alles stoppen
+                {t("shell.stopAll")}
               </button>
             </>
           }
         >
-          <p>Alle Pumpen und Ausgänge gehen sofort aus. Laufende Aufträge werden abgebrochen, die Automatik ruht, bis du „Fortsetzen“ wählst.</p>
-          <p class="muted small">Messen und Sperren laufen weiter.</p>
+          <p>{t("shell.stopText")}</p>
+          <p class="muted small">{t("shell.stopNote")}</p>
         </Modal>
       )}
     </>
@@ -99,24 +100,24 @@ function LiveBadge() {
   const wd = state.value?.watchdog;
   return (
     <div class="row hide-sm">
-      {simulated.value && <span class="sim-tag">Simulator</span>}
+      {simulated.value && <span class="sim-tag">{t("common.simulator")}</span>}
       {l === "live" ? (
-        <Pill tone="ok" dot pulse title="Live-Verbindung zum Hub">
-          live
+        <Pill tone="ok" dot pulse title={t("shell.liveTitle")}>
+          {t("common.live")}
         </Pill>
       ) : l === "connecting" ? (
         <Pill tone="neutral" dot>
-          verbinde …
+          {t("common.connecting")}
         </Pill>
       ) : (
-        <Pill tone="bad" dot title="Keine Verbindung zum Hub – die Steuerung läuft auf dem Hub weiter">
-          getrennt
+        <Pill tone="bad" dot title={t("shell.offlineTitle")}>
+          {t("common.offline")}
         </Pill>
       )}
       {wd && (
         <a href="#/tank" style="text-decoration:none">
           <Pill tone={wd.stale ? "bad" : wd.overall === "problem" ? "bad" : wd.overall === "ok" ? "ok" : "neutral"}>
-            {wd.stale ? "Überwachung ohne Bewertung" : wd.headline}
+            {wd.stale ? t("shell.watchdogStale") : wd.headline}
           </Pill>
         </a>
       )}
@@ -126,12 +127,12 @@ function LiveBadge() {
 
 function MoreSheet(p: { onClose: () => void }) {
   return (
-    <Modal title="Mehr" onClose={p.onClose}>
+    <Modal title={t("common.more")} onClose={p.onClose}>
       <nav class="nav stack-sm">
         {NAV.filter((n) => !n.mobile).map((n) => (
           <a href={`#${n.path}`} onClick={p.onClose}>
             {n.icon}
-            {n.label}
+            {t(n.label)}
           </a>
         ))}
       </nav>
@@ -144,14 +145,14 @@ export function App() {
   if (authed.value === null)
     return (
       <div class="login">
-        <p class="muted">Verbinde mit dem Hub …</p>
+        <p class="muted">{t("shell.connecting")}</p>
       </div>
     );
   if (!authed.value) return <Login />;
   if (!state.value || !config.value)
     return (
       <div class="login">
-        <p class="muted">Lade …</p>
+        <p class="muted">{t("shell.loading")}</p>
       </div>
     );
   const r = route.value;
@@ -176,36 +177,36 @@ export function App() {
           </div>
           <div>
             growcontroller
-            <small>{config.value.system.name !== "growcontroller" ? config.value.system.name : "Fertigation"}</small>
+            <small>{config.value.system.name !== "growcontroller" ? config.value.system.name : t("app.tagline")}</small>
           </div>
         </div>
         <nav class="nav">
           {NAV.slice(0, 4).map((n) => (
             <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
               {n.icon}
-              {n.label}
+              {t(n.label)}
             </a>
           ))}
           <div class="sep" />
           {NAV.slice(4).map((n) => (
             <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
               {n.icon}
-              {n.label}
+              {t(n.label)}
             </a>
           ))}
         </nav>
         <div class="side-foot">
           <a href="#/einrichtung" class="row" style="gap:8px">
-            <Wrench size={15} /> Einrichtung
+            <Wrench size={15} /> {t("nav.setup")}
           </a>
           <span>
-            <Gauge size={13} /> Version {info.value?.version}
+            <Gauge size={13} /> {t("common.version", { v: info.value?.version })}
           </span>
         </div>
       </aside>
       <div class="main">
         <header class="topbar">
-          <h1>{page.title}</h1>
+          <h1>{t(page.title)}</h1>
           <div class="spacer" />
           <LiveBadge />
           <StopButton />
@@ -216,12 +217,12 @@ export function App() {
         {NAV.filter((n) => n.mobile).map((n) => (
           <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
             {n.icon}
-            {n.label.split(" ")[0]}
+            {t(n.label).split(" ")[0]}
           </a>
         ))}
         <button onClick={() => setMore(true)}>
           <MoreHorizontal size={19} />
-          Mehr
+          {t("common.more")}
         </button>
       </nav>
       {more && <MoreSheet onClose={() => setMore(false)} />}

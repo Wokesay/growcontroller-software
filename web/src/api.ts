@@ -93,7 +93,7 @@ export type Catalog = {
   deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
   roles: Record<string, { label: string; capability: string; series?: boolean }>;
   functions: { id: string; label: string; stage: number; group: string; text: string; params?: ParamDef[] }[];
-  templates: { recipes: { id: string; name: string; note?: string; steps: { canisterName: string; mlPerL: number }[] }[] };
+  templates: { recipes: RecipeTemplate[] };
 };
 
 export type Info = {
@@ -152,3 +152,9 @@ export const del = <T = any>(p: string) => api<T>("DELETE", p);
 
 // Simulator-Steuerung (nur Simulator)
 export const sim = (action: string, body: unknown = {}) => api("POST", `/sim/${action}`, body);
+
+export type TemplateStep = { role: string; name: string; nameEn?: string; pair?: string; mlPerL: number };
+export type RecipeTemplate = {
+  id: string; name: string; nameEn?: string; note?: string; noteEn?: string; source?: string;
+  ec?: number; ph?: [number, number]; steps: TemplateStep[];
+};

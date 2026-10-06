@@ -94,11 +94,11 @@ export function SimPanel() {
               <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "frozen" }, "Werte eingefroren")}>
                 Wert friert
               </Button>
-              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "offline" }, "Kopf antwortet nicht")}>
-                Kopf offline
+              <Button size="sm" onClick={() => act("fault", { device: head.id, fault: "offline" }, "Sensorkopf antwortet nicht")}>
+                Sensorkopf offline
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => act("fault", { device: head.id, fault: "none" }, "Kopf wieder normal")}>
-                Kopf normal
+              <Button size="sm" variant="ghost" onClick={() => act("fault", { device: head.id, fault: "none" }, "Sensorkopf wieder normal")}>
+                Sensorkopf normal
               </Button>
             </>
           )}
@@ -114,20 +114,20 @@ export function SimPanel() {
               s ? (
                 <div class="item small">
                   <span class="grow">
-                    Port {i + 1}: {w.liquids[s.liquid]} <span class="faint">({num(s.trueFlow, 1)} ml/min wahr)</span>
+                    Pumpe {i + 1}: {w.liquids[s.liquid]} <span class="faint">({num(s.trueFlow, 1)} ml/min wahr)</span>
                   </span>
                   <Button size="sm" onClick={() => act("fault", { device: s.id, fault: s.blocked ? "none" : "blocked" })}>
                     {s.blocked ? "frei" : "blockieren"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => act("uncap", { block: block.id, slot: i }, "Kappe abgezogen")}>
+                  <Button size="sm" variant="ghost" onClick={() => act("uncap", { block: block.id, slot: i }, "Pumpe abgezogen")}>
                     abziehen
                   </Button>
                 </div>
               ) : (
                 <div class="item small">
-                  <span class="grow faint">Port {i + 1}: frei</span>
-                  <Button size="sm" variant="ghost" onClick={() => act("cap", { block: block.id, slot: i, liquid: i === 3 ? "ph_down" : "grow_a" }, "Kappe gesteckt")}>
-                    Kappe stecken
+                  <span class="grow faint">Pumpe {i + 1}: frei</span>
+                  <Button size="sm" variant="ghost" onClick={() => act("cap", { block: block.id, slot: i, liquid: i === 3 ? "ph_down" : "grow_a" }, "Pumpe gesteckt")}>
+                    Pumpe stecken
                   </Button>
                 </div>
               ),
@@ -135,22 +135,22 @@ export function SimPanel() {
           </div>
         )}
         <div class="row">
-          <Button size="sm" onClick={() => act("plug", { port: 2, class: "pump_cap" }, "Kappe direkt an Hub-Port 2")}>
-            Fehlsteckung: Kappe an Port 2
+          <Button size="sm" onClick={() => act("plug", { port: 2, class: "pump_cap" }, "Pumpe direkt an Anschluss 2")}>
+            Fehlsteckung: Pumpe an Anschluss 2
           </Button>
           <Button size="sm" variant="ghost" onClick={() => act("unplug", { port: 2 })}>
-            Port 2 frei
+            Anschluss 2 frei
           </Button>
         </div>
         <div class="row">
           {!head && (
-            <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, "pH/EC-Kopf an Port 3")}>
-              pH/EC-Kopf an Port 3
+            <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, "pH/EC-Sensorkopf an Anschluss 3")}>
+              pH/EC-Sensorkopf an Anschluss 3
             </Button>
           )}
           {!lvl && (
-            <Button size="sm" onClick={() => act("plug", { port: 5, class: "head_level" }, "Füllstands-Kopf an Port 5")}>
-              Füllstand an Port 5
+            <Button size="sm" onClick={() => act("plug", { port: 5, class: "head_level" }, "Füllstandssensor an Anschluss 5")}>
+              Füllstand an Anschluss 5
             </Button>
           )}
         </div>
