@@ -27,6 +27,10 @@
   --ec: #c2570b;
   --temp: #0e7490;
   --level: #1d5ea6;
+  --air: #b45309;
+  --rh: #0369a1;
+  --vpd: #15803d;
+  --co2: #6b7280;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 30, 24, 0.05), 0 6px 20px rgba(20, 30, 24, 0.05);
@@ -63,6 +67,10 @@
     --ec: #f59a52;
     --temp: #4fc3dc;
     --level: #7db3f0;
+    --air: #f0a35e;
+    --rh: #6cc3f5;
+    --vpd: #6fd394;
+    --co2: #b0b6c0;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     color-scheme: dark;
   }

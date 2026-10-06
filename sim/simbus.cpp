@@ -90,6 +90,9 @@ std::optional<gc::Sample> SimBus::sample(const std::string& dev, const std::stri
   if (ph && cap == "measure.ph") v = w_.rawPh(d);
   else if (ec && cap == "measure.ec") v = w_.rawEc(d);
   else if (ec && cap == "measure.water_temp") v = w_.rawTemp();
+  else if (d->cls == "head_climate" && cap == "measure.air_temp") v = w_.rawAirTemp();
+  else if (d->cls == "head_climate" && cap == "measure.humidity") v = w_.rawHumidity();
+  else if (d->cls == "head_co2" && cap == "measure.co2") v = w_.rawCo2();
   else if (d->cls == "head_level" && cap == "measure.level") {
     v = w_.rawLevelV();
   }

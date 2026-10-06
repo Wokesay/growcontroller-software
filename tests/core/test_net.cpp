@@ -292,3 +292,57 @@ TEST_CASE("Gießpumpe: fällt der Füllstand im Lauf unter den Mindestfüllstand
   }
   REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 60000));
 }
+
+TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemeldet") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+  fault(s, "LVL-77B210", "offline");
+  REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 300000));
+  s.step(30000);
+  auto ev = c.ok("GET", "/api/v1/events?limit=200");
+  int n = 0;
+  for (const auto& e : ev["events"]) n += e["title"] == "Gießpumpe aus: Trockenlaufschutz";
+  CHECK(n == 1);
+}
+
+TEST_CASE("Gießpumpe: Ausschalten scheitert, Zustand bleibt „an“ → trotzdem nur einmal gemeldet") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+  fault(s, id, "stuck");  // Schaltbefehle scheitern, die Dose bleibt an
+  fault(s, "LVL-77B210", "offline");
+  auto count = [&] {
+    auto ev = c.ok("GET", "/api/v1/events?limit=200");
+    int n = 0;
+    for (const auto& e : ev["events"]) n += e["title"] == "Gießpumpe aus: Trockenlaufschutz";
+    return n;
+  };
+  REQUIRE(until(s, [&] { return count() > 0; }, 300000));
+  s.step(60000);
+  CHECK(outlet(s, id, 0).on);
+  CHECK(count() == 1);
+}
+
+TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätigt“ im Protokoll") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto a = addPlug(s, c, "shelly_plug", json::array());
+  auto b = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", a}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
+  fault(s, a, "offline");
+  s.step(2000);
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", b}, {"channel", 0}});
+  auto ev = c.ok("GET", "/api/v1/events?limit=50");
+  bool seen = false;
+  for (const auto& e : ev["events"]) seen = seen || e["title"] == "Licht: Aus nicht bestätigt";
+  CHECK(seen);
+}

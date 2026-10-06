@@ -36,7 +36,7 @@ config
 | Klima | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` (folgt mit der Notabschaltung) |
 | Bewässerung | `zone.irrigation_pump` |
 
-**Abgeleitete Werte** (fester Code, kein Skript): `zone.vpd` aus
+**Abgeleitete Werte** (fester Code, kein Skript; umgesetzt 06.10.2026): `zone.vpd` aus
 Lufttemperatur und Luftfeuchte. Er wird nur gerechnet, wenn beide Werte gültig
 und höchstens 60 s auseinander sind; sonst entsteht eine Lücke (R5).
 
@@ -75,16 +75,18 @@ Software bindet sie trotzdem an.
   Einschalten, Testen und Handbetrieb sind umgesetzt (§8 Schritte 3–4).
   Offen:
   - Heizrollen erst mit der rastenden Notabschaltung (Pegel, Wassertemperatur,
-    Übertemperatur, fehlende Wirkung, Ausfall der Abschaltlogik, Laufzeit;
+    Übertemperatur, fehlende Wirkung, Ausfall der Sensorbewertung, Laufzeit;
     Quelle: RAT-060) und `power_limit`;
   - Profil „versorgen“ für Geräte mit eigenem Thermostat (RAT-069);
   - Finden per mDNS und Digest auf dem Gerät, „Aus nicht bestätigt“ mit
     Wiederholung, Watchdog über die Leistung („soll aus, zieht > 2 W“);
   - Taster und App am Shelly umgehen die Sperren: „an ohne Befehl des Hubs“
     als Handbetrieb behandeln;
-  - Gesamtlast je Leiste (16 A gesamt, 12 A je Dose laut Suchtreffern vom
-    06.10.2026, Herstellerseite nicht abgerufen) und Anlaufströme (Licht,
-    Kompressor) – am Muster messen.
+  - Gesamtlast je Leiste (16 A gesamt, 12 A je Dose: Suchtreffer vom
+    06.10.2026, u. a. Conrad-Datenblatt
+    https://asset.conrad.com/media10/add/160267/c1/-/gl/003593788IN00/informacije-3593788-shelly-power-strip-4-gen4-schwarz-uticnica.pdf,
+    nicht abgerufen; `current_limit` 12 A je Kanal am Gerät gelesen in
+    RAT-060) und Anlaufströme (Licht, Kompressor) – am Muster messen.
   - Gießpumpe: Sperre bei unlesbarem Pegel weicht von RAT-068 ab
     („gießen und melden“) – PD folgt.
 - **Eigener Netz-Bus** `INetBus` neben dem RS485-Bus `IBus`. Er hat kein
@@ -190,7 +192,8 @@ Hub kann nicht verdünnen.
   Bewässerung · Klima · Licht · Rezepte & Nährstoffe · Verlauf · Geräte ·
   Einstellungen (mit „Funktionen“).
   - Bereiche ohne Hardware sind ausgeblendet. Den Weg zu mehr zeigt Geräte ›
-    Erweitern.
+    Erweitern. Stand Prototyp: Klima, Licht und Bewässerung stehen immer in
+    der Navigation und zeigen ohne Hardware, was fehlt (Abweichung, folgt).
   - Am Handy: Übersicht · Tank · Phasen · Verlauf · Mehr.
 - **Übersicht nach Dringlichkeit:**
   1. Banner (Not-Halt, Pflegemodus, getrennt);

@@ -22,6 +22,7 @@ void World::reset() {
   ports.clear();
   out[0] = out[1] = false;
   netPlugs.clear();
+  room = Room{};
   probeBuffer.reset();
   phTrail_.clear();
   runningCap_.clear();
@@ -54,7 +55,7 @@ bool World::plug(int port, const std::string& cls, std::string id) {
   if (id.empty()) {
     std::string prefix = cls == "dosing_block" ? "DB" : cls == "head_ph_ec" ? "PHEC" : cls == "head_ph" ? "PH"
                          : cls == "head_ec" ? "EC" : cls == "head_level" ? "LVL" : cls == "pump_cap" ? "CAP"
-                         : cls == "head_climate" ? "CLIM" : "DEV";
+                         : cls == "head_climate" ? "CLIM" : cls == "head_co2" ? "CO2" : "DEV";
     id = newId(prefix);
   }
   d.id = id;
@@ -199,14 +200,18 @@ void World::mainsOutage() {
       if (o.initialOff) o.on = false;
 }
 
-bool World::circulating() const {
-  if (out[0]) return true;
+bool World::loadOn(const std::string& load) const {
   for (const auto& p : netPlugs)
-    if (p.fault != "offline")
-      for (const auto& o : p.outlets)
-        if (o.on && o.load == "circulation") return true;
+    for (const auto& o : p.outlets)
+      if (o.on && o.load == load) return true;  // Strom fließt auch ohne WLAN
   return false;
 }
+
+bool World::circulating() const { return out[0] || loadOn("circulation"); }
+
+double World::rawAirTemp() const { return std::round((room.temp + noise(0.05)) * 100.0) / 100.0; }
+double World::rawHumidity() const { return std::round((room.rh + noise(0.3)) * 10.0) / 10.0; }
+double World::rawCo2() const { return std::round(room.co2 + noise(8.0)); }
 
 void World::advance(Ms now) {
   if (now <= now_) return;
@@ -223,6 +228,22 @@ void World::advance(Ms now) {
 
 void World::step(Ms dt) {
   const double dts = static_cast<double>(dt) / 1000.0;
+  // Raumklima (Annahmen, docs/SIMULATOR.md)
+  {
+    const bool light = loadOn("light"), exhaust = loadOn("exhaust"), hum = loadOn("humidifier"),
+               dehum = loadOn("dehumidifier"), heat = loadOn("heater");
+    // Abluft tauscht Luft gegen Außenluft: Wärme- und Feuchtegewinne sinken.
+    const double keep = exhaust ? 0.45 : 1.0;
+    const double targetT = ambientTemp + keep * ((light ? 6.0 : 0.0) + (heat ? 4.0 : 0.0) + (dehum ? 1.0 : 0.0));
+    room.temp += (targetT - room.temp) * (1.0 - std::exp(-dts / (exhaust ? 600.0 : 1800.0)));
+    const double targetRh = ambientRh + keep * (light ? 14.0 : 5.0);  // Verdunstung der Pflanzen
+    room.rh += (targetRh - room.rh) * (1.0 - std::exp(-dts / (exhaust ? 400.0 : 1500.0)));
+    if (hum) room.rh += 0.8 / 60.0 * dts;
+    if (dehum) room.rh -= 0.6 / 60.0 * dts;
+    room.rh = std::clamp(room.rh, 15.0, 97.0);
+    const double targetCo2 = exhaust ? 420.0 : (light ? 380.0 : 600.0);
+    room.co2 += (targetCo2 - room.co2) * (1.0 - std::exp(-dts / 900.0));
+  }
   // Pumpen
   for (auto& [p, d] : ports)
     for (auto& s : d.slots) {

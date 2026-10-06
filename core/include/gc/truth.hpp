@@ -38,10 +38,15 @@ class SensorTruth {
   const Reading& get(const std::string& role) const;
   const std::map<std::string, Reading>& all() const { return readings_; }
 
+  // Sättigungsdampfdruck in kPa (FAO-56, Gl. 11) und Luft-VPD (Quelle: RAT-017).
+  static double saturationKPa(double tempC);
+  static double airVpdKPa(double tempC, double rhPct);
+
   // Anwendung der Kalibrierung: nullopt, wenn sie fehlt oder ungültig ist.
   static std::optional<double> calibrate(const std::string& cap, double raw, const json* calib);
 
  private:
+  void updateDerived();
   struct Track {
     double lastRaw = kNaN;
     Ms lastRawChange = 0;

@@ -375,8 +375,11 @@ void Hub::tickImpl() {
 
 void Hub::sampleHistory(Epoch epoch) {
   for (const auto& [roleId, role] : cat_.roles) {
-    if (!role.series || !cfg_.binding(roleId)) continue;
+    if (!role.series) continue;
     const auto& r = truth_.get(roleId);
+    const CapabilityDef* cap = cat_.capability(role.capability);
+    const bool derived = cap && cap->kind == "derived";
+    if (derived ? r.quality == Quality::NotBound : !cfg_.binding(roleId)) continue;
     history_.add(roleId, epoch, r.usable() ? *r.value : kNaN);  // Lücke statt 0
   }
   double v = tankVolume();

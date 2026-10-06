@@ -61,8 +61,17 @@ struct NetOutlet {
 
 struct NetPlug {
   std::string id, cls, ip;
-  std::string fault;  // offline | readonly | ignore | ""
+  std::string fault;  // offline | readonly | ignore | stuck | ""
   std::vector<NetOutlet> outlets;
+};
+
+// Raumklima, stark vereinfacht (Annahme, docs/SIMULATOR.md): Licht und
+// Heizung wärmen, Abluft zieht Richtung Außenluft, Pflanzen geben bei Licht
+// Feuchte ab, Befeuchter und Entfeuchter ändern die Feuchte.
+struct Room {
+  double temp = 21.0;   // °C
+  double rh = 55.0;     // % rF
+  double co2 = 450.0;   // ppm
 };
 
 struct Tank {
@@ -101,6 +110,14 @@ class World {
   void mainsOutage();
   // Wird umgewälzt? Hub-Ausgang 1 oder eine Dose mit der Umwälzpumpe.
   bool circulating() const;
+  // Ist eine Dose mit dieser Last an (z. B. "light")?
+  bool loadOn(const std::string& load) const;
+
+  Room room;
+  double ambientTemp = 19.0, ambientRh = 50.0;  // Außenluft (Annahme)
+  double rawAirTemp() const;
+  double rawHumidity() const;
+  double rawCo2() const;
 
   // Sensoren (Rohwerte, wie der Kopf sie liefert)
   // Rohwerte einer Sonde; Fehlerbilder (jump, frozen, ec_zero) gelten je Gerät.

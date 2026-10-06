@@ -9,6 +9,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,7 @@ class Actuators {
   IBus& bus_;
   INetBus* net_ = nullptr;
   std::map<std::string, Ms> offSince_;  // Rolle → aus seit (Mindestpause Kompressor)
+  std::set<std::string> cutLogged_;     // Abschaltung schon gemeldet (kein Protokoll je Takt)
   std::string runningPump_;
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit

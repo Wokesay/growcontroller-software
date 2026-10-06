@@ -235,4 +235,23 @@ export const de = {
   "net.assigned": "Zugeordnet; Schutz im Gerät gesetzt",
   "net.countHint": "Die Dosen sind hier ab 1 gezählt, in der Weboberfläche des Shelly ab 0.",
   "net.safety": "Nach Stromausfall bleiben die Dosen aus. Befeuchter, Gießpumpe und Zulauf schalten zusätzlich im Gerät selbst ab, falls der Hub ausfällt. Shelly und Leiste gehören außerhalb des Pflanzraums, hinter einen FI-Schutzschalter (30 mA).",
+
+  // Bereiche
+  "area.climate": "Raumklima",
+  "area.climateDevices": "Klimageräte",
+  "area.outputs": "Schaltausgänge",
+  "area.unassigned": "Nicht zugeordnet",
+  "area.assign": "Zuordnen",
+  "area.unknown": "unbekannt",
+  "area.turnOn": "Einschalten",
+  "area.turnOff": "Ausschalten",
+  "area.manualNote": "Von Hand schalten: Alle Sperren gelten, z. B. nie Befeuchter und Entfeuchter zugleich. Automatische Regelung ist noch nicht verfügbar.",
+  "area.airTemp": "Luft",
+  "area.humidity": "Feuchte",
+  "area.noClimateSensor": "Kein Klimasensor",
+  "area.noClimateSensorText": "Mit dem Sensorkopf Klima misst der Hub Lufttemperatur und Luftfeuchte und berechnet daraus den VPD.",
+  "area.expand": "Was fehlt?",
+  "area.lightNote": "Das Licht lässt sich von Hand schalten. Einen Lichtplan nach Phase gibt es noch nicht; bis dahin bleibt es nach einem Neustart aus.",
+  "area.tankLevel": "Füllstand",
+  "area.irrigationNeedsLevel": "Die Gießpumpe läuft nur mit gültigem Füllstand über dem Mindestfüllstand – sonst läuft sie trocken. Dafür braucht es den Füllstandssensor.",
 } as const;

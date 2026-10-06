@@ -31,7 +31,10 @@ Prototyp umgesetzt, wo nicht anders vermerkt.
 | Übersicht | Überwachung, Tank mit Messwerten und 6-h-Trend, Regelzeilen, laufender Auftrag, Vorrat, Durchgang, letzte Ereignisse |
 | Mischen | Rezept, Wasser, „Neu ansetzen“/„Auffüllen“, Vorschau in ml, geführter Ablauf; Handgabe |
 | Tank & Regelung | Regelzeilen mit Checkliste, Überwachung im Detail, Rastungen quittieren, Tank, Ausgänge, Pflegemodus, Durchgang und Phasen |
-| Verlauf | pH, EC, Wassertemperatur, Füllstand mit Zielband und Dosier-Markierungen; Ereignisse mit Filtern; CSV |
+| Klima | Lufttemperatur, Luftfeuchte, VPD, CO2; Abluft, Umluft, Befeuchter, Entfeuchter mit Handbetrieb (Regelung folgt) |
+| Licht | Licht-Ausgang mit Handbetrieb (Lichtplan und Dimmen folgen) |
+| Bewässerung | Gießpumpe mit Handbetrieb und Trockenlaufschutz (Gießplan folgt) |
+| Verlauf | pH, EC, Wassertemperatur, Füllstand mit Zielband und Dosier-Markierungen; Lufttemperatur, Luftfeuchte, VPD, CO2; Ereignisse mit Filtern; CSV |
 | Rezepte & Kanister | Kanister ↔ Pumpe, Paare, Vorrat, „Kanister gewechselt“; Rezepte, Vorlagen |
 | Geräte | Ports mit Prüfmessung, Geräte, Übernehmen, Einmessen und Kalibrieren; Zuordnung; Erweitern |
 | Funktionen | Konfigurationsbaum nach Stufe: Zustand, was fehlt, Schalter, Einstellungen |
@@ -52,7 +55,9 @@ Am Handy: Übersicht, Mischen, Tank, Verlauf, Mehr. Der **STOPP**-Knopf
 - **Stufe 2:**
   - Volumen gemessen (L und Balken), Regelzeile Nachfüllen.
   - „nicht anwendbar“, wenn der Tank leer ist.
-- **Stufe 3–4** (offen): nächste Gabe, Drain in %, Klima und VPD je Zone.
+- **Stufe 3–4:** Raumklima (Lufttemperatur, Feuchte, VPD, CO2) und alle
+  zugeordneten Schaltausgänge sind umgesetzt; nächste Gabe und Drain in %
+  sind offen.
 
 **Regelzeile** (Antwort auf „Warum dosiert er gerade nicht?“):
 
@@ -124,5 +129,6 @@ Regeln:
 - Eigene Design-Tokens, hell und dunkel, keine externen Schriften: Die App
   läuft offline aus dem Flash.
 - Farben für Status: OK grün, Problem rot, Hinweis gelb, ruht grau. Farben
-  für Messgrößen: pH violett, EC orange, Temperatur türkis, Pegel blau.
+  für Messgrößen: pH violett, EC orange, Temperatur türkis, Pegel blau,
+  Lufttemperatur bernstein, Luftfeuchte hellblau, VPD grün, CO2 grau.
 - Mobil zuerst bedienbar: untere Leiste, große Knöpfe, Zahlen mit Komma.

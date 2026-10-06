@@ -2,7 +2,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import {
-  Beaker, Cpu, Droplets, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Wrench,
+  Beaker, Cpu, Droplets, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
 } from "lucide-preact";
 import { post } from "./api";
 import { t, type TextKey } from "./i18n";
@@ -19,12 +19,16 @@ import { FunctionsPage } from "./pages/functions";
 import { SettingsPage } from "./pages/settings";
 import { SetupWizard } from "./pages/setup";
 import { SimPanel } from "./pages/sim";
+import { ClimatePage, IrrigationPage, LightPage } from "./pages/areas";
 
 type NavItem = { path: string; label: TextKey; icon: ComponentChildren; mobile?: boolean };
 const NAV: NavItem[] = [
   { path: "/", label: "nav.overview", icon: <LayoutDashboard size={19} />, mobile: true },
   { path: "/mischen", label: "nav.mix", icon: <Beaker size={19} />, mobile: true },
   { path: "/tank", label: "nav.tank", icon: <Droplets size={19} />, mobile: true },
+  { path: "/klima", label: "nav.climate", icon: <Thermometer size={19} /> },
+  { path: "/licht", label: "nav.light", icon: <Sun size={19} /> },
+  { path: "/bewaesserung", label: "nav.irrigation", icon: <Waves size={19} /> },
   { path: "/verlauf", label: "nav.history", icon: <History size={19} />, mobile: true },
   { path: "/rezepte", label: "nav.recipes", icon: <FlaskConical size={19} /> },
   { path: "/geraete", label: "nav.devices", icon: <Cpu size={19} /> },
@@ -36,6 +40,9 @@ const PAGES: Record<string, { title: TextKey; el: () => ComponentChildren }> = {
   "/": { title: "nav.overview", el: () => <Overview /> },
   "/mischen": { title: "nav.mix", el: () => <MixPage /> },
   "/tank": { title: "nav.tank", el: () => <TankPage /> },
+  "/klima": { title: "nav.climate", el: () => <ClimatePage /> },
+  "/licht": { title: "nav.light", el: () => <LightPage /> },
+  "/bewaesserung": { title: "nav.irrigation", el: () => <IrrigationPage /> },
   "/verlauf": { title: "nav.history", el: () => <HistoryPage /> },
   "/rezepte": { title: "nav.recipes", el: () => <RecipesPage /> },
   "/geraete": { title: "nav.devices", el: () => <DevicesPage /> },
@@ -181,14 +188,14 @@ export function App() {
           </div>
         </div>
         <nav class="nav">
-          {NAV.slice(0, 4).map((n) => (
+          {NAV.slice(0, 6).map((n) => (
             <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
               {n.icon}
               {t(n.label)}
             </a>
           ))}
           <div class="sep" />
-          {NAV.slice(4).map((n) => (
+          {NAV.slice(6).map((n) => (
             <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
               {n.icon}
               {t(n.label)}

@@ -87,6 +87,7 @@ oder mit Abweichung · **○** offen.
 | Sprungsperre (pH > 1,0 / EC > 0,5 in 5 min), frei nach 15 min Ruhe, überlebt Neustart | RAT-039, RAT-044 | ✓ | test_truth M8-2, test_scenarios, E2E |
 | Angekündigter Handgriff erklärt einen Sprung | RAT-042 | ✓ | eigene Gaben, Mischlauf, Zulauf, Kalibrierung, Pflegemodus · test_truth M8-3 |
 | Ausfall erst nach n Fehlversuchen | RAT-027 | ○ | Sache des Bus-Treibers (firmware) |
+| VPD ist Luft-VPD ohne Blatt-Offset; fehlt ein Quellwert, keinen Wert | RAT-017 | ✓ | `SensorTruth::updateDerived` (FAO-56 Gl. 11) · test_climate „Formel“, „bei Ausfall eine Lücke“. Eigene Regel: beide Werte höchstens 60 s auseinander |
 
 ## M9 Watchdog
 
@@ -121,7 +122,7 @@ oder mit Abweichung · **○** offen.
 | Schutzeinstellung vor jedem Einschalten prüfen | RAT-019 (Nachträge: Inventar ≠ Gerät) | ✓ | `Actuators::setRole` · test_net „Schutzeinstellung verloren“ |
 | Befeuchter und Entfeuchter nie zugleich; unbekannter Zustand sperrt | RAT-034, R5 | ✓ | `Actuators::inhibit` · test_net „nie zugleich“, „unbekannter Zustand“. Abweichung: Gegensperre 10 min fehlt (folgt mit der Klimafunktion) |
 | Entfeuchter: Mindestpause 5 min, auch nach Not-Halt und Neustart | RAT-034 | ✓ | `kCompressorPause`, `Actuators::stopAll` · test_net „Kompressor-Pause“; Mindestlauf 10 min folgt mit der Klimafunktion |
-| Gießpumpe nur über dem Mindestfüllstand; im Lauf darunter → aus | RAT-068 | ◐ | `Actuators::inhibit`, `Actuators::enforce` · test_net „Gießpumpe“. Abweichung: bei unlesbarem Pegel gesperrt statt „gießen und melden“ (Annahme, Empfehlung hardware; PD folgt) |
+| Gießpumpe nur über dem Mindestfüllstand; im Lauf darunter → aus | RAT-068 (Sperre), eigene Regel analog RAT-062 (Abschaltung im Lauf) | ◐ | `Actuators::inhibit`, `Actuators::enforce` · test_net „Gießpumpe“. Abweichungen: bei unlesbarem Pegel gesperrt statt „gießen und melden“ (Annahme, Empfehlung hardware; PD folgt); es zählt der aktuelle Pegel |
 | Höchstlaufzeit je Rolle; Gerät schaltet knapp danach selbst ab | RAT-060 | ✓ | `Actuators::enforce` · test_net „Höchstlaufzeit“, „Auto-Off im Gerät“ |
 | Not-Halt schaltet auch Netzsteckdosen aus | RAT-036 | ◐ | `Actuators::stopAll` · test_net „Not-Halt“. Abweichung (RAT-036): hier sofort alles aus. „Aus nicht bestätigt“ mit Wiederholung offen |
 | Gießen über Zahl der Gaben; Drain% führt | RAT-010, RAT-014 | ○ | Stufe 3 |

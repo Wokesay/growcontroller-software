@@ -422,20 +422,22 @@ TEST_CASE("Zuordnung: gelöste Messrolle bleibt gelöst, wenn ein anderes Gerät
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   c.ok("DELETE", "/api/v1/roles/tank.ph");  // z. B. Sonde defekt
   {
+    // Freier Anschluss: In der Demo steckt an 6 schon der Klima-Kopf.
     std::lock_guard<std::recursive_mutex> l(s.mutex());
-    s.control("plug", {{"port", 6}, {"class", "head_climate"}});
+    auto r = s.control("plug", {{"port", 7}, {"class", "head_co2"}});
+    REQUIRE_FALSE(r.contains("error"));
   }
-  std::string clim;
+  std::string co2;
   REQUIRE(until(s, [&] {
     auto st = c.state();
     for (const auto& d : st["devices"])
-      if (d["class"] == "head_climate" && d["online"] == true) clim = d["id"];
-    return !clim.empty();
+      if (d["class"] == "head_co2" && d["online"] == true && d["configured"] == false) co2 = d["id"];
+    return !co2.empty();
   }, 30000));
-  c.ok("POST", "/api/v1/devices/" + clim + "/accept", {{"name", ""}});
+  c.ok("POST", "/api/v1/devices/" + co2 + "/accept", {{"name", ""}});
   auto cfg = c.ok("GET", "/api/v1/config");
   CHECK_FALSE(cfg["tanks"][0]["roles"].contains("tank.ph"));
-  CHECK(cfg["zones"][0]["roles"]["zone.air_temp"]["device"] == clim);
+  CHECK(cfg["zones"][0]["roles"]["zone.co2"]["device"] == co2);
 }
 
 TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace gc {
 
@@ -256,6 +257,44 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         }
         setQ(Quality::Ok, "truth.ok", "Gültig");
       }
+    }
+    readings_[roleId] = r;
+  }
+  updateDerived();
+}
+
+double SensorTruth::saturationKPa(double t) { return 0.6108 * std::exp(17.27 * t / (t + 237.3)); }
+double SensorTruth::airVpdKPa(double t, double rh) { return saturationKPa(t) * (1.0 - rh / 100.0); }
+
+// Abgeleitete Werte, fester Code statt Skript: Luft-VPD ohne Blatt-Offset,
+// fehlt ein Quellwert, gibt es keinen Wert (RAT-017, R5). Beide Werte
+// höchstens 60 s auseinander (eigene Regel, Annahme).
+void SensorTruth::updateDerived() {
+  for (const auto& [roleId, role] : cat_.roles) {
+    if (role.capability != "derive.vpd") continue;
+    const CapabilityDef* cap = cat_.capability(role.capability);
+    Reading r;
+    r.role = roleId;
+    r.capability = role.capability;
+    r.unit = cap ? cap->unit : "kPa";
+    r.decimals = cap ? cap->decimals : 2;
+    const Reading& t = get("zone.air_temp");
+    const Reading& h = get("zone.humidity");
+    if (t.quality == Quality::NotBound || h.quality == Quality::NotBound) {
+      r.quality = Quality::NotBound;
+      r.reason = {"truth.vpd.needs", "Braucht Lufttemperatur und Luftfeuchte", json::object()};
+    } else if (!t.usable() || !h.usable()) {
+      r.quality = Quality::NoData;
+      r.reason = {"truth.vpd.invalid", "Lufttemperatur oder Luftfeuchte ungültig", json::object()};
+    } else if (std::llabs(t.ts - h.ts) > 60 * kSecond) {
+      r.quality = Quality::Stale;
+      r.reason = {"truth.vpd.apart", "Temperatur und Feuchte liegen zeitlich zu weit auseinander", json::object()};
+    } else {
+      r.value = airVpdKPa(*t.value, *h.value);
+      r.ts = std::max(t.ts, h.ts);
+      r.ageMs = std::max(t.ageMs, h.ageMs);
+      r.quality = Quality::Ok;
+      r.reason = {"truth.ok", "Gültig", json::object()};
     }
     readings_[roleId] = r;
   }

@@ -136,7 +136,8 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
   // Gießpumpe: nur mit gültigem Füllstand über dem Mindestfüllstand, sonst
   // läuft sie trocken. Abweichung von RAT-068 („Pegel unlesbar →
   // gießen und melden“): hier gesperrt (Annahme, Empfehlung hardware
-  // 06.10.2026; PD folgt).
+  // 06.10.2026; PD folgt). Hier zählt der aktuelle Pegel,
+  // kein vorausberechneter.
   if (role == "zone.irrigation_pump") {
     if (!levelBound || !level.usable()) return msg("act.irrigation.level", "Ohne gültigen Füllstand keine Gießpumpe (Trockenlauf)");
     if (!isNum(tank.minL)) return msg("act.irrigation.level", "Mindestfüllstand des Tanks fehlt");
@@ -268,7 +269,9 @@ void Actuators::enforce(const Ctx& c) {
 
   // Gießpumpe im Lauf: Füllstand ungültig oder unter dem Mindestfüllstand →
   // aus (Trockenlauf), mit Meldung.
-  if (roleState(c.cfg, "zone.irrigation_pump").value_or(false)) {
+  auto irr = roleState(c.cfg, "zone.irrigation_pump");
+  if (irr && !*irr) cutLogged_.erase("zone.irrigation_pump");
+  if (irr.value_or(false)) {
     std::string why;
     if (!levelBound || !level.usable()) why = "Füllstand ungültig";
     else if (isNum(tank.minL) && *level.value < tank.minL) why = "Füllstand " + fmt(*level.value, 1) + " L unter dem Mindestfüllstand";
@@ -277,7 +280,9 @@ void Actuators::enforce(const Ctx& c) {
       sw(b->device, b->channel, false, e);
       onSince_.erase("zone.irrigation_pump");
       offSince_["zone.irrigation_pump"] = c.now;
-      c.log.add(c.epoch, "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".", {{"role", "zone.irrigation_pump"}});
+      // Einmal melden, auch wenn das Ausschalten scheitert und der Zustand „an“ bleibt
+      if (cutLogged_.insert("zone.irrigation_pump").second)
+        c.log.add(c.epoch, "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".", {{"role", "zone.irrigation_pump"}});
     }
   }
 

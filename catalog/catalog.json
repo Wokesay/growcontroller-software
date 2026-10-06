@@ -11,6 +11,7 @@
     "dose.peristaltic": { "label": "Dosierpumpe", "kind": "actuate" },
     "switch.12v": { "label": "12-V-Ausgang", "kind": "actuate" },
     "switch.mains": { "label": "Schaltbare Steckdose (230 V)", "kind": "actuate" },
+    "derive.vpd": { "label": "VPD", "unit": "kPa", "kind": "derived", "decimals": 2 },
     "measure.power": { "label": "Leistung", "unit": "W", "kind": "measure", "decimals": 0, "plausible": [0.0, 4000.0], "maxAgeS": 120, "jump": 4000.0 }
   },
 
@@ -82,10 +83,12 @@
     "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
     "tank.circulation": { "label": "Umwälzpumpe", "accepts": ["switch.12v", "switch.mains"], "profile": "dauer" },
     "tank.inlet": { "label": "Zulaufventil", "accepts": ["switch.12v", "switch.mains"], "profile": "puls", "maxOnS": 1500,
-      "note": "25 min Höchstlaufzeit (Quelle: RAT-079); die Funktion Nachfüllen begrenzt enger. Auto-Off allein schützt nicht vor dem Überlaufen (RAT-078)." },
+      "note": "25 min Höchstlaufzeit (Quelle: RAT-079); das Auto-Off im Gerät liegt hier bei 28 min. Die Funktion Nachfüllen begrenzt enger. Auto-Off allein schützt nicht vor dem Überlaufen (RAT-078)." },
     "zone.air_temp": { "label": "Lufttemperatur", "capability": "measure.air_temp", "series": true },
     "zone.humidity": { "label": "Luftfeuchte", "capability": "measure.humidity", "series": true },
     "zone.co2": { "label": "CO2", "capability": "measure.co2", "series": true },
+    "zone.vpd": { "label": "VPD (Luft)", "capability": "derive.vpd", "series": true,
+      "note": "Luft-VPD ohne Blatt-Offset, fehlt ein Quellwert, gibt es keinen Wert (Quelle: RAT-017). Formel FAO-56 Gl. 11. Beide Werte höchstens 60 s auseinander (eigene Regel, Annahme)." },
     "zone.light": { "label": "Licht", "accepts": ["switch.mains"], "profile": "dauer" },
     "zone.exhaust": { "label": "Abluft", "accepts": ["switch.mains"], "profile": "dauer" },
     "zone.circulation_fan": { "label": "Umluft", "accepts": ["switch.mains"], "profile": "dauer" },

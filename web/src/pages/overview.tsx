@@ -1,31 +1,14 @@
 // Übersicht: auf einen Blick, ob alles läuft, was gerade passiert und was zu tun ist.
 import { useEffect, useState } from "preact/hooks";
-import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, ShieldAlert, ShieldCheck, Sprout, Wrench } from "lucide-preact";
-import { get, post, type HubEvent, type SeriesData } from "../api";
+import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";
+import { get, post, type HubEvent } from "../api";
 import { ago, dateTime, num } from "../format";
-import { config, hasRole, refreshState, state, tank, toast } from "../store";
+import { catalog, config, hasRole, refreshState, state, tank, toast } from "../store";
+import { t as tr } from "../i18n";
+import { ClimateTiles, OutputsOverview } from "./areas";
 import { Banner, Button, Card, NumberInput, Pill } from "../ui";
-import { ControllerRow, EventList, JobView, MetricTile, StockList } from "../widgets";
+import { ControllerRow, EventList, JobView, MetricTile, StockList, useSparks } from "../widgets";
 
-function useSparks(series: string[]) {
-  const [data, setData] = useState<Record<string, (number | null)[]>>({});
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      if (!series.length) return;
-      const now = state.value?.now ?? Math.floor(Date.now() / 1000);
-      const r = await get<{ series: SeriesData[] }>(`/history?series=${series.join(",")}&from=${now - 6 * 3600}&to=${now}&points=72`);
-      if (alive) setData(Object.fromEntries(r.series.map((s) => [s.series, s.avg])));
-    };
-    load().catch(() => {});
-    const t = setInterval(() => load().catch(() => {}), 60000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [series.join(",")]);
-  return data;
-}
 
 function WatchdogBar() {
   const wd = state.value!.watchdog;
@@ -89,6 +72,9 @@ export function Overview() {
   const cfg = config.value!;
   const t = tank.value;
   const hasHead = hasRole("tank.ph") || hasRole("tank.ec");
+  const hasClimate = hasRole("zone.air_temp") || hasRole("zone.humidity");
+  const cat = catalog.value;
+  const hasOutputs = !!cat && Object.entries(cat.roles).some(([id, r]) => r.profile && hasRole(id));
   const series = ["tank.ph", "tank.ec", "tank.water_temp"].filter((s) => hasRole(s));
   const sparks = useSparks(series);
   const [events, setEvents] = useState<HubEvent[]>([]);
@@ -193,6 +179,17 @@ export function Overview() {
           </div>
         </Card>
       </div>
+
+      {(hasClimate || hasOutputs) && (
+        <div class="grid-2">
+          {hasClimate && (
+            <Card title={tr("area.climate")} icon={<Thermometer size={18} />} actions={<a class="btn sm ghost" href="#/klima">{tr("nav.climate")}</a>}>
+              <ClimateTiles />
+            </Card>
+          )}
+          <OutputsOverview />
+        </div>
+      )}
 
       <div class="grid">
         <Card title="Kanister" icon={<FlaskConical size={18} />} actions={<a class="btn sm ghost" href="#/rezepte">Verwalten</a>}>

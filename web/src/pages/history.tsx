@@ -39,6 +39,9 @@ export function HistoryPage() {
   const span = RANGES.find((r) => r[0] === range)![2];
   const series = ["tank.ph", "tank.ec", "tank.water_temp", "tank.level"].filter((s) => hasRole(s));
   if (!series.includes("tank.level")) series.push("tank.volume");
+  // Raumklima, wenn ein Sensor zugeordnet ist; VPD wird daraus abgeleitet
+  const climate = ["zone.air_temp", "zone.humidity", "zone.vpd", "zone.co2"].filter((s) => st.readings[s] && st.readings[s].quality !== "not_bound");
+  series.push(...climate);
 
   useEffect(() => {
     let alive = true;
@@ -106,6 +109,26 @@ export function HistoryPage() {
         <Card title={hasRole("tank.level") ? "Füllstand" : "Volumen (aus Mischläufen)"} icon={<LineChart size={18} />}>
           <TimeChart data={data[hasRole("tank.level") ? "tank.level" : "tank.volume"] ?? null} color="--level" label="Volumen" unit="L" decimals={1} />
         </Card>
+        {climate.includes("zone.air_temp") && (
+          <Card title="Lufttemperatur" icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.air_temp"] ?? null} color="--air" label="Luft" unit="°C" decimals={1} />
+          </Card>
+        )}
+        {climate.includes("zone.humidity") && (
+          <Card title="Luftfeuchte" icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.humidity"] ?? null} color="--rh" label="Feuchte" unit="%" decimals={0} />
+          </Card>
+        )}
+        {climate.includes("zone.vpd") && (
+          <Card title="VPD (Luft)" icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.vpd"] ?? null} color="--vpd" label="VPD" unit="kPa" decimals={2} />
+          </Card>
+        )}
+        {climate.includes("zone.co2") && (
+          <Card title="CO2" icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.co2"] ?? null} color="--co2" label="CO2" unit="ppm" decimals={0} />
+          </Card>
+        )}
       </div>
       <Card title="Ereignisse" icon={<History size={18} />}>
         <div class="chips" style="margin-bottom:8px">

@@ -1,9 +1,9 @@
 // Wiederverwendete Teile mehrerer Seiten: Messwert-Kachel, Regelzeile,
 // Auftragsanzeige, Ereignisliste, Vorrat.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Plug, Power, RotateCcw, Square, Waves, Zap } from "lucide-preact";
 import { Sparkline } from "./chart";
-import { del, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading } from "./api";
+import { del, get, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
 import { ago, day, num, time } from "./format";
 import { msg, t } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
@@ -349,4 +349,25 @@ export function OutletRoles(p: { d: Device }) {
       {config.value && outlets.length > 1 && <p class="faint small">{t("net.countHint")}</p>}
     </div>
   );
+}
+
+/** Kleine Kurven der letzten 6 h für Messwert-Kacheln. */
+export function useSparks(series: string[]) {
+  const [data, setData] = useState<Record<string, (number | null)[]>>({});
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (!series.length) return;
+      const now = state.value?.now ?? Math.floor(Date.now() / 1000);
+      const r = await get<{ series: SeriesData[] }>(`/history?series=${series.join(",")}&from=${now - 6 * 3600}&to=${now}&points=72`);
+      if (alive) setData(Object.fromEntries(r.series.map((s) => [s.series, s.avg])));
+    };
+    load().catch(() => {});
+    const t = setInterval(() => load().catch(() => {}), 60000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [series.join(",")]);
+  return data;
 }

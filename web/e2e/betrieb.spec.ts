@@ -39,7 +39,7 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await page.goto("/#/funktionen");
   await expect(page.getByTestId("fn-ph_control")).toBeVisible();
   await page.getByTestId("fn-climate_watch").click();
-  await expect(page.getByText("Dafür brauchst du: Sensorkopf Klima").first()).toBeVisible();
+  await expect(page.getByTestId("fn-climate_watch")).not.toContainText("Dafür brauchst du");  // Demo hat einen Klima-Kopf
   await page.goto("/#/verlauf");
   await expect(page.locator(".chart canvas").first()).toBeVisible();
   await expect(page.getByTestId("event").first()).toBeVisible();
@@ -98,4 +98,28 @@ test("Messwert-Kacheln bei Sensorausfall: nichts ragt aus der Kachel", async ({ 
   }
   for (const device of ["LVL-77B210", "PHEC-3F2A91"]) await page.request.post("/api/v1/sim/fault", { data: { device, fault: "none" } });
   await page.request.post("/api/v1/sim/speed", { data: { speed: 1 } });
+});
+
+test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich von Hand schalten", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/klima");
+  await expect(page.getByTestId("metric-VPD")).toBeVisible();
+  // Zustand nicht annehmen (der Not-Halt-Test davor schaltet alles aus): zweimal umschalten
+  const row = page.getByTestId("output-zone.exhaust");
+  const btn = page.getByTestId("switch-zone.exhaust");
+  const before = (await btn.textContent())?.trim();
+  const after = before === "Einschalten" ? "Ausschalten" : "Einschalten";
+  await btn.click();
+  await expect(btn).toHaveText(after);
+  await btn.click();
+  await expect(btn).toHaveText(before ?? "");
+  await expect(row).toContainText("Abluft");
+  await page.goto("/#/licht");
+  await expect(page.getByTestId("output-zone.light")).toContainText("Leiste");
+  await page.goto("/#/bewaesserung");
+  await expect(page.getByTestId("output-zone.irrigation_pump")).toContainText("Nicht zugeordnet");
+  await page.goto("/#/verlauf");
+  await expect(page.getByText("VPD (Luft)")).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByText("Schaltausgänge")).toBeVisible();
 });

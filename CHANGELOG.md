@@ -57,6 +57,21 @@ stehen in jedem Release unter „Sicherheit“.
   `POST /roles/{rolle}/switch {on}` (Handbetrieb).
 - **Prüfung:** ein Schaltausgang nur für eine Rolle, Kanal im Bereich des
   Geräts; „Ventil höchstens offen“ höchstens 25 min.
+- **Bereiche Klima, Licht, Bewässerung:** eigene Seiten in der
+  Navigation mit Messwerten und Schaltausgängen samt Handbetrieb; die
+  Übersicht zeigt Raumklima und alle zugeordneten Schaltausgänge.
+  Automatische Regelung (Lichtplan, Klima, Gießplan) gibt es noch nicht.
+- **VPD:** Luft-VPD ohne Blatt-Offset; fehlt ein Quellwert, entsteht
+  eine Lücke statt 0 (Quelle: RAT-017). Formel FAO-56 Gl. 11. Beide
+  Werte dürfen höchstens 60 s auseinander liegen (eigene Regel, Annahme).
+  Im Verlauf mit Lufttemperatur, Feuchte und CO2.
+- **Simulator:** einfaches Raumklima (Licht und Heizung wärmen, Abluft
+  tauscht Luft, Befeuchter und Entfeuchter, Verdunstung bei Licht;
+  Annahmen); Klima- und CO2-Kopf liefern Werte. Die Demo hat einen
+  Klima-Kopf und eine Steckdosenleiste mit Licht, Abluft, Umluft und
+  Befeuchter. Eine Dose ohne WLAN versorgt ihre Last weiter (Raumklima,
+  Umwälzung). Neue Störung `stuck`: Schaltbefehl abgelehnt, die Dose
+  bleibt im Zustand.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -78,7 +93,7 @@ stehen in jedem Release unter „Sicherheit“.
   - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus; klappt
     das nicht, steht „Aus nicht bestätigt“ im Ereignisprotokoll.
   - Not-Halt und Neustart schalten alle Schaltrollen aus;
-    laufen Umluft und Abluft nicht nach.
+    laufen Umluft und Abluft nicht nach (Quelle: RAT-036).
   - Heizungen gibt es noch nicht als Rolle: erst mit der rastenden
     Notabschaltung nach RAT-060.
 

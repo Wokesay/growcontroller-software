@@ -144,6 +144,8 @@ void Simulation::setupWorld(const std::string& name) {
   }
   if (name == "demo") {
     world_.plug(5, "head_level", "LVL-77B210");
+    world_.plug(6, "head_climate", "CLIM-5D20C4");
+    world_.addNetPlug("shelly_strip4", {{"light", 240}, {"exhaust", 35}, {"circulation_fan", 15}, {"humidifier", 30}});
     world_.fill(31, 0.02, 7.0);
   }
   for (auto& [p, d] : world_.ports) d.pluggedAt = -10000;
@@ -163,6 +165,17 @@ void Simulation::configureDemo() {
   h.acceptDevice(SimBus::kHubOut, "Hub-Ausgänge");
   h.bindRole("tank.circulation", SimBus::kHubOut, 0);
   h.bindRole("tank.inlet", SimBus::kHubOut, 1);
+  // Raumklima und Steckdosenleiste: Licht, Abluft, Umluft, Befeuchter
+  h.acceptDevice("CLIM-5D20C4", "Klima Raum");
+  if (!world_.netPlugs.empty()) {
+    const std::string strip = world_.netPlugs.front().id;
+    h.acceptDevice(strip, "Leiste");
+    h.bindRole("zone.light", strip, 0);
+    h.bindRole("zone.exhaust", strip, 1);
+    h.bindRole("zone.circulation_fan", strip, 2);
+    h.bindRole("zone.humidifier", strip, 3);
+    for (const char* r : {"zone.light", "zone.exhaust", "zone.circulation_fan"}) h.switchRole(r, true);
+  }
   h.putTank({{"name", "Tank 1"}, {"capacityL", 60}, {"minL", 3}, {"water", "ro"}});
   h.putCanister({{"name", "Teil A"}, {"kind", "nutrient"}, {"pump", "CAP-1F02A4"}, {"pair", "AB"}, {"color", "#3f8f4a"}, {"capacityMl", 1000}, {"stockMl", 820}});
   h.putCanister({{"name", "Teil B"}, {"kind", "nutrient"}, {"pump", "CAP-1F02B7"}, {"pair", "AB"}, {"color", "#c47a2c"}, {"capacityMl", 1000}, {"stockMl", 790}});
@@ -309,7 +322,8 @@ json Simulation::control(const std::string& action, const json& b) {
   } else if (action == "fault") {
     std::string dev = b.value("device", std::string()), f = b.value("fault", std::string());
     if (NetPlug* np = world_.netPlug(dev)) {
-      if (f != "none" && f != "offline" && f != "readonly" && f != "ignore") return err("Störung: offline, readonly, ignore oder none");
+      if (f != "none" && f != "offline" && f != "readonly" && f != "ignore" && f != "stuck")
+        return err("Störung: offline, readonly, ignore, stuck oder none");
       np->fault = f == "none" ? "" : f;
     } else if (Cap* c = world_.cap(dev)) {
       c->blocked = f == "blocked";

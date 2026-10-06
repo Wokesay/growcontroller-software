@@ -112,7 +112,8 @@ if(GC_BUILD_TESTS)
     tests/core/test_auth.cpp
     tests/core/test_api.cpp
     tests/core/test_scenarios.cpp
-    tests/core/test_net.cpp)
+    tests/core/test_net.cpp
+    tests/core/test_climate.cpp)
   target_link_libraries(gc_tests PRIVATE gc_sim)
   if(NOT MSVC)
     target_compile_options(gc_tests PRIVATE -Wall -Wextra)

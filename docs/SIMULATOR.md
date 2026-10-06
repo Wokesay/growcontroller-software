@@ -23,7 +23,7 @@ Standardpasswort (EN 18031-1).
 |---|---|---|
 | `neu` | Dosierblock an Port 1 mit 3 Kappen (A, B, CalMag) | leer, Ersteinrichtung |
 | `stufe1` | dazu pH/EC-Kopf an Port 3, Kappe pH−, 40 L im Tank | leer |
-| `demo` | dazu Füllstands-Kopf an Port 5, Umwälzpumpe und Zulaufventil an den Hub-Ausgängen | über die echte API eingerichtet, Mischlauf, Durchgang, Vorlauf (Standard 48 h) mit Nachfüllen, EC- und pH-Regelung und einer Sprungsperre |
+| `demo` | dazu Füllstands-Kopf an Port 5, Klima-Kopf an Port 6, Umwälzpumpe und Zulaufventil an den Hub-Ausgängen, Steckdosenleiste im WLAN mit Licht, Abluft, Umluft und Befeuchter | über die echte API eingerichtet; Licht, Abluft und Umluft an; Mischlauf, Durchgang, Vorlauf (Standard 48 h) mit Nachfüllen, EC- und pH-Regelung und einer Sprungsperre |
 
 ## Modell und Zahlen
 
@@ -78,4 +78,20 @@ Standardpasswort (EN 18031-1).
 | Zustand nach Stromausfall ab Werk | „wie vorher“, bis der Hub „aus“ setzt | **Annahme** (Werkseinstellung nicht geprüft) |
 | Last je Dose | Umwälzpumpe 18 W, Licht 240 W, Abluft 35 W, Umluft 15 W, Befeuchter 30 W | **Annahme** |
 | Auto-Off | wirkt im Gerät, auch ohne Hub | RAT-019, RAT-060 |
-| Störungen | WLAN weg, Einstellung abgelehnt, Einstellung ignoriert | Testfälle |
+| Dose ohne WLAN | Last läuft weiter; zählt für Raumklima und Umwälzung | **Annahme** (Strom fließt unabhängig vom WLAN) |
+| Störungen | WLAN weg (`offline`), Einstellung abgelehnt (`readonly`), Einstellung ignoriert (`ignore`), Schaltbefehl abgelehnt, Dose bleibt im Zustand (`stuck`, z. B. Relais klemmt) | Testfälle |
+
+## Raumklima
+
+| Größe | Wert im Simulator | Quelle |
+|---|---|---|
+| Startwerte | 21 °C, 55 % rF, 450 ppm | **Annahme** |
+| Außenluft | 19 °C, 50 % rF | **Annahme** |
+| Wärme durch Licht / Heizung / Entfeuchter | +6 / +4 / +1 K über Außenluft | **Annahme** |
+| Feuchte durch Verdunstung | +14 % rF bei Licht, +5 % ohne | **Annahme** |
+| Abluft | Gewinne × 0,45, schnellere Angleichung (τ 600 s statt 1800 s) | **Annahme** |
+| Angleichung Feuchte | τ 400 s mit Abluft, 1500 s ohne | **Annahme** |
+| Befeuchter / Entfeuchter | +0,8 / −0,6 % rF je Minute | **Annahme** |
+| Feuchte begrenzt | 15–97 % rF | **Annahme** |
+| CO2 | 420 ppm mit Abluft, 380 ppm bei Licht, sonst 600 ppm; τ 900 s | **Annahme** |
+| Rauschen | Luft σ 0,05 K, Feuchte σ 0,3 %, CO2 σ 8 ppm | **Annahme** |
