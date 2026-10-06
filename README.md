@@ -12,8 +12,8 @@ Home Assistant.
 
 ## Ausprobieren ohne Installation
 
-Unter **Releases** liegt der Simulator für Windows, macOS und Linux: eine
-Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
+Ab dem nächsten Release liegt unter **Releases** der Simulator für Windows,
+macOS und Linux: eine Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
 (Passwort `demo-passwort`). Hinweise zu Windows-SmartScreen und macOS stehen in
 `LIESMICH.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
 Artefakte ab.

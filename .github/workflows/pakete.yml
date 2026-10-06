@@ -48,24 +48,8 @@ jobs:
           cmake -S . -B build-pkg -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF -DGC_WERROR=OFF \
             -DGC_SIM_WEB_ASSETS=build-pkg/web_assets.cpp ${{ matrix.cmake }}
           cmake --build build-pkg --config Release --target gc_sim_server
-      - name: Paket
-        run: |
-          v=$(tr -d '\r\n' < VERSION)
-          d="growcontroller-simulator-$v-${{ matrix.name }}"
-          mkdir -p "dist/$d"
-          if [ -f build-pkg/Release/gc_sim_server.exe ]; then src=build-pkg/Release/gc_sim_server.exe; else src=build-pkg/gc_sim_server; fi
-          cp "$src" "dist/$d/${{ matrix.bin }}"
-          cp sim/LIESMICH.txt "dist/$d/"
-          echo "PKG_DIR=dist/$d" >> "$GITHUB_ENV"
-          echo "PKG_ZIP=$d.zip" >> "$GITHUB_ENV"
-      - name: Kurztest (startet, liefert API und Web-App)
-        run: |
-          "./$PKG_DIR/${{ matrix.bin }}" --port 18080 --scenario neu --prefill 0 > sim.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:18080/api/v1/info > /dev/null && break; sleep 1; done
-          curl -sf http://127.0.0.1:18080/api/v1/info
-          curl -sf --compressed http://127.0.0.1:18080/ | grep -q '<div id="app">'
-          cat sim.log
-          if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM "${{ matrix.bin }}" || true; else kill %1 || true; fi
+      - name: Paket und Kurztest (mit Argumenten und Einfachstart)
+        run: bash tools/paket.sh "${{ matrix.bin }}" "${{ matrix.name }}"
       - name: Zip
         run: |
           cd dist

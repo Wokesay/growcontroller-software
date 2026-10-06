@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <random>
 #include <sstream>
 
@@ -40,16 +41,25 @@ void FileStorage::flush() {
     dirty_.clear();
     return;
   }
-  fs::create_directories(dir_);
+  // Nicht beschreibbarer Ordner (z. B. Programm in einem geschützten
+  // Verzeichnis): einmal melden, dann nur im Speicher weiterlaufen.
+  std::error_code ec;
+  fs::create_directories(dir_, ec);
   for (const auto& name : dirty_) {
+    if (ec) break;
     fs::path tmp = fs::path(dir_) / (name + ".tmp");
     {
       std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
       f << cache_[name];
+      if (!f) ec = std::make_error_code(std::errc::io_error);
     }
-    fs::rename(tmp, fs::path(dir_) / name);  // atomar ersetzen
+    if (!ec) fs::rename(tmp, fs::path(dir_) / name, ec);  // atomar ersetzen
   }
   dirty_.clear();
+  if (ec) {
+    std::cerr << "Daten können nicht gespeichert werden (" << dir_ << ": " << ec.message() << "). Der Simulator läuft nur im Speicher weiter.\n";
+    dir_.clear();
+  }
 }
 
 // ------------------------------------------------------------------ Simulation

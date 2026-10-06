@@ -4,6 +4,8 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 #include "client.hpp"
 
@@ -359,4 +361,19 @@ TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (Vorsch
   const std::string first = ecRound(job());
   const std::string second = ecRound(first);
   CHECK(first != second);
+}
+
+TEST_CASE("Ablage: nicht beschreibbarer Datenordner bricht den Simulator nicht ab") {
+  // Ordner unter einer Datei lässt sich nie anlegen (auch nicht als root)
+  auto base = std::filesystem::temp_directory_path() / "gc-ablage-test";
+  std::filesystem::create_directories(base);
+  auto blocker = base / "datei";
+  { std::ofstream(blocker) << "x"; }
+  sim::FileStorage st((blocker / "daten").string());
+  st.write("config.json", "{}");
+  CHECK_NOTHROW(st.flush());
+  CHECK(st.read("config.json") == std::optional<std::string>("{}"));  // im Speicher weiter
+  st.write("config.json", "{\"a\":1}");
+  CHECK_NOTHROW(st.flush());
+  std::filesystem::remove_all(base);
 }

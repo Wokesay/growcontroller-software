@@ -1,7 +1,8 @@
 # Release: aus einem Tag vX.Y.Z[-...] entstehen die Downloads (Simulator für
-# Windows, macOS und Linux, Web-App, Firmware-Image), SBOM und Prüfsummen als
-# GitHub-Release mit dem passenden CHANGELOG-Abschnitt. Signiert wird offline
-# nach manueller Freigabe (docs/RELEASE.md) – nie in der CI.
+# Windows, macOS und Linux, Web-App), SBOM und Prüfsummen als GitHub-Release
+# mit dem passenden CHANGELOG-Abschnitt. Das Firmware-Image kommt erst ins
+# Release, wenn es offline signiert ist (docs/RELEASE.md) – nie aus der CI;
+# gebaut wird es weiter bei jedem Lauf der CI.
 name: Release
 on:
   push:
@@ -22,39 +23,8 @@ jobs:
     needs: pruefen
     uses: ./.github/workflows/pakete.yml
 
-  firmware:
-    needs: pruefen
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    container: espressif/idf:v5.4.1
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Web-App bauen und einbetten
-        run: |
-          cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
-          node tools/embed_web.mjs
-      - name: Firmware für ESP32-S3 bauen
-        shell: bash
-        run: |
-          . $IDF_PATH/export.sh
-          cd firmware
-          idf.py set-target esp32s3
-          idf.py build
-          v=$(tr -d '\r\n' < ../VERSION)
-          mkdir -p ../dist/fw && cp build/growcontroller_hub.bin build/bootloader/bootloader.bin build/partition_table/partition-table.bin ../dist/fw/
-          cd ../dist && tar -czf "growcontroller-firmware-esp32s3-$v.tar.gz" fw
-      - uses: actions/upload-artifact@v4
-        with:
-          name: growcontroller-firmware
-          path: dist/*.tar.gz
-
   veroeffentlichen:
-    needs: [pakete, firmware]
+    needs: pakete
     runs-on: ubuntu-24.04
     permissions:
       contents: write

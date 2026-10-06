@@ -10,12 +10,17 @@ stehen in jedem Release unter „Sicherheit“.
 ### Neu
 - Simulator als Download für Windows, macOS (Apple-Chip und Intel) und
   Linux: eine Datei mit eingebetteter Web-App; Doppelklick startet die Demo
-  und öffnet den Browser, die Daten liegen neben dem Programm. Releases
-  hängen die Pakete automatisch an.
+  und öffnet den Browser, die Daten liegen neben dem Programm. Ist der Port
+  belegt, nimmt er den nächsten freien; ist der Ordner nicht beschreibbar,
+  läuft die Demo nur im Speicher. Releases hängen die Pakete automatisch an,
+  mit Lizenzhinweisen der enthaltenen Bibliotheken
+  (`THIRD_PARTY_LICENSES.txt`).
 
 ### Geändert
 - Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
   auch mit MSVC übersetzt.
+- Releases enthalten kein Firmware-Image mehr, bis es offline signiert wird
+  (`docs/RELEASE.md`); die CI baut die Firmware weiterhin bei jedem Lauf.
 
 ## [0.1.0-proto.1] – 2026-10-06
 

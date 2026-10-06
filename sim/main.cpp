@@ -6,16 +6,22 @@
 // Datei. Ohne Argumente gestartet (Doppelklick) läuft die Demo, die Daten
 // liegen neben dem Programm, und der Browser öffnet sich.
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#endif
 #include <atomic>
+#include <cctype>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <thread>
 
@@ -71,8 +77,11 @@ void usage() {
             << "Ohne Argumente: Demo, Daten neben dem Programm, Browser öffnet sich.\n";
 }
 
-// Browser mit der Adresse öffnen (nur Simulator, nie auf dem Gerät).
+// Browser mit der Adresse öffnen (nur Simulator, nie auf dem Gerät). Die
+// Adresse geht in eine Shell; deshalb nur harmlose Zeichen.
 void openBrowser(const std::string& url) {
+  for (char c : url)
+    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == ':' || c == '/' || c == '.' || c == '-' || c == '[' || c == ']')) return;
 #if defined(_WIN32)
   std::string cmd = "start \"\" \"" + url + "\"";
 #elif defined(__APPLE__)
@@ -143,7 +152,31 @@ int main(int argc, char** argv) {
   simulation.speed = speed;
   std::cout << " fertig.\n";
 
-  httplib::Server svr;
+  // Ist der Port belegt, die nächsten neun versuchen. Ein fehlgeschlagener
+  // Bind legt einen httplib-Server still, darum je Versuch ein neuer. Ohne
+  // SO_REUSEPORT (POSIX) bzw. mit SO_EXCLUSIVEADDRUSE (Windows), sonst bindet
+  // ein zweiter Simulator denselben Port, statt auszuweichen.
+  std::unique_ptr<httplib::Server> server;
+  int bound = -1;
+  for (int p = port; p < port + 10 && bound < 0; ++p) {
+    auto s = std::make_unique<httplib::Server>();
+    s->set_socket_options([](socket_t sock) {
+#ifdef _WIN32
+      httplib::set_socket_opt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#else
+      httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
+    });
+    if (s->bind_to_port(host, p)) {
+      bound = p;
+      server = std::move(s);
+    }
+  }
+  if (bound < 0) {
+    std::cerr << "Port " << port << "–" << port + 9 << " nicht verfügbar\n";
+    return 1;
+  }
+  httplib::Server& svr = *server;
   svr.set_default_headers({{"X-Content-Type-Options", "nosniff"},
                            {"X-Frame-Options", "DENY"},
                            {"Referrer-Policy", "no-referrer"},
@@ -294,16 +327,6 @@ int main(int argc, char** argv) {
     svr.stop();
   });
 
-  // Ist der Port belegt, die nächsten zehn versuchen
-  int bound = -1;
-  for (int p = port; p < port + 10 && bound < 0; ++p)
-    if (svr.bind_to_port(host, p)) bound = p;
-  if (bound < 0) {
-    std::cerr << "Port " << port << "–" << port + 9 << " nicht verfügbar\n";
-    g_running = false;
-    loop.join();
-    return 1;
-  }
   const std::string url = "http://" + (host == "0.0.0.0" ? std::string("127.0.0.1") : host) + ":" + std::to_string(bound);
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
