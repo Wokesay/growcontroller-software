@@ -3,10 +3,11 @@
 // das Budget überschritten wird.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const BUDGET = 250 * 1024;
-const dir = new URL("../dist", import.meta.url).pathname;
+const dir = fileURLToPath(new URL("../dist", import.meta.url));
 let total = 0;
 const rows = [];
 const walk = (d) => {

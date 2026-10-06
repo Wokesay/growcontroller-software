@@ -4,9 +4,10 @@
 //   node tools/embed_web.mjs <datei.cpp>  → z. B. für den Simulator-Download
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const dist = join(root, "web", "dist");
 const out = process.argv[2] ? resolve(process.argv[2]) : join(root, "firmware", "main", "web_assets.cpp");
 const types = { html: "text/html; charset=utf-8", js: "application/javascript", css: "text/css", svg: "image/svg+xml", json: "application/json", png: "image/png", ico: "image/x-icon" };
