@@ -14,8 +14,10 @@ stehen in jedem Release unter „Sicherheit“.
   belegt, nimmt er den nächsten freien; ist der Ordner nicht beschreibbar,
   läuft die Demo nur im Speicher. Releases hängen die Pakete automatisch an,
   mit Lizenzhinweisen der enthaltenen Bibliotheken
-  (`THIRD_PARTY_LICENSES.txt`). Ein Firmware-Image kommt erst ins Release,
-  wenn es offline signiert wird (`docs/RELEASE.md`).
+  (`THIRD_PARTY_LICENSES.txt`, auch im Web-Paket; mit den Fremdteilen in
+  nlohmann/json und dem Apache-2.0-Wortlaut). Ein Firmware-Image kommt erst
+  ins Release, wenn es offline signiert wird (`docs/RELEASE.md`); die CI
+  baut die Firmware weiterhin bei jedem Lauf.
 - **Einrichtung in fünf Schritten** (Start, Geräte, Tank, Nährstoffe,
   Einmessen): feste Leiste mit Zurück, Überspringen und Weiter; erledigte
   Schritte anklickbar; Erklärungen (ⓘ) zu Nutzvolumen, Mindestfüllstand,
@@ -23,7 +25,11 @@ stehen in jedem Release unter „Sicherheit“.
   Vorschau, vorhandene Rezepte sind sichtbar.
 - **Rezept-Vorlagen** mit Vorschau und Zuordnung zu den eigenen Kanistern
   statt Namensabgleich: Zweikomponenten-Dünger, Athena Blended Wachstum und
-  Blüte (Quelle: RAT-066).
+  Blüte (Quelle: RAT-066). API: `POST /recipes/template` nimmt `map`
+  (Teil → Kanister), meldet fehlende Teile in `missing` und lehnt einen
+  Kanister für zwei Teile ab; ein Paar der Vorlage geht auf Kanister ohne
+  eigenes Paar über. Die bisherigen Vorlagen `athena_pro_veg` und
+  `ab_basic` entfallen.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -42,6 +48,11 @@ stehen in jedem Release unter „Sicherheit“.
   Kachel.
 - Demo: Die Phase „Blüte“ verwies auf ein fehlendes Rezept. IDs schreiben
   Umlaute jetzt um („Blüte“ → „bluete“).
+- Rezepte mit demselben Kanister zweimal werden abgelehnt.
+- `PUT /system`: Eine abgelehnte Angabe ändert auch die übrigen nicht.
+- Simulator: macOS bindet ohne `SO_REUSEADDR`; ein nicht beschreibbarer
+  Datenordner wird gemerkt („nur im Speicher“), statt vergessen; das
+  Paket-Skript erkennt Windows auch lokal.
 
 ## [0.1.0-proto.1] – 2026-10-06
 

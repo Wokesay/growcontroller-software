@@ -145,7 +145,7 @@ std::optional<bool> SimBus::switchState(const std::string& dev, int channel) con
 bool SimBus::writePumpCalibration(const std::string& pump, double mlPerMin, std::string& err) {
   Cap* c = w_.cap(pump);
   if (!c) {
-    err = "Kappe nicht erreichbar";
+    err = "Pumpe nicht erreichbar";
     return false;
   }
   c->storedFlow = mlPerMin;

@@ -281,13 +281,14 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (n < 2) err("cfg.pair.single", "Paar " + p + " hat nur einen Kanister");
   for (const auto& r : c.recipes) {
     if (r.steps.empty()) err("cfg.recipe.empty", "Rezept " + r.name + " hat keine Schritte");
-    std::set<std::string> pairsInRecipe;
+    std::set<std::string> pairsInRecipe, seen;
     for (const auto& s : r.steps) {
       const CanisterCfg* k = c.canister(s.canister);
       if (!k) {
         err("cfg.recipe.canister", "Rezept " + r.name + ": unbekannter Kanister");
         continue;
       }
+      if (!seen.insert(k->id).second) err("cfg.recipe.twice", "Rezept " + r.name + ": " + k->name + " steht zweimal darin");
       // pH-Korrektur ist nie Teil eines Rezepts, sie kommt immer zuletzt (RAT-004).
       if (k->kind != "nutrient") err("cfg.recipe.ph", "Rezept " + r.name + ": " + k->name + " ist kein Nährstoff (pH kommt zuletzt)");
       if (!isNum(s.mlPerL) || s.mlPerL <= 0) err("cfg.recipe.amount", "Rezept " + r.name + ": Menge für " + k->name + " fehlt");

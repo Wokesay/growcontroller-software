@@ -215,3 +215,32 @@ TEST_CASE("System: Sprache nur de oder en") {
   CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
   CHECK(c.call("PUT", "/api/v1/system", {{"language", "fr"}}).first == 422);
 }
+
+TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übernommen") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (const char* id : {"DB-7A31C0", "CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) c.ok("POST", std::string("/api/v1/devices/") + id + "/accept", {{"name", ""}});
+  auto a = c.ok("POST", "/api/v1/canisters", {{"name", "Eins"}, {"kind", "nutrient"}, {"pump", "CAP-1F02A4"}})["id"];
+  auto b = c.ok("POST", "/api/v1/canisters", {{"name", "Zwei"}, {"kind", "nutrient"}, {"pump", "CAP-1F02B7"}})["id"];
+  auto m = c.ok("POST", "/api/v1/canisters", {{"name", "Drei"}, {"kind", "nutrient"}, {"pump", "CAP-1F02C1"}})["id"];
+  auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"map", {{"a", a}, {"b", a}, {"calmag", m}}}});
+  CHECK(st == 422);
+  CHECK(err["error"]["key"] == "recipe.template.twice");
+  c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"map", {{"a", a}, {"b", b}, {"calmag", m}}}});
+  auto cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& k : cfg["canisters"]) {
+    if (k["id"] == a || k["id"] == b) CHECK(k["pair"] == "AB");
+    if (k["id"] == m) CHECK(k["pair"] == "");
+  }
+  // Über die API direkt: Rezept mit demselben Kanister zweimal
+  CHECK(c.call("POST", "/api/v1/recipes", {{"name", "Doppelt"}, {"steps", {{{"canister", m}, {"mlPerL", 1}}, {{"canister", m}, {"mlPerL", 1}}}}}).first == 422);
+}
+
+TEST_CASE("System: abgelehnte Änderung lässt alles unverändert") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(c.call("PUT", "/api/v1/system", {{"name", "Neu"}, {"language", "fr"}}).first == 422);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "growcontroller");
+}

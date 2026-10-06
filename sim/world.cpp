@@ -120,7 +120,7 @@ bool World::startRun(const std::string& capId, Ms ms, const std::string& jobId, 
   Device* block = nullptr;
   Cap* c = cap(capId, &block);
   if (!c || !block) {
-    err = "Kappe nicht gefunden";
+    err = "Pumpe nicht gefunden";
     return false;
   }
   if (block->fault == "offline") {

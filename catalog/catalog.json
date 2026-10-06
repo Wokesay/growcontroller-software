@@ -168,8 +168,9 @@
     "recipes": [
       {
         "id": "two_part_basic", "name": "Zweikomponenten-Dünger", "nameEn": "Two-part nutrient",
-        "note": "Startwerte für A+B-Dünger mit CalMag. An die Herstellerangabe anpassen.",
-        "noteEn": "Starting values for A+B nutrient with CalMag. Adjust to the manufacturer's chart.",
+        "note": "Allgemeine Startwerte für A+B-Dünger mit CalMag, ohne Herstellerbezug. An die Herstellerangabe anpassen.",
+        "noteEn": "General starting values for A+B nutrient with CalMag, not from a manufacturer. Adjust to the manufacturer's chart.",
+        "basis": "Annahme",
         "ec": 1.6, "ph": [5.8, 6.2],
         "steps": [
           { "role": "b", "name": "Teil B", "nameEn": "Part B", "pair": "AB", "mlPerL": 2.0 },
@@ -179,9 +180,10 @@
       },
       {
         "id": "athena_blended_veg", "name": "Athena Blended – Wachstum", "nameEn": "Athena Blended – Vegetative",
-        "note": "Athena Blended Feed Program A01.004 (metrisch), Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
-        "noteEn": "Athena Blended Feed Program A01.004 (metric), vegetative weeks 1–4. Check against the current manufacturer chart.",
-        "source": "RAT-066",
+        "note": "Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Vegetative weeks 1–4. Check against the current manufacturer chart.",
+        "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "basis": "RAT-066",
         "ec": 2.1, "ph": [5.8, 6.2],
         "steps": [
           { "role": "b", "name": "Grow B", "pair": "AB", "mlPerL": 2.9 },
@@ -191,9 +193,10 @@
       },
       {
         "id": "athena_blended_bloom", "name": "Athena Blended – Blüte", "nameEn": "Athena Blended – Flowering",
-        "note": "Athena Blended Feed Program A01.004 (metrisch), Blüte Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
-        "noteEn": "Athena Blended Feed Program A01.004 (metric), flowering weeks 1–4. Check against the current manufacturer chart.",
-        "source": "RAT-066",
+        "note": "Blüte Woche 1–2 (ab Woche 3 höher, mit PK). Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Flowering weeks 1–2 (higher from week 3, with PK). Check against the current manufacturer chart.",
+        "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "basis": "RAT-066",
         "ec": 2.3, "ph": [5.8, 6.2],
         "steps": [
           { "role": "b", "name": "Bloom B", "pair": "AB", "mlPerL": 3.2 },

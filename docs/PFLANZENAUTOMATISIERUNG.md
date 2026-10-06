@@ -7,7 +7,11 @@ eigenen Rezepten und Einstellungen. 230-V-Geräte laufen über schaltbare
 Steckdosen, zuerst Shelly (lokal). Die App ist neutral formuliert:
 universelle Pflanzenautomatisierung für Gewächshaus, Indoor-Anbau und
 Hydroponik. Grundlage: Entwürfe von `architekt`, `anwender` und `hardware`
-vom 06.10.2026. **V** = Vorschlag, **A** = Annahme.
+vom 06.10.2026.
+
+> **Entwurf.** Alles hier ist Vorschlag, auch wo es nach Festlegung klingt
+> („fest im Code“, „nur Steckergeräte“). Entschieden wird als PD im
+> Produkt-Repo (`../docs/DECISIONS.md`); offene Punkte stehen in §9.
 
 ## 1. Bereiche im Datenmodell
 
@@ -36,7 +40,9 @@ config
 Lufttemperatur und Luftfeuchte. Er wird nur gerechnet, wenn beide Werte gültig
 und höchstens 60 s auseinander sind; sonst entsteht eine Lücke (R5).
 
-- Sättigungsdampfdruck: es(T) = 0,6108 · exp(17,27·T / (T + 237,3)) kPa (FAO-56, Gl. 11).
+- Sättigungsdampfdruck: es(T) = 0,6108 · exp(17,27·T / (T + 237,3)) kPa (FAO-56, Gl. 11,
+  https://www.fao.org/4/x0490e/x0490e07.htm; online noch nicht gegengeprüft,
+  die Seite war am 06.10.2026 vom Proxy gesperrt).
 - Luft-VPD = es(T) · (1 − rF/100).
 - Blatt-VPD = es(T + Δ) − es(T) · rF/100. Der Offset Δ ist optional und
   wird als „geschätzt“ gezeigt; Standard ist Luft-VPD (Quelle: RAT-017).
@@ -56,7 +62,10 @@ und höchstens 60 s auseinander sind; sonst entsteht eine Lücke (R5).
 Fest im Code: Dosiert wird nie über Netzgeräte, nur über den Dosierblock
 [PD-010, PD-011].
 
-**Shelly (Gen2 und neuer), lokal über JSON-RPC.** Für Endkunden kommen nur
+**Shelly (Gen2 und neuer), lokal über JSON-RPC** (API-Doku
+https://shelly-api-docs.shelly.cloud/gen2/; Modelle, mDNS, Digest und
+Felder wie `auto_off` sind online noch nicht gegengeprüft, die Seite war am
+06.10.2026 vom Proxy gesperrt). Für Endkunden kommen nur
 Steckergeräte in Frage: Plug S Gen3, Outdoor Plug S Gen3, Power Strip 4 Gen4.
 Einbaugeräte (1PM, Pro 4PM, Dimmer 0/1-10V) sind für Elektrofachkräfte. Die
 Software bindet sie trotzdem an.
@@ -85,14 +94,14 @@ Software bindet sie trotzdem an.
 |---|---|---|---|---|
 | dauer | Licht, Umluft, Abluft, Umwälzpumpe | aus (Lüfter V: an) | – | – |
 | puls | Befeuchter, Gießpumpe, Zulauf | aus | **Auto-Off Pflicht**, knapp über der Software-Grenze | Höchstlaufzeit, Wartezeit |
-| kompressor | Entfeuchter | aus | – | Mindestlauf und Mindestpause 3–5 min |
-| heizen | Heizung (Zone, Tank) | aus | **Auto-Off Pflicht** (Verhältnis 1,11, RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
+| kompressor | Entfeuchter | aus | – | Mindestlauf 10 min, Mindestpause 5 min (Quelle: RAT-034) |
+| heizen | Heizung (Zone, Tank) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
 
 Fest im Code (R7):
 
-- Befeuchter und Entfeuchter laufen nie gleichzeitig (RAT-034).
+- Befeuchter und Entfeuchter laufen nie gleichzeitig (Quelle: RAT-034).
 - Einen Dimmwert unter der Einschaltschwelle hebt der Hub auf die Schwelle;
-  0 heißt aus, und das Relais schaltet mit ab (RAT-013, RAT-029).
+  0 heißt aus, und das Relais schaltet mit ab (Quelle: RAT-013, RAT-029).
 - Nach einem Neustart sendet der Hub „aus“ an alle Kanäle. Abläufe (Gabe,
   Puls, Zulauf) werden nicht fortgesetzt. Zustandsfunktionen (Licht, Lüfter,
   Klima) rechnen erst neu, wenn Uhrzeit und Sensorwahrheit gesichert sind.
@@ -103,9 +112,9 @@ Fest im Code (R7):
 Der Watchdog bewertet zusätzlich:
 
 - Soll ≠ Ist;
-- „soll aus, zieht > 2 W“ (Runaway, RAT-073);
+- „soll aus, zieht > 2 W“ (Runaway; Quelle: RAT-073);
 - Licht in der Dunkelphase;
-- Trockenlauf über die Leistung (RAT-049).
+- Trockenlauf über die Leistung (Quelle: RAT-049).
 
 Er schaltet nichts (R2).
 
@@ -113,7 +122,7 @@ Er schaltet nichts (R2).
 
 - Netzgeräte stehen außerhalb des Pflanzraums.
 - Alles im Wasser hängt hinter einem FI-Schutzschalter mit 30 mA.
-- Heizgeräte mit dem Warnhinweis aus EN 60335-2-30 („nicht mit Zeitschaltuhr
+- Heizgeräte mit dem Warnhinweis aus EN 60335-2-30 (Norm nicht eingesehen, Angabe des `hardware`-Entwurfs) („nicht mit Zeitschaltuhr
   betreiben“) werden nicht angeschlossen.
 - Einbaugeräte schließt nur eine Elektrofachkraft an.
 
@@ -121,15 +130,15 @@ Er schaltet nichts (R2).
 
 | Funktion | braucht | Parameter (P = aus der Phase) |
 |---|---|---|
-| `light_schedule` | `zone.light`, gesicherte Uhrzeit | `on_at`, `light_hours` P, `intensity_pct` P, `ramp_min` 15 (RAT-035), Einschaltschwelle (RAT-013) |
+| `light_schedule` | `zone.light`, gesicherte Uhrzeit | `on_at`, `light_hours` P, `intensity_pct` P, `ramp_min` 15 (Quelle: RAT-035), Einschaltschwelle (Quelle: RAT-013) |
 | `circulation_fan` | `zone.circulation_fan` | Modus (immer, Intervall, mit Licht) |
-| `climate_control` | Lufttemperatur, Luftfeuchte, mindestens ein Klimagerät | Temperatur Tag/Nacht P, rF oder VPD Tag/Nacht P, Hysterese, Mindestzeiten (RAT-034), Heizungsgrenze (RAT-060) |
+| `climate_control` | Lufttemperatur, Luftfeuchte, mindestens ein Klimagerät | Temperatur Tag/Nacht P, rF oder VPD Tag/Nacht P, Hysterese, Mindestzeiten (Quelle: RAT-034), Heizungsgrenze (Quelle: RAT-060) |
 | `vpd_watch` | Lufttemperatur, Luftfeuchte | VPD-Ziel Tag/Nacht P, Toleranz, Blatt-Offset |
-| `irrigation` | `irrigation.pump`, Uhrzeit | Gaben je Tag P, Faktor der ersten Gabe P, Dauer je Gabe P (RAT-010), Mindeststand im Tank (RAT-067) |
+| `irrigation` | `irrigation.pump`, Uhrzeit | Gaben je Tag P, Faktor der ersten Gabe P, Dauer je Gabe P (Quelle: RAT-010), Mindeststand im Tank (Quelle: RAT-067) |
 
 - „Tag“ und „Nacht“ richten sich nach dem Licht, nicht nach der Uhrzeit.
 - Bei VPD-Führung wird der rF-Sollwert aus dem VPD-Ziel und der
-  **Soll**-Temperatur gerechnet (RAT-009, RAT-017).
+  **Soll**-Temperatur gerechnet (Quelle: RAT-009, RAT-017).
 
 ## 5. Phasen
 
@@ -141,7 +150,7 @@ Einstellungen“.
 
 | Wert | Wachstum | Blüte | Quelle |
 |---|---|---|---|
-| Lichtstunden | 18 h | 12 h | RAT-083 |
+| Lichtstunden | 18 h | 12 h | RAT-066 |
 | Dimmung | 50 % | 75 % | Annahme |
 | Temperatur Tag | 26 °C | 27 °C | RAT-009 |
 | rF bzw. VPD | 70 % ≈ 1,0 kPa | 62 % ≈ 1,35 kPa | RAT-009 |
@@ -150,7 +159,8 @@ Einstellungen“.
 | Gaben je Tag | 6 | 8–9 | RAT-010 (Steinwolle) |
 
 Sinkt das EC-Ziel beim Phasenwechsel, weist die App darauf hin, den Tank
-teilweise abzulassen; der Hub kann nicht verdünnen (RAT-012).
+abzulassen – ganz (Quelle: RAT-012) oder, wenn Rest und Nachfüllung
+reichen, teilweise (Quelle: RAT-065). Der Hub kann nicht verdünnen.
 
 ## 6. Bedienung
 
@@ -202,7 +212,8 @@ teilweise abzulassen; der Hub kann nicht verdünnen (RAT-012).
 
 ## 7. pH und EC: eine oder zwei Sonden
 
-Es gibt drei Geräteklassen:
+Vorschlag (beantwortet die Roadmap-Frage aus Stufe 1, braucht eine PD). Es
+gibt drei Geräteklassen:
 
 - `head_ph_ec` (pH, EC, Wassertemperatur);
 - `head_ph`;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <set>
 #include <sstream>
 
 #include "gc/embedded.hpp"
@@ -570,24 +571,29 @@ Result Hub::completeSetup() {
 
 Result Hub::setSystem(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (j.contains("name") && j["name"].is_string()) cfg_.system.name = j["name"].get<std::string>().substr(0, 40);
-  if (j.contains("timezone") && j["timezone"].is_string()) cfg_.system.timezone = j["timezone"];
+  // Erst alles prüfen, dann übernehmen: eine Ablehnung ändert nichts.
+  SystemCfg sys = cfg_.system;
+  Limits lim = cfg_.limits;
+  if (j.contains("name") && j["name"].is_string()) sys.name = j["name"].get<std::string>().substr(0, 40);
+  if (j.contains("timezone") && j["timezone"].is_string()) sys.timezone = j["timezone"];
   if (j.contains("language") && j["language"].is_string()) {
     std::string lang = j["language"];
     if (lang != "de" && lang != "en") return Result::fail(422, "system.language", "Sprache muss de oder en sein");
-    cfg_.system.language = lang;
+    sys.language = lang;
   }
-  if (j.contains("updateCheck") && j["updateCheck"].is_boolean()) cfg_.system.updateCheck = j["updateCheck"];
+  if (j.contains("updateCheck") && j["updateCheck"].is_boolean()) sys.updateCheck = j["updateCheck"];
   if (j.contains("updateChannel") && j["updateChannel"].is_string()) {
     std::string ch = j["updateChannel"];
     if (ch != "stable" && ch != "beta") return Result::fail(422, "system.channel", "Kanal muss stable oder beta sein");
-    cfg_.system.updateChannel = ch;
+    sys.updateChannel = ch;
   }
   if (j.contains("handDoseMaxMl") && j["handDoseMaxMl"].is_number()) {
     double v = j["handDoseMaxMl"];
     if (v < 0.5 || v > 50) return Result::fail(422, "system.hand", "Grenze je Handgabe 0,5–50 ml");
-    cfg_.limits.handDoseMaxMl = v;
+    lim.handDoseMaxMl = v;
   }
+  cfg_.system = sys;
+  cfg_.limits = lim;
   saveConfig("System");
   return Result::ok();
 }
@@ -787,9 +793,11 @@ Result Hub::deleteRecipe(const std::string& id) {
 
 Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Zuordnung je Flasche der Vorlage: ausdrücklich (map: Rolle → Kanister),
+  // Zuordnung je Teil der Vorlage: ausdrücklich (map: Rolle → Kanister),
   // sonst über den Namen (ohne Groß/Klein). Die Reihenfolge der Vorlage ist die
-  // Mischreihenfolge (z. B. B vor A, CalMag danach; Quelle: RAT-066).
+  // Mischreihenfolge der Herstellertabelle (Athena: B vor A, CalMag danach).
+  // Ein Kanister darf nur einen Teil tragen; ein Paar der Vorlage (A/B) wird
+  // auf Kanister ohne eigenes Paar übernommen, damit sie gemeinsam skalieren.
   auto lower = [](std::string x) {
     for (auto& ch : x) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return x;
@@ -798,21 +806,42 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) 
     if (jstr(t, "id") != templateId) continue;
     json steps = json::array();
     std::vector<std::string> missing;
+    std::map<std::string, std::string> pairs;  // Kanister → Paar aus der Vorlage
+    std::set<std::string> used;
     for (const auto& s : t.value("steps", json::array())) {
       const std::string role = jstr(s, "role"), name = jstr(s, "name");
       const CanisterCfg* k = nullptr;
       if (map.is_object() && map.contains(role) && map[role].is_string()) k = cfg_.canister(map[role].get<std::string>());
       for (const auto& x : cfg_.canisters)
         if (!k && lower(x.name) == lower(name)) k = &x;
-      if (!k) missing.push_back(name);
-      else steps.push_back({{"canister", k->id}, {"mlPerL", jnum(s, "mlPerL")}});
+      if (!k) {
+        missing.push_back(name);
+        continue;
+      }
+      if (!used.insert(k->id).second)
+        return Result::fail(422, "recipe.template.twice", "Kanister „" + k->name + "“ ist zwei Teilen der Vorlage zugeordnet");
+      if (!jstr(s, "pair").empty()) pairs[k->id] = jstr(s, "pair");
+      steps.push_back({{"canister", k->id}, {"mlPerL", jnum(s, "mlPerL")}});
     }
     if (!missing.empty()) {
       std::string m;
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
       return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
-    return putRecipe({{"name", jstr(t, "name")}, {"note", jstr(t, "note")}, {"steps", steps}});
+    Result r = putRecipe({{"name", jstr(t, "name")}, {"note", jstr(t, "note")}, {"steps", steps}});
+    if (r.status != 200) return r;
+    Config next = cfg_;
+    bool changed = false;
+    for (auto& k : next.canisters)
+      if (pairs.count(k.id) && k.pair.empty() && k.kind == "nutrient") {
+        k.pair = pairs[k.id];
+        changed = true;
+      }
+    if (changed && validateConfig(next, cat_).empty()) {
+      cfg_ = next;
+      saveConfig("Paar aus der Vorlage übernommen");
+    }
+    return r;
   }
   return Result::fail(404, "recipe.template", "Vorlage nicht gefunden");
 }
