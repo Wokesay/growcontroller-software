@@ -1,0 +1,180 @@
+{
+  "catalogVersion": 1,
+  "capabilities": {
+    "measure.ph": { "label": "pH", "unit": "", "kind": "measure", "decimals": 2, "plausible": [3.0, 9.0], "maxAgeS": 60, "jump": 1.0 },
+    "measure.ec": { "label": "EC", "unit": "mS/cm", "kind": "measure", "decimals": 2, "plausible": [0.0, 8.0], "maxAgeS": 60, "jump": 0.5 },
+    "measure.water_temp": { "label": "Wassertemperatur", "unit": "°C", "kind": "measure", "decimals": 1, "plausible": [0.0, 45.0], "maxAgeS": 120, "jump": 3.0 },
+    "measure.level": { "label": "Füllstand", "unit": "L", "kind": "measure", "decimals": 1, "plausible": [0.0, 1000.0], "maxAgeS": 60, "jump": 20.0 },
+    "measure.air_temp": { "label": "Lufttemperatur", "unit": "°C", "kind": "measure", "decimals": 1, "plausible": [-5.0, 50.0], "maxAgeS": 120, "jump": 5.0 },
+    "measure.humidity": { "label": "Luftfeuchte", "unit": "%", "kind": "measure", "decimals": 0, "plausible": [0.0, 100.0], "maxAgeS": 120, "jump": 25.0 },
+    "measure.co2": { "label": "CO2", "unit": "ppm", "kind": "measure", "decimals": 0, "plausible": [250.0, 5000.0], "maxAgeS": 120, "jump": 1500.0 },
+    "dose.peristaltic": { "label": "Dosierpumpe", "kind": "actuate" },
+    "switch.12v": { "label": "12-V-Ausgang", "kind": "actuate" }
+  },
+
+  "deviceClasses": {
+    "dosing_block": {
+      "label": "Dosierblock", "stage": 0, "attach": "hub_port", "slots": 6, "accepts": ["pump_cap"],
+      "provides": [], "shop": "Dosierblock für 6 Pumpen",
+      "text": "Treibt bis zu 6 Pumpenkappen an. Zeitlimit in Hardware, immer nur ein Kanal zugleich."
+    },
+    "pump_cap": {
+      "label": "Pumpenkappe", "stage": 0, "attach": "dosing_port",
+      "provides": ["dose.peristaltic"], "calibrations": ["pump_flow"], "shop": "Pumpenkappe mit Überwurf",
+      "text": "Peristaltikpumpe auf dem Kanister. Der ID-Chip trägt Kennung und Einmesswert."
+    },
+    "head_ph_ec": {
+      "label": "Kopf pH/EC", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ph", "measure.ec", "measure.water_temp"], "calibrations": ["ph", "ec"],
+      "shop": "pH/EC-Kopf mit galvanischer Trennung und Sonden",
+      "text": "Misst pH, EC und Wassertemperatur im Tank, galvanisch getrennt."
+    },
+    "head_level": {
+      "label": "Kopf Füllstand", "stage": 2, "attach": "hub_port",
+      "provides": ["measure.level"], "calibrations": ["tank_curve"], "shop": "Füllstands-Kopf",
+      "text": "Misst den Füllstand. Dient als Notabschaltung beim Nachfüllen."
+    },
+    "head_climate": {
+      "label": "Kopf Klima", "stage": 4, "attach": "box_port",
+      "provides": ["measure.air_temp", "measure.humidity"], "shop": "Klima-Kopf",
+      "text": "Misst Lufttemperatur und Luftfeuchte im Zelt."
+    },
+    "head_co2": {
+      "label": "Kopf CO2", "stage": 4, "attach": "box_port",
+      "provides": ["measure.co2"], "shop": "CO2-Kopf",
+      "text": "Misst CO2 im Zelt."
+    },
+    "hub_outputs": {
+      "label": "12-V-Ausgänge des Hubs", "stage": 0, "attach": "builtin", "channels": 2,
+      "provides": ["switch.12v"],
+      "text": "Zwei geschaltete 12-V-Ausgänge mit Zeitlimit, z. B. für Umwälzpumpe und Zulaufventil."
+    }
+  },
+
+  "roles": {
+    "tank.ph": { "label": "pH im Tank", "capability": "measure.ph", "series": true },
+    "tank.ec": { "label": "EC im Tank", "capability": "measure.ec", "series": true },
+    "tank.water_temp": { "label": "Wassertemperatur", "capability": "measure.water_temp", "series": true },
+    "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
+    "tank.circulation": { "label": "Umwälzpumpe", "capability": "switch.12v" },
+    "tank.inlet": { "label": "Zulaufventil", "capability": "switch.12v" },
+    "tent.air_temp": { "label": "Lufttemperatur Zelt", "capability": "measure.air_temp", "series": true },
+    "tent.humidity": { "label": "Luftfeuchte Zelt", "capability": "measure.humidity", "series": true },
+    "tent.co2": { "label": "CO2 Zelt", "capability": "measure.co2", "series": true }
+  },
+
+  "functions": [
+    {
+      "id": "manual_dose", "label": "Von Hand dosieren", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Eine Menge aus einem Kanister in den Tank geben.",
+      "requires": [ { "canisters": { "min": 1, "kind": "any" } }, { "canisters": { "min": 1, "kind": "any", "calibrated": true } } ]
+    },
+    {
+      "id": "pump_calibration", "label": "Pumpen einmessen", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Förderrate je Pumpe mit Messbecher oder Küchenwaage bestimmen. Ohne Einmesswert wird nicht dosiert.",
+      "requires": [ { "device": "pump_cap" } ]
+    },
+    {
+      "id": "mix", "label": "Nährlösung mischen", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Rezept wählen, Wassermenge angeben, der Hub dosiert in Rezeptreihenfolge.",
+      "requires": [
+        { "canisters": { "min": 1, "kind": "nutrient" } },
+        { "canisters": { "min": 1, "kind": "nutrient", "calibrated": true } },
+        { "config": "recipe" }
+      ],
+      "soft": [ { "role": "tank.circulation", "why": "Ohne Umwälzpumpe führt die Anleitung mit Umrühren zwischen den Gaben." } ]
+    },
+    {
+      "id": "monitor_tank", "label": "Tankwerte überwachen", "stage": 1, "group": "Messen", "alwaysOn": true,
+      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorwahrheit läuft immer, auch ohne Grow.",
+      "requires": [ { "role": "tank.ph" }, { "role": "tank.ec" } ],
+      "soft": [ { "role": "tank.water_temp", "why": "Ohne Temperatur keine Bewertung der Wassertemperatur." } ]
+    },
+    {
+      "id": "circulation", "label": "Umwälzen", "stage": 1, "group": "Tank",
+      "text": "Umwälzpumpe nach Zeitplan; vor und während jeder Dosierung an.",
+      "requires": [ { "role": "tank.circulation" } ],
+      "soft": [ { "role": "tank.level", "why": "Ohne Füllstand kein Trockenlaufschutz." } ],
+      "params": [
+        { "key": "mode", "label": "Betrieb", "type": "enum", "options": [ ["always", "immer an"], ["interval", "Intervall"] ], "default": "interval" },
+        { "key": "on_min", "label": "An je Intervall", "type": "number", "unit": "min", "min": 1, "max": 120, "step": 1, "default": 15 },
+        { "key": "period_min", "label": "Intervall", "type": "number", "unit": "min", "min": 5, "max": 240, "step": 5, "default": 60 }
+      ]
+    },
+    {
+      "id": "ph_control", "label": "pH regeln", "stage": 1, "group": "Regeln",
+      "text": "Senkt den pH in Teilgaben aus der gemessenen Wirkung. Immer der letzte Schritt, erst nach EC.",
+      "requires": [
+        { "role": "tank.ph", "calibrated": true },
+        { "role": "tank.ec", "calibrated": true },
+        { "canisters": { "min": 1, "kind": "ph_down", "calibrated": true } },
+        { "function": "circulation" }
+      ],
+      "params": [
+        { "key": "ph_target", "label": "Ziel-pH", "type": "number", "min": 4.5, "max": 7.5, "step": 0.05, "default": 5.8, "phase": true },
+        { "key": "ph_tolerance", "label": "Toleranz", "type": "number", "min": 0.05, "max": 1.0, "step": 0.05, "default": 0.15, "phase": true },
+        { "key": "ec_floor", "label": "EC-Gate: pH nur ab EC", "type": "number", "unit": "mS/cm", "min": 0.3, "max": 3.0, "step": 0.05, "default": 0.5 },
+        { "key": "max_ml_per_dose", "label": "Höchstmenge je Teilgabe", "type": "number", "unit": "ml", "min": 0.5, "max": 20, "step": 0.5, "default": 20 },
+        { "key": "settle_min", "label": "Wartezeit nach Gabe", "type": "number", "unit": "min", "min": 2, "max": 60, "step": 1, "default": 5 },
+        { "key": "max_doses", "label": "Höchstens Teilgaben je Korrektur", "type": "number", "min": 1, "max": 12, "step": 1, "default": 8 }
+      ]
+    },
+    {
+      "id": "ec_control", "label": "EC nachdosieren", "stage": 1, "group": "Regeln",
+      "text": "Hebt die EC mit dem aktiven Rezept an. Gepaarte Nährstoffe (A:B) werden gemeinsam skaliert.",
+      "requires": [
+        { "role": "tank.ec", "calibrated": true },
+        { "canisters": { "min": 1, "kind": "nutrient", "calibrated": true } },
+        { "config": "recipe" },
+        { "function": "circulation" }
+      ],
+      "params": [
+        { "key": "ec_target", "label": "Ziel-EC", "type": "number", "unit": "mS/cm", "min": 0.2, "max": 4.0, "step": 0.05, "default": 1.6, "phase": true },
+        { "key": "ec_tolerance", "label": "Toleranz", "type": "number", "unit": "mS/cm", "min": 0.05, "max": 1.0, "step": 0.05, "default": 0.1, "phase": true },
+        { "key": "recipe", "label": "Rezept", "type": "recipe", "default": "", "phase": true },
+        { "key": "max_ec_step", "label": "Höchstens EC-Anhebung je Runde", "type": "number", "unit": "mS/cm", "min": 0.1, "max": 1.5, "step": 0.05, "default": 1.0 },
+        { "key": "settle_min", "label": "Wartezeit nach Gabe", "type": "number", "unit": "min", "min": 2, "max": 60, "step": 1, "default": 4 },
+        { "key": "max_doses", "label": "Höchstens Runden je Korrektur", "type": "number", "min": 1, "max": 12, "step": 1, "default": 10 }
+      ]
+    },
+    {
+      "id": "refill", "label": "Nachfüllen", "stage": 2, "group": "Tank",
+      "text": "Öffnet das Zulaufventil, bis die berechnete Menge drin ist. Der Füllstand ist nur Notabschaltung.",
+      "requires": [ { "role": "tank.inlet" }, { "role": "tank.level", "calibrated": true }, { "config": "tank_capacity" } ],
+      "params": [
+        { "key": "start_below_l", "label": "Nachfüllen unter", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 30 },
+        { "key": "target_l", "label": "Auffüllen bis", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 40 },
+        { "key": "flow_l_per_min", "label": "Zulauf (geschätzt)", "type": "number", "unit": "L/min", "min": 0.1, "max": 30, "step": 0.1, "default": 2.0 },
+        { "key": "max_open_min", "label": "Ventil höchstens offen", "type": "number", "unit": "min", "min": 1, "max": 60, "step": 1, "default": 15 }
+      ]
+    },
+    {
+      "id": "water_temp_watch", "label": "Wassertemperatur bewerten", "stage": 2, "group": "Messen",
+      "text": "Bewertet die Wassertemperatur gegen ein Band. Steuert nichts.",
+      "requires": [ { "role": "tank.water_temp" } ],
+      "params": [
+        { "key": "min_c", "label": "Untergrenze", "type": "number", "unit": "°C", "min": 5, "max": 30, "step": 0.5, "default": 18 },
+        { "key": "max_c", "label": "Obergrenze", "type": "number", "unit": "°C", "min": 10, "max": 35, "step": 0.5, "default": 23 }
+      ]
+    },
+    {
+      "id": "climate_watch", "label": "Klima bewerten", "stage": 4, "group": "Messen",
+      "text": "Bewertet Lufttemperatur und Luftfeuchte im Zelt. Steuert nichts.",
+      "requires": [ { "role": "tent.air_temp" }, { "role": "tent.humidity" } ]
+    }
+  ],
+
+  "templates": {
+    "recipes": [
+      {
+        "id": "athena_pro_veg", "name": "Athena Pro – Wachstum (Vorlage)",
+        "note": "Vorlage, Werte vor dem Einsatz mit dem Herstellerplan abgleichen.",
+        "steps": [ { "canisterName": "Core", "mlPerL": 2.6 }, { "canisterName": "Grow", "mlPerL": 2.6 } ]
+      },
+      {
+        "id": "ab_basic", "name": "A+B Grundrezept",
+        "steps": [ { "canisterName": "Teil A", "mlPerL": 2.0 }, { "canisterName": "Teil B", "mlPerL": 2.0 } ]
+      }
+    ]
+  }
+}

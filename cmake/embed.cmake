@@ -1,0 +1,10 @@
+# Erzeugt embedded.cpp mit Katalog, Changelog und Version als Rohtext.
+file(READ "${CATALOG}" catalog_text)
+file(READ "${CHANGELOG}" changelog_text)
+set(delim "GC_EMBED_DELIM")
+file(WRITE "${OUT}" "// Erzeugt von cmake/embed.cmake. Nicht von Hand bearbeiten.\n")
+file(APPEND "${OUT}" "#include \"gc/embedded.hpp\"\nnamespace gc::embedded {\n")
+file(APPEND "${OUT}" "const char* const kVersion = \"${VERSION}\";\n")
+file(APPEND "${OUT}" "const char* const kCatalogJson = R\"${delim}(${catalog_text})${delim}\";\n")
+file(APPEND "${OUT}" "const char* const kChangelogMd = R\"${delim}(${changelog_text})${delim}\";\n")
+file(APPEND "${OUT}" "}  // namespace gc::embedded\n")

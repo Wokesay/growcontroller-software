@@ -1,0 +1,43 @@
+# Release: aus einem Tag vX.Y.Z[-...] entstehen Simulator, Web-App, SBOM und
+# Prüfsummen als GitHub-Release mit dem passenden CHANGELOG-Abschnitt.
+# Firmware-Bündel und Signatur kommen hinzu, sobald firmware/ baut; signiert
+# wird offline nach manueller Freigabe (docs/RELEASE.md) – nie in der CI.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Version prüfen
+        run: test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+      - name: Bauen
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF
+          cmake --build build
+          (cd web && npm ci && npm run build)
+      - name: Paket, SBOM, Prüfsummen
+        run: |
+          mkdir -p dist
+          tar -C web -czf dist/growcontroller-web-${GITHUB_REF_NAME}.tar.gz dist
+          tar -czf dist/growcontroller-simulator-linux-x64-${GITHUB_REF_NAME}.tar.gz -C build gc_sim_server -C .. web/dist
+          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
+          (cd dist && sha256sum * > SHA256SUMS)
+      - name: Release-Notiz aus dem CHANGELOG
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > dist/NOTES.md
+      - name: GitHub-Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file dist/NOTES.md dist/*.tar.gz dist/sbom-web.cdx.json dist/SHA256SUMS
