@@ -26,8 +26,12 @@ Firmware. Inhalt:
 - **capabilities**: Einheit, Nachkommastellen, Plausibilitätsband,
   Frischegrenze, Sprungschwelle.
 - **deviceClasses**: Stufe, Anschluss (Hub-Port, Dosierblock-Port, Box, im
-  Hub), gelieferte Capabilities, Kalibrierbedarf, Shop-Text.
-- **roles**: Platz → Capability, und ob er als Messreihe in den Verlauf geht.
+  Hub, `net` für Netzsteckdosen), Kanäle, gelieferte Capabilities,
+  Kalibrierbedarf, Shop-Text.
+- **roles**: Platz → akzeptierte Capabilities (`accepts`, z. B. 12-V-Ausgang
+  oder Netzsteckdose), ob er als Messreihe in den Verlauf geht, und bei
+  Schaltausgängen das Sicherheitsprofil (`profile`: dauer, puls, kompressor,
+  heizen) mit Höchstlaufzeit (`maxOnS`).
 - **functions**: Stufe, Gruppe, Text, harte und weiche Voraussetzungen,
   Parameter mit Typ, Bereich, Vorgabe und dem Vermerk „von der Phase
   überschreibbar“.

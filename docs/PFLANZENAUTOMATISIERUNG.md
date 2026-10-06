@@ -70,10 +70,19 @@ Steckergeräte in Frage: Plug S Gen3, Outdoor Plug S Gen3, Power Strip 4 Gen4.
 Einbaugeräte (1PM, Pro 4PM, Dimmer 0/1-10V) sind für Elektrofachkräfte. Die
 Software bindet sie trotzdem an.
 
-- **Stand 06.10.2026:** `INetBus` mit Shelly im Simulator, Profile im
-  Gateway, Zuordnung mit Rücklesen, Testen und Handbetrieb sind umgesetzt
-  (§8 Schritte 3–4). Offen: Finden per mDNS und Digest auf dem Gerät,
-  „Aus nicht bestätigt“, Watchdog-Bewertung über die Leistung.
+- **Stand 06.10.2026:** `INetBus` mit Shelly im Simulator, Profile dauer,
+  puls und kompressor im Gateway, Zuordnung mit Rücklesen, Prüfung vor jedem
+  Einschalten, Testen und Handbetrieb sind umgesetzt (§8 Schritte 3–4).
+  Offen:
+  - Heizrollen erst mit der rastenden Notabschaltung (Pegel, Wassertemperatur,
+    Übertemperatur, Laufzeit; Quelle: RAT-060) und `power_limit`;
+  - Profil „versorgen“ für Geräte mit eigenem Thermostat (RAT-069);
+  - Finden per mDNS und Digest auf dem Gerät, „Aus nicht bestätigt“ mit
+    Wiederholung, Watchdog über die Leistung („soll aus, zieht > 2 W“);
+  - Taster und App am Shelly umgehen die Sperren: „an ohne Befehl des Hubs“
+    als Handbetrieb behandeln;
+  - Gesamtlast je Leiste (16 A) und Anlaufströme (Licht, Kompressor) – am
+    Muster messen.
 - **Eigener Netz-Bus** `INetBus` neben dem RS485-Bus `IBus`. Er hat kein
   `startRun`; damit ist schon über den Typ ausgeschlossen, dass übers Netz
   dosiert wird. Nur `Actuators` schaltet (R1).
@@ -273,5 +282,10 @@ Jeder Schritt ist im Simulator testbar.
 5. **Dimmen:** Über einen eigenen Dimm-Kopf als Busteilnehmer (Empfehlung
    `hardware`, Stufe 4) und vorerst über Shelly-Dimmer? Kein 0–10 V am Hub
    (berührt PD-006).
-6. **Herstellertabellen als Vorlage** (z. B. Athena Blended): Dürfen sie
+6. **Abluft und Umluft nach Stromausfall:** aus (wie alles) oder an, damit
+   bei Ausfall des Hubs keine Hitze und Feuchte entsteht? Empfehlung
+   `hardware`: an, wählbar – eine Ausnahme von R6, braucht eine PD.
+7. **Zulauf und Gießpumpe nur mit 12 V** (SELV, Empfehlung `hardware`) oder
+   auch über 230-V-Steckdosen?
+8. **Herstellertabellen als Vorlage** (z. B. Athena Blended): Dürfen sie
    ins Produkt? Wer pflegt den Stand?

@@ -35,7 +35,18 @@ struct Ctx {
 };
 
 // Mindestpause eines Kompressorgeräts nach dem Ausschalten (Quelle: RAT-034).
+// Eine Gegensperre für das Gegengerät gehört zur Klimafunktion; hier gilt
+// „nie zugleich“.
 constexpr Ms kCompressorPause = 5 * kMinute;
+// Obergrenze der Luftfeuchte für den Befeuchter: Kondensat an Lampen und
+// Steckdosen vermeiden (Annahme, Vorschlag hardware 06.10.2026).
+constexpr double kHumidifierMaxRh = 85.0;
+
+// Schutzeinstellung im Netzgerät je Profil: nach Stromausfall aus (Quelle:
+// RAT-019); bei puls und heizen Auto-Off knapp über der Höchstlaufzeit,
+// Verhältnis 1,11 (Quelle: RAT-060; für puls
+// übertragen, Annahme).
+SwitchSafety safetyForRole(const RoleDef& rd);
 
 class Actuators {
  public:
@@ -58,7 +69,8 @@ class Actuators {
   std::optional<Msg> inhibit(const Ctx& c, const std::string& role) const;
 
   // Not-Halt: alle Pumpen und Ausgänge aus, idempotent (Quelle: RAT-036).
-  void stopAll(const Config& cfg);
+  // Zählt als Ausschalten: Mindestpausen gelten auch danach.
+  void stopAll(const Config& cfg, Ms now);
   // Je Takt: Trockenlauf, Notgrenze, Zeitlimits; schaltet nur AUS, nie EIN.
   void enforce(const Ctx& c);
 

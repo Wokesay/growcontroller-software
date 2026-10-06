@@ -82,8 +82,10 @@ Fehler kommen als `{"error":{"key","text"},"errors":[…]}`. Der Schlüssel
 
 ## Nur im Simulator
 
-`GET /sim`, `POST /sim/{speed|plug|unplug|cap|uncap|fault|water|probe|reboot|scenario|advance}`
-(siehe `SIMULATOR.md`). Diese Pfade gibt es auf dem Gerät nicht.
+`GET /sim`, `POST /sim/{speed|plug|unplug|cap|uncap|fault|water|probe|reboot|scenario|advance|net_add|net_remove}`
+(siehe `SIMULATOR.md`). `net_add {class, loads:[{load, watts}]}` legt eine
+Steckdose im WLAN an; `fault` kennt für Steckdosen `offline`, `readonly`,
+`ignore` und `none`. Diese Pfade gibt es auf dem Gerät nicht.
 
 ## Offen
 

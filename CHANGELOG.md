@@ -44,23 +44,32 @@ stehen in jedem Release unter „Sicherheit“.
   Simulator lassen sich beide Varianten stecken, Störungen treffen den
   passenden Kopf. Welche Hardware-Variante es geben wird, ist offen (PD
   folgt); die Software trägt beide.
-- **Schaltbare Steckdosen (Shelly, lokal):** Der Hub findet Shelly-Steckdosen
-  (Plug S Gen3, Power Strip 4 Gen4) im WLAN. In der Einrichtung und unter
-  Geräte sagt man je Dose, was eingesteckt ist (Umwälzpumpe, Licht, Abluft,
-  Umluft, Befeuchter, Entfeuchter, Heizung, Gießpumpe, Zulauf), und testet
-  sie (3 s an). Beim Übernehmen setzt der Hub jede Dose auf „nach
-  Stromausfall aus“; beim Zuordnen schreibt er die Schutzeinstellung des
-  Profils ins Gerät (Auto-Off bei Befeuchter, Gießpumpe, Zulauf und Heizung)
-  und ordnet erst zu, wenn das Rücklesen stimmt. Im Simulator mit
-  Leistungsmessung, WLAN-Ausfall und Auto-Off. API: `POST /roles/{rolle}/test`,
+- **Schaltbare Steckdosen (Shelly, lokal), im Simulator:** Steckdosen
+  (Plug S Gen3, Power Strip 4 Gen4) erscheinen in der Einrichtung und unter
+  Geräte. Je Dose sagt man, was eingesteckt ist (Umwälzpumpe, Licht, Abluft,
+  Umluft, Befeuchter, Entfeuchter, Gießpumpe, Zulauf), und testet sie (3 s
+  an). Beim Übernehmen setzt der Hub jede Dose auf „nach Stromausfall aus“;
+  beim Zuordnen schreibt er die Schutzeinstellung des Profils ins Gerät
+  (Auto-Off bei Befeuchter, Gießpumpe und Zulauf) und ordnet erst zu, wenn
+  das Rücklesen stimmt; vor jedem Einschalten prüft er sie erneut. Auf dem
+  Gerät folgen Finden per mDNS, Anmeldung und RPC. Welche Steckdosen der
+  Shop führt, ist offen (PD folgt). API: `POST /roles/{rolle}/test`,
   `POST /roles/{rolle}/switch {on}` (Handbetrieb).
-- **Sicherheitsprofile im Aktor-Gateway:** dauer, puls, kompressor, heizen.
-  Befeuchter und Entfeuchter laufen nie zugleich; der Entfeuchter hält
-  5 min Pause nach dem Ausschalten (Quelle: RAT-034); puls und heizen
-  haben eine Höchstlaufzeit, das Gerät schaltet knapp danach selbst ab
-  (Verhältnis wie RAT-060). Not-Halt und Neustart schalten auch die
-  Steckdosen aus. Höchstlaufzeiten für Befeuchter und Gießpumpe sind
-  Annahmen, bis die Funktionen eigene Grenzen setzen.
+- **Sicherheitsprofile im Aktor-Gateway:** dauer, puls, kompressor.
+  - Befeuchter und Entfeuchter laufen nie zugleich; ist der Zustand des
+    Gegengeräts unbekannt, bleibt das andere aus (Quelle: RAT-034, R5).
+  - Entfeuchter: 5 min Pause nach dem Ausschalten, auch nach Not-Halt und
+    Neustart (Quelle: RAT-034).
+  - Höchstlaufzeit für Befeuchter (5 min, Annahme), Gießpumpe (10 min,
+    Annahme) und Zulauf (30 min, Quelle: RAT-019); das Gerät schaltet
+    knapp danach selbst ab.
+  - Gießpumpe nur mit gültigem Füllstand über dem Mindestfüllstand,
+    Befeuchter nur mit gültiger Luftfeuchte unter 85 % (Annahme).
+  - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus.
+  - Heizungen gibt es noch nicht als Rolle: erst mit der rastenden
+    Notabschaltung nach RAT-060.
+- **Prüfung:** ein Schaltausgang nur für eine Rolle, Kanal im Bereich des
+  Geräts; „Ventil höchstens offen“ höchstens 30 min.
 - **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
   Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
   je Browser wählbar.
@@ -75,6 +84,8 @@ stehen in jedem Release unter „Sicherheit“.
   Anschlüsse zeigen das Symbol des Geräts.
 - Die App nutzt die ganze Bildschirmbreite; Kacheln brechen um, Tabellen
   der Einrichtung werden auf dem Handy zu Karten.
+- Meldungen sagen „Mindestfüllstand“, „Anschluss n“ und „Pumpe n am
+  Dosierblock“.
 
 ### Behoben
 - Messwert-Kacheln: Bei Sensorausfall ragten Hinweis und Kurve aus der

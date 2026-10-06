@@ -53,7 +53,7 @@ struct NetOutlet {
   bool on = false;
   std::string load;      // z. B. "circulation", "light" – für die Physik und die Leistung
   double loadW = 0;      // Leistung, wenn an (Annahme je Gerät)
-  bool initialOff = false;  // Werkseinstellung Shelly: „wie vorher“
+  bool initialOff = false;  // Werkseinstellung „wie vorher“ (Annahme, ungeprüft)
   double autoOffS = gc::kNaN;
   double powerLimitW = gc::kNaN;
   Ms onSince = 0;

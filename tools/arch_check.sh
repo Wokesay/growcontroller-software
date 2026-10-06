@@ -10,8 +10,9 @@ if grep -rnE '#include <(esp_|freertos/|driver/|sys/|unistd|windows|httplib|file
   err "Plattform-Header im Kern"
 fi
 
-# R1: Nur das Aktor-Gateway (dosing.cpp) ruft Aktor-Methoden des Busses.
-if grep -rnE 'bus_?\.(startRun|setSwitch|stopAllPumps)\(' core/src | grep -v '^core/src/dosing.cpp'; then
+# R1: Nur das Aktor-Gateway (dosing.cpp) ruft Aktor-Methoden des Busses,
+# auch des Netz-Busses (schaltbare Steckdosen).
+if grep -rnE '(bus_?|net_?)(\.|->)(startRun|setSwitch|stopAllPumps)\(' core/src | grep -v '^core/src/dosing.cpp'; then
   err "Aktor-Aufruf außerhalb des Gateways"
 fi
 

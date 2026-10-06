@@ -69,3 +69,13 @@ Standardpasswort (EN 18031-1).
 - **Bus nicht nachgebildet:** Der Modbus-Bus selbst, also Zeitverhalten,
   Timeouts und CRC, ist nicht modelliert. Das gehört in Treibertests der
   Firmware.
+
+## Schaltbare Steckdosen (Shelly)
+
+| Größe | Wert im Simulator | Quelle |
+|---|---|---|
+| Geräte | Plug S Gen3 (1 Dose), Power Strip 4 Gen4 (4 Dosen), IP 192.168.1.60 ff. | **Annahme** |
+| Zustand nach Stromausfall ab Werk | „wie vorher“, bis der Hub „aus“ setzt | **Annahme** (Werkseinstellung nicht geprüft) |
+| Last je Dose | Umwälzpumpe 18 W, Licht 240 W, Abluft 35 W, Umluft 15 W, Befeuchter 30 W | **Annahme** |
+| Auto-Off | wirkt im Gerät, auch ohne Hub | RAT-019, RAT-060 |
+| Störungen | WLAN weg, Einstellung abgelehnt, Einstellung ignoriert | Testfälle |

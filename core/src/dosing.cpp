@@ -65,6 +65,12 @@ void Actuators::clearRun(const std::string& pump) {
 
 void Actuators::stopPumps() { bus_.stopAllPumps(); }
 
+SwitchSafety safetyForRole(const RoleDef& rd) {
+  SwitchSafety s;
+  if ((rd.profile == "puls" || rd.profile == "heizen") && isNum(rd.maxOnS)) s.autoOffS = std::ceil(rd.maxOnS * 1.11 / 60.0) * 60.0;
+  return s;
+}
+
 bool Actuators::sw(const std::string& dev, int channel, bool on, std::string& err) {
   if (net_ && net_->owns(dev)) return net_->setSwitch(dev, channel, on, err);
   return bus_.setSwitch(dev, channel, on, err);
@@ -105,11 +111,36 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     if (!isNum(tank.capacityL)) return msg("act.inlet.capacity", "Nutzvolumen des Tanks fehlt");
     return std::nullopt;
   }
-  // Befeuchter und Entfeuchter nie zugleich (R7, Quelle: RAT-034).
-  if (role == "zone.humidifier" && roleState(c.cfg, "zone.dehumidifier").value_or(false))
-    return msg("act.climate.pair", "Entfeuchter läuft – Befeuchter bleibt aus");
-  if (role == "zone.dehumidifier" && roleState(c.cfg, "zone.humidifier").value_or(false))
-    return msg("act.climate.pair", "Befeuchter läuft – Entfeuchter bleibt aus");
+  // Befeuchter und Entfeuchter nie zugleich (R7, Quelle: RAT-034). Ist der
+  // Zustand des Gegengeräts unbekannt (z. B. Dose nicht erreichbar), könnte es
+  // noch laufen: dann ebenfalls gesperrt (R5).
+  auto pairBlock = [&](const char* other, const std::string& label) -> std::optional<Msg> {
+    if (!c.cfg.binding(other)) return std::nullopt;
+    auto st = roleState(c.cfg, other);
+    if (!st) return msg("act.climate.pair_unknown", label + " nicht erreichbar – könnte noch laufen");
+    if (*st) return msg("act.climate.pair", label + " läuft – bleibt aus");
+    return std::nullopt;
+  };
+  if (role == "zone.humidifier")
+    if (auto m = pairBlock("zone.dehumidifier", "Entfeuchter")) return m;
+  if (role == "zone.dehumidifier")
+    if (auto m = pairBlock("zone.humidifier", "Befeuchter")) return m;
+  // Befeuchter: bei zugeordneter Feuchte nur mit gültigem Wert und unter der
+  // Obergrenze (Kondensat an der Elektrik).
+  if (role == "zone.humidifier" && c.cfg.binding("zone.humidity")) {
+    const auto& rh = c.truth.get("zone.humidity");
+    if (!rh.usable()) return msg("act.humidifier.rh", "Luftfeuchte ungültig – Befeuchter bleibt aus");
+    if (*rh.value >= kHumidifierMaxRh)
+      return msg("act.humidifier.rh", "Luftfeuchte " + fmt(*rh.value, 0) + " % – über " + fmt(kHumidifierMaxRh, 0) + " % kein Befeuchter");
+  }
+  // Gießpumpe: nur mit gültigem Füllstand über dem Mindestfüllstand, sonst
+  // läuft sie trocken (Quelle: RAT-067).
+  if (role == "zone.irrigation_pump") {
+    if (!levelBound || !level.usable()) return msg("act.irrigation.level", "Ohne gültigen Füllstand keine Gießpumpe (Trockenlauf)");
+    if (!isNum(tank.minL)) return msg("act.irrigation.level", "Mindestfüllstand des Tanks fehlt");
+    if (*level.value < tank.minL + kInletHysteresisL)
+      return msg("act.irrigation.level", "Füllstand " + fmt(*level.value, 1) + " L zu niedrig für die Gießpumpe");
+  }
   // Kompressor: Mindestpause für den Druckausgleich (Quelle: RAT-034).
   // Den Mindestlauf hält die Funktion ein; Ausschalten geht immer.
   if (const RoleDef* rd = c.cat.role(role); rd && rd->profile == "kompressor") {
@@ -135,6 +166,20 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
       err = *inh;
       return false;
     }
+    // Netzgerät: Die Schutzeinstellung muss noch im Gerät stehen (Werksreset,
+    // Änderung in der Shelly-App, Import ohne Schreiben).
+    const RoleDef* rd = c.cat.role(role);
+    if (net_ && net_->owns(b->device) && rd && !rd->profile.empty()) {
+      auto got = net_->readConfig(b->device, b->channel);
+      if (!got) {
+        err = msg("act.net.unreachable", "Dose im Netzwerk nicht erreichbar");
+        return false;
+      }
+      if (!sameSafety(*got, safetyForRole(*rd))) {
+        err = msg("act.net.safety", "Schutzeinstellung im Gerät fehlt oder weicht ab – Dose neu zuordnen");
+        return false;
+      }
+    }
   }
   auto cur = swState(b->device, b->channel);
   if (cur && *cur == on) return true;
@@ -154,13 +199,15 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
   return true;
 }
 
-void Actuators::stopAll(const Config& cfg) {
+void Actuators::stopAll(const Config& cfg, Ms now) {
   bus_.stopAllPumps();
   cfg.forEachBinding([&](const std::string& role, const Binding& b) {
     std::string e;
-    // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox nicht lesbar).
+    // Schaltrollen immer aus, auch wenn der Zustand unbekannt ist (Schaltbox
+    // oder Dose nicht lesbar): der Befehl kostet nichts.
     auto st = swState(b.device, b.channel);
-    if (st || role == "tank.circulation" || role == "tank.inlet") sw(b.device, b.channel, false, e);
+    if (st || role.rfind("tank.", 0) == 0 || role.rfind("zone.", 0) == 0) sw(b.device, b.channel, false, e);
+    offSince_[role] = now;  // Mindestpausen gelten auch nach Not-Halt und Neustart
   });
   onSince_.clear();
 }

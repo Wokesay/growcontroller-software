@@ -121,7 +121,7 @@ void Hub::boot() {
              "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
   if (auto s = store_.read(kHistoryFile)) history_.load(*s);
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
-  act_.stopAll(cfg_);
+  act_.stopAll(cfg_, clock_.nowMs());
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
@@ -222,7 +222,7 @@ void Hub::tick() {
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
     // Dosierung abbrechen, einmal laut melden.
-    act_.stopAll(cfg_);
+    act_.stopAll(cfg_, clock_.nowMs());
     try {
       Ctx c = ctx();
       doser_.abort(c, act_, "Interner Fehler");
@@ -675,6 +675,18 @@ Result Hub::removeDevice(const std::string& id) {
   auto it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
   if (it == cfg_.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
   std::string name = it->name;
+  // Ausgänge dieses Geräts erst aus, dann vergessen.
+  std::vector<std::string> on;
+  cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
+    if (b.device == id) on.push_back(role);
+  });
+  for (const auto& role : on)
+    if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
+      Msg e;
+      Ctx c = ctx();
+      act_.setRole(c, role, false, "Gerät entfernt", e);
+    }
+  it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
   cfg_.devices.erase(it);
   auto unbind = [&](RoleMap& roles) {
     for (auto r = roles.begin(); r != roles.end();) r = r->second.device == id ? roles.erase(r) : std::next(r);
@@ -688,15 +700,6 @@ Result Hub::removeDevice(const std::string& id) {
   return Result::ok();
 }
 
-// Schutzeinstellung im Netzgerät je Profil (Konzept §3): nach Stromausfall
-// immer aus; bei puls und heizen Auto-Off knapp über der Höchstlaufzeit
-// (Verhältnis 1,11, Quelle: RAT-060).
-static SwitchSafety safetyFor(const RoleDef& rd) {
-  SwitchSafety s;
-  if ((rd.profile == "puls" || rd.profile == "heizen") && isNum(rd.maxOnS)) s.autoOffS = std::ceil(rd.maxOnS * 1.11 / 60.0) * 60.0;
-  return s;
-}
-
 Result Hub::bindRole(const std::string& role, const std::string& device, int channel) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
@@ -706,7 +709,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   const RoleDef* rd = cat_.role(role);
   // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
   if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
-    SwitchSafety want = safetyFor(*rd);
+    SwitchSafety want = safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
       return Result::fail(502, "role.net.write", "Schutzeinstellung nicht geschrieben: " + e);
@@ -717,6 +720,13 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
              isNum(want.autoOffS) ? "Nach Stromausfall aus, Abschaltung im Gerät nach " + fmt(want.autoOffS / 60, 0) + " min"
                                   : "Nach Stromausfall aus",
              {{"device", device}, {"channel", channel}});
+  }
+  // War die Rolle schon anderswo zugeordnet: dort erst ausschalten, sonst
+  // verliert der Hub einen laufenden Ausgang aus dem Blick.
+  if (const Binding* old = cfg_.binding(role); old && rd && !rd->profile.empty() && (old->device != device || old->channel != channel)) {
+    Msg e;
+    Ctx c = ctx();
+    act_.setRole(c, role, false, "Zuordnung geändert", e);
   }
   cfg_ = next;
   saveConfig("Zuordnung: " + (rd ? rd->label : role));
@@ -739,6 +749,7 @@ Result Hub::testRole(const std::string& role) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const RoleDef* rd = cat_.role(role);
   if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
+  if (act_.roleState(cfg_, role).value_or(false)) return Result::ok();  // läuft schon: nicht nach 3 s abschalten
   Ctx c = ctx();
   Msg e;
   if (!act_.setRole(c, role, true, "Testen", e)) return Result::fail(409, e.key, e.text);
@@ -997,7 +1008,7 @@ Result Hub::importConfig(const json& j) {
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
     return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
-  act_.stopAll(cfg_);
+  act_.stopAll(cfg_, clock_.nowMs());
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
@@ -1431,7 +1442,7 @@ Result Hub::stop(const std::string& who) {
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  act_.stopAll(cfg_);
+  act_.stopAll(cfg_, clock_.nowMs());
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", {"job.stopped", "Durch Not-Halt abgebrochen", json::object()});

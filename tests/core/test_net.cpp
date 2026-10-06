@@ -88,7 +88,7 @@ TEST_CASE("Steckdose: Profil puls setzt Auto-Off im Gerät, ohne bestätigtes R�
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   auto id = addPlug(s, c, "shelly_strip4", json::array());
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
-  CHECK(outlet(s, id, 0).autoOffS == doctest::Approx(1020));  // 15 min · 1,11 → 17 min
+  CHECK(outlet(s, id, 0).autoOffS == doctest::Approx(360));  // 5 min · 1,11 → 6 min
   fault(s, id, "ignore");  // Gerät meldet Erfolg, speichert aber nicht
   auto [st1, e1] = c.call("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 1}});
   CHECK(st1 == 502);
@@ -114,8 +114,8 @@ TEST_CASE("Gateway: Befeuchter und Entfeuchter nie zugleich, Kompressor-Pause, H
   auto [st, e] = c.call("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
   CHECK(st == 409);
   CHECK(e["error"]["key"] == "act.climate.pair");
-  // Höchstlaufzeit 15 min: der Hub schaltet aus, bevor das Gerät (17 min) es tut
-  s.step(905 * 1000);
+  // Höchstlaufzeit 5 min: der Hub schaltet aus, bevor das Gerät (6 min) es tut
+  s.step(305 * 1000);
   CHECK_FALSE(outlet(s, id, 0).on);
   // Entfeuchter: an, aus, sofort wieder an → Mindestpause
   c.ok("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
@@ -132,13 +132,110 @@ TEST_CASE("Steckdose: Auto-Off im Gerät greift, wenn der Hub ausfällt") {
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   auto id = addPlug(s, c, "shelly_plug", json::array());
-  c.ok("PUT", "/api/v1/roles/zone.heater", {{"device", id}, {"channel", 0}});
-  CHECK(outlet(s, id, 0).autoOffS == doctest::Approx(6000));  // 90 min → 100 min (Quelle: RAT-060)
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  CHECK(outlet(s, id, 0).autoOffS == doctest::Approx(720));  // 10 min · 1,11 → 12 min
   // Jemand schaltet am Gerät selbst ein; der Hub weiß davon nichts
   outlet(s, id, 0).on = true;
   outlet(s, id, 0).onSince = s.world().now();
-  s.world().advance(s.world().now() + 6001 * 1000);
+  s.world().advance(s.world().now() + 721 * 1000);
   CHECK_FALSE(outlet(s, id, 0).on);
+}
+
+TEST_CASE("Heizung: keine Heizrolle, bis die Notabschaltung nach RAT-060 steht") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  for (const char* role : {"tank.heater", "zone.heater"})
+    CHECK(c.call("PUT", std::string("/api/v1/roles/") + role, {{"device", id}, {"channel", 0}}).first == 422);
+}
+
+TEST_CASE("Gateway: unbekannter Zustand des Gegengeräts sperrt (R5)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto a = addPlug(s, c, "shelly_plug", json::array());
+  auto b = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", a}, {"channel", 0}});
+  c.ok("PUT", "/api/v1/roles/zone.dehumidifier", {{"device", b}, {"channel", 0}});
+  fault(s, b, "offline");  // Entfeuchter vielleicht noch an
+  s.step(2000);
+  auto [st, e] = c.call("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  CHECK(st == 409);
+  CHECK(e["error"]["key"] == "act.climate.pair_unknown");
+}
+
+TEST_CASE("Gateway: Kompressor-Pause gilt auch nach Not-Halt") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.dehumidifier", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}});
+  c.ok("POST", "/api/v1/stop");
+  c.ok("POST", "/api/v1/resume");
+  CHECK(c.call("POST", "/api/v1/roles/zone.dehumidifier/switch", {{"on", true}}).first == 409);
+}
+
+TEST_CASE("Gateway: Schutzeinstellung im Gerät verloren → kein Einschalten") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
+  outlet(s, id, 0).autoOffS = gc::kNaN;  // z. B. Werksreset in der Shelly-App
+  auto [st, e] = c.call("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  CHECK(st == 409);
+  CHECK(e["error"]["key"] == "act.net.safety");
+  CHECK_FALSE(outlet(s, id, 0).on);
+}
+
+TEST_CASE("Gateway: Gießpumpe nur mit gültigem Füllstand, Befeuchter nur mit gültiger Feuchte") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  auto [st, e] = c.call("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+  CHECK(st == 409);
+  CHECK(e["error"]["key"] == "act.irrigation.level");
+  // Feuchte zugeordnet, aber ohne gültigen Wert
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("plug", {{"port", 6}, {"class", "head_climate"}});
+  }
+  std::string clim;
+  REQUIRE(until(s, [&] {
+    auto st2 = c.state();
+    for (const auto& d : st2["devices"])
+      if (d["class"] == "head_climate" && d["online"] == true) clim = d["id"];
+    return !clim.empty();
+  }, 10000));
+  c.ok("POST", "/api/v1/devices/" + clim + "/accept", {{"name", ""}});
+  fault(s, clim, "offline");
+  s.step(2000);
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 1}});
+  auto [st3, e3] = c.call("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
+  CHECK(st3 == 409);
+  CHECK(e3["error"]["key"] == "act.humidifier.rh");
+}
+
+TEST_CASE("Gateway: Umzuordnen und Entfernen schalten den alten Ausgang aus, Testen lässt Laufendes an") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
+  c.ok("POST", "/api/v1/roles/zone.light/test");
+  s.step(4000);
+  CHECK(outlet(s, id, 0).on);  // war schon an, bleibt an
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 1}});
+  CHECK_FALSE(outlet(s, id, 0).on);
+  c.ok("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
+  CHECK(outlet(s, id, 1).on);
+  c.ok("DELETE", "/api/v1/devices/" + id);
+  CHECK_FALSE(outlet(s, id, 1).on);
 }
 
 TEST_CASE("Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klartext") {
