@@ -12,6 +12,9 @@ vom 06.10.2026.
 > **Entwurf.** Alles hier ist Vorschlag, auch wo es nach Festlegung klingt
 > („fest im Code“, „nur Steckergeräte“). Entschieden wird als PD im
 > Produkt-Repo (`../docs/DECISIONS.md`); offene Punkte stehen in §9.
+> Entschieden sind seit 06.10.2026: Umfang, neutrale Sprache und
+> Deutsch/Englisch (PD-018), 230-V-Geräte über Steckdosen (PD-019),
+> Verhalten nach Stromausfall (PD-020), pH/EC-Köpfe (PD-021).
 
 ## 1. Bereiche im Datenmodell
 
@@ -114,7 +117,7 @@ Software bindet sie trotzdem an.
 
 | Profil | Rollen | nach Stromausfall | Grenze im Shelly | Software |
 |---|---|---|---|---|
-| dauer | Licht, Umluft, Abluft, Umwälzpumpe | aus (Lüfter V: an) | – | – |
+| dauer | Licht, Umluft, Abluft, Umwälzpumpe | aus; Lüfter nach PD-020 eher an (Umsetzung offen) | – | – |
 | puls | Befeuchter, Gießpumpe, Zulauf | aus | **Auto-Off Pflicht**, knapp über der Software-Grenze | Höchstlaufzeit, Wartezeit |
 | kompressor | Entfeuchter | aus | – | Mindestlauf 10 min, Mindestpause 5 min (Quelle: RAT-034) |
 | heizen | Heizung ohne eigenen Thermostat (z. B. Heizstab) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
@@ -129,6 +132,7 @@ Fest im Code (R7):
   Puls, Zulauf) werden nicht fortgesetzt. Zustandsfunktionen (Licht, Lüfter,
   Klima) rechnen erst neu, wenn Uhrzeit und Sensorwahrheit gesichert sind.
   Ohne gesicherte Uhrzeit bleibt das Licht aus (Präzisierung von R6).
+  PD-020 ersetzt den Teil von R6 für Zustandsfunktionen; Umsetzung offen.
 - Not-Halt schaltet alles aus, auch die Lüfter. Ziel: Nicht erreichbare
   Ausgänge zeigen „Aus nicht bestätigt“, und der Hub wiederholt den Befehl
   (beim Not-Halt offen, bei Schutzabschaltungen umgesetzt).
@@ -241,7 +245,7 @@ Hub kann nicht verdünnen.
 
 ## 7. pH und EC: eine oder zwei Sonden
 
-Vorschlag (beantwortet die Roadmap-Frage aus Stufe 1, braucht eine PD). Es
+Entschieden in PD-021 (beantwortet die Roadmap-Frage aus Stufe 1). Es
 gibt drei Geräteklassen:
 
 - `head_ph_ec` (pH, EC, Wassertemperatur);
@@ -288,14 +292,17 @@ Jeder Schritt ist im Simulator testbar.
 2. **Licht, wenn der Hub ausfällt:**
    - Auto-Off: Der nächste Tag bleibt dunkel.
    - Lokaler Zeitplan im Shelly.
+
+   Offen. PD-020 regelt nur den Stromausfall (Licht je nach Dauer); den
+   Ausfall allein des Hubs führt sie als offen.
 3. **Pflegemodus:** Was ruht außer dem Dosieren, auch das Gießen?
 4. **Einheiten im Englischen:** Liter/°C fest, oder auch Gallonen/°F und EC als ppm?
 5. **Dimmen:** Über einen eigenen Dimm-Kopf als Busteilnehmer (Empfehlung
    `hardware`, Stufe 4) und vorerst über Shelly-Dimmer? Kein 0–10 V am Hub
    (berührt PD-006).
-6. **Abluft und Umluft nach Stromausfall:** aus (wie alles) oder an, damit
-   bei Ausfall des Hubs keine Hitze und Feuchte entsteht? Empfehlung
-   `hardware`: an, wählbar – eine Ausnahme von R6, braucht eine PD.
+6. **Abluft und Umluft nach Stromausfall:** entschieden in PD-020: eher
+   an, der Anbau darf nicht gefährdet werden (Ausnahme von R6; Umsetzung
+   offen).
 7. **Zulauf und Gießpumpe nur mit 12 V** (SELV, Empfehlung `hardware`) oder
    auch über 230-V-Steckdosen?
 8. **Herstellertabellen als Vorlage** (z. B. Athena Blended): Dürfen sie

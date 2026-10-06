@@ -12,9 +12,11 @@ Software, steht hier ein SD „Produktvorgabe (aus PD-0xx)“.
 verbindlich entschieden.** Entscheidungen werden dort PDs
 (`../docs/DECISIONS.md`); dieses Log beginnt mit dem Umzug.
 
-**Entschieden ist bisher nichts.** Die Entwürfe unten sind die Grundlage des
-Prototyps. Sie werden zu SD-Einträgen, sobald der Projektinhaber
-„entschieden“ sagt. Was eine PD im Produkt-Repo braucht, ist markiert.
+**Als PD im Produkt-Repo entschieden (06.10.2026):** E1 (PD-013), E2
+(PD-014), E7 (PD-015), E8 (PD-016), E9 (PD-017). Nach dem Umzug werden sie
+hier SD-Einträge „Produktvorgabe (aus PD-0xx)“. Die übrigen Entwürfe sind
+die Grundlage des Prototyps und werden zu SD-Einträgen, sobald der
+Projektinhaber „entschieden“ sagt. Was eine PD braucht, ist markiert.
 
 ---
 
@@ -22,15 +24,15 @@ Prototyps. Sie werden zu SD-Einträgen, sobald der Projektinhaber
 
 | # | Entwurf | Kern | braucht PD |
 |---|---|---|---|
-| E1 | Eigenständige Software | Web-App auf dem Hub, ohne Cloud und Konto. Home Assistant nur optional über MQTT, dann lesend und mit wenigen Befehlen; Logik liegt nie in HA. | ja (Ergänzung VISION) |
-| E2 | Plattform ESP32-S3, Option C | Regelung, Sicherheit, API, Web-UI und 1 Jahr Verlauf auf dem ESP32-S3-WROOM-1-N16R8. Kein Linux im Hub. Optionaler „Begleiter“ (Docker/NAS/HA-Add-on, später Abo) nur für Komfort. | ja (MCU in keiner PD) |
+| E1 | Eigenständige Software | Web-App auf dem Hub, ohne Cloud und Konto. Home Assistant nur optional über MQTT, dann lesend und mit wenigen Befehlen; Logik liegt nie in HA. | entschieden: PD-013 |
+| E2 | Plattform ESP32-S3, Option C | Regelung, Sicherheit, API, Web-UI und 1 Jahr Verlauf auf dem ESP32-S3-WROOM-1-N16R8. Kein Linux im Hub. Optionaler „Begleiter“ (Docker/NAS/HA-Add-on, später Abo) nur für Komfort. | entschieden: PD-014 |
 | E3 | Ein Kern, zwei Plattformen | C++17 ohne Plattform-Header; Host-Simulator als digitaler Zwilling; ESP-IDF statt Arduino; Rust später prüfen. | nein |
 | E4 | Web-App | Preact + TypeScript + Vite, gzip im App-Image (Update atomar, Rollback nimmt UI mit), Budget 250 KB, Live per SSE, Hash-Routing, keine externen Ressourcen. | nein |
 | E5 | Konfigurationsmodell | Katalog als Daten mit festen Voraussetzungsarten; Rollen an der Geräte-ID; zwei Zustandsachsen (Einrichtung/Laufzeit); Phasen als Parametersätze; Laufzeitzustand getrennt von der Konfiguration. | nein |
 | E6 | Architekturregeln R1–R8 | Gateway einziger Aktorpfad; Watchdog nur Lesemodell; fehlender Wert nie 0; nach Neustart alles aus; Katalog kann Sicherheit nur verschärfen; eine Ereignisschleife mit injizierter Uhr. CI prüft maschinell. | nein |
-| E7 | Ohne Einmesswert keine Dosierung | strenger als RAT-015; Gateway und Planung lehnen ab | **ja** (ROADMAP-Vorschlag) |
-| E8 | Stufe 0 dosiert kein pH blind | pH-Korrektur nur mit abgesichertem Messweg (RAT-044); in Stufe 0 Handmessung und Hinweis | **ja** (Prototyp, Offene Frage 4) |
-| E9 | Eigenes Repo | `growcontroller-software` (Arbeitsname) in einer GitHub-Organisation, privat, ohne Historie; Einbahn-Spiegel `ref/software/` im Produkt-Repo | **ja** (Ergänzung PD-002) |
+| E7 | Ohne Einmesswert keine Dosierung | strenger als RAT-015; Gateway und Planung lehnen ab | entschieden: PD-015 |
+| E8 | Stufe 0 dosiert kein pH blind | pH-Korrektur nur mit abgesichertem Messweg (RAT-044); in Stufe 0 Handmessung und Hinweis | entschieden: PD-016 |
+| E9 | Eigenes Repo | `growcontroller-software` (Arbeitsname) in einer GitHub-Organisation, privat, ohne Historie; Einbahn-Spiegel `ref/software/` im Produkt-Repo | entschieden: PD-017 |
 | E10 | Lizenz | GPL-3.0-or-later mit DCO für Firmware und UI; Apache-2.0 für Schnittstellen; CC BY-SA 4.0 für Doku; Klonschutz über die Marke. Hängt am Secure-Boot-Konzept (Eigentümer-Modus), sonst EUPL-1.2. | **ja** (PD-005, PD-008) |
 | E11 | Frei und Abo | Was das Gerät allein kann, ist frei. Was Serverkosten macht, darf Abo sein – außer es meldet oder stoppt eine Gefahr (Alarm, Status, Stopp immer frei). | **ja** (Ergänzung PD-005/PD-008) |
 | E12 | Versionen und Updates | SemVer, Keep a Changelog mit Abschnitt „Sicherheit“, Kanäle stable/beta, GitHub Releases mit SBOM und Prüfsummen, OTA A/B signiert, Update nur im Ruhezustand, offline signieren | nein |

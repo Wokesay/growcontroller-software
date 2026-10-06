@@ -118,6 +118,11 @@ stehen in jedem Release unter „Sicherheit“.
     Notabschaltung nach RAT-060.
 
 ### Geändert
+- Entscheidungen: E1, E2, E7, E8 und E9 sind als PD-013 bis PD-017 im
+  Produkt-Repo entschieden; das Konzept der Pflanzenautomatisierung
+  verweist auf PD-018 bis PD-021 (Umfang und Sprachen, Steckdosen,
+  Stromausfall, pH/EC-Köpfe). Das Verhalten nach Stromausfall (PD-020)
+  ist noch nicht umgesetzt.
 - Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
   auch mit MSVC übersetzt.
 - Katalog Version 2 (Rollen `zone.*`, Köpfe pH und EC einzeln),

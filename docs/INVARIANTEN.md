@@ -21,7 +21,7 @@ oder mit Abweichung · **○** offen.
 
 | Regel | Quelle | Status | Umsetzung / Test |
 |---|---|---|---|
-| Nach Neustart alles aus, nichts fortsetzen | RAT-007 | ✓ | `Hub::boot`, `Actuators::stopAll` · test_scenarios „Stromausfall“ |
+| Nach Neustart alles aus, nichts fortsetzen | RAT-007 | ✓ | `Hub::boot`, `Actuators::stopAll` · test_scenarios „Stromausfall“. PD-020 ersetzt den Teil für Zustandsfunktionen (Lüfter, Licht, Gießen), Umsetzung offen |
 | Unter 1,0 s nicht dosieren, sichtbar | RAT-050 | ✓ | `splitRuns`, Gateway · test_mix |
 | Handgabe in ml begrenzt | RAT-039 | ✓ | `Limits::handDoseMaxMl` (5 ml, fest höchstens 50 ml) · test_catalog_config „Grenzen“ |
 | Job-ID gegen Doppeldosierung bei Wiederholung | Vorschlag `firmware` | ✓ | Dosierblock im Simulator; jeder Versuch und jeder Start eigene ID · test_scenarios „nachholen“, „Job-IDs nach Neustart“ |

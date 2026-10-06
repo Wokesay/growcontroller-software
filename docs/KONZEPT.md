@@ -97,7 +97,8 @@ damit passen UI und API immer zusammen, und ein Rollback nimmt die UI mit.
   Quelle: RAT-006.
 - **R6:** Nach einem Neustart ist alles aus. Abläufe werden nicht fortgesetzt,
   sondern als unterbrochen gemeldet. Rastungen und Sprungsperren bleiben
-  erhalten. Quelle: RAT-007, RAT-028, RAT-044, RAT-063.
+  erhalten. Quelle: RAT-007, RAT-028, RAT-044, RAT-063. PD-020 ersetzt
+  den Teil für Zustandsfunktionen (Lüfter, Licht, Gießen); Umsetzung offen.
 - **R7:** Der Katalog kann Sicherheit nur verschärfen. Das Minimum steht im
   Gateway: Einmesswert, Laufzeitgrenzen, ein Lauf zugleich, Not-Halt,
   Trockenlauf, Notgrenze des Zulaufs.

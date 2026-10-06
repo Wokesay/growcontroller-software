@@ -44,7 +44,8 @@ Paket. Bis zum Umzug heißt das vor allem:
 - **R4 Phasen liefern Parameter:** Logik liest nie Phasennamen.
 - **R5 Ein fehlender Wert ist nie 0:** `nullopt`/`NaN`, JSON `null`.
 - **R6 Neustart:** Danach ist alles aus; Abläufe werden gemeldet, nicht
-  fortgesetzt.
+  fortgesetzt. PD-020 ersetzt den Teil für Zustandsfunktionen (Lüfter,
+  Licht, Gießen); bis zur Umsetzung gilt R6 unverändert.
 
 Hintergrund: `docs/KONZEPT.md` §4.
 

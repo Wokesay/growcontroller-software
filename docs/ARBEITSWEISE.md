@@ -17,10 +17,9 @@ Signierschlüssel liegen in keinem Repo. Quelle: `produkt`.
 **Transparenz der Produktentscheidungen:** Hat eine PD Folgen für die
 Software, entsteht im Software-Repo ein SD-Eintrag „Produktvorgabe (aus
 PD-0xx)“. Er nennt, was gilt, und den öffentlichen Grund, ohne Zahlen und
-Lieferanten. Zurück ins Produkt-Repo könnte ein Einbahn-Spiegel
-`ref/software/` führen. Das ist Teil von
-Entwurf E9 und braucht eine PD; schreiben dürfte dorthin nur der
-Sync-Workflow.
+Lieferanten. Zurück ins Produkt-Repo führt ein Einbahn-Spiegel
+`ref/software/` (PD-017); schreiben
+darf dorthin nur der Sync-Workflow.
 
 ## 2. Umzug in ein eigenes Repo (Schritte)
 
@@ -31,8 +30,7 @@ sind relativ; CI, Vorlagen, Agenten und `CLAUDE.md` liegen im Paket.
    GitHub-Organisation an (übertragbar, Rechte je Repo) und darin das private
    Repo (Arbeitsname `growcontroller-software`).
    - Secret Scanning und Push Protection einschalten.
-   - Die Claude-GitHub-App für dieses Repo freigeben. Das würde PD-002
-     ergänzen und geschieht erst nach dieser PD (Entwurf E9).
+   - Die Claude-GitHub-App für dieses Repo freigeben (PD-017).
 2. **Inhalt übernehmen, ohne Historie.** Nur versionierte Dateien, keine
    lokalen Reste. Ab dem ersten Tag schreiben, als wäre das Repo öffentlich
    (`produkt`):
@@ -50,8 +48,9 @@ sind relativ; CI, Vorlagen, Agenten und `CLAUDE.md` liegen im Paket.
    `ISSUE_URL` in `web/src/pages/settings.tsx` zeigt bis zum Umzug auf das
    Produkt-Repo und wird auf das neue Repo umgestellt.
 4. **Übergangslösung entfernen.** Im Produkt-Repo `software/` und
-   `.github/workflows/software.yml` löschen. Den Spiegel `ref/software/` nur
-   einrichten, wenn die PD zu E9 ihn vorsieht.
+   `.github/workflows/software.yml` löschen. Den Spiegel `ref/software/`
+   einrichten (PD-017), vorher die Regeln für `ref/` in `CLAUDE.md`
+   erweitern.
 5. **Beim Öffentlichschalten:**
    - Private Vulnerability Reporting einschalten.
    - Discussions einschalten.
