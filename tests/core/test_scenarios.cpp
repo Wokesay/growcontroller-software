@@ -321,7 +321,7 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
   s.world().fill(20, 0.02, 7.0);
   double before = c.state()["stock"]["teil-a"];
-  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 4}});
+  std::string id = c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 4}})["job"]["id"];
   REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1; }, 10000, 200));
   s.control("fault", {{"device", kDB}, {"fault", "offline"}});
   REQUIRE(until(s, [&] { return c.state()["lastJob"]["state"] == "failed"; }, 30000, 500));
@@ -331,9 +331,16 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   CHECK(st["lastJob"]["state"] == "failed");
   CHECK(st["lastJob"]["message"]["text"].get<std::string>().find("keine Rückmeldung") != std::string::npos);
   CHECK(st["stock"]["teil-a"].get<double>() <= before - 3.9);  // sichere Richtung: als gelaufen gebucht
+  // Nachholen: kein Rest mehr → als erledigt werten; der Auftrag endet dabei
+  s.control("fault", {{"device", kDB}, {"fault", "none"}});
+  s.step(3000);
+  auto r = c.ok("POST", "/api/v1/jobs/" + id + "/resume");
+  CHECK(r["job"].is_null());
+  CHECK(r["lastJob"]["state"] == "done");
+  CHECK(c.state()["dosing"].is_null());
 }
 
-TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (RAT-054)") {
+TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (Vorschlag firmware)") {
   // Ohne Kennung je Start hieße die erste EC-Gabe nach jedem Neustart gleich
   // („ec-1#1“). Der Dosierblock hielte sie für eine Wiederholung und liefe nicht.
   sim::Simulation s(test::opts("demo"));

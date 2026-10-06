@@ -99,6 +99,10 @@ void Hub::boot() {
     }
   }
   if (auto s = store_.read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
+  if (auth_.hasPassword() && !cfg_.system.passwordSet) {
+    cfg_.system.passwordSet = true;  // Geräte von vor dieser Kennzeichnung nachziehen
+    saveConfig("");
+  }
   if (credentialsLost())
     log_.add(bootEpoch_, "system", "alarm", "Zugangsdaten fehlen",
              "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
@@ -205,8 +209,26 @@ void Hub::tick() {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
     // Dosierung abbrechen, einmal laut melden.
     act_.stopAll(cfg_);
-    Ctx c = ctx();
-    doser_.abort(c, act_, "Interner Fehler");
+    try {
+      Ctx c = ctx();
+      doser_.abort(c, act_, "Interner Fehler");
+      if (auto fin = doser_.takeFinished()) {
+        const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
+        if (!controllerDose) onJobDose(c, *fin);
+      }
+      ec_.reset();
+      ph_.reset();
+      // Nutzerauftrag nicht hängen lassen: beenden und sagen, was drin ist
+      if (userJobActive()) {
+        std::string done;
+        for (const auto& s : job_->steps)
+          if (s.mlDone > 0) done += (done.empty() ? "" : ", ") + s.dose.name + " " + fmt(s.mlDone, 1) + " ml";
+        finishJob("aborted", {"job.internal", "Durch einen internen Fehler abgebrochen. Drin: " + (done.empty() ? "nichts" : done),
+                              json::object()});
+      }
+    } catch (...) {
+      // Aufräumen darf den sicheren Zustand nicht verhindern: Aktoren sind schon aus.
+    }
     if (!tickFault_) {
       tickFault_ = true;
       log_.add(clock_.epoch(), "system", "alarm", "Interner Fehler – alles aus",
@@ -814,6 +836,8 @@ Result Hub::importConfig(const json& j) {
     return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
   act_.stopAll(cfg_);
   next.revision = cfg_.revision;
+  // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
+  next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
   cfg_ = next;
   saveConfig("Konfiguration importiert");
   return Result::ok();
@@ -881,8 +905,9 @@ bool Hub::startJobStep(Ctx& c) {
     Msg err;
     o.step.ml = st.dose.ml - st.mlDone;
     o.step.runs = splitRuns(o.step.ml, o.step.flowMlPerMin, cfg_.limits, 0, err);
-    if (err.key == "dose.too_small") {
-      // Rest unter einem genauen Lauf: als erledigt werten und weiterschalten
+    if (o.step.ml <= 0 || err.key == "dose.too_small") {
+      // Kein Rest oder Rest unter einem genauen Lauf: als erledigt werten und
+      // weiterschalten. Achtung: Das kann den Auftrag beenden (job_ ist danach leer).
       DoseProgress rest;
       rest.state = DoseProgress::State::Done;
       rest.orderId = o.id;
@@ -909,6 +934,10 @@ bool Hub::startJobStep(Ctx& c) {
                                  st.dose.name + " · " + fmt(o.step.ml, 1) + " ml",
                json::object()};
   return true;
+}
+
+json Hub::jobJson() const {
+  return {{"job", job_ ? json(*job_) : json(nullptr)}, {"lastJob", lastJob_ ? json(*lastJob_) : json(nullptr)}};
 }
 
 void Hub::finishJob(const std::string& state, Msg m) {
@@ -1006,7 +1035,7 @@ Result Hub::jobContinue(const std::string& id) {
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, "job.step", job_->message.text, {{"job", *job_}});
   saveJob();
-  return Result::ok({{"job", *job_}});
+  return Result::ok(jobJson());
 }
 
 Result Hub::jobResume(const std::string& id) {
@@ -1016,11 +1045,12 @@ Result Hub::jobResume(const std::string& id) {
   // Einmesswert und Pumpe neu lesen (z. B. nach dem Tausch der Kappe)
   auto& st = job_->steps[job_->index];
   if (auto it = pumps_.find(st.dose.pump); it != pumps_.end()) st.dose.flowMlPerMin = it->second.flowMlPerMin;
+  const std::string name = st.dose.name;  // st gilt nach startJobStep nicht mehr sicher
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, "job.step", job_->message.text, {{"job", *job_}});
-  log_.add(clock_.epoch(), "mix", "info", "Mischlauf fortgesetzt", st.dose.name + " wird nachgeholt");
+  log_.add(clock_.epoch(), "mix", "info", "Mischlauf fortgesetzt", name + " wird nachgeholt");
   saveJob();
-  return Result::ok({{"job", *job_}});
+  return Result::ok(jobJson());
 }
 
 Result Hub::jobAbort(const std::string& id) {

@@ -20,8 +20,8 @@ struct ApiRequest {
 };
 
 // Herkunftsprüfung für die Transportschicht, ohne Plattform-Header.
-// DNS-Rebinding: Der Host-Kopf muss eine IP, `localhost`, ein `.local`-Name
-// oder `extraHost` sein.
+// DNS-Rebinding: Der Host-Kopf muss eine IP, `localhost`, ein Name im Heimnetz
+// (.local, .lan, .home.arpa, .internal, .fritz.box) oder `extraHost` sein.
 bool hostAllowed(const std::string& hostHeader, const std::string& extraHost = "");
 // CSRF: Schreibende Anfragen eines Browsers nur von derselben Herkunft
 // (Sec-Fetch-Site, sonst Origin gegen Host). Ohne beide Köpfe: kein Browser.

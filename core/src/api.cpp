@@ -1,6 +1,7 @@
 #include "gc/api.hpp"
 
 #include <cctype>
+#include <cstring>
 #include <sstream>
 
 #include "gc/embedded.hpp"
@@ -66,7 +67,11 @@ bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {
   if (colon != std::string::npos) h.resize(colon);
   for (auto& ch : h) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
   if (h == "localhost" || (!extraHost.empty() && h == extraHost)) return true;
-  if (h.size() > 6 && h.compare(h.size() - 6, 6, ".local") == 0) return true;
+  // Namen, die es nur im Heimnetz gibt (mDNS, Router); öffentliche Domains nie.
+  for (const char* suffix : {".local", ".lan", ".home.arpa", ".internal", ".fritz.box"}) {
+    const size_t n = std::strlen(suffix);
+    if (h.size() > n && h.compare(h.size() - n, n, suffix) == 0) return true;
+  }
   bool ipv4 = !h.empty();
   for (char ch : h) ipv4 = ipv4 && (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.');
   return ipv4;
@@ -128,10 +133,10 @@ ApiResponse Api::route(const ApiRequest& req) {
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
     if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
     hub_.logEvent("auth", "info", "Passwort gesetzt", "Ersteinrichtung");
-    hub_.markPasswordSet();
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
-    hub_.flush();
+    hub_.flush();            // auth.json zuerst schreiben …
+    hub_.markPasswordSet();  // … dann die Sperre gegen eine zweite Einrichtung
     ApiResponse r = jsonResp(200, {{"ok", true}});
     if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
     return r;

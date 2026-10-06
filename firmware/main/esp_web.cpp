@@ -127,7 +127,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
     int n = httpd_req_recv(req, r.body.data() + got, req->content_len - got);
     if (n <= 0) {
       // Langsame oder stumme Gegenstelle darf den einzigen Server-Task nicht blockieren.
-      if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3) continue;
+      if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 2) continue;
       if (n == HTTPD_SOCK_ERR_TIMEOUT)
         return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"Anfrage unvollständig\"}}");
       return ESP_FAIL;
@@ -172,6 +172,8 @@ void startWebServer(gc::Api& api) {
   config.max_uri_handlers = 8;
   config.stack_size = 12288;
   config.lru_purge_enable = true;
+  config.recv_wait_timeout = 2;  // s; mit einer Wiederholung höchstens ca. 4 s je stummer Anfrage
+  config.send_wait_timeout = 2;
   httpd_handle_t server = nullptr;
   if (httpd_start(&server, &config) != ESP_OK) {
     ESP_LOGE(kTag, "Webserver startet nicht");

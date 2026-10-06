@@ -84,7 +84,10 @@ TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
   CHECK(gc::hostAllowed("growcontroller.local"));
   CHECK(gc::hostAllowed("[::1]:8080"));
   CHECK(gc::hostAllowed("mein-hub", "mein-hub"));
+  CHECK(gc::hostAllowed("hub.fritz.box"));
+  CHECK(gc::hostAllowed("hub.home.arpa:80"));
   CHECK_FALSE(gc::hostAllowed("angreifer.example:8080"));
+  CHECK_FALSE(gc::hostAllowed("fritz.box.angreifer.example"));
   CHECK_FALSE(gc::hostAllowed("127.0.0.1.angreifer.example"));
   // Lesen immer, Schreiben nur von derselben Herkunft
   CHECK(gc::writeAllowed("GET", "cross-site", "https://angreifer.example", "192.168.1.20"));
@@ -122,6 +125,11 @@ TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines A
     if (now["job"].is_null() && now["dosing"].is_null()) break;
     s.step(5000);
   }
+  // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei
+  gc::json old = cfg;
+  old["system"]["passwordSet"] = false;
+  c.ok("POST", "/api/v1/config/import", old);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["passwordSet"] == true);
   c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
   CHECK(c.call("POST", "/api/v1/config/import", cfg).first == 409);
 }

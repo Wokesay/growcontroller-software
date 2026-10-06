@@ -14,6 +14,7 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    proxy: { "/api": { target, changeOrigin: true } },
+    // Host bleibt localhost:5173: Herkunftsprüfung des Simulators greift auch hier
+    proxy: { "/api": { target, changeOrigin: false } },
   },
 });

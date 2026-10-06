@@ -2,9 +2,12 @@
 
 Stand 06.10.2026: **Gerüst.** Es baut den unveränderten Kern aus `core/`
 zusammen mit der eingebetteten Web-App zu einem Image für den
-ESP32-S3-WROOM-1-N16R8. Die CI baut es bei jedem PR (Job „Firmware“) und
+ESP32-S3-WROOM-1-N16R8. Die CI baut es bei jedem PR (Job „firmware“) und
 weist damit nach, dass Kern und Web-App auf dem Zielchip übersetzen und ins
-Image passen. Noch ohne Bus: Modbus, Port-Freigabe und Dosierblock folgen in
+Image passen: erster grüner Lauf am 06.10.2026, **Image 1,24 MB** (41 % der
+3-MB-App-Partition), DIRAM statisch 19 %. Das Image liegt 14 Tage als
+Artefakt `firmware-esp32s3` am Lauf. Auf echter Hardware gestartet ist es
+noch nicht. Noch ohne Bus: Modbus, Port-Freigabe und Dosierblock folgen in
 Meilenstein M1.
 
 ## Bauen

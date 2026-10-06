@@ -40,16 +40,21 @@ json EventLog::toJson() const {
 
 void EventLog::load(const json& j) {
   events_.clear();
-  next_ = j.value("next", std::uint64_t{1});
-  for (const auto& e : j.value("events", json::array())) {
+  // Fremde Datei: nur geprüft lesen, kaputte Einträge überspringen (kein Absturz beim Start).
+  double next = jnum(j, "next", 1);
+  next_ = isNum(next) && next >= 1 ? static_cast<std::uint64_t>(next) : 1;
+  const json events = j.is_object() && j.contains("events") && j["events"].is_array() ? j["events"] : json::array();
+  for (const auto& e : events) {
+    if (!e.is_object()) continue;
     Event ev;
-    ev.id = e.value("id", std::uint64_t{0});
-    ev.ts = e.value("ts", Epoch{0});
+    double id = jnum(e, "id", 0), ts = jnum(e, "ts", 0);
+    ev.id = isNum(id) && id >= 0 ? static_cast<std::uint64_t>(id) : 0;
+    ev.ts = isNum(ts) ? static_cast<Epoch>(ts) : 0;
     ev.type = jstr(e, "type");
     ev.severity = jstr(e, "severity");
     ev.title = jstr(e, "title");
     ev.text = jstr(e, "text");
-    ev.data = e.value("data", json::object());
+    ev.data = e.contains("data") && e["data"].is_object() ? e["data"] : json::object();
     events_.push_back(ev);
   }
 }

@@ -45,7 +45,11 @@ class EcController {
  public:
   void tick(const Ctx& c, ControlEnv& env);
   void onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p);
-  void reset() { phase_ = Phase::Idle; queue_.clear(); }
+  void reset() {
+    phase_ = Phase::Idle;
+    queue_.clear();
+    circWaitSince_ = 0;
+  }
   const CtlStatus& status() const { return st_; }
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle; }
@@ -57,6 +61,7 @@ class EcController {
   int round_ = 0, noEffect_ = 0, seq_ = 0;
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
   double ecBefore_ = kNaN, mlRound_ = 0, startEc_ = kNaN, target_ = kNaN;
+  Ms circWaitSince_ = 0;  // seit wann die Runde auf die Umwälzpumpe wartet
   Ms settleUntil_ = 0;
   Epoch lastDoseAt_ = 0, cooldownUntil_ = 0;
   CtlStatus st_;

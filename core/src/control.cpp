@@ -198,9 +198,21 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
         st_.line = line("ec.dose_failed", "Gesperrt: " + err.text);
         reset();
       }
-    } else if (!env.circulationOn) {
+    } else if (!env.circulationOn && !env.doser.busy() && !queue_.empty()) {
+      // Kommt die Umwälzpumpe nicht (Rolle entfernt, Ausgang gestört), bricht die
+      // Runde ab, statt ewig „beschäftigt“ zu bleiben.
+      if (circWaitSince_ == 0) circWaitSince_ = std::max<Ms>(c.now, 1);
+      if (!c.cfg.binding("tank.circulation") || c.now - circWaitSince_ > 2 * kMinute) {
+        c.log.add(c.epoch, "control", "warn", "EC-Runde abgebrochen", "Die Umwälzpumpe lief nicht an. Ohne Durchmischung keine Dosierung.");
+        st_.state = "blocked";
+        st_.line = line("ec.circ_failed", "Gesperrt: Umwälzpumpe lief nicht an – Runde abgebrochen");
+        cooldownUntil_ = c.epoch + 10 * 60;
+        reset();
+        return;
+      }
       st_.line = line("ec.wait_circ", "Regelt: Umwälzpumpe startet");
     }
+    if (env.circulationOn) circWaitSince_ = 0;
     return;
   }
 

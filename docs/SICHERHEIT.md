@@ -12,12 +12,12 @@ Rechtsberatung. Zwei Arten von Sicherheit:
 |---|---|---|
 | Fremder im Heimnetz schaltet Pumpen | Pflichtpasswort vor jeder Funktion, kein Standardpasswort, PBKDF2-SHA-256 (10.000 Runden) mit Salz, Sitzung als HttpOnly-/SameSite-Cookie, Sperre nach 5 Fehlversuchen (30 s, verdoppelt bis 15 min), alles außer `/info` verlangt Anmeldung | HTTPS mit Zertifikat je Gerät, Token mit Rollen für Integrationen |
 | Mitlesen im WLAN | – | HTTPS als Voreinstellung (EN 18031-1 SCM; Shelly erzwingt es) |
-| Webseite eines Dritten löst Aktionen aus (CSRF, Clickjacking, DNS-Rebinding) | SameSite=Strict, Herkunftsprüfung (`Sec-Fetch-Site`/`Origin` gegen `Host`), `Host` nur IP, `localhost`, `.local`; CSP `default-src 'self'`, `X-Frame-Options: DENY` | – |
+| Webseite eines Dritten löst Aktionen aus (CSRF, Clickjacking, DNS-Rebinding) | SameSite=Strict, Herkunftsprüfung (`Sec-Fetch-Site`/`Origin` gegen `Host`), `Host` nur IP, `localhost` oder Heimnetz-Name (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`); CSP `default-src 'self'`, `X-Frame-Options: DENY` | – |
 | Manipuliertes Update | – | signiertes OTA, Downgrade-Sperre, Secure Boot v2 |
 | Überlast am Webserver stört die Regelung (RLM) | Regelung im eigenen Takt, Anfragen nur unter Sperre | eigene Task-Priorität und eigener Kern auf dem ESP32, Lasttest |
 | Fehlerhafte Eingaben | Prüfung jeder Änderung und jedes Imports (Grenzen, Phasen, Kalibrierungen), JSON-Grenze 1 MB bzw. 64 KB, Ausnahmen abgefangen (400/500 statt Absturz; im Takt: alles aus, Alarm) | Fuzzing |
-| Passwortdatei verloren (Stromausfall beim Schreiben) | Lesen fällt auf die fertige `.tmp` zurück; war ein Passwort gesetzt, ist die Einrichtung über das Netz gesperrt (423) | Werksreset per Taste |
-| Langsame Gegenstelle blockiert den Webserver | Firmware: höchstens 3 Zeitüberschreitungen je Anfrage, dann 408 | Lasttest |
+| Passwortdatei verloren (Stromausfall beim Schreiben) | Lesen fällt auf die fertige `.tmp` zurück; `auth.json` wird vor der Sperrmarke geschrieben; war ein Passwort gesetzt, ist die Einrichtung über das Netz gesperrt (423); die Marke kommt nie aus einem Import | Werksreset per Taste |
+| Langsame Gegenstelle blockiert den Webserver | Firmware: 2 s Wartezeit, eine Wiederholung, dann 408; Kopfzeilen bis 2 KB | Not-Halt am Gerät ohne Web, Lasttest |
 | Datenabfluss beim Melden | Diagnosepaket ohne Hash, Sitzungen, WLAN, IP; Vorschau vor dem Herunterladen; Hinweis „GitHub ist öffentlich“ | Upload nur mit Einwilligung, Löschfrist |
 | Firmwarefehler dosiert zu viel | Gateway mit festen Grenzen im Code, Konfiguration verschärft nur (R1, R7); Einmesswert Pflicht; Job-ID je Versuch und Start gegen Doppeldosierung; Frist je Lauf (ohne Rückmeldung: aus, als gelaufen gezählt) | Zeitlimit und „ein Kanal“ in Hardware im Dosierblock, Freigabe in Hardware je Port [PD-012] |
 | Sensor lügt | Sensorwahrheit: Frische, Stillstand, Band, Sprungsperre, Kalibrierung; EC-Gate | Messfenster mit Pumpe aus, solange die Trennung nicht abgenommen ist (RAT-044) |

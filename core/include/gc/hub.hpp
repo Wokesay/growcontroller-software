@@ -116,6 +116,7 @@ class Hub {
   void onJobDose(Ctx& c, const DoseProgress& p);
   bool startJobStep(Ctx& c);
   void finishJob(const std::string& state, Msg m);
+  json jobJson() const;  // {job, lastJob}: job ist leer, wenn der Auftrag gerade fertig wurde
   double tankVolume() const;
   bool userJobActive() const { return job_ && (job_->state == "running" || job_->state == "waiting_user" || job_->state == "mixing"); }
   std::string newId(const std::string& prefix);
