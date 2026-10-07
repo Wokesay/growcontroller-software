@@ -10,13 +10,11 @@ Product requirement (PD-022, SD-010):
 
 - **No Secure Boot against the user.** Devices do not lock out
   third-party firmware; users can install their own firmware.
-- **Signed updates must allow this too.** Over-the-air updates from the
-  project will be signed so that nobody else can push firmware onto your
-  hub over the network. Signed updates and any Secure Boot must still let
-  you install your own firmware. How exactly (for example flashing over
-  USB, an owner key, or an unlock on the device) is open and is settled
-  before the first device ships (`docs/RELEASE.md`,
-  `docs/SECURITY_MODEL.md`, checklist item 2).
+- **Signed updates over the network, your firmware over USB** (PD-043,
+  SD-021). Over-the-air updates will be installed only with a valid
+  signature, so nobody can push firmware onto your hub over the network.
+  Over USB you can always install your own firmware; after that, your own
+  key applies to network updates. No eFuses are burned.
 - **The source code of every build is linked** in the web app (Settings ›
   Display and info) and on the login page (AGPL §13).
 

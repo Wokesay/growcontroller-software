@@ -20,7 +20,7 @@ that, decisions were made as PDs in the product repository.
   (PD-036). Versions are self-describing (PD-037). SemVer and OTA stay a
   draft.
 
-They are recorded below as SD-001 to SD-020. The other drafts are the
+They are recorded below as SD-001 to SD-022. The other drafts are the
 basis of the prototype and become SD entries once the project owner says
 "entschieden" (decided). What needs a PD is marked.
 
@@ -191,6 +191,31 @@ decision is in the product repository.
 - Every domain rule learned from operating practice has an entry in
   `docs/RATIONALE.md` with its own ID (RAT-001 …). Code, tests and docs
   cite only this ID.
+
+
+## SD-021: Product requirement (from PD-043): signed OTA without eFuses
+
+- Updates over the network are installed only with a valid signature,
+  checked by the firmware (application image), without hardware Secure
+  Boot.
+- Over USB every owner can always install their own firmware; after that,
+  their own key applies to network updates.
+- No eFuses are burned; downgrade protection is in software.
+- Secrets (for example password hash, sessions, Wi-Fi credentials) are to
+  be stored encrypted in NVS.
+- Open: encrypted NVS needs an HMAC key in an eFuse on the ESP32-S3; this
+  is under regulatory review. Also open: whether the USB path and the
+  remaining storage risk are enough for EN 18031-1 and the CRA, and
+  whether and when hardware Secure Boot with owner key slots comes.
+
+
+## SD-022: Product requirement (from PD-044): a pure level latch releases itself
+
+- A latch caused only by a low level (circulation pump, inlet) releases
+  itself once a valid level is back above the minimum level plus a margin;
+  the release is reported.
+- Dry run, emergency limit and latches with an unknown cause still hold
+  until acknowledged (RAT-051, RAT-063). Not implemented yet.
 
 ---
 

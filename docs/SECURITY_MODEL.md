@@ -13,7 +13,7 @@ legal advice. Two kinds of safety and security:
 | A stranger on the home network switches pumps | Mandatory password before any function, no default password, PBKDF2-SHA-256 (10,000 rounds) with salt, session as an HttpOnly/SameSite cookie, lockout after 5 failed attempts (30 s, doubling up to 15 min), everything except `/info` requires login | HTTPS with a certificate per device, tokens with roles for integrations |
 | Eavesdropping on the Wi-Fi | – | HTTPS by default (EN 18031-1 SCM; Shelly enforces it) |
 | A third-party website triggers actions (CSRF, clickjacking, DNS rebinding) | SameSite=Strict, origin check (`Sec-Fetch-Site`/`Origin` against `Host`), `Host` only an IP address, `localhost` or a home-network name (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`); CSP `default-src 'self'`, `X-Frame-Options: DENY` | – |
-| Tampered update | – | signed OTA, downgrade protection, Secure Boot v2; signing and Secure Boot must still let the owner install their own firmware, no Secure Boot against the owner (PD-022) |
+| Tampered update | – | signed OTA checked by the firmware, downgrade protection in software, no eFuses burned; the owner can always install their own firmware over USB (PD-022, PD-043) |
 | Load on the web server disturbs control (RLM) | control runs in its own cycle, requests only under a lock | own task priority and own core on the ESP32, load test |
 | Faulty input | every change and every import is validated (limits, phases, calibrations), JSON limit 1 MB or 64 KB, exceptions caught (400/500 instead of a crash; in the control cycle: everything off, alarm) | fuzzing |
 | Password file lost (power failure while writing) | reading falls back to the complete `.tmp`; `auth.json` is written before the lock marker; once a password was set, setup over the network is locked (423); the marker never comes from an import | factory reset by button |
@@ -48,11 +48,14 @@ According to `regulatorik`, before 2027-12-11 every device that is sold or
 lent must fully meet EN 18031-1. After that date the CRA applies. List:
 
 1. HTTPS locally, certificate per device.
-2. Signed OTA (EN 18031-1 SUM-2) with downgrade protection; a decision
-   whether a hardware root of trust (Secure Boot v2, flash encryption) is
-   needed; an eFuse plan. Whatever is chosen must let users install their
-   own firmware; no Secure Boot against the user (PD-022). Until a decision,
-   `tools/arch_check.sh` rejects sdkconfig options that burn such eFuses.
+2. Signed OTA (EN 18031-1 SUM-2) checked by the firmware, without
+   hardware Secure Boot; downgrade protection in software; no eFuses
+   burned (PD-043, SD-021). Over USB the owner can always install their own
+   firmware (PD-022). `tools/arch_check.sh` rejects sdkconfig options that
+   would burn eFuses for Secure Boot, flash encryption, a disabled download
+   mode or anti-rollback. Open (regulatory review): encrypted NVS for
+   secrets needs an HMAC key in an eFuse; the USB path and the remaining
+   storage risk.
 3. Setup access point only after a button press and for a limited time.
    Wi-Fi key per device on the label.
 4. Bluetooth off; JTAG and debug off in a way that keeps installing own
