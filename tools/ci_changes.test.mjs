@@ -55,7 +55,7 @@ test("ci.yml starts always and gates the heavy jobs on the filter", () => {
 test("ci-ok waits for every other job of ci.yml", () => {
   // A job missing from the needs of ci-ok could fail without blocking a
   // merge.
-  const ids = [...jobs.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
+  const ids = [...jobs.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*(#.*)?$/gm)].map((m) => m[1]);
   const needs = jobs.match(/^ {2}ci-ok:\n(?: {4}.*\n|\s*\n)*? {4}needs: \[([^\]]*)\]/m);
   assert.ok(ids.includes("ci-ok") && needs, "ci-ok with a needs list");
   assert.deepEqual(

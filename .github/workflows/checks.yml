@@ -11,7 +11,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: checks-${{ github.ref }}
+  # As in ci.yml: every push to main gets a group of its own.
+  group: checks-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # The job id `quick` is a required check of the ruleset on main
