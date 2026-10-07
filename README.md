@@ -1,2 +1,80 @@
 # growcontroller-software
-Standalone software for a hydroponic grow controller: platform-neutral C++ core with setup wizard, sensor catalog, pH/EC dosing, refill and circulation control, watchdog and logging. Includes ESP32-S3 firmware, a web app for browser and mobile, and a simulator (digital twin) for testing without hardware.
+
+Standalone software for a hydroponic grow controller: platform-neutral C++
+core with setup wizard, sensor catalog, pH/EC dosing, refill and
+circulation control, watchdog and logging. Includes ESP32-S3 firmware, a
+web app for browser and mobile, and a simulator (digital twin) for testing
+without hardware.
+
+---
+
+Universelle Pflanzenautomatisierung für Gewächshaus, Indoor-Anbau und
+Hydroponik: Nährlösung mischen, pH und EC regeln, Tank füllen – und Schritt
+für Schritt Licht, Klima und Bewässerung. Die Software läuft auf dem Hub
+(ESP32-S3) und bringt ihre eigene Web-App mit – ohne Cloud, ohne Konto, ohne
+Home Assistant.
+
+> **Status: Prototyp `0.1.0-proto.1`.** Kern, Simulator und Web-App laufen;
+> die Portierung auf den ESP32-S3 folgt (`firmware/README.md`). Nicht an
+> echter Hardware einsetzen.
+
+## Ausprobieren ohne Installation
+
+Ab dem nächsten Release liegt unter **Releases** der Simulator für Windows,
+macOS und Linux: eine Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
+(Passwort `demo-passwort`). Hinweise zu Windows-SmartScreen und macOS stehen in
+`LIESMICH.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
+Artefakte ab.
+
+## Selbst bauen (ohne Hardware)
+
+Voraussetzungen: CMake ≥ 3.20, Ninja, C++17-Compiler, Node.js 22.
+
+```bash
+tools/dev.sh
+# → http://127.0.0.1:8080  ·  Passwort: demo-passwort (nur Simulator)
+```
+
+Startet den digitalen Zwilling mit eingerichtetem Tank und 48 Stunden
+Verlauf. `SCENARIO=neu tools/dev.sh` startet einen leeren Hub mit
+Ersteinrichtung. Über den Knopf **Simulator** in der App: Zeitraffer,
+Störungen (pH-Sprung, Pumpe blockiert, Stromausfall, Fehlsteckung …),
+Szenarien.
+
+## Aufbau
+
+```
+core/      Kern in C++17, plattformneutral: Katalog, Konfiguration, Sensorwahrheit,
+           Resolver, Mischen, Aktor-Gateway, Regler, Watchdog, Verlauf, Ereignisse, API
+catalog/   Gerätekatalog als Daten (Capabilities, Geräteklassen, Rollen, Funktionen)
+sim/       Simulator: Zwilling (Ports, Dosierblock, Köpfe, Tank) und Host-Server
+web/       Web-App (Preact, TypeScript, Vite) und Ende-zu-Ende-Tests (Playwright)
+tests/     C++-Tests: Unit, API-Vertrag, Szenarien gegen den Zwilling
+firmware/  Plan und Gerüst für den ESP32-S3 (ESP-IDF)
+docs/      Konzept, Fachregeln, Bedienung, API, Tests, Releases, Sicherheit, Arbeitsweise
+tools/     ci.sh (alle Prüfungen), dev.sh (Simulator starten), arch_check.sh (Architekturregeln)
+```
+
+Einstieg in die Doku: [`docs/README.md`](docs/README.md).
+
+## Prüfen
+
+```bash
+tools/ci.sh            # Architekturregeln, Kern mit Sanitizern, 67 C++-Tests, Web-Build mit Größenbudget
+E2E=1 tools/ci.sh      # zusätzlich 9 Browser-Tests gegen den Simulator
+```
+
+## Mitmachen, Fehler melden, Sicherheit
+
+- Beiträge: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Fehler: in der App „Einstellungen › Problem melden“ (Vorgangsnummer), oder
+  ein Issue mit der Vorlage „Fehler melden“
+- Sicherheitslücken nie als Issue: [`SECURITY.md`](SECURITY.md)
+- Änderungen: [`CHANGELOG.md`](CHANGELOG.md)
+
+## Lizenz
+
+Noch nicht festgelegt (Entwurf E10 in `docs/ENTSCHEIDUNGEN.md`: GPL-3.0-or-later
+mit DCO). Bis zur Lizenzentscheidung alle Rechte vorbehalten; Ziel ist Open
+Source (PD-005, PD-008). Fremdbibliotheken: nlohmann/json,
+cpp-httplib, doctest (MIT); Preact, @preact/signals, uPlot (MIT), lucide (ISC).

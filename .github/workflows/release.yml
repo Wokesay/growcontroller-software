@@ -1,0 +1,57 @@
+# Release: aus einem Tag vX.Y.Z[-...] entstehen die Downloads (Simulator für
+# Windows, macOS und Linux, Web-App), SBOM und Prüfsummen als GitHub-Release
+# mit dem passenden CHANGELOG-Abschnitt. Das Firmware-Image kommt erst ins
+# Release, wenn es offline signiert ist (docs/RELEASE.md) – nie aus der CI;
+# gebaut wird es weiter bei jedem Lauf der CI.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  pruefen:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Version prüfen
+        run: test "v$(tr -d '\r\n' < VERSION)" = "${GITHUB_REF_NAME}"
+
+  pakete:
+    needs: pruefen
+    uses: ./.github/workflows/pakete.yml
+
+  veroeffentlichen:
+    needs: pakete
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Web-App, SBOM, Prüfsummen, Release-Notiz
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
+          tar -C web -czf "dist/growcontroller-web-$v.tar.gz" dist
+          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
+          (cd dist && sha256sum * > SHA256SUMS)
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
+          printf '\n---\n**Ausprobieren ohne Hardware:** Simulator für dein System laden, entpacken, starten (siehe LIESMICH.txt im Paket). Passwort der Demo: `demo-passwort`.\n' >> NOTES.md
+      - name: GitHub-Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file NOTES.md dist/*

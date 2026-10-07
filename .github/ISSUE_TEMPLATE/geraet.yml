@@ -1,0 +1,23 @@
+name: Gerät oder Sensor
+description: Ein Gerät wird nicht erkannt oder soll unterstützt werden.
+labels: ["geraet", "triage"]
+body:
+  - type: input
+    id: geraet
+    attributes:
+      label: Gerät (Hersteller, Modell)
+    validations:
+      required: true
+  - type: dropdown
+    id: anschluss
+    attributes:
+      label: Anschluss
+      options: ["Hub-Port (RJ45, Modbus)", "Sammelbox im Zelt", "Dosierblock-Port", "Netz (MQTT/Shelly)", "weiß nicht"]
+  - type: textarea
+    id: was
+    attributes:
+      label: Was zeigt der Hub unter Geräte › Hub-Ports?
+  - type: input
+    id: version
+    attributes:
+      label: Software-Version

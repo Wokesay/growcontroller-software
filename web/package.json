@@ -1,0 +1,26 @@
+{
+  "name": "growcontroller-web",
+  "private": true,
+  "version": "0.1.0-proto.1",
+  "type": "module",
+  "description": "Web-App des growcontroller-Hubs (läuft aus dem Flash des ESP32-S3 oder gegen den Simulator)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > ../build/sbom-web.cdx.json"
+  },
+  "dependencies": {
+    "@preact/signals": "2.11.3",
+    "lucide-preact": "1.52.0",
+    "preact": "10.29.8",
+    "uplot": "1.6.32"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@preact/preset-vite": "2.10.6",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  }
+}

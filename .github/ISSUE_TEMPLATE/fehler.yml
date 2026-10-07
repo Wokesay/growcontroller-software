@@ -1,0 +1,58 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie beschrieben.
+labels: ["fehler", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke! Bitte keine Passwörter, WLAN-Daten oder Standorte posten – Issues sind öffentlich.
+        Hast du in der App „Problem melden“ benutzt? Dann reicht die **Vorgangsnummer** (GC-…), das Diagnosepaket bitte nur auf Nachfrage teilen.
+  - type: textarea
+    id: was
+    attributes:
+      label: Was ist passiert?
+      placeholder: z. B. Der Mischlauf hielt bei Teil B an, Meldung „Blockade erkannt“.
+    validations:
+      required: true
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Was hast du erwartet?
+  - type: input
+    id: version
+    attributes:
+      label: Software-Version
+      description: Einstellungen › Darstellung und Info
+      placeholder: 0.1.0-proto.1
+    validations:
+      required: true
+  - type: input
+    id: vorgang
+    attributes:
+      label: Vorgangsnummer aus „Problem melden“
+      placeholder: GC-1a2b3c4d
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options:
+        - gekaufter Hub
+        - selbst gebaut (Steckbrett/eigene Platine)
+        - nur Simulator
+    validations:
+      required: true
+  - type: dropdown
+    id: stufe
+    attributes:
+      label: Ausbaustufe
+      options:
+        - "Stufe 0: Mischen"
+        - "Stufe 1: pH/EC"
+        - "Stufe 2: Füllstand/Zulauf"
+        - "Stufe 3–4"
+  - type: checkboxes
+    id: sicherheit
+    attributes:
+      label: Sicherheit
+      options:
+        - label: Eine Pumpe lief, obwohl sie nicht sollte, oder ging nicht aus (bitte sofort melden).

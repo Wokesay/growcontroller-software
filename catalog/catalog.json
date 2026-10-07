@@ -1,0 +1,247 @@
+{
+  "catalogVersion": 2,
+  "capabilities": {
+    "measure.ph": { "label": "pH", "unit": "", "kind": "measure", "decimals": 2, "plausible": [3.0, 9.0], "maxAgeS": 60, "jump": 1.0 },
+    "measure.ec": { "label": "EC", "unit": "mS/cm", "kind": "measure", "decimals": 2, "plausible": [0.0, 8.0], "maxAgeS": 60, "jump": 0.5 },
+    "measure.water_temp": { "label": "Wassertemperatur", "unit": "°C", "kind": "measure", "decimals": 1, "plausible": [0.0, 45.0], "maxAgeS": 120, "jump": 3.0 },
+    "measure.level": { "label": "Füllstand", "unit": "L", "kind": "measure", "decimals": 1, "plausible": [0.0, 1000.0], "maxAgeS": 60, "jump": 20.0 },
+    "measure.air_temp": { "label": "Lufttemperatur", "unit": "°C", "kind": "measure", "decimals": 1, "plausible": [-5.0, 50.0], "maxAgeS": 120, "jump": 5.0 },
+    "measure.humidity": { "label": "Luftfeuchte", "unit": "%", "kind": "measure", "decimals": 0, "plausible": [0.0, 100.0], "maxAgeS": 120, "jump": 25.0 },
+    "measure.co2": { "label": "CO2", "unit": "ppm", "kind": "measure", "decimals": 0, "plausible": [250.0, 5000.0], "maxAgeS": 120, "jump": 1500.0 },
+    "dose.peristaltic": { "label": "Dosierpumpe", "kind": "actuate" },
+    "switch.12v": { "label": "12-V-Ausgang", "kind": "actuate" },
+    "switch.mains": { "label": "Schaltbare Steckdose (230 V)", "kind": "actuate" },
+    "derive.vpd": { "label": "VPD", "unit": "kPa", "kind": "derived", "decimals": 2 },
+    "measure.power": { "label": "Leistung", "unit": "W", "kind": "measure", "decimals": 0, "plausible": [0.0, 4000.0], "maxAgeS": 120, "jump": 4000.0 }
+  },
+
+  "deviceClasses": {
+    "dosing_block": {
+      "label": "Dosierblock", "stage": 0, "attach": "hub_port", "slots": 6, "accepts": ["pump_cap"],
+      "provides": [], "shop": "Dosierblock für 6 Pumpen",
+      "text": "Treibt bis zu 6 Pumpen an. Zeitlimit in Hardware, immer nur ein Kanal zugleich."
+    },
+    "pump_cap": {
+      "label": "Pumpe", "stage": 0, "attach": "dosing_port",
+      "provides": ["dose.peristaltic"], "calibrations": ["pump_flow"], "shop": "Pumpe mit Überwurf",
+      "text": "Peristaltikpumpe auf dem Kanister. Der ID-Chip trägt Kennung und Einmesswert."
+    },
+    "head_ph_ec": {
+      "label": "Sensorkopf pH/EC", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ph", "measure.ec", "measure.water_temp"], "calibrations": ["ph", "ec"],
+      "shop": "pH/EC-Kopf mit galvanischer Trennung und Sonden",
+      "text": "Misst pH, EC und Wassertemperatur im Tank, galvanisch getrennt."
+    },
+    "head_ph": {
+      "label": "Sensorkopf pH", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ph"], "calibrations": ["ph"],
+      "shop": "pH-Kopf mit galvanischer Trennung und Sonde",
+      "text": "Misst pH im Tank, galvanisch getrennt. Zusammen mit einem EC-Kopf, wenn pH und EC getrennte Sonden haben."
+    },
+    "head_ec": {
+      "label": "Sensorkopf EC", "stage": 1, "attach": "hub_port",
+      "provides": ["measure.ec", "measure.water_temp"], "calibrations": ["ec"],
+      "shop": "EC-Kopf mit galvanischer Trennung, Sonde und Temperaturfühler",
+      "text": "Misst EC und Wassertemperatur im Tank, galvanisch getrennt."
+    },
+    "head_level": {
+      "label": "Sensorkopf Füllstand", "stage": 2, "attach": "hub_port",
+      "provides": ["measure.level"], "calibrations": ["tank_curve"], "shop": "Füllstands-Kopf",
+      "text": "Misst den Füllstand. Dient als Notabschaltung beim Nachfüllen."
+    },
+    "head_climate": {
+      "label": "Sensorkopf Klima", "stage": 4, "attach": "box_port",
+      "provides": ["measure.air_temp", "measure.humidity"], "shop": "Klima-Kopf",
+      "text": "Misst Lufttemperatur und Luftfeuchte im Anbaubereich."
+    },
+    "head_co2": {
+      "label": "Sensorkopf CO2", "stage": 4, "attach": "box_port",
+      "provides": ["measure.co2"], "shop": "CO2-Kopf",
+      "text": "Misst CO2 im Anbaubereich."
+    },
+    "shelly_plug": {
+      "label": "Schaltbare Steckdose", "stage": 0, "attach": "net", "channels": 1,
+      "provides": ["switch.mains", "measure.power"], "shop": "Shelly Plug S Gen3",
+      "text": "Schaltet ein 230-V-Gerät im WLAN, lokal ohne Cloud, misst die Leistung. Schutzeinstellungen liegen im Gerät und wirken auch ohne Hub."
+    },
+    "shelly_strip4": {
+      "label": "Schaltbare Steckdosenleiste", "stage": 0, "attach": "net", "channels": 4,
+      "provides": ["switch.mains", "measure.power"], "shop": "Shelly Power Strip 4 Gen4",
+      "text": "Vier einzeln schaltbare 230-V-Dosen im WLAN, lokal ohne Cloud, mit Leistungsmessung je Dose."
+    },
+    "hub_outputs": {
+      "label": "12-V-Ausgänge des Hubs", "stage": 0, "attach": "builtin", "channels": 2,
+      "provides": ["switch.12v"],
+      "text": "Zwei geschaltete 12-V-Ausgänge mit Zeitlimit, z. B. für Umwälzpumpe und Zulaufventil."
+    }
+  },
+
+  "roles": {
+    "tank.ph": { "label": "pH im Tank", "capability": "measure.ph", "series": true },
+    "tank.ec": { "label": "EC im Tank", "capability": "measure.ec", "series": true },
+    "tank.water_temp": { "label": "Wassertemperatur", "capability": "measure.water_temp", "series": true },
+    "tank.level": { "label": "Füllstand", "capability": "measure.level", "series": true },
+    "tank.circulation": { "label": "Umwälzpumpe", "accepts": ["switch.12v", "switch.mains"], "profile": "dauer" },
+    "tank.inlet": { "label": "Zulaufventil", "accepts": ["switch.12v", "switch.mains"], "profile": "puls", "maxOnS": 1500,
+      "note": "25 min Höchstlaufzeit (Quelle: RAT-079); das Auto-Off im Gerät liegt hier bei 28 min. Die Funktion Nachfüllen begrenzt enger. Auto-Off allein schützt nicht vor dem Überlaufen (RAT-078)." },
+    "zone.air_temp": { "label": "Lufttemperatur", "capability": "measure.air_temp", "series": true },
+    "zone.humidity": { "label": "Luftfeuchte", "capability": "measure.humidity", "series": true },
+    "zone.co2": { "label": "CO2", "capability": "measure.co2", "series": true },
+    "zone.vpd": { "label": "VPD (Luft)", "capability": "derive.vpd", "series": true,
+      "note": "Luft-VPD ohne Blatt-Offset, fehlt ein Quellwert, gibt es keinen Wert (Quelle: RAT-017). Formel FAO-56 Gl. 11. Beide Werte höchstens 60 s auseinander (eigene Regel, Annahme)." },
+    "zone.light": { "label": "Licht", "accepts": ["switch.mains"], "profile": "dauer" },
+    "zone.exhaust": { "label": "Abluft", "accepts": ["switch.mains"], "profile": "dauer" },
+    "zone.circulation_fan": { "label": "Umluft", "accepts": ["switch.mains"], "profile": "dauer" },
+    "zone.humidifier": { "label": "Befeuchter", "accepts": ["switch.mains"], "profile": "puls", "maxOnS": 300,
+      "note": "Annahme: 5 min Höchstlaufzeit je Puls (RAT-034, RAT-073), bis die Klimafunktion eigene Grenzen setzt." },
+    "zone.dehumidifier": { "label": "Entfeuchter", "accepts": ["switch.mains"], "profile": "kompressor" },
+    "zone.irrigation_pump": { "label": "Gießpumpe", "accepts": ["switch.12v", "switch.mains"], "profile": "puls", "maxOnS": 600,
+      "note": "Annahme: höchstens 10 min je Gabe, bis die Funktion Bewässerung eigene Grenzen setzt." }
+  },
+
+  "functions": [
+    {
+      "id": "manual_dose", "label": "Von Hand dosieren", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Eine Menge aus einem Kanister in den Tank geben.",
+      "requires": [ { "canisters": { "min": 1, "kind": "any" } }, { "canisters": { "min": 1, "kind": "any", "calibrated": true } } ]
+    },
+    {
+      "id": "pump_calibration", "label": "Pumpen einmessen", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Förderrate je Pumpe mit Messbecher oder Küchenwaage bestimmen. Ohne Einmesswert wird nicht dosiert.",
+      "requires": [ { "device": "pump_cap" } ]
+    },
+    {
+      "id": "mix", "label": "Nährlösung mischen", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "text": "Rezept wählen, Wassermenge angeben, der Hub dosiert in Rezeptreihenfolge.",
+      "requires": [
+        { "canisters": { "min": 1, "kind": "nutrient" } },
+        { "canisters": { "min": 1, "kind": "nutrient", "calibrated": true } },
+        { "config": "recipe" }
+      ],
+      "soft": [ { "role": "tank.circulation", "why": "Ohne Umwälzpumpe führt die Anleitung mit Umrühren zwischen den Gaben." } ]
+    },
+    {
+      "id": "monitor_tank", "label": "Tankwerte überwachen", "stage": 1, "group": "Messen", "alwaysOn": true,
+      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorwahrheit läuft immer, auch ohne laufenden Durchgang.",
+      "requires": [ { "role": "tank.ph" }, { "role": "tank.ec" } ],
+      "soft": [ { "role": "tank.water_temp", "why": "Ohne Temperatur keine Bewertung der Wassertemperatur." } ]
+    },
+    {
+      "id": "circulation", "label": "Umwälzen", "stage": 1, "group": "Tank",
+      "text": "Umwälzpumpe nach Zeitplan; vor und während jeder Dosierung an.",
+      "requires": [ { "role": "tank.circulation" } ],
+      "soft": [ { "role": "tank.level", "why": "Ohne Füllstand kein Trockenlaufschutz." } ],
+      "params": [
+        { "key": "mode", "label": "Betrieb", "type": "enum", "options": [ ["always", "immer an"], ["interval", "Intervall"] ], "default": "interval" },
+        { "key": "on_min", "label": "An je Intervall", "type": "number", "unit": "min", "min": 1, "max": 120, "step": 1, "default": 15 },
+        { "key": "period_min", "label": "Intervall", "type": "number", "unit": "min", "min": 5, "max": 240, "step": 5, "default": 60 }
+      ]
+    },
+    {
+      "id": "ph_control", "label": "pH regeln", "stage": 1, "group": "Regeln",
+      "text": "Senkt den pH in Teilgaben aus der gemessenen Wirkung. Immer der letzte Schritt, erst nach EC.",
+      "requires": [
+        { "role": "tank.ph", "calibrated": true },
+        { "role": "tank.ec", "calibrated": true },
+        { "canisters": { "min": 1, "kind": "ph_down", "calibrated": true } },
+        { "function": "circulation" }
+      ],
+      "params": [
+        { "key": "ph_target", "label": "Ziel-pH", "type": "number", "min": 4.5, "max": 7.5, "step": 0.05, "default": 5.8, "phase": true },
+        { "key": "ph_tolerance", "label": "Toleranz", "type": "number", "min": 0.05, "max": 1.0, "step": 0.05, "default": 0.15, "phase": true },
+        { "key": "ec_floor", "label": "EC-Gate: pH nur ab EC", "type": "number", "unit": "mS/cm", "min": 0.3, "max": 3.0, "step": 0.05, "default": 0.5 },
+        { "key": "max_ml_per_dose", "label": "Höchstmenge je Teilgabe", "type": "number", "unit": "ml", "min": 0.5, "max": 20, "step": 0.5, "default": 20 },
+        { "key": "settle_min", "label": "Wartezeit nach Gabe", "type": "number", "unit": "min", "min": 2, "max": 60, "step": 1, "default": 5 },
+        { "key": "max_doses", "label": "Höchstens Teilgaben je Korrektur", "type": "number", "min": 1, "max": 12, "step": 1, "default": 8 }
+      ]
+    },
+    {
+      "id": "ec_control", "label": "EC nachdosieren", "stage": 1, "group": "Regeln",
+      "text": "Hebt die EC mit dem aktiven Rezept an. Gepaarte Nährstoffe (A:B) werden gemeinsam skaliert.",
+      "requires": [
+        { "role": "tank.ec", "calibrated": true },
+        { "canisters": { "min": 1, "kind": "nutrient", "calibrated": true } },
+        { "config": "recipe" },
+        { "function": "circulation" }
+      ],
+      "params": [
+        { "key": "ec_target", "label": "Ziel-EC", "type": "number", "unit": "mS/cm", "min": 0.2, "max": 4.0, "step": 0.05, "default": 1.6, "phase": true },
+        { "key": "ec_tolerance", "label": "Toleranz", "type": "number", "unit": "mS/cm", "min": 0.05, "max": 1.0, "step": 0.05, "default": 0.1, "phase": true },
+        { "key": "recipe", "label": "Rezept", "type": "recipe", "default": "", "phase": true },
+        { "key": "max_ec_step", "label": "Höchstens EC-Anhebung je Runde", "type": "number", "unit": "mS/cm", "min": 0.1, "max": 1.5, "step": 0.05, "default": 1.0 },
+        { "key": "settle_min", "label": "Wartezeit nach Gabe", "type": "number", "unit": "min", "min": 2, "max": 60, "step": 1, "default": 4 },
+        { "key": "max_doses", "label": "Höchstens Runden je Korrektur", "type": "number", "min": 1, "max": 12, "step": 1, "default": 10 }
+      ]
+    },
+    {
+      "id": "refill", "label": "Nachfüllen", "stage": 2, "group": "Tank",
+      "text": "Öffnet das Zulaufventil, bis die berechnete Menge drin ist. Der Füllstand ist nur Notabschaltung.",
+      "requires": [ { "role": "tank.inlet" }, { "role": "tank.level", "calibrated": true }, { "config": "tank_capacity" } ],
+      "params": [
+        { "key": "start_below_l", "label": "Nachfüllen unter", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 30 },
+        { "key": "target_l", "label": "Auffüllen bis", "type": "number", "unit": "L", "min": 1, "max": 1000, "step": 1, "default": 40 },
+        { "key": "flow_l_per_min", "label": "Zulauf (geschätzt)", "type": "number", "unit": "L/min", "min": 0.1, "max": 30, "step": 0.1, "default": 2.0 },
+        { "key": "max_open_min", "label": "Ventil höchstens offen", "type": "number", "unit": "min", "min": 1, "max": 25, "step": 1, "default": 15 }
+      ]
+    },
+    {
+      "id": "water_temp_watch", "label": "Wassertemperatur bewerten", "stage": 2, "group": "Messen",
+      "text": "Bewertet die Wassertemperatur gegen ein Band. Steuert nichts.",
+      "requires": [ { "role": "tank.water_temp" } ],
+      "params": [
+        { "key": "min_c", "label": "Untergrenze", "type": "number", "unit": "°C", "min": 5, "max": 30, "step": 0.5, "default": 18 },
+        { "key": "max_c", "label": "Obergrenze", "type": "number", "unit": "°C", "min": 10, "max": 35, "step": 0.5, "default": 23 }
+      ]
+    },
+    {
+      "id": "climate_watch", "label": "Klima bewerten", "stage": 4, "group": "Messen",
+      "text": "Bewertet Lufttemperatur und Luftfeuchte im Anbaubereich. Steuert nichts.",
+      "requires": [ { "role": "zone.air_temp" }, { "role": "zone.humidity" } ]
+    }
+  ],
+
+  "templates": {
+    "recipes": [
+      {
+        "id": "two_part_basic", "name": "Zweikomponenten-Dünger", "nameEn": "Two-part nutrient",
+        "note": "Allgemeine Startwerte für A+B-Dünger mit CalMag, ohne Herstellerbezug. An die Herstellerangabe anpassen.",
+        "noteEn": "General starting values for A+B nutrient with CalMag, not from a manufacturer. Adjust to the manufacturer's chart.",
+        "basis": "Annahme",
+        "ec": 1.6, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Teil B", "nameEn": "Part B", "pair": "AB", "mlPerL": 2.0 },
+          { "role": "a", "name": "Teil A", "nameEn": "Part A", "pair": "AB", "mlPerL": 2.0 },
+          { "role": "calmag", "name": "CalMag", "mlPerL": 0.5 }
+        ]
+      },
+      {
+        "id": "athena_blended_veg", "name": "Athena Blended – Wachstum", "nameEn": "Athena Blended – Vegetative",
+        "note": "Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Vegetative weeks 1–4. Check against the current manufacturer chart.",
+        "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
+        "basis": "RAT-066",
+        "ec": 2.1, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Grow B", "pair": "AB", "mlPerL": 2.9 },
+          { "role": "a", "name": "Grow A", "pair": "AB", "mlPerL": 2.9 },
+          { "role": "calmag", "name": "CaMg", "mlPerL": 1.0 }
+        ]
+      },
+      {
+        "id": "athena_blended_bloom", "name": "Athena Blended – Blüte", "nameEn": "Athena Blended – Flowering",
+        "note": "Blüte Woche 1–2 (ab Woche 3 höher, mit PK). Mit dem aktuellen Herstellerplan abgleichen.",
+        "noteEn": "Flowering weeks 1–2 (higher from week 3, with PK). Check against the current manufacturer chart.",
+        "source": "Athena Blended Feed Program A01.004 (metrisch)",
+        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
+        "basis": "RAT-066",
+        "ec": 2.3, "ph": [5.8, 6.2],
+        "steps": [
+          { "role": "b", "name": "Bloom B", "pair": "AB", "mlPerL": 3.2 },
+          { "role": "a", "name": "Bloom A", "pair": "AB", "mlPerL": 3.2 },
+          { "role": "calmag", "name": "CaMg", "mlPerL": 1.0 }
+        ]
+      }
+    ]
+  }
+}
