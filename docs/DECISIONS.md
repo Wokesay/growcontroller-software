@@ -241,7 +241,7 @@ the software; the full decision is in the product repository.
   hashes.
 
 
-## SD-025: Product requirement (from PD-048 to PD-052): limits after a power loss
+## SD-025: Product requirement (from PD-048 to PD-053): limits after a power loss
 
 - **Light (PD-048):** after a restart the light comes on only with a
   secured time and only inside the planned light window (with ramp);
@@ -260,15 +260,20 @@ the software; the full decision is in the product repository.
 - **Hub failure (PD-051):** the planned light window is also written as a
   local schedule into the light socket, so the light keeps its rhythm if
   the hub fails (without dimming and ramps); the hub keeps both schedules
-  equal. Irrigation pump, inlet, humidifier and heater stay protected by
-  their auto-off in the device (the heater also by its power limit); fans
-  keep their last state. Circulation pump and dehumidifier have no
-  auto-off and keep running if they were on (open).
+  equal. While the hub runs, its own schedule has priority; without a
+  secured time it disables the schedule in the socket until the time is
+  secured again (PD-053). The ramp runs over the hub's dimming output.
+  Irrigation pump, inlet, humidifier and a heater without its own
+  thermostat stay protected by their auto-off in the device (the heater
+  also by its power limit); a heater with its own thermostat has only the
+  power limit. Fans keep their last state. Circulation pump and
+  dehumidifier have no auto-off and keep running if they were on (open).
 - **Climate devices (PD-052):** humidifier, dehumidifier and heater
-  control again after a restart once sensor truth is secured, like fans
-  and light; the dehumidifier waits for its minimum pause, the heater runs
-  only without a latched emergency cut-off, humidifier and dehumidifier
-  never run together.
+  control again after a restart once sensor truth is secured, like the
+  fans; the dehumidifier waits for its minimum pause, the heater runs only
+  without an active emergency cut-off (neither blocking nor latched), and
+  humidifier and dehumidifier never run together. The heater's latch must
+  survive a restart.
 - Not implemented yet (issue #20); until then R6 applies.
 
 ---
