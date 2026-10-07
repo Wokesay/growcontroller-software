@@ -241,7 +241,7 @@ the software; the full decision is in the product repository.
   hashes.
 
 
-## SD-025: Product requirement (from PD-048 to PD-051): limits after a power loss
+## SD-025: Product requirement (from PD-048 to PD-052): limits after a power loss
 
 - **Light (PD-048):** after a restart the light comes on only with a
   secured time and only inside the planned light window (with ramp);
@@ -250,15 +250,25 @@ the software; the full decision is in the product repository.
 - **"Too dry" (PD-049):** more time has passed since the last dose than
   the maximum pause per phase (default: twice the normal interval, at most
   24 h). Then exactly one emergency dose of one normal dose, a report, and
-  waiting again. With a substrate sensor its value counts later.
+  waiting again. With a substrate sensor its value counts later. The time
+  of the last dose survives a restart; if it is unknown, it is never
+  taken as 0 (R5).
 - **Fan sockets (PD-050):** sockets of exhaust and circulation fan are
-  set to "on after power loss"; light, humidifier, pumps, inlet and heater
-  stay "off after power loss".
+  set to "on after power loss"; light, humidifier, dehumidifier, pumps,
+  inlet and heater stay "off after power loss". A socket that changes its
+  role gets the setting of its new role (RAT-019 otherwise unchanged).
 - **Hub failure (PD-051):** the planned light window is also written as a
   local schedule into the light socket, so the light keeps its rhythm if
   the hub fails (without dimming and ramps); the hub keeps both schedules
-  equal. Pumps, inlet and humidifier are protected by their auto-off in
-  the device; fans keep running.
+  equal. Irrigation pump, inlet, humidifier and heater stay protected by
+  their auto-off in the device (the heater also by its power limit); fans
+  keep their last state. Circulation pump and dehumidifier have no
+  auto-off and keep running if they were on (open).
+- **Climate devices (PD-052):** humidifier, dehumidifier and heater
+  control again after a restart once sensor truth is secured, like fans
+  and light; the dehumidifier waits for its minimum pause, the heater runs
+  only without a latched emergency cut-off, humidifier and dehumidifier
+  never run together.
 - Not implemented yet (issue #20); until then R6 applies.
 
 ---

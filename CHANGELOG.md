@@ -24,7 +24,7 @@ listed in every release under "Security".
 - **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
   (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
   tests. Code and docs cite only these IDs.
-- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-024 record the
+- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-025 record the
   product decisions that apply to the software.
 - Simulator download for Windows, macOS (Apple silicon and Intel) and
   Linux: one file with the web app embedded; a double-click starts the demo
