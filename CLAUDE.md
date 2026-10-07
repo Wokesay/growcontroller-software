@@ -43,18 +43,19 @@ Product, hardware and business live in the private product repository
 
 ## Product decisions (PD-100, SD-029)
 
-- The software is worked on in a session of its own that has only this
-  repository. The product repository's session works on hardware and
+- The software is worked on in a session of its own with access to this
+  repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD-xxx) are
   written, so PD numbers do not collide. This session does not access the
   product repository.
 - Product requirements arrive as English issues in this repository.
-  Claude records a requirement as an SD "Product requirement (from
-  PD-0xx)" where useful (as SD-028 does for #20).
+  When a requirement comes from a PD, Claude records it as an SD
+  "Product requirement (from PD-xxx)" (as SD-028 does for #20).
 - When Claude runs into a product question, it names the question in the
   issue and to the project owner and does not write a PD. The project
-  owner has it decided and recorded in the product repository's session.
-- Claude assigns SD and RAT IDs as before. The private mapping of RAT IDs
+  owner takes it to the product repository's session, where it is
+  decided and recorded.
+- Claude assigns SD and RAT IDs in this repository. The private mapping of RAT IDs
   to their sources is kept in the product repository.
 
 ## At session start

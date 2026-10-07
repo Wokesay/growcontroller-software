@@ -5,7 +5,7 @@ chronological, two blank lines between entries. No status field; entries
 are not deleted, a later SD replaces an earlier one and refers to it.
 
 Product decisions are in the product repository (PD). If a PD affects the
-software, an SD "Product requirement (from PD-0xx)" stands here.
+software, an SD "Product requirement (from PD-xxx)" stands here.
 
 **This log starts with the move to this repository (PD-023).** Before
 that, decisions were made as PDs in the product repository.
@@ -397,12 +397,13 @@ repository.
 
 ## SD-029: Product requirement (from PD-100): product decisions only in the product repository's session
 
-- The software is worked on in a session of its own that has only this
-  repository. The product repository's session works on hardware and
+- The software is worked on in a session of its own with access to this
+  repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
   written, so PD numbers do not collide.
-- Product requirements arrive as English issues in this repository and
-  are recorded here as "Product requirement (from PD-0xx)" where useful.
+- Product requirements arrive as English issues in this repository. A
+  requirement that comes from a PD is recorded here as "Product
+  requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
   repository's session.
