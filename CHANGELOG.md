@@ -32,7 +32,7 @@ listed in every release under "Security".
 - **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
   (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
   tests. Code and docs cite only these IDs.
-- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-026 record the
+- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-027 record the
   product decisions that apply to the software.
 - Simulator download for Windows, macOS (Apple silicon and Intel) and
   Linux: one file with the web app embedded; a double-click starts the demo
@@ -152,6 +152,9 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **Repository rules** (SD-027): pull requests are merged by squash only;
+  `main` accepts changes only through pull requests with green quick
+  checks; `v*` release tags can only be set by the project owner.
 - **Recipe templates from a manufacturer chart** are named after the
   phase with the source behind it ("Vegetative wk 1–4 (per Athena
   A01.004)") and say "manufacturer data, not binding; not affiliated with

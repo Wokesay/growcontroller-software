@@ -303,6 +303,25 @@ the software; the full decision is in the product repository.
   not binding; not affiliated with the manufacturer" with edition and
   date, in the recipe list and in the setup wizard.
 
+
+## SD-027: Squash only; `main` and release tags are protected
+
+Decided by the project owner on 2026-10-07 when the repository went
+public.
+
+- Pull requests are merged by squash only; the squash commit carries the
+  PR title and description. Head branches are deleted after the merge.
+- A ruleset protects `main`: changes only through a pull request, the
+  quick checks (`quick`) must pass, review conversations must be
+  resolved, linear history, no force push, no deletion. Required
+  approvals: none (merging follows SD-023). Only the repository admin can
+  bypass it; the Claude app cannot.
+- A ruleset protects `v*` tags: only the repository admin creates,
+  moves or deletes them, so a release always needs the project owner.
+- Actions: only actions created by GitHub; workflows get read-only tokens
+  by default and cannot create or approve pull requests; workflows from
+  outside contributors need approval.
+
 ---
 
 ## Drafts (waiting for "entschieden")
