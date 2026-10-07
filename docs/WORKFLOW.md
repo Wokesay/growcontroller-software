@@ -150,7 +150,8 @@ devices, so 2–5 h per week with Claude triage. Rules:
   above. Claude merges, except releases, license and security rules and
   changes to the actuator gateway or protective cut-offs, which wait for
   the project owner's "mergen" (PD-045, SD-023). Squash only; the
-  ruleset on `main` enforces "pull request only" (SD-027).
+  ruleset on `main` enforces "pull request only", the quick checks and,
+  through `ci-ok`, the full CI for code changes (SD-027, SD-030).
 
 ## 6. Decisions
 

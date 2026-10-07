@@ -53,7 +53,8 @@ listed in every release under "Security".
   disclosure.
 - **Quick checks** (`.github/workflows/checks.yml`): architecture rules,
   `reuse lint` and the dependency license check run on every PR, also for
-  docs-only changes; the full CI skips docs-only changes (PD-059).
+  docs-only changes; the full CI skips its heavy jobs for them (PD-059,
+  SD-030).
 - **Own repository with history:** the software moved from the product
   repository into `Wokesay/growcontroller-software` with its 17 commits;
   every moved commit carries `LICENSE`.
@@ -191,6 +192,10 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **CI** (SD-030): the full CI runs on every pull request and push to
+  `main`; for docs-only changes it skips its heavy jobs. A summary check
+  `ci-ok` lets GitHub block a merge while the full CI is red or still
+  running.
 - **Product decisions** (PD-100, SD-029): the software is worked on in a
   session of its own with only this repository; product decisions are
   written only in the product repository's session. Requirements arrive

@@ -1,28 +1,72 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # CI: architecture rules, licenses, core with sanitizers, web app,
 # end-to-end in the browser against the simulator, firmware, packages.
-# Docs-only changes skip this workflow; checks.yml runs for them (PD-059).
+# It runs on every PR and push to main. Docs-only changes skip the heavy
+# jobs (decided by the job `changes` with tools/ci_changes.mjs); checks.yml
+# runs the quick checks for them (PD-059). `ci-ok` sums up all jobs and is a required check of
+# the ruleset on main (SD-030). No paths-ignore here: a workflow that does
+# not start leaves a required check pending forever.
 # CHANGELOG.md is embedded in the build, but a change to it alone is
 # docs-only too; the next code change carries it into a build.
 name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["docs/**", "**.md", "LICENSES/**", ".claude/**", ".github/ISSUE_TEMPLATE/**"]
   pull_request:
-    paths-ignore: ["docs/**", "**.md", "LICENSES/**", ".claude/**", ".github/ISSUE_TEMPLATE/**"]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
-  # Only superseded PR runs are cancelled; every commit on main keeps its run.
+  # Only superseded PR runs are cancelled. Every push to main gets a group
+  # of its own: in a shared group a newer run would cancel a pending one.
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # Source code link in the web app (AGPL-3.0 §13): the commit under test
   GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # The commit and its parents: enough to compare with the base.
+          fetch-depth: 2
+      - name: Code or docs only
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # PR: GitHub's merge commit against its first parent, the base
+          # branch; only if HEAD really is a merge commit (a checkout of the
+          # PR head would compare only its last commit). Push to main: the
+          # pushed commit against the previous main, if the push held only
+          # that commit. Anything else runs everything.
+          base=""
+          if [ "$EVENT" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            base=HEAD^1
+          elif [ "$EVENT" = push ] && [ "$BEFORE" = "$(git rev-parse -q --verify HEAD^1 || true)" ]; then
+            base=HEAD^1
+          fi
+          # File names go to the log; no workflow commands while they do.
+          token=$(cat /proc/sys/kernel/random/uuid)
+          echo "::stop-commands::$token"
+          result=$(node tools/ci_changes.mjs "$base" HEAD)
+          echo "::$token::"
+          echo "$result"
+          case "$result" in
+            code=true|code=false) echo "$result" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::The change filter gave no result"; exit 1 ;;
+          esac
+
   checks:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -76,6 +120,8 @@ jobs:
           retention-days: 14
 
   firmware:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     container: espressif/idf:v5.4.1
@@ -126,4 +172,37 @@ jobs:
           retention-days: 14
 
   packages:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/packages.yml
+
+  # The job id `ci-ok` is a required check of the ruleset on main (SD-030);
+  # renaming it blocks every merge until the ruleset follows. Every other
+  # job of this workflow must be in its needs (tools/ci_changes.test.mjs
+  # checks this). always(): it also runs when a job before it failed or the
+  # run was cancelled, and then fails; not !cancelled(), because a skipped
+  # ci-ok would count as passed. A skipped job passes only if the filter
+  # said docs only.
+  ci-ok:
+    needs: [changes, checks, firmware, packages]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: All jobs passed, or skipped for a docs-only change
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Code changed: ${CODE:-unknown}. Results: $RESULTS"
+          case "$CODE" in
+            true) ok="success" ;;
+            false) ok="success skipped" ;;
+            *) echo "::error::The change filter gave no result"; exit 1 ;;
+          esac
+          for r in $RESULTS; do
+            case " $ok " in
+              *" $r "*) ;;
+              *) echo "::error::A CI job ended with: $r"; exit 1 ;;
+            esac
+          done

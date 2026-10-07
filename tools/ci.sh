@@ -12,6 +12,10 @@ group "Architecture rules"
 tools/arch_check.sh
 end
 
+group "Change filter of the full CI"
+node --test tools/ci_changes.test.mjs
+end
+
 group "Licenses (REUSE, npm dependencies)"
 "${REUSE:-reuse}" lint
 node --test tools/check_licenses.test.mjs
