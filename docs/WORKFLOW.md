@@ -40,26 +40,25 @@ only the sync workflow may write there.
    problem" link point to this repository.
 5. The product repository no longer carries `software/`; it mirrors this
    repository into `ref/software/` (PD-054).
+6. Public since 2026-10-07 (PD-055 to PD-062, SD-026, SD-027): the
+   history moved into this new repository without the last private
+   references; the old repository stays private as an archive (PD-056).
+   Actions allow only GitHub's own actions, workflows get read-only
+   tokens, workflows from outside contributors need approval; `main` and
+   `v*` tags are protected by rulesets; private vulnerability reporting,
+   secret scanning, push protection, Dependabot and Discussions are on.
 
 **Remaining:**
 
 1. **Translate code comments, test names and UI defaults** into English in
-   a separate PR (PD-034, PD-035).
-2. **Turn on secret scanning and push protection**, if not on yet.
-3. **Optional:** activate the triage action from
-   `docs/templates/claude-triage.yml` (§4).
-4. **Going public** (PD-055 to PD-062, SD-026): the history moves into a
-   new repository without the last private references (PD-056). Before
-   the switch: Actions and ruleset settings; if `main` gets a required
-   status check, require only "Quick checks / quick", because the full
-   CI skips docs-only PRs. Right after the switch (these settings exist
-   only for public repositories): private vulnerability reporting,
-   approval for workflows from all outside contributors, secret scanning
-   and push protection, Dependabot alerts, Discussions.
-5. **Before the first public release tag:** build release assets in a
-   read-only job and publish them from a job without a build; pin actions
-   by commit SHA; protect `v*` tags with a ruleset.
-6. **Later:** a trademark search before a trademark of our own or the
+   a separate PR (PD-034, PD-035; #25).
+2. **Optional:** activate the triage action from
+   `docs/templates/claude-triage.yml` (§4). It needs
+   `anthropics/claude-code-action` on the Actions allow list, pinned by
+   commit SHA, because only actions created by GitHub are allowed
+   (SD-027).
+3. **Before the first public release tag:** release hardening (#29).
+4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 
 ## 3. Roles and agents
@@ -90,7 +89,7 @@ repository asks them through the project owner or in a joint session.
 Issue/idea ─► triage ─► project owner decides (priority, whether at all)
    ─► Claude: branch, test first, then code ─► tools/ci.sh green
    ─► reviewer + qa (+ security for gateway/sensor truth/auth/update, + ux for UI)
-   ─► PR with CHANGELOG entry ─► CI green ─► approval ─► merge ─► release collects
+   ─► PR with CHANGELOG entry ─► CI green ─► reviews ─► merge ─► release collects
 ```
 
 ## 4. Making issues visible in Claude Code and working through them
@@ -150,7 +149,8 @@ devices, so 2–5 h per week with Claude triage. Rules:
 - **Merge** only through a pull request, after green CI and the reviews
   above. Claude merges, except releases, license and security rules and
   changes to the actuator gateway or protective cut-offs, which wait for
-  the project owner's "mergen" (PD-045, SD-023).
+  the project owner's "mergen" (PD-045, SD-023). Squash only; the
+  ruleset on `main` enforces "pull request only" (SD-027).
 
 ## 6. Decisions
 

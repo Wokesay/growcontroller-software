@@ -32,7 +32,9 @@ The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
 `main` that changes code. It runs exactly these steps plus E2E, the
 firmware build and the simulator packages for Windows, macOS and Linux. Docs-only changes
 run only the quick checks (`.github/workflows/checks.yml`: architecture
-rules, `reuse lint`, dependency licenses; PD-059).
+rules, `reuse lint`, dependency licenses; PD-059). The ruleset on `main`
+requires only the quick checks; the full CI is required by the merge rule
+(SD-023, SD-027).
 
 ## Rules
 

@@ -65,6 +65,9 @@ either measured (with source) or marked as an assumption.
 5. **Approval:** CI green, review by `reviewer` and `qa`; additionally
    `security` for gateway, sensor truth, login or updates, and `ux` for UI
    changes.
+6. **Merge:** squash only; the PR title and description become the commit
+   message on `main`, so write them for someone reading the history
+   (SD-027).
 
 ## Ideas and questions
 
