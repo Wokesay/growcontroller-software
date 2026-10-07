@@ -1,156 +1,153 @@
-# Arbeitsweise: eigenes Repo, Issues, Agenten, Entscheidungen
+# Workflow: own repository, issues, agents, decisions
 
-Stand 06.10.2026. Vorschlag; Entscheidungen dazu in
-`docs/DECISIONS.md` (Entwürfe).
+As of 2026-10-07. Proposal, unless a PD decided it; drafts in
+`docs/DECISIONS.md`.
 
-## 1. Repo-Schnitt
+## 1. Repository split
 
-| Software-Repo (dieses Paket) | bleibt im Produkt-Repo `growcontroller` |
+| Software repository (this repository) | stays in the product repository `growcontroller` |
 |---|---|
-| Kern, Simulator, Web-App, Firmware des Hubs; später Firmware von Dosierblock und Köpfen | Platinen (KiCad), bis die Hardware-Lizenz entschieden ist |
-| Schnittstellen: Katalog, API, später Bus-Registerplan | Einkauf, Lieferanten, Preise, Margen, Business Case |
-| Doku, Software-Entscheidungen (SD), CHANGELOG, SECURITY, CONTRIBUTING | Regulatorik-Akte, Prüfberichte |
-| Agenten für die Software-Rollen | interne Fachquellen, Kundendaten |
+| Core, simulator, web app, firmware of the hub; later firmware of dosing block and heads | Boards (KiCad), until the hardware license is decided |
+| Interfaces: catalog, API, later bus register map | Purchasing, suppliers, prices, margins, business case |
+| Docs, software decisions (SD), CHANGELOG, SECURITY, CONTRIBUTING | Regulatory file, test reports |
+| Agents for the software roles | Internal reference material, customer data |
 
-Signierschlüssel liegen in keinem Repo. Quelle: `produkt`.
+Signing keys are in no repository. Source: `produkt`.
 
-**Transparenz der Produktentscheidungen:** Hat eine PD Folgen für die
-Software, entsteht im Software-Repo ein SD-Eintrag „Produktvorgabe (aus
-PD-0xx)“. Er nennt, was gilt, und den öffentlichen Grund, ohne Zahlen und
-Lieferanten. Zurück ins Produkt-Repo führt ein Einbahn-Spiegel
-`ref/software/` (PD-017); schreiben
-darf dorthin nur der Sync-Workflow.
+**Transparency of product decisions:** If a PD affects the software, this
+repository gets an SD entry "Product requirement (from PD-0xx)". It states
+what applies and the public reason, without figures or suppliers. A one-way
+mirror `ref/software/` leads back into the product repository (PD-017);
+only the sync workflow may write there.
 
-## 2. Umzug in ein eigenes Repo (Schritte)
+## 2. Move to this repository (status)
 
-Das Paket ist so gebaut, dass es ohne Änderungen umziehen kann. Alle Pfade
-sind relativ; CI, Vorlagen, Agenten und `CLAUDE.md` liegen im Paket.
+**Done:**
 
-1. **Organisation und Repo anlegen.** Der Projektinhaber legt eine
-   GitHub-Organisation an (übertragbar, Rechte je Repo) und darin das private
-   Repo (Arbeitsname `growcontroller-software`).
-   - Secret Scanning und Push Protection einschalten.
-   - Die Claude-GitHub-App für dieses Repo freigeben (PD-017).
-2. **Inhalt übernehmen, ohne Historie.** Nur versionierte Dateien, keine
-   lokalen Reste. Ab dem ersten Tag schreiben, als wäre das Repo öffentlich
-   (`produkt`):
-   ```bash
-   mkdir growcontroller-software && cd growcontroller-software && git init -b main
-   git -C ../growcontroller archive HEAD software | tar -x --strip-components=1
-   git status
-   git -C ../growcontroller ls-files software | sed 's|^software/||' | xargs git add --
-   git commit -s -m "Start aus growcontroller/software"
-   ```
-   Die Dateien kommen einzeln mit Namen aus der Liste der versionierten
-   Dateien, nicht über `git add .`.
-3. **Verweise anpassen.** Platzhalter `OWNER/REPO` in
-   `.github/ISSUE_TEMPLATE/config.yml` und `SECURITY.md` ersetzen.
-   `ISSUE_URL` in `web/src/pages/settings.tsx` zeigt bis zum Umzug auf das
-   Produkt-Repo und wird auf das neue Repo umgestellt.
-4. **Übergangslösung entfernen.** Im Produkt-Repo `software/` und
-   `.github/workflows/software.yml` löschen. Den Spiegel `ref/software/`
-   einrichten (PD-017), vorher die Regeln für `ref/` in `CLAUDE.md`
-   erweitern.
-5. **Beim Öffentlichschalten:**
-   - Private Vulnerability Reporting einschalten.
-   - Discussions einschalten.
-   - Lizenzdatei nach der SD-Entscheidung hinzufügen.
-   - Marke prüfen.
+1. The project owner created the private repository
+   `Wokesay/growcontroller-software` (PD-017). The Claude GitHub app is
+   approved for it (PD-017).
+2. `software/` moved from the product repository with its Git history
+   (PD-023). CI, agents and `CLAUDE.md` moved along; the workflows run
+   from the repository root.
+3. Licensing in place (PD-022, PD-032, PD-033): `LICENSE`, `LICENSES/`,
+   `REUSE.toml`, SPDX headers, `ADDITIONAL_PERMISSION.md` (AGPL §7),
+   `THIRD_PARTY_NOTICES.md`; `reuse lint` and the npm license check run
+   in CI; the web app links to its source code (AGPL §13).
+4. Docs, templates, agents and `CLAUDE.md` are in English (PD-034); the
+   rationale register `docs/RATIONALE.md` replaces references to private
+   sources (PD-039). Issue templates, `SECURITY.md` and the "Report a
+   problem" link point to this repository.
 
-## 3. Rollen und Agenten
+**Remaining:**
 
-Claude ist Produktverantwortlicher und Entwickler, wie im Produkt-Repo. Die
-Fachrollen sind Subagenten in `.claude/agents/`. Sie schreiben nichts, außer
-wo vermerkt.
+1. **Translate code comments, test names and UI defaults** into English in
+   a separate PR (PD-034, PD-035).
+2. **Turn on secret scanning and push protection**, if not on yet.
+3. **Remove the interim solution** in the product repository: delete
+   `software/` and `.github/workflows/software.yml` (PD-017, PD-023). Set
+   up the mirror `ref/software/` (PD-017); first extend the rules for
+   `ref/` in the product repository's `CLAUDE.md`.
+4. **Optional:** activate the triage action from
+   `docs/templates/claude-triage.yml` (§4).
+5. **When going public:**
+   - Turn on private vulnerability reporting.
+   - Turn on Discussions.
+   - Check the trademark.
 
-| Agent | Rolle in einer Software-Firma | zuständig für | Werkzeuge |
+## 3. Roles and agents
+
+Claude is product owner and developer, as in the product repository. The
+domain roles are subagents in `.claude/agents/`. They change no files. The
+agents with a shell (`triage`, `qa`, `release`) are used read-only; Claude
+builds and tests.
+
+| Agent | Role in a software company | Responsible for | Tools |
 |---|---|---|---|
-| `triage` | Support / Issue-Triage | neue Issues einordnen, im Simulator nachstellen, Duplikate, Schwere, Antwortentwurf | lesen, Shell zum Bauen und Starten des Simulators, GitHub lesen |
-| `reviewer` | Code-Review | Korrektheit, Architekturregeln R1–R8, Invarianten, Lesbarkeit, Testabdeckung je Diff | lesen |
-| `qa` | Qualitätssicherung | Testfälle ableiten, Tests ausführen, Lücken in `INVARIANTS.md`, Abnahme vor Release | lesen, Shell zum Testen |
-| `security` | Produktsicherheit | Bedrohungsmodell, EN 18031/CRA technisch, Abhängigkeiten und SBOM, Auth, OTA, Diagnosedaten | lesen, Web |
-| `release` | Release- und Build-Verantwortung | Version, Changelog, Kurzfassung „Was ist neu“, Artefakte, Kanäle, Rollback-Plan | lesen, Shell zum Bauen |
-| `ux` | UX/UI-Design und Texte | Informationsarchitektur, Texte nach den Grundsätzen in `UX.md`, mobil, Barrierefreiheit | lesen, Web |
-| `fachlogik` | Domänenexperte Fertigation | Regel- und Dosierlogik gegen `INVARIANTS.md`, Zahlen im Simulator, neue Fachregeln einordnen | lesen, Web |
+| `triage` | support / issue triage | classify new issues, reproduce in the simulator, duplicates, severity, draft reply | read, shell to build and start the simulator, read GitHub |
+| `reviewer` | code review | correctness, architecture rules R1–R8, invariants, readability, test coverage per diff | read |
+| `qa` | quality assurance | derive test cases, run tests, gaps in `INVARIANTS.md`, acceptance before a release | read, shell for tests |
+| `security` | product security | threat model, EN 18031/CRA in practice, dependencies and SBOM, auth, OTA, diagnostic data | read, web |
+| `release` | release and build | version, changelog, "What's new" summary, artifacts, channels, rollback plan | read, shell to build |
+| `ux` | UX/UI design and texts | information architecture, texts following the principles in `UX.md`, mobile, accessibility | read, web |
+| `domain` | fertigation domain expert | control and dosing logic against `INVARIANTS.md` and `RATIONALE.md`, simulator numbers, placing new domain rules | read, web |
 
-Fachsichten aus dem Produkt-Repo (`kunde`, `anwender`, `architekt`,
-`firmware`, `hardware`, `regulatorik`, `produkt`) bleiben dort. Das
-Software-Repo fragt sie über den Projektinhaber oder über eine gemeinsame
-Sitzung an.
+Other views stay in the product repository: `kunde` (customer), `anwender`
+(grower), `architekt` (architecture), `firmware`, `hardware`,
+`regulatorik` (regulatory), `produkt` (product and business). This
+repository asks them through the project owner or in a joint session.
 
-**Ablauf einer Änderung:**
+**Flow of a change:**
 
 ```
-Issue/Idee ─► triage ─► Projektinhaber entscheidet (Priorität, ob überhaupt)
-   ─► Claude: Branch, zuerst Test, dann Code ─► tools/ci.sh grün
-   ─► reviewer + qa (+ security bei Gateway/Sensorwahrheit/Auth/Update, + ux bei UI)
-   ─► PR mit CHANGELOG-Eintrag ─► CI grün ─► Freigabe ─► Merge ─► release sammelt
+Issue/idea ─► triage ─► project owner decides (priority, whether at all)
+   ─► Claude: branch, test first, then code ─► tools/ci.sh green
+   ─► reviewer + qa (+ security for gateway/sensor truth/auth/update, + ux for UI)
+   ─► PR with CHANGELOG entry ─► CI green ─► approval ─► merge ─► release collects
 ```
 
-## 4. Issues in Claude Code sichtbar machen und abarbeiten
+## 4. Making issues visible in Claude Code and working through them
 
-Drei Wege, kombinierbar (Quelle: Claude-Code-Doku, abgerufen 06.10.2026:
-code.claude.com/docs/en/github-actions, …/routines):
+Three ways, can be combined (source: Claude Code docs, retrieved
+2026-10-06: code.claude.com/docs/en/github-actions, …/routines):
 
-1. **In jeder Sitzung über GitHub-MCP:**
-   - Beim Start listet Claude die offenen Issues mit Label `triage` und
-     bewertet sie mit `triage`.
-   - Der Abgleich steht in `CLAUDE.md` des Pakets unter „Bei Sessionstart“.
-2. **Routine:** eine geplante Sitzung in Claude Code im Web, z. B. werktags
-   morgens.
-   - Sie liest neue Issues, stellt sie im Simulator nach und schreibt einen
-     Kommentar-Entwurf an den Projektinhaber.
-   - Sie postet nichts öffentlich, ohne dass er es freigibt.
-3. **GitHub Action mit `@claude`:**
-   - Vorlage in `docs/templates/claude-triage.yml`.
-   - Braucht die Claude-GitHub-App und ein Secret (`ANTHROPIC_API_KEY` oder
+1. **In every session via GitHub MCP:**
+   - At start, Claude lists the open issues with the label `triage` and
+     assesses them with `triage`.
+   - This step is in `CLAUDE.md` under "At session start".
+2. **Routine:** a scheduled session in Claude Code on the web, e.g. on
+   weekday mornings.
+   - It reads new issues, reproduces them in the simulator and writes a
+     draft comment for the project owner.
+   - It posts nothing publicly without his approval.
+3. **GitHub Action with `@claude`:**
+   - Template in `docs/templates/claude-triage.yml`.
+   - Needs the Claude GitHub app and a secret (`ANTHROPIC_API_KEY` or
      `CLAUDE_CODE_OAUTH_TOKEN`).
 
-**Schutz** (Issue-Texte sind fremde Eingaben). Im Juni 2026 verschaffte ein
-präpariertes Issue über die Claude-Code-Action Schreibzugriff; behoben ab
-v1.0.94. Quellen (abgerufen 06.10.2026):
+**Protection** (issue texts are outside input). In June 2026 a crafted
+issue gained write access through the Claude Code Action; fixed from
+v1.0.94. Sources (retrieved 2026-10-06):
 https://thehackernews.com/2026/06/claude-code-github-action-flaw-let-one.html,
 https://flatt.tech/research/posts/poisoning-claude-code-one-github-issue-to-break-the-supply-chain/.
-Deshalb:
+Therefore:
 
-- Triage-Workflows laufen nur lesend, ohne Geheimnisse außer dem API-Schlüssel
-  und mit Rechten `issues: write`, `contents: read`.
-- Aus Issue-Workflows gibt es keinen Merge und kein Release.
-- Signiert wird nur offline nach manueller Freigabe.
-- Sicherheitsmeldungen kommen nie als Issue (`SECURITY.md`).
+- Triage workflows run read-only, with no secrets except the API key and
+  with the permissions `issues: write`, `contents: read`.
+- No merge and no release from issue workflows.
+- Signing happens only offline after manual approval.
+- Security reports never come as issues (`SECURITY.md`).
 
-**Für Hobby-Kunden ohne GitHub:**
+**For hobby customers without GitHub:**
 
-- Die App bietet „Problem melden“ mit Vorgangsnummer und Diagnosepaket, das
-  der Kunde vorher sieht.
-- Später gibt es zusätzlich ein Formular oder eine E-Mail. Claude anonymisiert
-  die Meldung und legt das Issue an.
+- The app offers "Report a problem" with a case number and a diagnostic
+  package that the customer sees first.
+- Later there is also a form or an email address. Claude anonymizes the
+  report and opens the issue.
 
-**Aufwand (Annahme `produkt`):** 2–8 Meldungen pro Woche bei 50–300 Geräten,
-also 2–5 h pro Woche mit Claude-Triage. Regeln:
+**Effort (assumption of `produkt`):** 2–8 reports per week at 50–300
+devices, so 2–5 h per week with Claude triage. Rules:
 
-- Antwort binnen 7 Tagen;
-- Stale-Markierung nach 30/60 Tagen;
-- FAQ aus häufigen Issues;
-- Feature-Wünsche in Discussions „Ideen“.
+- reply within 7 days;
+- stale label after 30/60 days;
+- FAQ from frequent issues;
+- feature requests in Discussions "Ideas".
 
-## 5. Branches, Commits, Reviews
+## 5. Branches, commits, reviews
 
-- **Branches:** `main` ist immer releasefähig. Jede Änderung auf einem
-  eigenen Branch mit PR. Squash-Merge.
-- **Commits:** auf Deutsch, mit DCO-Sign-off (`git commit -s`, Vorschlag
-  `produkt`); kein CLA.
-- **PR:** Vorlage mit Sicherheitspunkten (Gateway, fehlender Wert, Quelle der
-  Fachregel, Changelog).
-- **Merge** erst nach grüner CI und den Reviews oben. Wer mergt, legt der
-  Projektinhaber fest (SD-Entwurf).
+- **Branches:** `main` is always releasable. Every change on its own
+  branch with a PR. Squash merge.
+- **Commits:** in English (PD-034). No sign-off, no DCO, no CLA (PD-022).
+- **PR:** template with safety items (gateway, missing value, rationale
+  RAT ID, changelog).
+- **Merge** only through a pull request, after green CI and the reviews
+  above. The project owner decides who merges.
 
-## 6. Entscheidungen
+## 6. Decisions
 
-- **SD-Log:** `docs/DECISIONS.md`, Format `## SD-XXX: Titel`,
-  fortlaufend, chronologisch. Kein Status-Feld; ein späteres SD ersetzt ein
-  früheres.
-- **Entwürfe** stehen getrennt und gelten erst nach „entschieden“ des
-  Projektinhabers.
-- **Produktentscheidungen** bleiben im Produkt-Repo (PD). Im Software-Repo
-  erscheinen sie als „Produktvorgabe (aus PD-0xx)“.
+- **SD log:** `docs/DECISIONS.md`, format `## SD-XXX: Title`, sequential,
+  chronological. No status field; a later SD replaces an earlier one.
+- **Drafts** are kept separate and apply only after the project owner says
+  "entschieden" (decided).
+- **Product decisions** stay in the product repository (PD). In this
+  repository they appear as "Product requirement (from PD-0xx)".

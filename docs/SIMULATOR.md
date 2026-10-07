@@ -1,97 +1,96 @@
-# Simulator (digitaler Zwilling)
+# Simulator (digital twin)
 
-Stand 06.10.2026. `sim/` ersetzt nur Bus, Geräte, Tank und Uhr. Der Kern ist
-derselbe Code wie auf dem Hub.
+As of 2026-10-06. `sim/` replaces only the bus, devices, tank and clock.
+The core is the same code as on the hub.
 
-## Starten
+## Starting
 
 ```bash
-tools/dev.sh                  # Demo: eingerichtet, 48 h Verlauf, http://127.0.0.1:8080, Passwort „demo-passwort“
-SCENARIO=neu tools/dev.sh     # leerer Hub (Stufe 0) mit Ersteinrichtung
-./build/gc_sim_server --help  # alle Optionen (Port, Zeitraffer, Datenordner …)
+tools/dev.sh                  # demo: set up, 48 h history, http://127.0.0.1:8080, password "demo-passwort"
+SCENARIO=neu tools/dev.sh     # empty hub (stage 0) with first-time setup
+./build/gc_sim_server --help  # all options (port, time-lapse, data folder …)
 ```
 
-Für Arbeit an der UI zusätzlich `cd web && npm run dev`: Hot-Reload auf Port
-5173, die API wird an 8080 weitergereicht.
+For UI work, also run `cd web && npm run dev`: hot reload on port 5173;
+the API is passed on to 8080.
 
-Das Demo-Passwort gibt es nur im Simulator. Ein Gerät hat nie ein
-Standardpasswort (EN 18031-1).
+The demo password exists only in the simulator. A device never has a
+default password (EN 18031-1).
 
-## Szenarien
+## Scenarios
 
-| Name | Hardware | Zustand |
+| Name | Hardware | State |
 |---|---|---|
-| `neu` | Dosierblock an Port 1 mit 3 Kappen (A, B, CalMag) | leer, Ersteinrichtung |
-| `stufe1` | dazu pH/EC-Kopf an Port 3, Kappe pH−, 40 L im Tank | leer |
-| `demo` | dazu Füllstands-Kopf an Port 5, Klima-Kopf an Port 6, Umwälzpumpe und Zulaufventil an den Hub-Ausgängen, Steckdosenleiste im WLAN mit Licht, Abluft, Umluft und Befeuchter | über die echte API eingerichtet; Licht, Abluft und Umluft an; Mischlauf, Durchgang, Vorlauf (Standard 48 h) mit Nachfüllen, EC- und pH-Regelung und einer Sprungsperre |
+| `neu` | dosing block on port 1 with 3 caps (A, B, CalMag) | not set up, first-time setup |
+| `stufe1` | plus a pH/EC head on port 3, a pH− cap, 40 L in the tank | not set up |
+| `demo` | plus a level head on port 5, a climate head on port 6, circulation pump and inlet valve on the hub outputs, a Wi-Fi power strip with light, exhaust fan, circulating fan and humidifier | set up through the real API; light, exhaust fan and circulating fan on; mix run, cultivation run, lead-in (default 48 h) with refill, EC and pH control and one jump lock |
 
-## Modell und Zahlen
+## Model and numbers
 
-| Größe | Wert im Zwilling | Herkunft |
+| Quantity | Value in the twin | Origin |
 |---|---|---|
-| EC-Wirkung Teil A, Teil B | je 0,275 mS/cm je ml/L | RAT-055 (0,275 je ml/L Paar, Osmose, 20 L) |
-| EC-Wirkung CalMag | 0,217 mS/cm je ml/L | RAT-080 |
-| pH− | −4,0 pH je ml/L × Pufferfaktor 1,6/(0,6+EC); +1,04 mS/cm je ml/L | RAT-050 misst −5,0 (einmal, bei EC 2,96), RAT-053; Pufferfaktor ist **Annahme** |
-| pH-Absenkung durch A/B | −0,12/−0,10 pH je ml/L | **Annahme** |
-| Durchmischung | t63 26 s × V/20 L mit Umwälzpumpe, 240 s ohne | RAT-052; ohne Pumpe **Annahme** |
-| pH-Totzeit | 60 s | RAT-052 misst 80–99 s; gekürzt |
-| Rauschen | pH σ 0,006, EC σ 0,004, Temperatur σ 0,02, Pegel 2 mV | RAT-082 (EC hier größer gewählt) |
-| Messintervall | 5 s je Kopf | wie an der Referenzanlage |
-| Förderrate der Kappen | 42–53 ml/min, zufällig je Kappe | RAT-054: 38–53 ml/min |
-| Zulauf | 2 L/min | RAT-038: 1,44–1,54 L/min |
-| Drift | pH steigt, EC sinkt leicht, Wasser verdunstet | **Annahme**, nicht gemessen |
-| Sondenfehler vor Kalibrierung | pH +0,18 Offset, Steigung 0,97; EC × 1,08 | **Annahme** |
-| Zeitlimit des Dosierblocks | 90 s; Wiederholung derselben Job-ID läuft nicht doppelt | Vorschlag `firmware` |
-| Pegel-Kennlinie | unten nichtlinear | wie RAT-078 |
+| EC effect part A, part B | 0.275 mS/cm per ml/L each | RAT-055 (0.275 per ml/L of the pair, RO water, 20 L) |
+| EC effect CalMag | 0.217 mS/cm per ml/L | RAT-080 |
+| pH− | −4.0 pH per ml/L × buffer factor 1.6/(0.6+EC); +1.04 mS/cm per ml/L | RAT-050 measured −5.0 (once, at EC 2.96), RAT-053; the buffer factor is an **assumption** |
+| pH drop from A/B | −0.12/−0.10 pH per ml/L | **Assumption** (based on an observation on the reference installation) |
+| Mixing | t63 26 s × V/20 L with circulation pump, 240 s without | RAT-052; without pump an **assumption** |
+| pH dead time | 60 s | RAT-052 measured 80–99 s; shortened |
+| Noise | pH σ 0.006, EC σ 0.004, temperature σ 0.02, level 2 mV | RAT-082 (EC set larger here) |
+| Measurement interval | 5 s per head | as on the reference installation |
+| Flow rate of the caps | 42–53 ml/min, random per cap | RAT-054: 38–53 ml/min |
+| Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
+| Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
+| Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |
+| Time limit of the dosing block | 90 s; repeating the same job ID does not run twice | proposal by `firmware` |
+| Level curve | non-linear at the bottom | as in RAT-078 |
 
-## Störknöpfe (Simulator-Panel und `POST /api/v1/sim/…`)
+## Fault buttons (simulator panel and `POST /api/v1/sim/…`)
 
-| Aktion | Wirkung | prüft |
+| Action | Effect | Checks |
 |---|---|---|
-| pH-Sprung | Sonde +2,1 pH | Sprungsperre, Regelzeile, Ereignis |
-| EC 0 | Sonde trocken | EC-Gate, Rastung „ohne Wirkung“ |
-| Wert friert | Rohwerte stehen | Stillstandserkennung |
-| Kopf/Füllstand offline | Gerät antwortet nicht | Datenausfall, Zulauf-Notabschaltung |
-| Kappe blockieren/abziehen | Lauf scheitert nach 0,3 s bzw. Kappe fehlt | Paar-Fehler, „nachholen“; Menge aus der Laufzeit geschätzt |
-| Dosierblock offline | Block antwortet nicht, Hub sieht den letzten Stand | Frist je Lauf: Pumpen aus, als gelaufen gezählt |
-| Kappe an Hub-Port 2 | Kennung passt nicht, Port wird nicht freigegeben | Fehlsteck-Meldung (PD-012) |
-| Stromausfall | Hub startet neu, Ausgänge stromlos | R6: alles aus, Ablauf gemeldet, nicht fortgesetzt |
-| Frisches Wasser | Volumen, EC und pH setzen | Mischen, EC-Gate, Trockenlauf |
-| Zeitraffer 1–300× | – | Settle-Zeiten, Verlauf |
-| Szenario | alles neu; nur angemeldet, ohne Anmeldung nur mit `--allow-reset` (Playwright) | Ersteinrichtung |
+| pH jump | probe +2.1 pH | jump lock, control line, event |
+| EC 0 | probe dry | EC gate, latch "no effect" |
+| Value freezes | raw values stand still | standstill detection |
+| Head/level offline | device does not respond | data loss, inlet emergency cut-off |
+| Block/pull off a cap | run fails after 0.3 s, or the cap is missing | pair fault, "catch up"; amount estimated from the run time |
+| Dosing block offline | block does not respond, hub sees the last state | deadline per run: pumps off, counted as run |
+| Cap on hub port 2 | identification does not match, port is not enabled | mis-plug message (PD-012) |
+| Power cut | hub restarts, outputs de-energised | R6: everything off, sequence reported, not resumed |
+| Fresh water | set volume, EC and pH | mixing, EC gate, dry run |
+| Time-lapse 1–300× | – | settle times, history |
+| Scenario | everything reset; only when logged in, without login only with `--allow-reset` (Playwright) | first-time setup |
 
-## Grenzen
+## Limits
 
-- **Chemie:** Das Modell ist grob. Es soll Abläufe und Texte prüfbar machen,
-  nicht Rezepte vorhersagen.
-- **Messungen fehlen:** Die Startwirkungen in Nährlösung (RAT-081) und die
-  Mischzeit nach Volumen (M-3) sind offen.
-- **Bus nicht nachgebildet:** Der Modbus-Bus selbst, also Zeitverhalten,
-  Timeouts und CRC, ist nicht modelliert. Das gehört in Treibertests der
-  Firmware.
+- **Chemistry:** the model is rough. It is meant to make sequences and
+  texts testable, not to predict recipes.
+- **Measurements missing:** the initial effects in nutrient solution
+  (RAT-081) and the mixing time by volume (M-3) are open.
+- **Bus not modelled:** the Modbus bus itself, i.e. timing, timeouts and
+  CRC, is not modelled. That belongs in the firmware's driver tests.
 
-## Schaltbare Steckdosen (Shelly)
+## Switchable sockets (Shelly)
 
-| Größe | Wert im Simulator | Quelle |
+| Quantity | Value in the simulator | Source |
 |---|---|---|
-| Geräte | Plug S Gen3 (1 Dose), Power Strip 4 Gen4 (4 Dosen), IP 192.168.1.60 ff. | **Annahme** |
-| Zustand nach Stromausfall ab Werk | „wie vorher“, bis der Hub „aus“ setzt | **Annahme** (Werkseinstellung nicht geprüft) |
-| Last je Dose | Umwälzpumpe 18 W, Licht 240 W, Abluft 35 W, Umluft 15 W, Befeuchter 30 W | **Annahme** |
-| Auto-Off | wirkt im Gerät, auch ohne Hub | RAT-019, RAT-060 |
-| Dose ohne WLAN | Last läuft weiter; zählt für Raumklima und Umwälzung | **Annahme** (Strom fließt unabhängig vom WLAN) |
-| Störungen | WLAN weg (`offline`), Einstellung abgelehnt (`readonly`), Einstellung ignoriert (`ignore`), Schaltbefehl abgelehnt, Dose bleibt im Zustand (`stuck`; Auto-Off im Gerät und Stromausfall schalten trotzdem aus) | Testfälle |
+| Devices | Plug S Gen3 (1 outlet), Power Strip 4 Gen4 (4 outlets), IP 192.168.1.60 onwards | **Assumption** |
+| Factory state after a power cut | "as before", until the hub sets "off" | **Assumption** (factory setting not checked) |
+| Load per outlet | circulation pump 18 W, light 240 W, exhaust fan 35 W, circulating fan 15 W, humidifier 30 W | **Assumption** |
+| Auto-off | works in the device, even without the hub | RAT-019, RAT-060 |
+| Outlet without Wi-Fi | load keeps running; counts for room climate and circulation | **Assumption** (power flows independently of Wi-Fi) |
+| Faults | Wi-Fi gone (`offline`), setting rejected (`readonly`), setting ignored (`ignore`), switch command rejected, outlet stays in its state (`stuck`; auto-off in the device and a power cut still switch it off) | test cases |
 
-## Raumklima
+## Room climate
 
-| Größe | Wert im Simulator | Quelle |
+| Quantity | Value in the simulator | Source |
 |---|---|---|
-| Startwerte | 21 °C, 55 % rF, 450 ppm | **Annahme** |
-| Außenluft | 19 °C, 50 % rF | **Annahme** |
-| Wärme durch Licht / Heizung / Entfeuchter | +6 / +4 / +1 K über Außenluft | **Annahme** |
-| Feuchte durch Verdunstung | +14 % rF bei Licht, +5 % ohne | **Annahme** |
-| Abluft | Gewinne × 0,45, schnellere Angleichung (τ 600 s statt 1800 s) | **Annahme** |
-| Angleichung Feuchte | τ 400 s mit Abluft, 1500 s ohne | **Annahme** |
-| Befeuchter / Entfeuchter | +0,8 / −0,6 % rF je Minute | **Annahme** |
-| Feuchte begrenzt | 15–97 % rF | **Annahme** |
-| CO2 | 420 ppm mit Abluft, 380 ppm bei Licht, sonst 600 ppm; τ 900 s | **Annahme** |
-| Rauschen | Luft σ 0,05 K, Feuchte σ 0,3 %, CO2 σ 8 ppm | **Annahme** |
+| Start values | 21 °C, 55 % RH, 450 ppm | **Assumption** |
+| Outside air | 19 °C, 50 % RH | **Assumption** |
+| Heat from light / heater / dehumidifier | +6 / +4 / +1 K above outside air | **Assumption** |
+| Humidity from evaporation | +14 % RH with light, +5 % without | **Assumption** |
+| Exhaust fan | gains × 0.45, faster equalisation (τ 600 s instead of 1800 s) | **Assumption** |
+| Humidity equalisation | τ 400 s with exhaust fan, 1500 s without | **Assumption** |
+| Humidifier / dehumidifier | +0.8 / −0.6 % RH per minute | **Assumption** |
+| Humidity limits | 15–97 % RH | **Assumption** |
+| CO2 | 420 ppm with exhaust fan, 380 ppm with light, otherwise 600 ppm; τ 900 s | **Assumption** |
+| Noise | air σ 0.05 K, humidity σ 0.3 %, CO2 σ 8 ppm | **Assumption** |

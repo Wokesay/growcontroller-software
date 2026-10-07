@@ -1,134 +1,143 @@
-# Bedienkonzept der Web-App
+# Interaction design of the web app
 
-Stand 06.10.2026. Grundlage: `anwender` (Grower-Sicht) und `kunde` (Außensicht, App-Kritik an der Konkurrenz). Im
-Prototyp umgesetzt, wo nicht anders vermerkt.
+As of 2026-10-06. Basis: the grower view (agent `anwender`) and the
+outside view of the customer (agent `kunde`, with a critique of
+competitors' apps). Implemented in the prototype unless noted otherwise.
 
-## 1. Grundsätze
+## 1. Principles
 
-- **Anzeige folgt dem Ist.** „Läuft“ erscheint erst, wenn der Dosierblock es
-  meldet. Quelle: RAT-037.
-- **Jede Sperre ist eine sichtbare Zeile mit Grund.** Sie verschwindet von
-  selbst, wenn die Sperre endet. Quelle: RAT-037, RAT-039.
-- **Klartext statt Kürzel.** Die Farbe zeigt den schlimmsten Eintrag.
-  Normalfall: „Alles in Ordnung (13 Prüfungen)“; einzeln erscheint nur, was
-  abweicht. Quelle: RAT-042, RAT-072.
-- **Drei Zustände trennen:** „Sensor liefert nicht“, „nicht kalibriert“,
-  „nicht anwendbar“ (z. B. Wassertemperatur bei leerem Tank). Quelle:
-  RAT-021, RAT-048.
-- **Nur zeigen, was die Hardware kann.** Was fehlt, steht an einer Stelle:
-  Geräte › Erweitern. Leere Kacheln „–“ und Sondenwerbung stören (`anwender`).
-- **Kein Fachjargon vorne:** kein Modbus, kein RS485. Ports heißen „Port 3“
-  mit Bild, Fehlsteckungen kommen als Satz. Bastelanmutung kippt den Kauf
-  (`kunde`).
-- **Ehrlich zum Zustand:** „gerade eben / vor 20 s“ je Messwert; „getrennt“,
-  wenn die App den Hub nicht erreicht. „Die Steuerung läuft weiter, auch wenn
-  die App zu ist.“
+- **Display follows the actual state.** "Running" appears only once the
+  dosing block reports it. Rationale: RAT-037.
+- **Every block is a visible line with its reason.** It disappears by
+  itself when the block ends. Rationale: RAT-037, RAT-039.
+- **Plain language instead of codes.** The colour shows the worst entry.
+  Normal case: "Everything OK (13 checks)"; only what deviates is listed
+  individually. Rationale: RAT-042, RAT-072.
+- **Keep three states apart:** "Sensor not responding", "not calibrated",
+  "not applicable" (for example water temperature with an empty tank).
+  Rationale: RAT-021, RAT-048.
+- **Show only what the hardware can do.** What is missing is listed in one
+  place: Devices › Expand. Empty "–" tiles and probe advertising get in
+  the way (`anwender`).
+- **No jargon up front:** no Modbus, no RS485. Ports are called "Port 3"
+  with a picture; wrong connections are explained in a sentence. A
+  hobbyist look puts buyers off (`kunde`).
+- **Honest about the state:** "just now / 20 s ago" for each reading;
+  "disconnected" when the app cannot reach the hub. "Control keeps running
+  even when the app is closed."
 
 ## 2. Navigation
 
-| Bereich | Inhalt |
+| Section | Content |
 |---|---|
-| Übersicht | Überwachung, Tank mit Messwerten und 6-h-Trend, Regelzeilen, laufender Auftrag, Vorrat, Durchgang, letzte Ereignisse |
-| Mischen | Rezept, Wasser, „Neu ansetzen“/„Auffüllen“, Vorschau in ml, geführter Ablauf; Handgabe |
-| Tank & Regelung | Regelzeilen mit Checkliste, Überwachung im Detail, Rastungen quittieren, Tank, Ausgänge, Pflegemodus, Durchgang und Phasen |
-| Klima | Lufttemperatur, Luftfeuchte, VPD, CO2; Abluft, Umluft, Befeuchter, Entfeuchter mit Handbetrieb (Regelung folgt) |
-| Licht | Licht-Ausgang mit Handbetrieb (Lichtplan und Dimmen folgen) |
-| Bewässerung | Gießpumpe mit Handbetrieb und Trockenlaufschutz (Gießplan folgt) |
-| Verlauf | pH, EC, Wassertemperatur, Füllstand mit Zielband und Dosier-Markierungen; Lufttemperatur, Luftfeuchte, VPD, CO2; Ereignisse mit Filtern; CSV |
-| Rezepte & Kanister | Kanister ↔ Pumpe, Paare, Vorrat, „Kanister gewechselt“; Rezepte, Vorlagen |
-| Geräte | Ports mit Prüfmessung, Geräte, Übernehmen, Einmessen und Kalibrieren; Zuordnung; Erweitern |
-| Funktionen | Konfigurationsbaum nach Stufe: Zustand, was fehlt, Schalter, Einstellungen |
-| Einstellungen | System, Zugang, Updates mit „Was ist neu“, Problem melden, Daten, Darstellung |
+| Overview | Monitoring, tank with readings and 6-h trend, control lines, running job, stock, cultivation run, latest events |
+| Mixing | Recipe, water, "New batch"/"Top up", preview in ml, guided sequence; manual dose |
+| Tank & control | Control lines with checklist, monitoring in detail, acknowledging latches, tank, outputs, maintenance mode, cultivation run and phases |
+| Climate | Air temperature, humidity, VPD, CO2; exhaust, circulation fan, humidifier, dehumidifier in manual mode (control follows) |
+| Light | Light output in manual mode (light schedule and dimming follow) |
+| Irrigation | Irrigation pump in manual mode with dry-run protection (irrigation schedule follows) |
+| History | pH, EC, water temperature, level with target band and dosing markers; air temperature, humidity, VPD, CO2; events with filters; CSV |
+| Recipes & bottles | Bottle ↔ pump, pairs, stock, "Bottle changed"; recipes, templates |
+| Devices | Ports with test measurement, devices, adding devices, pump and probe calibration; assignment; Expand |
+| Functions | Configuration tree by stage: state, what is missing, switches, settings |
+| Settings | System, access, updates with "What's new", report a problem, data, display |
 
-Am Handy: Übersicht, Mischen, Tank, Verlauf, Mehr. Der **STOPP**-Knopf
-(Not-Halt) steht immer oben rechts.
+On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
+(emergency stop) is always at the top right.
 
-## 3. Übersicht je Ausbaustufe
+## 3. Overview per expansion stage
 
-- **Stufe 0:**
-  - Tank-Kachel mit „Zuletzt gemischt …“ und Eingabe der Handmessung (pH).
-  - Knopf „Mischen“, Vorrat als „4 ok“.
-  - Keine leeren pH/EC-Kacheln.
-- **Stufe 1:**
-  - pH, EC und Wasser groß, mit Zielband, Trend und Messwert-Alter.
-  - Regelzeilen für EC und pH.
-- **Stufe 2:**
-  - Volumen gemessen (L und Balken), Regelzeile Nachfüllen.
-  - „nicht anwendbar“, wenn der Tank leer ist.
-- **Stufe 3–4:** Raumklima (Lufttemperatur, Feuchte, VPD, CO2) und alle
-  zugeordneten Schaltausgänge sind umgesetzt; nächste Gabe und Drain in %
-  sind offen.
+- **Stage 0:**
+  - Tank tile with "Last mixed …" and input for the manual reading (pH).
+  - "Mix" button, stock as "4 ok".
+  - No empty pH/EC tiles.
+- **Stage 1:**
+  - pH, EC and water shown large, with target band, trend and age of the
+    reading.
+  - Control lines for EC and pH.
+- **Stage 2:**
+  - Measured volume (L and bar), control line for refilling.
+  - "not applicable" when the tank is empty.
+- **Stages 3–4:** Room climate (air temperature, humidity, VPD, CO2) and
+  all assigned switched outputs are implemented; the next irrigation shot
+  and drain in % are open.
 
-**Regelzeile** (Antwort auf „Warum dosiert er gerade nicht?“):
+**Control line** (the answer to "Why isn't it dosing right now?"):
 
-- Regelt: „pH 6,40 → 5,80 · Teilgabe 2 von 8 · wartet 2:10 auf Durchmischung“
-- Ruht: „pH im Ziel (5,82)“
-- Gesperrt: „EC 0,10 unter 0,50: pH so nicht messbar, erst Nährstoffe“
-- Tippen öffnet die Checkliste: ✓ Sonde liefert · ✓ Ruhezeit vorbei · ✗ EC-Gate …
+- Controlling: "pH 6.40 → 5.80 · partial dose 2 of 8 · waiting 2:10 for
+  mixing"
+- Resting: "pH on target (5.82)"
+- Blocked: "EC 0.10 below 0.50: pH can't be measured like this, nutrients
+  first"
+- Tapping opens the checklist: ✓ probe delivers · ✓ rest time over · ✗ EC
+  gate …
 
-## 4. Setup-Assistent
+## 4. Setup wizard
 
-Kundensicht: höchstens 5 Schritte bis zum ersten Erfolg, ohne Konto. Geräte
-werden erkannt, nicht ausgewählt.
+Customer view: at most 5 steps to the first success, without an account.
+Devices are detected, not selected.
 
-| # | Schritt | Pflicht |
+| # | Step | Required |
 |---|---|---|
-| – | Erstpasswort (vor allem anderen) | ja, kein Überspringen (EN 18031-1 AUM-5-1) |
-| 1 | Name, Zeitzone (vom Browser); auf dem Hub zusätzlich WLAN | ja |
-| 2 | Geräte erkennen, „Alle übernehmen“ | bis Dosierblock und Kappe da sind |
-| 3 | Tank: Nutzvolumen, Wasser, Umwälzpumpe/Zulauf am Hub-Ausgang | Nutzvolumen ja |
-| 4 | Kanister den Kappen zuordnen (Vorschlag Teil A/B als Paar, CalMag, pH−) | ja |
-| 5 | Schlauch füllen, Pumpen einmessen (Messbecher; Ist-Laufzeit) | ohne Einmesswert dosiert die Pumpe nicht |
-| 6 | Sonden kalibrieren (pH 7/4, EC 1,413, Füllstand-Kennlinie) | überspringbar |
-| 7 | Rezept: eigenes oder Vorlage | ja |
-| 8 | Fertig: was jetzt geht, was fehlt; „Zur ersten Mischung“ (Vorschlag: 10-L-Eimer) | – |
+| – | Initial password (before anything else) | yes, cannot be skipped (EN 18031-1 AUM-5-1) |
+| 1 | Name, time zone (from the browser); on the hub also Wi-Fi | yes |
+| 2 | Detect devices, "Add all" | until the dosing block and a cap are present |
+| 3 | Tank: usable volume, water, circulation pump/inlet on the hub output | usable volume yes |
+| 4 | Assign bottles to the caps (suggestion: part A/B as a pair, CalMag, pH−) | yes |
+| 5 | Prime tubing, calibrate pumps (measuring cup; actual run time) | without a calibration value the pump does not dose |
+| 6 | Calibrate probes (pH 7/4, EC 1.413, level curve) | can be skipped |
+| 7 | Recipe: own or template | yes |
+| 8 | Done: what works now, what is missing; "Go to first mix" (suggestion: 10 L bucket) | – |
 
-Während der Schritte 3–7 zeigt der Assistent live, was für „Nährlösung
-mischen“ noch fehlt. Das kommt direkt aus dem Resolver.
+During steps 3–7 the wizard shows live what is still missing for "Mix
+nutrient solution". This comes straight from the resolver.
 
-**Noch offen** (`kunde`):
+**Still open** (`kunde`):
 
-- QR-Code am Gerät.
-- Rückfalladresse des Hotspots (Beispiel WLED: 4.3.2.1).
-- Anzeige der neuen Adresse nach dem WLAN-Wechsel.
-- Hinweis „Zum Startbildschirm hinzufügen“.
+- QR code on the device.
+- Fallback address of the hotspot (example WLED: 4.3.2.1).
+- Showing the new address after the Wi-Fi change.
+- Hint "Add to home screen".
 
-## 5. Fehlbedienungen, die die App abfängt
+## 5. Operating errors the app catches
 
-| Fehler | Abfang |
+| Error | Safeguard |
 |---|---|
-| Falsche Wassermenge (100 statt 10, Gallonen) | über dem Nutzvolumen gesperrt; ml je Kanister groß in der Vorschau |
-| Zweimal gemischt | „Dieser Tank wurde vor 12 min gemischt. Noch einmal dosieren verdoppelt die Nährstoffe.“ – nur mit Bestätigung |
-| Restlösung im Tank | Modus „Auffüllen: X L frisches Wasser“ |
-| Sehr kleine Gabe | Warnung unter 1 ml; unter 1 s Pumpenlauf gesperrt |
-| pH-Kanister im Rezept | abgelehnt („pH kommt immer zuletzt“) |
-| Pumpe blockiert mitten im Paar | „Teil B nicht vollständig dosiert … Teil A ist schon drin … Teil B nachholen“ |
-| Stromausfall im Lauf | alles aus; Ereignis „Mischlauf durch Neustart unterbrochen bei Schritt 2/3. Drin: …“ |
-| Kappe direkt am Hub-Port | Port rot: „Pumpenkappe direkt am Hub. Bitte in den Dosierblock stecken.“ |
-| Kappe nach Umstecken | Ereignis „Kappe … wieder da. Sitzt sie noch auf Teil A?“ |
+| Wrong water volume (100 instead of 10, gallons) | blocked above the usable volume; ml per bottle shown large in the preview |
+| Mixed twice | "This tank was mixed 12 min ago. Dosing again doubles the nutrients." – only with confirmation |
+| Leftover solution in the tank | mode "Top up: X L fresh water" |
+| Very small dose | warning below 1 ml; pump runs under 1 s are blocked |
+| pH bottle in the recipe | rejected ("pH always comes last") |
+| Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
+| Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
+| Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
+| Cap after replugging | event "Cap … is back. Is it still on part A?" |
 
-## 6. Meldungen (Konzept, noch nicht umgesetzt)
+## 6. Notifications (concept, not implemented yet)
 
-| Stufe | Was | Wann |
+| Level | What | When |
 |---|---|---|
-| sofort, auch nachts | Pumpe geht nicht aus/blockiert, Zulauf-Notabschaltung, Überlauf, Sprungsperre bei laufender Regelung, Hub ohne Lebenszeichen | Wiederholung nach 5, 15, 60 min |
-| tagsüber | Sperre > X min, pH/EC deutlich außerhalb (Alarmband), Vorrat reicht nicht | Nachtruhe 22–07 → Morgenbericht |
-| nur in der App | knapp, Kalibrierung fällig, Hinweise | – |
+| immediately, also at night | pump does not switch off/blocks, inlet emergency cut-off, overflow, jump lock while control is running, hub without a sign of life | repeated after 5, 15, 60 min |
+| during the day | block > X min, pH/EC clearly outside (alarm band), stock will not last | quiet hours 22–07 → morning report |
+| in the app only | stock low, calibration due, hints | – |
 
-Regeln:
+Rules:
 
-- Titel ≤ 40 Zeichen, Text ≤ 200. Quelle: RAT-045.
-- Quittieren friert nur die Wiederholung ein. Quelle: RAT-022.
-- Weg ohne Herstellercloud: ntfy, E-Mail, Webhook, MQTT. App-Push erst mit
-  einer App.
-- Sicherheitsalarme sind kostenlos [PD-008].
-- Ehrlich sagen: „Ohne Internet keine Benachrichtigungen.“
+- Title ≤ 40 characters, body ≤ 200. Rationale: RAT-045.
+- Acknowledging only pauses the repetition. Rationale: RAT-022.
+- Channels the user chooses, without a manufacturer cloud: ntfy, e-mail,
+  webhook, MQTT (PD-024). App push only once there is an app.
+- All notifications are free, safety alarms included; there is no
+  subscription [PD-008, PD-024].
+- Say it honestly: "No notifications without internet."
 
-## 7. Gestaltung
+## 7. Visual design
 
-- Eigene Design-Tokens, hell und dunkel, keine externen Schriften: Die App
-  läuft offline aus dem Flash.
-- Farben für Status: OK grün, Problem rot, Hinweis gelb, ruht grau. Farben
-  für Messgrößen: pH violett, EC orange, Temperatur türkis, Pegel blau,
-  Lufttemperatur bernstein, Luftfeuchte hellblau, VPD grün, CO2 grau.
-- Mobil zuerst bedienbar: untere Leiste, große Knöpfe, Zahlen mit Komma.
+- Own design tokens, light and dark, no external fonts: the app runs
+  offline from flash.
+- Colours for status: OK green, problem red, hint yellow, resting grey.
+  Colours for quantities: pH violet, EC orange, temperature turquoise,
+  level blue, air temperature amber, humidity light blue, VPD green, CO2
+  grey.
+- Mobile first: bottom bar, large buttons, numbers in the format of the
+  chosen language (decimal point in English, comma in German; PD-035).

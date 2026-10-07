@@ -1,57 +1,57 @@
-# Teststrategie
+# Test strategy
 
-Stand 06.10.2026. Ziel: Jede Fachregel ist ein Test. Jede sichtbare
-Funktion läuft einmal Ende zu Ende im Browser.
+As of 2026-10-06. Goal: every domain rule (see `docs/RATIONALE.md`) has a
+test. Every visible function runs end to end in the browser at least once.
 
-## Ebenen
+## Levels
 
-| Ebene | Werkzeug | Ort | Zahl heute | prüft |
+| Level | Tool | Location | Count today | Checks |
 |---|---|---|---|---|
-| Architekturregeln | Shell/grep | `tools/arch_check.sh` | 5 Regeln | Kern ohne Plattform-Header, Aktoren nur über das Gateway, Watchdog ohne Aktorpfad, keine Phasennamen in der Logik, kein `value_or(0)` |
-| Unit | doctest (C++) | `tests/core/test_*.cpp` | 44 Fälle | Katalog, Konfiguration und Migration, feste Grenzen (R7), Phasenparameter, Sensorwahrheit, Kennlinie, Verlauf, Ereignisse, Mischplanung, Resolver, Watchdog, SHA-256/PBKDF2, Anmeldung |
-| API-Vertrag | doctest gegen den Kern | `tests/core/test_api.cpp` | 8 Fälle | Zugang, Fehlerformen, Felder, die die Web-App liest, keine Geheimnisse, Herkunftsprüfung, Import-Prüfung, verlorenes Passwort |
-| Szenario | doctest + Zwilling | `tests/core/test_scenarios.cpp` | 15 Fälle | Stufe 0 von Hand eingerichtet, Einmessen, Mengen und A:B ±3 %, Paar-Fehler mit Nachholen, Stromausfall, Fehlsteckung, Regelung ins Ziel, EC-Gate, Sprungsperre, Trockenlauf, Zulauf-Notabschaltung, Not-Halt, Abbruch bucht, Kappe abgezogen, Block stumm, Job-IDs nach Neustart |
-| Speicherfehler | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | alle C++-Tests | Überläufe, Use-after-free, undefiniertes Verhalten |
-| Web | TypeScript strict, Größenbudget | `npm run build` | – | Typen, ≤ 250 KB gzip |
-| Ende zu Ende | Playwright + Chromium | `web/e2e/*.spec.ts` | 9 Fälle | Ersteinrichtung bis zum ersten Mischlauf, Not-Halt, Sprungsperre sichtbar, Funktionen und Verlauf, Fehlsteckung, Diagnosepaket, Zugangsschutz, Sicherheitskopfzeilen |
+| Architecture rules | shell/grep | `tools/arch_check.sh` | 5 rules | core without platform headers, actuators only through the gateway, watchdog without an actuator path, no phase names in the logic, no `value_or(0)` |
+| Unit | doctest (C++) | `tests/core/test_*.cpp` | 44 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, mix planning, resolver, watchdog, SHA-256/PBKDF2, login |
+| API contract | doctest against the core | `tests/core/test_api.cpp` | 8 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
+| Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 15 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart |
+| Memory errors | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | all C++ tests | overflows, use-after-free, undefined behaviour |
+| Web | TypeScript strict, size budget | `npm run build` | – | types, ≤ 250 KB gzip |
+| End to end | Playwright + Chromium | `web/e2e/*.spec.ts` | 9 cases | first-time setup up to the first mix run, emergency stop, jump lock visible, functions and history, mis-plug, diagnostic bundle, access protection, security headers |
 
-Die Testfälle der Regellogik folgen der Liste von `firmware` (M1-1 …
-M15-3). Welche Regel welcher Test abdeckt und was offen ist, steht in
-`INVARIANTS.md`.
+The test cases for the control logic follow the list by `firmware`
+(M1-1 … M15-3). `INVARIANTS.md` shows which test covers which rule and
+what is still open.
 
-## Ausführen
+## Running
 
 ```bash
-tools/ci.sh          # Architektur, Kern mit Sanitizern, alle C++-Tests, Web-Build
-E2E=1 tools/ci.sh    # zusätzlich Playwright (Browser: npx playwright install chromium)
-./build/gc_tests -tc="*Sprungsperre*"   # einzelne Fälle
+tools/ci.sh          # architecture, core with sanitizers, all C++ tests, web build
+E2E=1 tools/ci.sh    # plus Playwright (browser: npx playwright install chromium)
+./build/gc_tests -tc="*Sprungsperre*"   # single cases
 ```
 
-Die CI (`.github/workflows/ci.yml`) läuft bei jedem PR und auf `main` und
-führt genau diese Schritte aus.
+The CI (`.github/workflows/ci.yml`) runs on every PR and on `main` and
+runs exactly these steps.
 
-## Regeln
+## Rules
 
-- **Ein gefundener Fehler bekommt zuerst einen Test**, der ihn zeigt. Erst
-  dann kommt die Korrektur.
+- **A bug that is found gets a test first** that shows it. Only then
+  comes the fix.
 
-  So entstanden bereits am ersten Tag:
-  - Passwort wurde nicht gesichert;
-  - Einmesswert galt erst einen Takt später;
-  - eigene Mischläufe lösten die Sprungsperre aus;
-  - ein nachgeholter Lauf trug dieselbe Job-ID.
-- **Kein Test wird übersprungen oder abgeschaltet**, um grün zu werden.
-- **Zeit ist injiziert:** Szenarien laufen in Simulationszeit (Stunden in
-  Sekunden), deterministisch.
-- **Sicherheitsrelevante Änderungen** (Gateway, Sensorwahrheit, Anmeldung,
-  Updates) brauchen einen Szenario-Test und eine Prüfung durch `security`.
+  This already caught, on the first day:
+  - the password was not saved;
+  - a calibration value took effect only one tick later;
+  - the hub's own mix runs triggered the jump lock;
+  - a caught-up run carried the same job ID.
+- **No test is skipped or disabled** to get green.
+- **Time is injected:** scenarios run in simulated time (hours in
+  seconds), deterministically.
+- **Safety-relevant changes** (gateway, sensor truth, login, updates) need
+  a scenario test and a review by `security`.
 
-## Noch offen
+## Still open
 
-- Fuzzing der API-Eingaben (JSON, Pfade) und der Konfigurationsdatei.
-- Langlauf: 30 Tage Simulationszeit, Speicher und Ereignisgrenzen.
-- Hardware-in-the-Loop auf dem Steckbrett P0, sobald `firmware/` läuft:
-  Abnahme nach `docs/prototyp/README.md` im Produkt-Repo.
-- Barrierefreiheit (axe) und Darstellung mobil als E2E.
-- Lasttest des Webservers auf dem ESP32: Die Regelung darf nicht leiden (RLM,
+- Fuzzing of the API inputs (JSON, paths) and of the configuration file.
+- Long run: 30 days of simulated time, memory and event limits.
+- Hardware-in-the-loop on breadboard P0 once `firmware/` runs: acceptance
+  according to `docs/prototyp/README.md` in the product repository.
+- Accessibility (axe) and mobile layout as E2E tests.
+- Load test of the web server on the ESP32: control must not suffer (RLM,
   EN 18031).

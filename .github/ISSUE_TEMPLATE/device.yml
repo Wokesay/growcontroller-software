@@ -1,23 +1,24 @@
-name: Gerät oder Sensor
-description: Ein Gerät wird nicht erkannt oder soll unterstützt werden.
-labels: ["geraet", "triage"]
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Device or sensor
+description: A device is not detected or should be supported.
+labels: ["device", "triage"]
 body:
   - type: input
-    id: geraet
+    id: device
     attributes:
-      label: Gerät (Hersteller, Modell)
+      label: Device (manufacturer, model)
     validations:
       required: true
   - type: dropdown
-    id: anschluss
+    id: connection
     attributes:
-      label: Anschluss
-      options: ["Hub-Port (RJ45, Modbus)", "Sammelbox im Zelt", "Dosierblock-Port", "Netz (MQTT/Shelly)", "weiß nicht"]
+      label: Connection
+      options: ["Hub port (RJ45, Modbus)", "Collection box in the tent", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
   - type: textarea
-    id: was
+    id: shown
     attributes:
-      label: Was zeigt der Hub unter Geräte › Hub-Ports?
+      label: What does the hub show under Devices › Hub ports?
   - type: input
     id: version
     attributes:
-      label: Software-Version
+      label: Software version

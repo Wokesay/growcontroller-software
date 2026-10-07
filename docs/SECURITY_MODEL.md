@@ -1,58 +1,61 @@
-# Sicherheit: Bedrohungsmodell und Umsetzung
+# Security: threat model and implementation
 
-Stand 06.10.2026. Einordnung nach `regulatorik` (EN 18031-1, CRA), keine
-Rechtsberatung. Zwei Arten von Sicherheit:
+As of 2026-10-06. Assessment by `regulatorik` (EN 18031-1, CRA); not
+legal advice. Two kinds of safety and security:
 
-- **funktional:** keine Überdosis, kein Überlauf, kein Trockenlauf;
-- **IT-Sicherheit:** kein fremder Zugriff auf Pumpen.
+- **functional:** no overdose, no overflow, no dry run;
+- **IT security:** no outside access to the pumps.
 
-## Bedrohungen und Antworten
+## Threats and responses
 
-| Bedrohung | Antwort im Prototyp | später |
+| Threat | Response in the prototype | Later |
 |---|---|---|
-| Fremder im Heimnetz schaltet Pumpen | Pflichtpasswort vor jeder Funktion, kein Standardpasswort, PBKDF2-SHA-256 (10.000 Runden) mit Salz, Sitzung als HttpOnly-/SameSite-Cookie, Sperre nach 5 Fehlversuchen (30 s, verdoppelt bis 15 min), alles außer `/info` verlangt Anmeldung | HTTPS mit Zertifikat je Gerät, Token mit Rollen für Integrationen |
-| Mitlesen im WLAN | – | HTTPS als Voreinstellung (EN 18031-1 SCM; Shelly erzwingt es) |
-| Webseite eines Dritten löst Aktionen aus (CSRF, Clickjacking, DNS-Rebinding) | SameSite=Strict, Herkunftsprüfung (`Sec-Fetch-Site`/`Origin` gegen `Host`), `Host` nur IP, `localhost` oder Heimnetz-Name (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`); CSP `default-src 'self'`, `X-Frame-Options: DENY` | – |
-| Manipuliertes Update | – | signiertes OTA, Downgrade-Sperre, Secure Boot v2 |
-| Überlast am Webserver stört die Regelung (RLM) | Regelung im eigenen Takt, Anfragen nur unter Sperre | eigene Task-Priorität und eigener Kern auf dem ESP32, Lasttest |
-| Fehlerhafte Eingaben | Prüfung jeder Änderung und jedes Imports (Grenzen, Phasen, Kalibrierungen), JSON-Grenze 1 MB bzw. 64 KB, Ausnahmen abgefangen (400/500 statt Absturz; im Takt: alles aus, Alarm) | Fuzzing |
-| Passwortdatei verloren (Stromausfall beim Schreiben) | Lesen fällt auf die fertige `.tmp` zurück; `auth.json` wird vor der Sperrmarke geschrieben; war ein Passwort gesetzt, ist die Einrichtung über das Netz gesperrt (423); die Marke kommt nie aus einem Import | Werksreset per Taste |
-| Langsame Gegenstelle blockiert den Webserver | Firmware: 2 s Wartezeit, eine Wiederholung, dann 408; Kopfzeilen bis 2 KB | Not-Halt am Gerät ohne Web, Lasttest |
-| Datenabfluss beim Melden | Diagnosepaket ohne Hash, Sitzungen, WLAN, IP; Vorschau vor dem Herunterladen; Hinweis „GitHub ist öffentlich“ | Upload nur mit Einwilligung, Löschfrist |
-| Firmwarefehler dosiert zu viel | Gateway mit festen Grenzen im Code, Konfiguration verschärft nur (R1, R7); Einmesswert Pflicht; Job-ID je Versuch und Start gegen Doppeldosierung; Frist je Lauf (ohne Rückmeldung: aus, als gelaufen gezählt) | Zeitlimit und „ein Kanal“ in Hardware im Dosierblock, Freigabe in Hardware je Port [PD-012] |
-| Sensor lügt | Sensorwahrheit: Frische, Stillstand, Band, Sprungsperre, Kalibrierung; EC-Gate | Messfenster mit Pumpe aus, solange die Trennung nicht abgenommen ist (RAT-044) |
-| Stromausfall mitten im Lauf | nach dem Start alles aus, nichts fortsetzen, Meldung | Dosierblock stoppt ohne Lebenszeichen des Hubs |
+| A stranger on the home network switches pumps | Mandatory password before any function, no default password, PBKDF2-SHA-256 (10,000 rounds) with salt, session as an HttpOnly/SameSite cookie, lockout after 5 failed attempts (30 s, doubling up to 15 min), everything except `/info` requires login | HTTPS with a certificate per device, tokens with roles for integrations |
+| Eavesdropping on the Wi-Fi | – | HTTPS by default (EN 18031-1 SCM; Shelly enforces it) |
+| A third-party website triggers actions (CSRF, clickjacking, DNS rebinding) | SameSite=Strict, origin check (`Sec-Fetch-Site`/`Origin` against `Host`), `Host` only an IP address, `localhost` or a home-network name (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`); CSP `default-src 'self'`, `X-Frame-Options: DENY` | – |
+| Tampered update | – | signed OTA, downgrade protection, Secure Boot v2; signing and Secure Boot must still let the owner install their own firmware, no Secure Boot against the owner (PD-022) |
+| Load on the web server disturbs control (RLM) | control runs in its own cycle, requests only under a lock | own task priority and own core on the ESP32, load test |
+| Faulty input | every change and every import is validated (limits, phases, calibrations), JSON limit 1 MB or 64 KB, exceptions caught (400/500 instead of a crash; in the control cycle: everything off, alarm) | fuzzing |
+| Password file lost (power failure while writing) | reading falls back to the complete `.tmp`; `auth.json` is written before the lock marker; once a password was set, setup over the network is locked (423); the marker never comes from an import | factory reset by button |
+| A slow peer blocks the web server | firmware: 2 s timeout, one retry, then 408; headers up to 2 KB | emergency stop on the device without the web, load test |
+| Data leak when reporting a problem | diagnostic package without hash, sessions, Wi-Fi, IP; preview before download; note "GitHub is public" | upload only with consent, deletion period |
+| A firmware bug doses too much | gateway with fixed limits in code, configuration only tightens them (R1, R7); calibration value mandatory; job ID per attempt and start against double dosing; deadline per run (without feedback: off, counted as run) | time limit and "one channel" in hardware in the dosing block, enable in hardware per port [PD-012] |
+| A sensor lies | sensor truth: freshness, frozen readings, band, jump lock, calibration; EC gate | measurement window with the pump off until the galvanic isolation has passed acceptance (RAT-044) |
+| Power failure in the middle of a run | after start-up everything is off, nothing resumes, a message | the dosing block stops without a sign of life from the hub |
 
-## Protokoll (CRA Anhang I 2(l))
+## Logging (CRA Annex I 2(l))
 
-Ins Ereignislog kommen:
+The event log records:
 
-- Anmeldung und Fehlversuche;
-- Passwortwechsel;
-- Konfigurationsänderungen mit Revision;
-- Import;
-- Not-Halt und Pflegemodus;
-- angeforderte Updates.
+- login and failed attempts;
+- password changes;
+- configuration changes with revision;
+- import;
+- emergency stop and maintenance mode;
+- requested updates.
 
-Exportierbar ist das Log über das Diagnosepaket. Abschaltbar soll es werden
-(offen).
+The log can be exported with the diagnostic package. Users should be able
+to switch it off (open).
 
-## Werksreset und Daten (CRA 2(m))
+## Factory reset and data (CRA 2(m))
 
-Export und Import der Einstellungen gibt es. Der Werksreset, der sicher
-löscht, kommt mit `firmware/`. Telemetrie ist nicht eingebaut.
+Export and import of the settings exist. The factory reset that erases
+securely comes with `firmware/`. There is no telemetry.
 
-## Vor dem ersten Gerät bei Dritten (auch Beta-Tester)
+## Before the first device goes to third parties (beta testers included)
 
-Laut `regulatorik` muss vor dem 11.12.2027 jedes verkaufte oder verliehene
-Gerät EN 18031-1 voll erfüllen. Danach gilt der CRA. Liste:
+According to `regulatorik`, before 2027-12-11 every device that is sold or
+lent must fully meet EN 18031-1. After that date the CRA applies. List:
 
-1. HTTPS lokal, Zertifikat je Gerät.
-2. Signiertes OTA, Secure Boot v2, Flash-Verschlüsselung, eFuse-Plan.
-3. Setup-Zugangspunkt nur nach Tastendruck und zeitlich begrenzt.
-   WLAN-Schlüssel je Gerät auf dem Etikett.
-4. Bluetooth, JTAG und Debug aus. MQTT und HA nur auf Wunsch einschalten.
-5. Cyber-Risikobewertung, EN-18031-Eigenbewertung, technische Dokumentation,
-   Supportzeitraum, Meldeprozess.
+1. HTTPS locally, certificate per device.
+2. Signed OTA, Secure Boot v2, flash encryption, eFuse plan. All of them
+   must still let the owner install their own firmware; no Secure Boot
+   against the owner (PD-022).
+3. Setup access point only after a button press and for a limited time.
+   Wi-Fi key per device on the label.
+4. Bluetooth, JTAG and debug off. MQTT and Home Assistant only when the
+   user switches them on.
+5. Cyber risk assessment, EN 18031 self-assessment, technical
+   documentation, support period, reporting process.
 
-Wie man Schwachstellen meldet: [`../SECURITY.md`](../SECURITY.md).
+How to report vulnerabilities: [`../SECURITY.md`](../SECURITY.md).

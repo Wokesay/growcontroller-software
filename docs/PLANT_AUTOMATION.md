@@ -1,309 +1,376 @@
-# Ganze Pflanzenautomatisierung: Bereiche, Netzaktoren, Phasen
+# Complete plant automation: areas, network actuators, phases
 
-Stand 06.10.2026. Auftrag des Projektinhabers: Die Software deckt die ganze
-Anlage ab, nicht nur Mischen und Tank – Licht mit Dimmung, Bewässerung,
-Klima (Abluft, Umluft, Befeuchter, Entfeuchter, Heizung) und Phasen mit
-eigenen Rezepten und Einstellungen. 230-V-Geräte laufen über schaltbare
-Steckdosen, zuerst Shelly (lokal). Die App ist neutral formuliert:
-universelle Pflanzenautomatisierung für Gewächshaus, Indoor-Anbau und
-Hydroponik. Grundlage: Entwürfe von `architekt`, `anwender` und `hardware`
-vom 06.10.2026.
+Status 2026-10-06; §9 updated 2026-10-07. Assignment from the project
+owner: the software covers the whole installation, not only mixing and
+tank – light with dimming, irrigation, climate (exhaust fan, circulation
+fan, humidifier, dehumidifier, heater) and phases with their own recipes
+and settings. 230 V devices run via switchable sockets, Shelly (local)
+first. The app uses neutral wording: universal plant automation for
+greenhouse, indoor growing and hydroponics. Basis: drafts by `architekt`,
+`anwender` and `hardware` (agents of the product repository) of
+2026-10-06.
 
-> **Entwurf.** Alles hier ist Vorschlag, auch wo es nach Festlegung klingt
-> („fest im Code“, „nur Steckergeräte“). Entschieden wird als PD im
-> Produkt-Repo (`../docs/DECISIONS.md`); offene Punkte stehen in §9.
-> Entschieden sind seit 06.10.2026: Umfang, neutrale Sprache und
-> Deutsch/Englisch (PD-018), 230-V-Geräte über Steckdosen (PD-019),
-> Verhalten nach Stromausfall (PD-020), pH/EC-Köpfe (PD-021).
+> **Draft.** Everything here is a proposal, even where it sounds settled
+> ("fixed in code", "plug-in devices only"). Decisions are made as PDs in
+> the product repository; open points are in §9.
+> Decided on 2026-10-06: scope, neutral wording and German/English
+> (PD-018; English is the default, PD-035), 230 V devices via sockets
+> (PD-019), behaviour after a power failure (PD-020), pH/EC heads (PD-021).
+> Decided on 2026-10-07: the questions in §9 except item 2 (PD-025 to
+> PD-030) and irrigation without a readable level (PD-031, §2).
 
-## 1. Bereiche im Datenmodell
+## 1. Areas in the data model
 
-Bisher liegen alle Rollen in `tanks[0].roles`. Neu (Schema v2, mit Migration):
+Until now, all roles lived in `tanks[0].roles`. New (schema v2, with
+migration):
 
 ```
 config
-├─ tanks[]  id, Nutzvolumen, Mindestfüllstand, roles{tank.*}
+├─ tanks[]  id, usable volume, minimum level, roles{tank.*}
 └─ zones[]  id, kind (room|tent|greenhouse), name, tank, roles{zone.*}
 ```
 
-- Im Datenmodell sind mehrere Zonen vorgesehen; v1 erlaubt eine Zone.
-- Ein Durchgang gehört zu einer Zone.
-- Die Rollen heißen neutral `zone.*` statt `tent.*`. Die Migration benennt sie um.
-- Rollen akzeptieren mehrere Capabilities (`accepts[]`), dürfen bei Bedarf
-  mehrfach gebunden werden (`multi`) und tragen ein Sicherheitsprofil (§3).
+- The data model provides for several zones; v1 allows one zone.
+- A cultivation run belongs to one zone.
+- Roles use the neutral prefix `zone.*` instead of `tent.*`. The migration
+  renames them.
+- Roles accept several capabilities (`accepts[]`), may be bound more than
+  once where needed (`multi`) and carry a safety profile (§3).
 
-| Bereich | Rollen |
+| Area | Roles |
 |---|---|
-| Tank | `tank.ph`, `tank.ec`, `tank.water_temp`, `tank.level`, `tank.circulation`, `tank.inlet`, `tank.heater` (folgt mit der Notabschaltung) |
-| Licht | `zone.light` (Schalten), `zone.light_dim` (0–10 V) |
-| Klima | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` (folgt mit der Notabschaltung) |
-| Bewässerung | `zone.irrigation_pump` |
+| Tank | `tank.ph`, `tank.ec`, `tank.water_temp`, `tank.level`, `tank.circulation`, `tank.inlet`, `tank.heater` (follows with the emergency cut-off) |
+| Light | `zone.light` (switching), `zone.light_dim` (0–10 V or 1–10 V, switchable; PD-028) |
+| Climate | `zone.air_temp`, `zone.humidity`, `zone.co2`, `zone.exhaust`, `zone.circulation_fan`, `zone.humidifier`, `zone.dehumidifier`, `zone.heater` (follows with the emergency cut-off) |
+| Irrigation | `zone.irrigation_pump` |
 
-**Abgeleitete Werte** (fester Code, kein Skript; umgesetzt 06.10.2026): `zone.vpd` aus
-Lufttemperatur und Luftfeuchte. Er wird nur gerechnet, wenn beide Werte gültig
-und höchstens 60 s auseinander sind; sonst entsteht eine Lücke (R5).
+**Derived values** (fixed code, no script; implemented 2026-10-06):
+`zone.vpd` from air temperature and humidity. It is computed only if both
+values are valid and at most 60 s apart; otherwise there is a gap (R5).
 
-- Sättigungsdampfdruck: es(T) = 0,6108 · exp(17,27·T / (T + 237,3)) kPa (FAO-56, Gl. 11,
-  https://www.fao.org/4/x0490e/x0490e07.htm; online noch nicht gegengeprüft,
-  die Seite war am 06.10.2026 vom Proxy gesperrt).
-- Luft-VPD = es(T) · (1 − rF/100).
-- Blatt-VPD = es(T + Δ) − es(T) · rF/100. Der Offset Δ ist optional und
-  wird als „geschätzt“ gezeigt; Standard ist Luft-VPD (Quelle: RAT-017).
+- Saturation vapour pressure: es(T) = 0.6108 · exp(17.27·T / (T + 237.3)) kPa (FAO-56, eq. 11,
+  https://www.fao.org/4/x0490e/x0490e07.htm; not yet cross-checked online,
+  the proxy blocked the page on 2026-10-06).
+- Air VPD = es(T) · (1 − RH/100).
+- Leaf VPD = es(T + Δ) − es(T) · RH/100. The offset Δ is optional and is
+  shown as "estimated"; the default is air VPD (Rationale: RAT-017).
 
-## 2. Ausgänge und Netz-Bus
+## 2. Outputs and network bus
 
 **Capabilities:**
 
-| Capability | Bedeutung |
+| Capability | Meaning |
 |---|---|
-| `switch.12v` | 12-V-Ausgang am Hub |
-| `switch.mains` | 230 V über ein Netzgerät |
-| `switch.dry` | potentialfreier Kontakt |
-| `dim.0_10v` | Dimmwert 0–100 % |
-| `measure.power` | Leistung je Kanal in W, optional |
+| `switch.12v` | 12 V output on the hub |
+| `switch.mains` | 230 V via a network device |
+| `switch.dry` | potential-free (dry) contact |
+| `dim.0_10v` | dimming value 0–100 % |
+| `measure.power` | power per channel in W, optional |
 
-Fest im Code: Dosiert wird nie über Netzgeräte, nur über den Dosierblock
-[PD-010, PD-011].
+Fixed in code: dosing never runs via network devices, only via the dosing
+block [PD-010, PD-011].
 
-**Shelly (Gen2 und neuer), lokal über JSON-RPC** (API-Doku
-https://shelly-api-docs.shelly.cloud/gen2/; Modelle, mDNS, Digest und
-Felder wie `auto_off` sind online noch nicht gegengeprüft, die Seite war am
-06.10.2026 vom Proxy gesperrt). Für Endkunden kommen nur
-Steckergeräte in Frage: Plug S Gen3, Outdoor Plug S Gen3, Power Strip 4 Gen4.
-Einbaugeräte (1PM, Pro 4PM, Dimmer 0/1-10V) sind für Elektrofachkräfte. Die
-Software bindet sie trotzdem an.
+**Shelly (Gen2 and newer), locally via JSON-RPC** (API docs
+https://shelly-api-docs.shelly.cloud/gen2/; models, mDNS, Digest and
+fields such as `auto_off` are not yet cross-checked online, the proxy
+blocked the page on 2026-10-06). For end customers only plug-in devices
+are suitable: Plug S Gen3, Outdoor Plug S Gen3, Power Strip 4 Gen4.
+Built-in devices (1PM, Pro 4PM, Dimmer 0/1-10V) are for qualified
+electricians. The software supports them anyway.
 
-- **Stand 06.10.2026:** `INetBus` mit Shelly im Simulator, Profile dauer,
-  puls und kompressor im Gateway, Zuordnung mit Rücklesen, Prüfung vor jedem
-  Einschalten, Testen und Handbetrieb sind umgesetzt (§8 Schritte 3–4).
-  Offen:
-  - Heizrollen erst mit der rastenden Notabschaltung (Pegel, Wassertemperatur,
-    Übertemperatur, fehlende Wirkung, Ausfall der Sensorbewertung, Laufzeit;
-    Quelle: RAT-060) und `power_limit`;
-  - Profil „versorgen“ für Geräte mit eigenem Thermostat (RAT-069);
-  - Finden per mDNS und Digest auf dem Gerät, „Aus nicht bestätigt“ mit
-    Wiederholung beim Not-Halt (bei Schutzabschaltungen umgesetzt),
-    Watchdog über die Leistung („soll aus, zieht > 2 W“);
-  - Taster und App am Shelly umgehen die Sperren: „an ohne Befehl des Hubs“
-    als Handbetrieb behandeln (eine nicht quittierte Rastung von
-    Umwälzpumpe oder Zulauf schaltet schon jetzt wieder aus); `auto_on` im
-    Gerät abschalten und prüfen; Wiederholungen drosseln;
-  - Gesamtlast je Leiste (16 A gesamt, 12 A je Dose: Suchtreffer vom
-    06.10.2026, u. a. Conrad-Datenblatt
+- **Status 2026-10-06:** `INetBus` with Shelly in the simulator, the
+  profiles `dauer`, `puls` and `kompressor` in the gateway, assignment with
+  read-back, a check before every switch-on, testing and manual mode are
+  implemented (§8 steps 3–4). Open:
+  - Heating roles only with the latching emergency cut-off (level, water
+    temperature, overtemperature, missing effect, failure of the sensor
+    assessment, run time; Rationale: RAT-060) and `power_limit`;
+  - profile `versorgen` (supply) for devices with their own thermostat
+    (Rationale: RAT-069);
+  - discovery via mDNS and Digest on the device, "Off not confirmed" with
+    retry on emergency stop (implemented for protective cut-offs), watchdog
+    via power ("should be off, draws > 2 W");
+  - the button and the app on the Shelly bypass the locks: treat "on
+    without a command from the hub" as manual mode (an unacknowledged latch
+    of circulation pump or inlet already switches off again); disable
+    `auto_on` in the device and check it; throttle retries;
+  - total load per strip (16 A total, 12 A per outlet: search results of
+    2026-10-06, among them the Conrad data sheet
     https://asset.conrad.com/media10/add/160267/c1/-/gl/003593788IN00/informacije-3593788-shelly-power-strip-4-gen4-schwarz-uticnica.pdf,
-    nicht abgerufen; `current_limit` 12 A je Kanal am Gerät gelesen in
-    RAT-060) und Anlaufströme (Licht, Kompressor) – am Muster messen.
-  - Gießpumpe: Sperre bei unlesbarem Pegel weicht von RAT-068 ab
-    („gießen und melden“) – PD folgt.
-- **Eigener Netz-Bus** `INetBus` neben dem RS485-Bus `IBus`. Er hat kein
-  `startRun`; damit ist schon über den Typ ausgeschlossen, dass übers Netz
-  dosiert wird. Nur `Actuators` schaltet (R1).
-- **Finden:** mDNS `_shelly._tcp` oder IP von Hand.
-  - Das Gerät wird an seiner Shelly-ID erkannt; die IP ist nur ein
-    Laufzeitattribut.
-  - Es braucht eine Anmeldung per Digest. Der Hub erzeugt das Passwort je
-    Gerät, wenn der Nutzer zustimmt.
-- **Übernehmen:**
-  - Der Hub zeigt die geplante Sicherheitskonfiguration, schreibt sie und
-    liest sie zurück.
-  - Rollen mit Sicherheitsprofil werden erst gebunden, wenn das Rücklesen
-    stimmt.
-- **Steckdosen heißen nach ihrem Zweck**, z. B. „Steckdose Abluft“.
-  - Jede Steckdose hat einen Knopf „Testen“ (3 s an).
-  - In Leisten wird ab 1 gezählt. Die Shelly-Oberfläche zählt ab 0, das wird
-    einmal gesagt (Quelle: RAT-019).
+    not retrieved; `current_limit` 12 A per channel read on the device, see
+    RAT-060) and inrush currents (light, compressor) – measure on a sample.
+  - Irrigation pump: decided in PD-031. With an assigned but unreadable
+    level sensor, irrigation is locked and reported; if the plants are too
+    dry, the hub gives a limited emergency dose and reports it. Irrigation
+    also works without a level sensor; the hub detects a dry run from the
+    current draw, switches off and reports. Implementation open: the
+    prototype still requires a valid level (Rationale: RAT-068).
+- **Separate network bus** `INetBus` next to the RS485 bus `IBus`. It has
+  no `startRun`, so the type alone rules out dosing over the network. Only
+  `Actuators` switches (R1).
+- **Discovery:** mDNS `_shelly._tcp` or IP by hand.
+  - The device is recognised by its Shelly ID; the IP is only a runtime
+    attribute.
+  - It needs Digest authentication. The hub generates the password per
+    device if the user agrees.
+- **Adding:**
+  - The hub shows the planned safety configuration, writes it and reads it
+    back.
+  - Roles with a safety profile are bound only when the read-back matches.
+- **Sockets are named after their purpose**, e.g. "Plug: Exhaust".
+  - Each socket has a "Test" button (on for 3 s).
+  - Strip outlets are numbered from 1. The Shelly interface counts from 0;
+    the app says so once (Rationale: RAT-019).
 
-## 3. Sicherheit der Netzaktoren
+## 3. Safety of the network actuators
 
-| Profil | Rollen | nach Stromausfall | Grenze im Shelly | Software |
+| Profile | Roles | After a power failure | Limit in the Shelly | Software |
 |---|---|---|---|---|
-| dauer | Licht, Umluft, Abluft, Umwälzpumpe | aus; Lüfter nach PD-020 eher an (Umsetzung offen) | – | – |
-| puls | Befeuchter, Gießpumpe, Zulauf | aus | **Auto-Off Pflicht**, knapp über der Software-Grenze | Höchstlaufzeit, Wartezeit |
-| kompressor | Entfeuchter | aus | – | Mindestlauf 10 min, Mindestpause 5 min (Quelle: RAT-034) |
-| heizen | Heizung ohne eigenen Thermostat (z. B. Heizstab) | aus | **Auto-Off Pflicht** (6000 s bei 90 min Software-Grenze; Quelle: RAT-060), `power_limit` | Sperren an der Sensorwahrheit, Rastung |
-| versorgen | Gerät mit eigenem Thermostat, das Relais gibt nur Strom | aus | kein Auto-Off, aber `power_limit` als Netz für einen hängenden Thermostat (Quelle: RAT-069) | Bewertung durch den Watchdog |
+| `dauer` (continuous) | light, circulation fan, exhaust fan, circulation pump | off; fans rather on per PD-020 (implementation open) | – | – |
+| `puls` (pulse) | humidifier, irrigation pump, inlet | off | **auto-off mandatory**, just above the software limit | maximum run time, wait time |
+| `kompressor` (compressor) | dehumidifier | off | – | minimum run 10 min, minimum pause 5 min (Rationale: RAT-034) |
+| `heizen` (heating) | heater without its own thermostat (e.g. immersion heater) | off | **auto-off mandatory** (6000 s at a 90 min software limit; Rationale: RAT-060), `power_limit` | locks on sensor truth, latch |
+| `versorgen` (supply) | device with its own thermostat; the relay only provides power | off | no auto-off, but `power_limit` as a safety net for a stuck thermostat (Rationale: RAT-069) | assessment by the watchdog |
 
-Fest im Code (R7):
+Fixed in code (R7):
 
-- Befeuchter und Entfeuchter laufen nie gleichzeitig (Quelle: RAT-034).
-- Einen Dimmwert unter der Einschaltschwelle hebt der Hub auf die Schwelle;
-  0 heißt aus, und das Relais schaltet mit ab (Quelle: RAT-013, RAT-029).
-- Nach einem Neustart sendet der Hub „aus“ an alle Kanäle. Abläufe (Gabe,
-  Puls, Zulauf) werden nicht fortgesetzt. Zustandsfunktionen (Licht, Lüfter,
-  Klima) rechnen erst neu, wenn Uhrzeit und Sensorwahrheit gesichert sind.
-  Ohne gesicherte Uhrzeit bleibt das Licht aus (Präzisierung von R6).
-  PD-020 ersetzt den Teil von R6 für Zustandsfunktionen; Umsetzung offen.
-- Not-Halt schaltet alles aus, auch die Lüfter. Ziel: Nicht erreichbare
-  Ausgänge zeigen „Aus nicht bestätigt“, und der Hub wiederholt den Befehl
-  (beim Not-Halt offen, bei Schutzabschaltungen umgesetzt).
+- Humidifier and dehumidifier never run at the same time (Rationale:
+  RAT-034).
+- The hub raises a dimming value below the switch-on threshold to the
+  threshold; 0 means off, and the relay switches off too (Rationale:
+  RAT-013, RAT-029).
+- After a restart the hub sends "off" to all channels. Sequences (dose,
+  pulse, inlet) are not resumed. State functions (light, fans, climate)
+  recalculate only once time and sensor truth are trusted. Without a
+  trusted time the light stays off (refinement of R6). PD-020 replaces the
+  part of R6 for state functions; implementation open.
+- Emergency stop switches everything off, including the fans. Goal:
+  unreachable outputs show "Off not confirmed", and the hub repeats the
+  command (open for the emergency stop, implemented for protective
+  cut-offs).
 
-Der Watchdog bewertet zusätzlich:
+The watchdog also assesses:
 
-- Soll ≠ Ist;
-- „soll aus, zieht > 2 W“ (Runaway; Quelle: RAT-073);
-- Licht in der Dunkelphase;
-- Trockenlauf über die Leistung (Quelle: RAT-049).
+- target ≠ actual;
+- "should be off, draws > 2 W" (runaway; Rationale: RAT-073);
+- light during the dark period;
+- dry run from the power draw (Rationale: RAT-049).
 
-Er schaltet nichts (R2).
+It switches nothing (R2).
 
-**[SICHERHEIT] Für die Anleitung:**
+**[SAFETY] For the manual:**
 
-- Netzgeräte stehen außerhalb des Pflanzraums.
-- Alles im Wasser hängt hinter einem FI-Schutzschalter mit 30 mA.
-- Heizgeräte mit dem Warnhinweis „nicht mit Zeitschaltuhr betreiben“ aus
-  EN 60335-2-30 werden nicht angeschlossen (Norm nicht eingesehen, Angabe
-  des `hardware`-Entwurfs).
-- Einbaugeräte schließt nur eine Elektrofachkraft an.
+- Network devices stay outside the growing room.
+- Everything in the water is behind a 30 mA RCD.
+- Heaters that carry the warning "do not operate with a timer" from
+  EN 60335-2-30 are not connected (standard not consulted; statement from
+  the `hardware` draft).
+- Built-in devices are connected only by a qualified electrician.
 
-## 4. Neue Funktionen (Katalog)
+## 4. New functions (catalog)
 
-| Funktion | braucht | Parameter (P = aus der Phase) |
+| Function | Requires | Parameters (P = from the phase) |
 |---|---|---|
-| `light_schedule` | `zone.light`, gesicherte Uhrzeit | `on_at`, `light_hours` P, `intensity_pct` P, `ramp_min` 15 (Quelle: RAT-035), Einschaltschwelle (Quelle: RAT-013) |
-| `circulation_fan` | `zone.circulation_fan` | Modus (immer, Intervall, mit Licht) |
-| `climate_control` | Lufttemperatur, Luftfeuchte, mindestens ein Klimagerät | Temperatur Tag/Nacht P, rF oder VPD Tag/Nacht P, Hysterese, Mindestzeiten (Quelle: RAT-034), Heizungsgrenze (Quelle: RAT-060) |
-| `vpd_watch` | Lufttemperatur, Luftfeuchte | VPD-Ziel Tag/Nacht P, Toleranz, Blatt-Offset |
-| `irrigation` | `zone.irrigation_pump`, Uhrzeit | Gaben je Tag P, Faktor der ersten Gabe P, Dauer je Gabe P (Quelle: RAT-010), Mindeststand im Tank (Quelle: RAT-067) |
+| `light_schedule` | `zone.light`, trusted time | `on_at`, `light_hours` P, `intensity_pct` P, `ramp_min` 15 (Rationale: RAT-035), switch-on threshold (Rationale: RAT-013) |
+| `circulation_fan` | `zone.circulation_fan` | mode (always, interval, with light) |
+| `climate_control` | air temperature, humidity, at least one climate device | day/night temperature P, RH or VPD day/night P, hysteresis, minimum times (Rationale: RAT-034), heating limit (Rationale: RAT-060) |
+| `vpd_watch` | air temperature, humidity | VPD target day/night P, tolerance, leaf offset |
+| `irrigation` | `zone.irrigation_pump`, time | doses per day P, factor of the first dose P, duration per dose P (Rationale: RAT-010), minimum level in the tank (Rationale: RAT-067) |
 
-- „Tag“ und „Nacht“ richten sich nach dem Licht, nicht nach der Uhrzeit.
-- Bei VPD-Führung wird der rF-Sollwert aus dem VPD-Ziel und der
-  **Soll**-Temperatur gerechnet (Quelle: RAT-009, RAT-017).
+- "Day" and "night" follow the light, not the clock.
+- When VPD leads, the RH setpoint is calculated from the VPD target and
+  the **target** temperature (Rationale: RAT-009, RAT-017).
 
-## 5. Phasen
+## 5. Phases
 
-Phasen sind Parametersätze über alle Bereiche (R4). Das Vokabular steht
-zentral im Katalog (`phaseParams`), gruppiert nach Licht, Klima, Wasser und
-Bewässerung. Der Phasen-Editor zeigt nur Gruppen, für die Hardware da ist;
-Einsteiger sehen die Grundwerte, alles andere steht unter „Mehr
-Einstellungen“.
+Phases are parameter sets across all areas (R4). The vocabulary is defined
+centrally in the catalog (`phaseParams`), grouped by light, climate, water
+and irrigation. The phase editor shows only groups for which hardware is
+present; beginners see the basic values, everything else is under "More
+settings".
 
-| Wert | Wachstum | Blüte | Quelle |
+| Value | Vegetative | Flowering | Rationale |
 |---|---|---|---|
-| Lichtstunden | 18 h | 12 h | RAT-066 |
-| Dimmung | 50 % | 75 % | Annahme |
-| Temperatur Tag | 26 °C | 27 °C | RAT-009 |
-| rF bzw. VPD | 70 % ≈ 1,0 kPa | 62 % ≈ 1,35 kPa | RAT-009 |
-| pH-Ziel | 5,9 | 5,9–6,1 | RAT-066 |
-| EC-Ziel | Herstellerplan | Herstellerplan | RAT-066 |
-| Gaben je Tag | 6 | 8–9 | RAT-010 (Steinwolle) |
+| Light hours | 18 h | 12 h | RAT-066 |
+| Dimming | 50 % | 75 % | assumption |
+| Day temperature | 26 °C | 27 °C | RAT-009 |
+| RH or VPD | 70 % ≈ 1.0 kPa | 62 % ≈ 1.35 kPa | RAT-009 |
+| pH target | 5.9 | 5.9–6.1 | RAT-066 |
+| EC target | manufacturer chart | manufacturer chart | RAT-066 |
+| Doses per day | 6 | 8–9 | RAT-010 (rock wool) |
 
-Sinkt das EC-Ziel beim Phasenwechsel um mehr als 0,2 mS/cm, weist die App
-darauf hin, den Tank ganz abzulassen (Quelle: RAT-012). Liegen Rest und
-Frischwasser unter dem neuen Ziel und lässt sich aufdosieren, entfällt das
-Ablassen; beim Wechsel des Produkts bleibt es (Quelle: RAT-065, K-1).
-Teilweises Ablassen wäre eine eigene Annahme und ist nicht vorgesehen. Der
-Hub kann nicht verdünnen.
+If the EC target drops by more than 0.2 mS/cm at a phase change, the app
+advises draining the tank completely (Rationale: RAT-012). If the residue
+plus fresh water lies below the new target and can be dosed up, the drain
+is skipped; on a change of product it stays (Rationale: RAT-065). Partial
+draining would be an assumption of our own and is not planned. The hub
+cannot dilute.
 
-## 6. Bedienung
+## 6. User interface
 
-- **Navigation nach Bereichen:** Übersicht · Phasen · Tank & Mischen ·
-  Bewässerung · Klima · Licht · Rezepte & Nährstoffe · Verlauf · Geräte ·
-  Einstellungen (mit „Funktionen“).
-  - Bereiche ohne Hardware sind ausgeblendet. Den Weg zu mehr zeigt Geräte ›
-    Erweitern. Stand Prototyp: Klima, Licht und Bewässerung stehen immer in
-    der Navigation und zeigen ohne Hardware, was fehlt (Abweichung, folgt).
-  - Am Handy: Übersicht · Tank · Phasen · Verlauf · Mehr.
-- **Übersicht nach Dringlichkeit:**
-  1. Banner (Not-Halt, Pflegemodus, getrennt);
-  2. Statuszeile;
-  3. Durchgang;
-  4. „Gerade läuft“;
-  5. Karten für Tank, Klima, Licht, Bewässerung;
-  6. Kanister;
-  7. Ereignisse.
+- **Navigation by areas:** Overview · Phases · Tank & mixing ·
+  Irrigation · Climate · Light · Recipes & nutrients · History · Devices ·
+  Settings (with "Functions").
+  - Areas without hardware are hidden. Devices › Expand shows the way to
+    more. Prototype status: Climate, Light and Irrigation are always in the
+    navigation and show what is missing without hardware (deviation, to
+    follow).
+  - On the phone: Overview · Tank · Phases · History · More.
+- **Overview by urgency:**
+  1. banner (emergency stop, maintenance mode, disconnected);
+  2. status line;
+  3. cultivation run;
+  4. "Running now";
+  5. cards for tank, climate, light, irrigation;
+  6. bottles;
+  7. events.
 
-  Karten ohne Gerät fehlen ganz.
-- **Ganze Bildschirmbreite:** Die Karten fließen in Spalten. Auf kleinen
-  Bildschirmen ordnen sie sich untereinander an, und nichts läuft aus seiner
-  Box.
-- **Setup-Assistent in 5 Schritten:**
+  Cards without a device are left out entirely.
+- **Full screen width:** the cards flow into columns. On small screens
+  they stack, and nothing overflows its box.
+- **Setup wizard in 5 steps:**
   1. Start;
-  2. Geräte;
+  2. Devices;
   3. Tank;
-  4. Nährstoffe: Vorlage zuerst, mit Vorschau;
-  5. Einmessen.
+  4. Nutrients: template first, with preview;
+  5. Calibrate.
 
-  Licht, Klima, Bewässerung und Sonden sind überspringbare Mini-Assistenten
-  auf ihren Seiten. Die feste Fußleiste hat „Zurück“ (auch auf „Fertig“),
-  „Überspringen“ und „Weiter“, wobei „Weiter“ speichert.
-- **Vorlagen ordnen über Rollen zu** (Teil A, Teil B, CalMag, Zusatz), nicht
-  über exakte Namen.
-- **Begriffe** stehen mit Erklärung im Glossar (Deutsch und Englisch,
-  `web/src/lang`). Umbenannt werden:
-  - Trockenlaufgrenze → Mindestfüllstand;
-  - Rastung → „Gesperrt bis Freigabe“;
-  - EC-Gate → „pH-Sperre bei wenig Nährstoff“;
-  - Dosierblock-Port → „Pumpe 1–6“;
-  - Hub-Port → „Anschluss 1–8“.
-- **Geräte** zeigen ein Schaubild:
-  - Hub mit Anschlüssen und Ausgängen;
-  - darunter Dosierblock, Sammelbox und Köpfe;
-  - Netzgeräte je Kanal;
-  - „Erweitern“ mit dem, was ein Gerät freischaltet.
+  Light, climate, irrigation and probes are skippable mini-wizards on their
+  own pages. The fixed footer has "Back" (also on "Done"), "Skip" and
+  "Next"; "Next" saves.
+- **Templates map by role** (part A, part B, CalMag, additive), not by
+  exact names.
+- **Terms** are explained in the glossary (German and English,
+  `web/src/lang`). Renamed:
+  - dry-run limit → "Minimum level";
+  - latch → "Locked until released";
+  - EC gate → "pH lock at low EC";
+  - dosing block port → "Pump 1–6";
+  - hub port → "Port 1–8".
+- **Devices** show a diagram:
+  - hub with ports and outputs;
+  - below it dosing block, collection box and heads;
+  - network devices per channel;
+  - "Expand" with what a device unlocks.
 
-  Die Daten dafür liefert `GET /topology`.
+  The data for it comes from `GET /topology`.
 
-## 7. pH und EC: eine oder zwei Sonden
+## 7. pH and EC: one probe or two
 
-Entschieden in PD-021 (beantwortet die Roadmap-Frage aus Stufe 1). Es
-gibt drei Geräteklassen:
+Decided in PD-021 (answers the roadmap question from stage 1). There are
+three device classes:
 
-- `head_ph_ec` (pH, EC, Wassertemperatur);
+- `head_ph_ec` (pH, EC, water temperature);
 - `head_ph`;
-- `head_ec` (EC, Wassertemperatur).
+- `head_ec` (EC, water temperature).
 
-Die Rollen bleiben gleich. Der Hub ordnet eine Messrolle nur zu, wenn genau
-ein Gerät sie liefert; liefern zwei Köpfe dasselbe, wählt der Nutzer unter
-Geräte › Zuordnung. Umgesetzt im Simulator (Schema v2). Zwei Köpfe brauchen zwei Anschlüsse und je eine eigene galvanische
-Trennung.
+The roles stay the same. The hub assigns a measurement role only if
+exactly one device provides it; if two heads provide the same value, the
+user chooses under Devices › Assignment. Implemented in the simulator
+(schema v2). Two heads need two ports and a galvanic isolation of their
+own each.
 
-## 8. Reihenfolge der Umsetzung
+## 8. Order of implementation
 
-Jeder Schritt ist im Simulator testbar.
+Each step can be tested in the simulator.
 
-1. Oberfläche:
-   - volle Breite und Umsortieren;
-   - Überlauf beheben;
-   - neutrale Wortwahl;
-   - Deutsch/Englisch (Grundgerüst);
-   - Assistent mit 5 Schritten, Zurück, Erklärungen;
-   - Vorlagen mit Vorschau;
-   - Pumpen-Benennung.
+1. User interface:
+   - full width and reordering;
+   - fix overflow;
+   - neutral wording;
+   - German/English (groundwork);
+   - wizard with 5 steps, Back, explanations;
+   - templates with preview;
+   - pump naming.
 2. Schema v2:
-   - `zones[]`, Rollen je Instanz, `accepts`/`multi`;
-   - Migration;
+   - `zones[]`, roles per instance, `accepts`/`multi`;
+   - migration;
    - `phaseParams`;
-   - Kopf-Klassen pH/EC einzeln.
-3. Gateway für Schaltrollen allgemein:
-   - Profile, Konfliktpaar, Mindestzeiten;
-   - Dimmen mit Schwelle;
-   - `stopAll` über alle Instanzen.
-4. `INetBus` mit Shelly im Simulator (Auto-Off, Leistung, offline, Taster);
-   Übernehmen mit Rücklesen.
-5. Funktionen in dieser Folge: `light_schedule`, `circulation_fan`,
-   `climate_control` mit `vpd_watch` und Reihe `zone.vpd`, `irrigation`.
-6. Navigation nach Bereichen, Übersichtskarten, `/topology` mit dem
-   Geräte-Schaubild.
-7. Firmware: mDNS und HTTP-RPC-Client mit Digest.
+   - separate pH and EC head classes.
+3. Gateway for switching roles in general:
+   - profiles, conflict pair, minimum times;
+   - dimming with threshold;
+   - `stopAll` across all instances.
+4. `INetBus` with Shelly in the simulator (auto-off, power, offline,
+   button); adding with read-back.
+5. Functions in this order: `light_schedule`, `circulation_fan`,
+   `climate_control` with `vpd_watch` and the series `zone.vpd`,
+   `irrigation`.
+6. Navigation by areas, overview cards, `/topology` with the device
+   diagram.
+7. Firmware: mDNS and HTTP RPC client with Digest.
 
-## 9. Offene Fragen an den Projektinhaber
+## 9. Questions for the project owner
 
-1. **Phasenwechsel:** automatisch nach Tagen oder erst nach Bestätigung?
-2. **Licht, wenn der Hub ausfällt:**
-   - Auto-Off: Der nächste Tag bleibt dunkel.
-   - Lokaler Zeitplan im Shelly.
+All answered except item 2: item 6 on 2026-10-06 (PD-020), the others on
+2026-10-07 (PD-025 to PD-030). The answers are product decisions (PD) in
+the product repository; their implementation is open.
 
-   Offen. PD-020 regelt nur den Stromausfall (Licht je nach Dauer); den
-   Ausfall allein des Hubs führt sie als offen.
-3. **Pflegemodus:** Was ruht außer dem Dosieren, auch das Gießen?
-4. **Einheiten im Englischen:** Liter/°C fest, oder auch Gallonen/°F und EC als ppm?
-5. **Dimmen:** Über einen eigenen Dimm-Kopf als Busteilnehmer (Empfehlung
-   `hardware`, Stufe 4) und vorerst über Shelly-Dimmer? Kein 0–10 V am Hub
-   (berührt PD-006).
-6. **Abluft und Umluft nach Stromausfall:** entschieden in PD-020: eher
-   an, der Anbau darf nicht gefährdet werden (Ausnahme von R6; Umsetzung
-   offen).
-7. **Zulauf und Gießpumpe nur mit 12 V** (SELV, Empfehlung `hardware`) oder
-   auch über 230-V-Steckdosen?
-8. **Herstellertabellen als Vorlage** (z. B. Athena Blended): Dürfen sie
-   ins Produkt? Wer pflegt den Stand?
+1. **Phase change:** automatically after a number of days, or only after
+   confirmation?
+
+   Decided in PD-025: selectable per phase. Each phase sets whether the
+   hub moves to the next phase by itself once its days are over, or only
+   after the user confirms. Harvest stays an event that the user confirms
+   (Rationale: RAT-077). Open: the default per phase; an announcement
+   before the change and extending a phase by one day.
+2. **Light when the hub fails:**
+   - Auto-off: the next day stays dark.
+   - Local schedule in the Shelly.
+
+   Open. PD-020 covers only the power failure (light depending on how long
+   it lasted); it lists a failure of the hub alone as open.
+3. **Maintenance mode:** what pauses besides dosing – irrigation too?
+
+   Decided in PD-026: the user configures what pauses. Principle:
+   everything that directly affects an open tent pauses, or at least must
+   not cause harm. Default: water and CO2 pause; "water" means dosing,
+   refilling, irrigation and the automatic circulation pump (proposal).
+   Selectable among others: whether climate pauses too, or whether
+   humidifier, dehumidifier and circulation fan keep running. Sensor truth
+   and locks always stay active (Rationale: RAT-075). Open: the default
+   for light, exhaust fan and heater; duration and end of maintenance
+   mode.
+4. **Units in English:** litres/°C fixed, or also gallons/°F and EC as
+   ppm?
+
+   Decided in PD-027: from v1, units are selectable in the settings, for
+   input and output: litres or gallons, °C or °F, EC in mS/cm or as ppm
+   (500 or 700 scale). PD-035 adds: language and unit system are chosen
+   separately; after the language, setup asks for metric or imperial;
+   English is the default language. Open: compute internally in metric
+   and convert only in the UI (proposal); US or UK gallons; the ppm scale
+   must be visible everywhere so that no wrong EC values arise.
+5. **Dimming:** via a separate dimming head as a bus device (recommendation
+   of `hardware`, stage 4) and for now via Shelly dimmers? No 0–10 V on the
+   hub (affects PD-006).
+
+   Decided otherwise in PD-028: the dimming output for LED drivers sits on
+   the hub, not on the collection box in the tent; it is switchable
+   between 0–10 V and 1–10 V. Open: number of channels, galvanic
+   isolation and protection of the output, cable path from the hub to the
+   lamp driver, Shelly dimmers as an interim solution until our own
+   hardware exists.
+6. **Exhaust and circulation fan after a power failure:** decided in
+   PD-020: rather on, the crop must not be put at risk (exception to R6;
+   implementation open).
+7. **Inlet and irrigation pump only on 12 V** (SELV, recommendation of
+   `hardware`) or also via 230 V sockets?
+
+   Decided in PD-029: both may run on a 12 V output of the hub or on a
+   switchable 230 V socket. The hub switches sockets only on the local
+   network, without cloud and without internet. Auto-off in the device
+   and the hub's locks apply (level if present, emergency limit, maximum
+   run time). Open: additional overflow protection for an inlet on 230 V,
+   because auto-off alone does not prevent an overflow (Rationale:
+   RAT-079); a note on the RCD in the manual.
+8. **Manufacturer tables as templates** (e.g. Athena Blended): may they go
+   into the product? Who maintains them?
+
+   Decided in PD-030: they ship with the app as recipe templates. Each
+   template carries its source, its date and the note "manufacturer data,
+   not binding". The templates are data in this repository; new or changed
+   tables come by PR and are reviewed before the merge. Before
+   publication, `regulatorik` (product repository) checks brand mentions
+   and liability. The first template is the Athena Blended Feed Program,
+   Metric, A01.004 (Rationale: RAT-066).

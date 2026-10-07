@@ -1,18 +1,20 @@
-# Dokumentation
+# Documentation
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| [CONCEPT.md](CONCEPT.md) | Ziel, Plattform (ESP32-S3, Option C), Schichten, Regeln R1–R8, Stand des Prototyps |
-| [INVARIANTS.md](INVARIANTS.md) | Fachregeln (M1–M15) mit Umsetzung und Testnachweis |
-| [CONFIGURATION.md](CONFIGURATION.md) | Katalog, Capabilities, Rollen, Funktionen, Resolver, Konfigurationsbaum |
-| [UX.md](UX.md) | Bedienkonzept: Navigation, Übersicht je Stufe, Regelzeile, Setup-Assistent, Meldungen |
-| [HISTORY.md](HISTORY.md) | Messreihen in 3 Stufen, Ereignislog, Export |
-| [API.md](API.md) | REST-API v1, Zugang, Live-Kanal |
-| [SIMULATOR.md](SIMULATOR.md) | digitaler Zwilling, Zahlen und Quellen, Störknöpfe |
-| [TESTING.md](TESTING.md) | Teststrategie, Ebenen, Ausführen |
-| [RELEASE.md](RELEASE.md) | Versionen, Changelog, Releases, OTA, Supportpflichten |
-| [SECURITY_MODEL.md](SECURITY_MODEL.md) | Bedrohungsmodell, EN 18031/CRA-Umsetzung |
-| [WORKFLOW.md](WORKFLOW.md) | Repo-Schnitt, Umzug, Agenten, Issues mit Claude, Branches |
-| [DECISIONS.md](DECISIONS.md) | Software-Entscheidungen (SD) und Entwürfe |
-| [ROADMAP.md](ROADMAP.md) | nächste Meilensteine der Software |
-| [../firmware/README.md](../firmware/README.md) | Plan für die ESP-IDF-Portierung |
+| [CONCEPT.md](CONCEPT.md) | Goal, platform (ESP32-S3, option C), layers, rules R1–R8, status of the prototype |
+| [RATIONALE.md](RATIONALE.md) | Rationale register: one entry per domain rule with its reason and evidence (RAT-001 …) |
+| [INVARIANTS.md](INVARIANTS.md) | Domain rules (M1–M15) with implementation and test evidence |
+| [CONFIGURATION.md](CONFIGURATION.md) | Catalog, capabilities, roles, functions, resolver, configuration tree |
+| [PLANT_AUTOMATION.md](PLANT_AUTOMATION.md) | Complete plant automation: areas, network actuators, phases |
+| [UX.md](UX.md) | Interaction design: navigation, overview per stage, control line, setup wizard, messages |
+| [HISTORY.md](HISTORY.md) | Measurement series in 3 tiers, event log, export |
+| [API.md](API.md) | REST API v1, access, live channel |
+| [SIMULATOR.md](SIMULATOR.md) | Digital twin, numbers and sources, fault switches |
+| [TESTING.md](TESTING.md) | Test strategy, levels, running the tests |
+| [RELEASE.md](RELEASE.md) | Versions, changelog, releases, OTA, support obligations |
+| [SECURITY_MODEL.md](SECURITY_MODEL.md) | Threat model, EN 18031/CRA implementation |
+| [WORKFLOW.md](WORKFLOW.md) | Repository split, move, agents, issues with Claude, branches |
+| [DECISIONS.md](DECISIONS.md) | Software decisions (SD) and drafts |
+| [ROADMAP.md](ROADMAP.md) | Next milestones of the software |
+| [../firmware/README.md](../firmware/README.md) | Plan for the ESP-IDF port |

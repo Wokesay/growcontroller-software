@@ -8,73 +8,95 @@ without hardware.
 
 ---
 
-Universelle Pflanzenautomatisierung für Gewächshaus, Indoor-Anbau und
-Hydroponik: Nährlösung mischen, pH und EC regeln, Tank füllen – und Schritt
-für Schritt Licht, Klima und Bewässerung. Die Software läuft auf dem Hub
-(ESP32-S3) und bringt ihre eigene Web-App mit – ohne Cloud, ohne Konto, ohne
-Home Assistant.
+Universal plant automation for greenhouses, indoor growing and
+hydroponics: mix nutrient solution, control pH and EC, fill the tank – and
+step by step light, climate and irrigation. The software runs on the hub
+(ESP32-S3) and brings its own web app – no cloud, no account, no Home
+Assistant required.
 
-> **Status: Prototyp `0.1.0-proto.1`.** Kern, Simulator und Web-App laufen;
-> die Portierung auf den ESP32-S3 folgt (`firmware/README.md`). Nicht an
-> echter Hardware einsetzen.
+> **Status: prototype `0.1.0-proto.1`.** Core, simulator and web app run;
+> the port to the ESP32-S3 follows (`firmware/README.md`). Do not use it
+> with real hardware.
 
-## Ausprobieren ohne Installation
+## Try it without installing
 
-Ab dem nächsten Release liegt unter **Releases** der Simulator für Windows,
-macOS und Linux: eine Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
-(Passwort `demo-passwort`). Hinweise zu Windows-SmartScreen und macOS stehen in
-`README.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
-Artefakte ab.
+From the next release on, **Releases** offers the simulator for Windows,
+macOS and Linux: one file, unpack, double-click. The browser opens the
+demo (password `demo-passwort`). Notes on Windows SmartScreen and macOS
+are in `README.txt` inside the package. Every CI run also stores the
+packages as artifacts.
 
-## Selbst bauen (ohne Hardware)
+## Build it yourself (no hardware needed)
 
-Voraussetzungen: CMake ≥ 3.20, Ninja, C++17-Compiler, Node.js 22.
+Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22.
 
 ```bash
 tools/dev.sh
-# → http://127.0.0.1:8080  ·  Passwort: demo-passwort (nur Simulator)
+# → http://127.0.0.1:8080  ·  password: demo-passwort (simulator only)
 ```
 
-Startet den digitalen Zwilling mit eingerichtetem Tank und 48 Stunden
-Verlauf. `SCENARIO=neu tools/dev.sh` startet einen leeren Hub mit
-Ersteinrichtung. Über den Knopf **Simulator** in der App: Zeitraffer,
-Störungen (pH-Sprung, Pumpe blockiert, Stromausfall, Fehlsteckung …),
-Szenarien.
+This starts the digital twin with a set-up tank and 48 hours of history.
+`SCENARIO=neu tools/dev.sh` starts an empty hub with first-time setup. The
+**Simulator** button in the app offers time-lapse, faults (pH jump, pump
+blocked, power loss, wrong plug …) and scenarios.
 
-## Aufbau
+## Layout
 
 ```
-core/      Kern in C++17, plattformneutral: Katalog, Konfiguration, Sensorwahrheit,
-           Resolver, Mischen, Aktor-Gateway, Regler, Watchdog, Verlauf, Ereignisse, API
-catalog/   Gerätekatalog als Daten (Capabilities, Geräteklassen, Rollen, Funktionen)
-sim/       Simulator: Zwilling (Ports, Dosierblock, Köpfe, Tank) und Host-Server
-web/       Web-App (Preact, TypeScript, Vite) und Ende-zu-Ende-Tests (Playwright)
-tests/     C++-Tests: Unit, API-Vertrag, Szenarien gegen den Zwilling
-firmware/  Plan und Gerüst für den ESP32-S3 (ESP-IDF)
-docs/      Konzept, Fachregeln, Bedienung, API, Tests, Releases, Sicherheit, Arbeitsweise
-tools/     ci.sh (alle Prüfungen), dev.sh (Simulator starten), arch_check.sh (Architekturregeln)
+core/      C++17 core, platform-neutral: catalog, configuration, sensor truth,
+           resolver, mixing, actuator gateway, controllers, watchdog, history, events, API
+catalog/   device catalog as data (capabilities, device classes, roles, functions)
+sim/       simulator: twin (ports, dosing block, heads, tank) and host server
+web/       web app (Preact, TypeScript, Vite) and end-to-end tests (Playwright)
+tests/     C++ tests: unit, API contract, scenarios against the twin
+firmware/  plan and skeleton for the ESP32-S3 (ESP-IDF)
+docs/      concept, domain rules and rationale, UX, API, tests, releases, security, workflow
+tools/     ci.sh (all checks), dev.sh (start the simulator), arch_check.sh (architecture rules)
 ```
 
-Einstieg in die Doku: [`docs/README.md`](docs/README.md).
+Start reading the docs at [`docs/README.md`](docs/README.md).
 
-## Prüfen
+## Checks
 
 ```bash
-tools/ci.sh            # Architekturregeln, Kern mit Sanitizern, 67 C++-Tests, Web-Build mit Größenbudget
-E2E=1 tools/ci.sh      # zusätzlich 9 Browser-Tests gegen den Simulator
+tools/ci.sh            # architecture rules, licenses, core with sanitizers, C++ tests, web build with size budget
+E2E=1 tools/ci.sh      # plus the browser tests against the simulator
 ```
 
-## Mitmachen, Fehler melden, Sicherheit
+## Contributing, bugs, security
 
-- Beiträge: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Fehler: in der App „Einstellungen › Problem melden“ (Vorgangsnummer), oder
-  ein Issue mit der Vorlage „Fehler melden“
-- Sicherheitslücken nie als Issue: [`SECURITY.md`](SECURITY.md)
-- Änderungen: [`CHANGELOG.md`](CHANGELOG.md)
+- Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Bugs: in the app under "Settings › Report a problem" (with a report ID),
+  or an issue with the "Bug report" template
+- Never report vulnerabilities as an issue: [`SECURITY.md`](SECURITY.md)
+- Changes: [`CHANGELOG.md`](CHANGELOG.md)
 
-## Lizenz
+## License
 
-Noch nicht festgelegt (Entwurf E10 in `docs/DECISIONS.md`: GPL-3.0-or-later
-mit DCO). Bis zur Lizenzentscheidung alle Rechte vorbehalten; Ziel ist Open
-Source (PD-005, PD-008). Fremdbibliotheken: nlohmann/json,
-cpp-httplib, doctest (MIT); Preact, @preact/signals, uPlot (MIT), lucide (ISC).
+This software is free software under the **GNU Affero General Public
+License, version 3 or later** (AGPL-3.0-or-later), see [`LICENSE`](LICENSE).
+In plain words:
+
+- **Use, study, change, share.** You may do all of this, also
+  commercially.
+- **Share alike.** If you pass the software on – as a download, on a
+  device, or as a service over a network – you must offer the source code
+  of your version under the same license. The web app links to the exact
+  source code it was built from (AGPL §13).
+- **No warranty.** The software comes as it is.
+- **No paid edition.** The project sells no licenses and has no
+  subscription and no dual licensing. It is funded by selling hardware.
+- **Your device is yours.** The hub never locks out firmware you build
+  yourself; there is no Secure Boot against the owner. How to flash your
+  own firmware: [`firmware/FLASHING.md`](firmware/FLASHING.md).
+- **One license for everything here.** Code, docs, catalog and templates
+  are under the AGPL. One additional permission (AGPL §7) lets the
+  firmware be combined and shared with Espressif's binary-only ESP-IDF
+  libraries (Wi-Fi, PHY, coexistence), see
+  [`LICENSES/LicenseRef-ESP-IDF-binary-libraries-exception.txt`](LICENSES/LicenseRef-ESP-IDF-binary-libraries-exception.txt).
+- **Contributions** are accepted under the same license (inbound =
+  outbound); no CLA, no sign-off.
+- **Third-party components** keep their own licenses:
+  [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+The hardware (circuit boards) is not part of this repository.

@@ -1,46 +1,67 @@
-# Mitmachen
+# Contributing
 
-Danke für dein Interesse. Kurzfassung: kleine PRs, zuerst ein Test, DCO,
-alles auf Deutsch.
+Thanks for your interest. In short: small PRs, a test first, everything
+in English.
 
-## Entwickeln
+## License of contributions
 
-```bash
-tools/dev.sh                    # Simulator + Web-App auf :8080
-cd web && npm run dev           # UI mit Hot-Reload auf :5173 (API → :8080)
-tools/ci.sh                     # alle Prüfungen vor dem PR
+This project is licensed under AGPL-3.0-or-later (`LICENSE`). By opening a
+pull request you agree that your contribution is licensed under the same
+terms (inbound = outbound). There is no CLA and no sign-off (DCO). The
+project never relicenses contributions and offers no paid edition.
+
+Every new source file starts with an SPDX header:
+
+```cpp
+// SPDX-License-Identifier: AGPL-3.0-or-later
 ```
 
-## Regeln für Code
+(`#` for shell, CMake and YAML; `<!-- -->` is not needed for Markdown and
+JSON, which `REUSE.toml` covers.) CI runs `reuse lint` and a license check
+of all npm dependencies (`tools/check_licenses.mjs`). A new dependency
+needs a license compatible with the AGPL and an entry in
+`THIRD_PARTY_NOTICES.md`.
 
-- **Kern bleibt plattformneutral:** keine Plattform-Header in `core/`.
-- **Aktoren nur über das Gateway** (`Actuators` in `core/src/dosing.cpp`).
-- **Der Watchdog bewertet nur.** Er bindet nur `readmodel.hpp` und
-  `config.hpp` ein.
-- **Ein fehlender Wert bleibt fehlend** (`nullopt`/`NaN`, JSON `null`), nie 0.
-- **Logik liest Parameter, nie Phasennamen.**
+## Develop
 
-`tools/arch_check.sh` prüft diese Regeln; die CI bricht bei Verstoß ab.
-Hintergrund: `docs/CONCEPT.md` §4.
+```bash
+tools/dev.sh                    # simulator + web app on :8080
+cd web && npm run dev           # UI with hot reload on :5173 (API → :8080)
+tools/ci.sh                     # all checks before the PR
+```
 
-## Regeln für Fachlogik
+## Code rules
 
-Jede Fachregel trägt ihre Quelle („Quelle: RAT-xxx“) und einen Test.
-Neue Regeln gehören in `docs/INVARIANTS.md`. Simulator-Zahlen sind entweder
-gemessen (mit Quelle) oder als Annahme markiert.
+- **The core stays platform-neutral:** no platform headers in `core/`.
+- **Actuators only through the gateway** (`Actuators` in
+  `core/src/dosing.cpp`).
+- **The watchdog only evaluates.** It includes only `readmodel.hpp` and
+  `config.hpp`.
+- **A missing value stays missing** (`nullopt`/`NaN`, JSON `null`), never
+  0.
+- **Logic reads parameters, never phase names.**
 
-## Pull Requests
+`tools/arch_check.sh` checks these rules; CI fails on a violation.
+Background: `docs/CONCEPT.md` §4.
 
-1. **Branch** von `main`, ein Thema je PR.
-2. **Test zuerst:** Ein Fehler bekommt einen Test, der ihn zeigt.
-3. **CHANGELOG:** Eintrag unter `[Unreleased]` (Neu / Geändert / Behoben /
-   Sicherheit).
-4. **DCO:** Jeder Commit mit `git commit -s`. Damit bestätigst du, dass du den
-   Beitrag einreichen darfst ([developercertificate.org](https://developercertificate.org/)).
-5. **Freigabe:** CI grün, Review durch `reviewer` und `qa`; bei Gateway,
-   Sensorwahrheit, Anmeldung oder Updates zusätzlich `security`.
+## Domain rules
 
-## Ideen und Fragen
+Every domain rule cites its entry in the rationale register
+(`docs/RATIONALE.md`, "Rationale: RAT-xxx") and has a test. New rules get
+an entry there and a row in `docs/INVARIANTS.md`. Simulator numbers are
+either measured (with source) or marked as an assumption.
 
-Bitte in die Discussions, nicht als Issue. Ein Issue entsteht, wenn eine Idee
-angenommen ist.
+## Pull requests
+
+1. **Branch** from `main`, one topic per PR.
+2. **Test first:** a bug gets a test that shows it.
+3. **CHANGELOG:** an entry under `[Unreleased]` (Added / Changed / Fixed /
+   Security).
+4. **Language:** code, comments, docs, commits and the PR in English.
+5. **Approval:** CI green, review by `reviewer` and `qa`; additionally
+   `security` for gateway, sensor truth, login or updates.
+
+## Ideas and questions
+
+Please use Discussions, not issues. An issue is created once an idea is
+accepted.

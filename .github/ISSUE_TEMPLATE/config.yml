@@ -1,11 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 blank_issues_enabled: false
 contact_links:
-  - name: Frage oder Idee
-    url: https://github.com/OWNER/REPO/discussions
-    about: Fragen, Anbau-Tipps und Feature-Wünsche bitte in den Discussions. Ein Issue entsteht, wenn eine Idee angenommen ist.
-  - name: Sicherheitslücke melden (nicht öffentlich)
-    url: https://github.com/OWNER/REPO/security/advisories/new
-    about: Bitte nie als Issue. Ablauf und Kontakt in SECURITY.md.
-  - name: Bestellung, Garantie, Lieferung
-    url: https://example.invalid/support
-    about: Gehört nicht zu GitHub – bitte an den Shop-Support.
+  - name: Question or idea
+    url: https://github.com/Wokesay/growcontroller-software/discussions
+    about: Please ask questions, share growing tips and feature wishes in Discussions. An issue is created once an idea is accepted.
+  - name: Report a vulnerability (private)
+    url: https://github.com/Wokesay/growcontroller-software/security/advisories/new
+    about: Never as an issue. Process and contact in SECURITY.md.

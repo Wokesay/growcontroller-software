@@ -1,152 +1,157 @@
-# Konzept: growcontroller als eigenständige Software
+# Concept: growcontroller as standalone software
 
-Stand 06.10.2026. **V** = Vorschlag, **A** = Annahme, [PD-xxx] = im
-Produkt-Repo entschieden. Software-Entscheidungen sind noch Entwürfe
-(`docs/DECISIONS.md`).
+As of 2026-10-07. **V** = proposal, **A** = assumption, [PD-xxx] = decided in
+the product repository. Software decisions not decided by a PD are still
+drafts (`docs/DECISIONS.md`).
 
-## 1. Ziel
+## 1. Goal
 
-Weg von Home Assistant und Node-RED als Plattform, hin zu einer eigenen
-Software auf dem Hub:
+Our own software on the hub, not built on a home-automation platform
+[PD-013]:
 
-- **Web-App auf dem Gerät**, ohne Cloud und ohne Konto. Sie ist erreichbar im
-  Heimnetz. Eine Handy-App kommt später.
-- **Einrichtung statt Konfiguration.** Geräte werden erkannt, nicht
-  ausgewählt. Der Hub sagt, was mit der vorhandenen Hardware geht und was
-  fehlt.
-- **Sicherheit im Kern.** Die Fachregeln sind Code und Test, nicht
-  Dashboard-Disziplin.
-- **Produktbetrieb.** Versionen, Changelog, Updates mit Rückweg, Fehler melden
-  und eine nachvollziehbare Entwicklung.
+- **Web app on the device**, without cloud and without account. It is
+  reachable in the home network. A phone app comes later.
+- **Setup instead of configuration.** Devices are detected, not
+  selected. The hub says what works with the hardware at hand and what is
+  missing.
+- **Safety in the core.** Domain rules (see `docs/RATIONALE.md`) are code
+  and tests, not dashboard discipline.
+- **Run as a product.** Versions, changelog, updates with a way back, bug
+  reports and traceable development.
 
-## 2. Wo läuft was (Empfehlung `software`: Option C)
+## 2. What runs where (recommendation of `software`: option C) [PD-014]
 
 ```
-Browser ──WLAN── ESP32-S3-Hub [Regelung · Sicherheit · API · Web-UI · Verlauf 1 Jahr]
+Browser ──Wi-Fi── ESP32-S3 hub [control · safety · API · web UI · 1 year history]
                      │
-                     ├── RS485/Modbus je Port ── Dosierblock, Köpfe, Sammelbox
-                     └── optional: „Begleiter“ (Docker/NAS/HA-Add-on, später Abo)
-                                    für Langzeitarchiv, Grow-Vergleich, Push-Relay
+                     ├── RS485/Modbus per port ── dosing block, heads, collection box
+                     └── optional: "companion" (Docker/NAS/HA add-on)
+                                    for long-term archive, comparing cultivation runs, push relay
 ```
 
-| Option | Kosten im Hub | Bewertung |
+| Option | Cost in the hub | Assessment |
 |---|---|---|
-| A: alles auf dem ESP32-S3 | keine (Modul N16R8 ca. 3,4–5,2 $, LCSC) | trägt Regelung, UI, Verlauf |
-| B: Linux-Modul (z. B. CM5) | ca. 85–98 $, 2026 teurer geworden | Bootzeit, Dateisystem, OS-Patchpflicht (CRA), Zielpreis gefährdet [PD-006] |
-| **C: A + optionaler Begleiter** | keine | **empfohlen**: Ohne Begleiter fehlt nichts Sicherheitsrelevantes [PD-008]. Komfort darf Abo sein [PD-005] |
+| A: everything on the ESP32-S3 | none (module N16R8 approx. $3.4–5.2, LCSC) | carries control, UI, history |
+| B: Linux module (e.g. CM5) | approx. $85–98, more expensive in 2026 | boot time, file system, OS patching duty (CRA), target price at risk [PD-006] |
+| **C: A + optional companion** | none | **recommended**: without the companion nothing safety-relevant is missing [PD-008]. There is no subscription; all functions are free [PD-024] |
 
-Quellen (Recherche `software`, abgerufen 06.10.2026):
+Sources (research by `software`, retrieved 2026-10-06):
 
 - https://www.lcsc.com/product-detail/WiFi-Modules_Espressif-Systems-ESP32-S3-WROOM-1-N16R8_C2913202.html
 - https://www.raspberrypi.com/news/more-memory-driven-price-rises/
 - https://www.theregister.com/2026/04/01/raspberry_pi_price_hikes/
 
-## 3. Ein Kern, zwei Plattformen
+## 3. One core, two platforms
 
-Der fachliche Kern ist **plattformneutrales C++17** (`core/`). Derselbe Code
-läuft:
+The domain core is **platform-neutral C++17** (`core/`). The same code
+runs:
 
-- **im Simulator** (`sim/`): Host-Server mit digitalem Zwilling. Darauf
-  laufen Entwicklung, Tests und Vorführung, ohne Hardware.
-- **auf dem Hub** (`firmware/`): ESP-IDF auf dem ESP32-S3. Ersetzt werden
-  nur die HAL-Schnittstellen (`IBus`, `IStorage`, `IClock`, HTTP-Bindung).
+- **in the simulator** (`sim/`): a host server with a digital twin.
+  Development, tests and demos run on it, without hardware.
+- **on the hub** (`firmware/`): ESP-IDF on the ESP32-S3. Only the HAL
+  interfaces are replaced (`IBus`, `IStorage`, `IClock`, HTTP binding).
 
-Warum C++ und nicht Rust/MicroPython/ESPHome:
+Why C++ and not Rust/MicroPython/ESPHome:
 
-- **ESP-IDF ist ausgereift.** Für Rust gibt es esp-hal 1.0 seit Oktober
-  2025; die std-Crates haben nur Community-Support. Später prüfen.
-- **MicroPython** fällt aus: Pausen der Garbage Collection, Fehler erst zur
-  Laufzeit.
-- **ESPHome** konfiguriert zur Kompilierzeit und hat keinen
-  Konfigurationsbaum zur Laufzeit. Es bleibt Muster, nicht Basis.
+- **ESP-IDF is mature.** For Rust, esp-hal 1.0 exists since October 2025;
+  the std crates have community support only. Re-evaluate later.
+- **MicroPython** is out: garbage collection pauses, errors only at run
+  time.
+- **ESPHome** configures at compile time and has no configuration tree at
+  run time. It remains a source of ideas, not the basis.
 
-Quelle: `software`, abgerufen 06.10.2026:
+Source: `software`, retrieved 2026-10-06:
 https://developer.espressif.com/blog/2025/10/esp-hal-1/
 
-Die **Web-App** (`web/`) ist Preact + TypeScript, gebaut mit Vite. Sie
-spricht nur die REST-API. Gzip-komprimiert sind es heute **ca. 73 KB**
-(Budget 250 KB, Prüfung im Build). Sie liegt im App-Image der Firmware;
-damit passen UI und API immer zusammen, und ein Rollback nimmt die UI mit.
+The **web app** (`web/`) is Preact + TypeScript, built with Vite. It talks
+only to the REST API. Gzip-compressed it is **approx. 73 KB** today (budget
+250 KB, checked in the build). It sits in the app image of the firmware, so
+UI and API always match, and a rollback takes the UI along.
 
-## 4. Schichten und Regeln (Vorschlag `architekt`)
+## 4. Layers and rules (proposal of `architekt`)
 
-| # | Schicht | Code | plattformneutral |
+| # | Layer | Code | platform-neutral |
 |---|---|---|---|
-| 0 | HAL: UART/DE je Port, eFuse, ADC, Flash, WLAN, Uhr | `IBus`, `IStorage`, `IClock` | nein |
-| 1–3 | Bus, Port-Freigabe, Treiber, Geräte-Register | `bus.hpp`, Simulator `simbus` | Schnittstelle ja |
-| 4 | Sensorwahrheit | `truth.*` | ja |
-| 5 | Konfiguration, Rollen, Parameter, Phasen | `config.*`, `catalog.*` | ja |
-| 6 | Resolver („Was fehlt dir?“) | `resolver.*` | ja |
-| 7 | Funktionen und Regler | `mix.*`, `control.*` | ja |
-| 8 | **Aktor-Gateway**: einziger Weg zu Aktoren | `dosing.*` (`Actuators`) | ja |
-| 9 | Watchdog: bewertet nur | `watchdog.*` | ja |
-| 10 | Verlauf, Ereignislog | `history.*`, `events.*` | ja |
-| 11 | API | `api.*` | ja (Server-Bindung nein) |
-| 12 | Web-App | `web/` | eigener Build |
+| 0 | HAL: UART/DE per port, eFuse, ADC, flash, Wi-Fi, clock | `IBus`, `IStorage`, `IClock` | no |
+| 1–3 | bus, port enable, drivers, device registers | `bus.hpp`, simulator `simbus` | interface yes |
+| 4 | sensor truth | `truth.*` | yes |
+| 5 | configuration, roles, parameters, phases | `config.*`, `catalog.*` | yes |
+| 6 | resolver ("What's missing?") | `resolver.*` | yes |
+| 7 | functions and controllers | `mix.*`, `control.*` | yes |
+| 8 | **actuator gateway**: the only path to actuators | `dosing.*` (`Actuators`) | yes |
+| 9 | watchdog: only evaluates | `watchdog.*` | yes |
+| 10 | history, event log | `history.*`, `events.*` | yes |
+| 11 | API | `api.*` | yes (server binding no) |
+| 12 | web app | `web/` | own build |
 
-**Regeln** (in `tools/arch_check.sh` maschinell geprüft, soweit möglich):
+**Rules** (checked by machine in `tools/arch_check.sh` where possible):
 
-- **R1:** Nur das Aktor-Gateway ruft Pumpen und Ausgänge. Auch Handgaben und
-  der Not-Halt laufen dort durch.
-- **R2:** Der Watchdog sieht nur Lesemodell und Konfiguration
-  (`readmodel.hpp`). Er hat keinen Pfad zu Aktoren. Quelle: RAT-074.
-- **R3:** Sperren lesen die Sensorwahrheit, nie die Bewertung des Watchdogs.
-- **R4:** Funktionen bekommen nur wirksame Parameter (`ParamView`), nie
-  Phasennamen. Quelle: RAT-076.
-- **R5:** Ein fehlender Wert ist `nullopt`/`NaN`, in JSON `null`, nie 0.
-  Quelle: RAT-006.
-- **R6:** Nach einem Neustart ist alles aus. Abläufe werden nicht fortgesetzt,
-  sondern als unterbrochen gemeldet. Rastungen und Sprungsperren bleiben
-  erhalten. Quelle: RAT-007, RAT-028, RAT-044, RAT-063. PD-020 ersetzt
-  den Teil für Zustandsfunktionen (Lüfter, Licht, Gießen); Umsetzung offen.
-- **R7:** Der Katalog kann Sicherheit nur verschärfen. Das Minimum steht im
-  Gateway: Einmesswert, Laufzeitgrenzen, ein Lauf zugleich, Not-Halt,
-  Trockenlauf, Notgrenze des Zulaufs.
-- **R8:** Eine Ereignisschleife mit injizierter Uhr. Das macht Tests
-  deterministisch und den Zeitraffer im Simulator möglich.
+- **R1:** Only the actuator gateway calls pumps and outputs. Manual doses
+  and the emergency stop go through it too.
+- **R2:** The watchdog sees only the read model and the configuration
+  (`readmodel.hpp`). It has no path to actuators. Rationale: RAT-074.
+- **R3:** Locks read the sensor truth, never the watchdog's assessment.
+- **R4:** Functions get only effective parameters (`ParamView`), never
+  phase names. Rationale: RAT-076.
+- **R5:** A missing value is `nullopt`/`NaN`, in JSON `null`, never 0.
+  Rationale: RAT-006.
+- **R6:** After a restart everything is off. Sequences are not resumed but
+  reported as interrupted. Latches and jump locks persist. Rationale:
+  RAT-007, RAT-028, RAT-044, RAT-063. PD-020 replaces the part for state
+  functions (fans, light, irrigation); implementation open.
+- **R7:** The catalog can only tighten safety. The minimum lives in the
+  gateway: calibration value, run time limits, one run at a time,
+  emergency stop, dry run, emergency limit of the inlet.
+- **R8:** One event loop with an injected clock. This makes tests
+  deterministic and time-lapse in the simulator possible.
 
-## 5. Was der Prototyp heute kann
+## 5. What the prototype can do today
 
-- **Stufe 0:**
-  - Geräte erkennen und übernehmen.
-  - Kanister mit Paaren (A:B), Rezepte mit Reihenfolge, Vorlagen.
-  - Pumpen einmessen; der Wert landet im ID-Chip [PD-010].
-  - Geführtes Mischen: „neu“ oder „auffüllen“, mit Rühranweisung oder
-    Umwälzpumpe. Paar-Fehler mit „nachholen“, Doppelstart-Schutz.
-  - Handgabe mit Grenze, Vorrat je Kanister.
-- **Stufe 1:**
-  - pH/EC-Kopf mit Kalibrierung: pH mit 2 Puffern, EC mit 1 Referenz.
-  - Sensorwahrheit: Frische, Stillstand, Plausibilität, Sprungsperre,
-    Kalibrierung.
-  - EC-Nachdosierung und pH-Regelung in Teilgaben aus der gemessenen Wirkung,
-    mit EC-Gate, Ruhezeit und Lernen nur aus sauberen Gaben.
-  - Umwälzen nach Intervall oder bei Bedarf.
-- **Stufe 2:**
-  - Füllstand mit stückweise linearer Kennlinie (RAT-078).
-  - Nachfüllen über eine berechnete Menge; der Sensor ist Notabschaltung.
-  - Trockenlaufschutz mit Rastung, Bewertung der Wassertemperatur.
-- **Überall:**
-  - Watchdog: OK, Problem oder neutral, immer mit Grund.
-  - Regelzeile mit Checkliste („Warum dosiert er gerade nicht?“).
-  - Not-Halt, Pflegemodus, Durchgang mit Phasen als Parametersätze, Ernte als
-    Ereignis.
-  - Verlauf in 3 Stufen, Ereignislog, CSV-Export, Sicherung und Import der
-    Konfiguration.
-  - Anmeldung mit Pflichtpasswort und Sperre nach Fehlversuchen.
-  - Update-Ansicht mit „Was ist neu“ (im Simulator als Attrappe).
-  - Diagnosepaket für „Problem melden“.
+- **Stage 0:**
+  - Detect and adopt devices.
+  - Bottles with pairs (A:B), recipes with an order, templates.
+  - Calibrate pumps; the value is stored in the ID chip [PD-010].
+  - Guided mixing: "new" or "top up", with stirring instructions or a
+    circulation pump. Pair errors with "catch up", protection against a
+    double start.
+  - Manual dose with a limit, stock per bottle.
+- **Stage 1:**
+  - pH/EC head with calibration: pH with 2 buffers, EC with 1 reference.
+  - Sensor truth: freshness, frozen values, plausibility, jump lock,
+    calibration.
+  - EC top-up and pH control in partial doses based on the measured
+    effect, with EC gate, settling time and learning only from clean
+    doses.
+  - Circulation by interval or on demand.
+- **Stage 2:**
+  - Level with a piecewise linear curve (RAT-078).
+  - Refill by a calculated volume; the sensor is the emergency cut-off.
+  - Dry-run protection with latch, assessment of the water temperature.
+- **Everywhere:**
+  - Watchdog: OK, problem or neutral, always with a reason.
+  - Control line with checklist ("Why is it (not) dosing right now?").
+  - Emergency stop, maintenance mode, cultivation run with phases as
+    parameter sets, harvest as an event.
+  - History in 3 tiers, event log, CSV export, backup and import of the
+    configuration.
+  - Login with a mandatory password and lockout after failed attempts.
+  - Update view with "What's new" (a mock-up in the simulator).
+  - Diagnostic package for "Report a problem".
 
-## 6. Was bewusst noch fehlt
+## 6. What is deliberately still missing
 
-- **ESP-IDF-Portierung:** Modbus je Port, Port-Freigabe, NVS/Flash-Ringpuffer,
+- **ESP-IDF port:** Modbus per port, port enable, NVS/flash ring buffer,
   OTA. Plan in `firmware/README.md`.
-- **HTTPS im Heimnetz** mit Zertifikat je Gerät und signiertes OTA
-  (`docs/SECURITY_MODEL.md`).
-- **Benachrichtigungen ohne Herstellercloud** (ntfy, E-Mail, Webhook),
-  Morgenbericht.
-- **MQTT mit HA-Discovery** (nur lesend und wenige Befehle).
-- **Mehrere Tanks:** Das Datenmodell ist schon eine Liste; UI und Logik nutzen
-  einen Tank.
-- **Stufe 3–4:** Gießen, Drain, Klima. Heizen nur über eine externe Steckdose
-  mit Auto-Off.
-- **Sprachen:** Texte laufen schon über Schlüssel; Übersetzungen fehlen noch.
+- **HTTPS in the home network** with a certificate per device, and signed
+  OTA (`docs/SECURITY_MODEL.md`). Signed updates must still let the owner
+  install their own firmware (PD-022).
+- **Notifications without a vendor cloud** (ntfy, email, webhook), morning
+  report.
+- **MQTT with HA discovery** (read-only plus a few commands).
+- **Multiple tanks:** The data model is already a list; UI and logic use
+  one tank.
+- **Stage 3–4:** irrigation, drain, climate. Heating only via an external
+  socket with auto-off.
+- **Languages and units:** The web app speaks English and German. Still
+  missing: English as the default, and a unit system chosen separately
+  from the language (PD-035, PD-027).

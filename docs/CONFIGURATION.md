@@ -1,145 +1,149 @@
-# Konfigurationsmodell: Katalog, Rollen, Funktionen, Resolver
+# Configuration model: catalog, roles, functions, resolver
 
-Stand 06.10.2026. Entwurf `architekt`, im Prototyp umgesetzt.
+As of 2026-10-06. Draft by `architekt`, implemented in the prototype.
 
-## 1. Die Kette in einem Satz
+## 1. The chain in one sentence
 
-Ein **Gerät** meldet **Capabilities**. Eine **Rolle** bindet eine Capability
-über die **Geräte-ID** an einen Platz, etwa „pH im Tank“. Eine **Funktion**
-verlangt Rollen, Kalibrierungen und Einstellungen. Der **Resolver** sagt je
-Funktion, ob sie geht und was fehlt. Die UI klappt danach Einstellungen auf
-oder zu.
+A **device** reports **capabilities**. A **role** binds a capability to a
+place, such as "pH in the tank", via the **device ID**. A **function**
+requires roles, calibrations and settings. For each function, the
+**resolver** says whether it works and what is missing. The UI then
+expands or collapses settings accordingly.
 
 ```
-Gerät (DB-7A31C0, PHEC-3F2A91 …)        ← erkannt am Port, übernommen vom Nutzer
+Device (DB-7A31C0, PHEC-3F2A91 …)        ← detected at the port, accepted by the user
   └─ Capability (measure.ph, dose.peristaltic, switch.12v …)
-       └─ Rolle (tank.ph, tank.circulation, Kanister „Teil A“ → Pumpe)
-            └─ Funktion (pH regeln) ← Voraussetzungen aus dem Katalog
-                 └─ Parameter (Ziel-pH …) ← Vorgabe ⊕ Einstellung ⊕ aktive Phase
+       └─ Role (tank.ph, tank.circulation, canister "Part A" → pump)
+            └─ Function (control pH) ← requirements from the catalog
+                 └─ Parameter (target pH …) ← default ⊕ setting ⊕ active phase
 ```
 
-## 2. Katalog (`catalog/catalog.json`)
+## 2. Catalog (`catalog/catalog.json`)
 
-Der Katalog ist Daten. Er wird zur Bauzeit eingebettet und kommt mit der
-Firmware. Inhalt:
+The catalog is data. It is embedded at build time and ships with the
+firmware. Contents:
 
-- **capabilities**: Einheit, Nachkommastellen, Plausibilitätsband,
-  Frischegrenze, Sprungschwelle.
-- **deviceClasses**: Stufe, Anschluss (Hub-Port, Dosierblock-Port, Box, im
-  Hub, `net` für Netzsteckdosen), Kanäle, gelieferte Capabilities,
-  Kalibrierbedarf, Shop-Text.
-- **roles**: Platz → akzeptierte Capabilities (`accepts`, z. B. 12-V-Ausgang
-  oder Netzsteckdose), ob er als Messreihe in den Verlauf geht, und bei
-  Schaltausgängen das Sicherheitsprofil (`profile`: dauer, puls, kompressor,
-  heizen) mit Höchstlaufzeit (`maxOnS`).
-- **functions**: Stufe, Gruppe, Text, harte und weiche Voraussetzungen,
-  Parameter mit Typ, Bereich, Vorgabe und dem Vermerk „von der Phase
-  überschreibbar“.
-- **templates**: Rezeptvorlagen.
+- **capabilities**: unit, decimal places, plausibility band, freshness
+  limit, jump threshold.
+- **deviceClasses**: stage, attachment (hub port, dosing block port,
+  collection box, inside the hub, `net` for mains sockets), channels,
+  provided capabilities, calibration need, shop text.
+- **roles**: place → accepted capabilities (`accepts`, e.g. 12 V output
+  or mains socket), whether it goes into the history as a series, and for
+  switched outputs the safety profile (`profile`: `dauer` continuous,
+  `puls` pulse, `kompressor` compressor, `heizen` heating) with a maximum
+  run time (`maxOnS`).
+- **functions**: stage, group, text, hard and soft requirements,
+  parameters with type, range, default and the flag "can be overridden by
+  the phase".
+- **templates**: recipe templates.
 
-**Feste Voraussetzungsarten** (neue Art = Code, neue Funktion = nur Daten):
+**Fixed requirement kinds** (new kind = code, new function = data only):
 
-| Art | Beispiel | prüft |
+| Kind | Example | Checks |
 |---|---|---|
-| `role` | `{"role":"tank.ph","calibrated":true}` | Hardware da → Rolle gebunden → kalibriert → Wert gültig (Laufzeit) |
-| `canisters` | `{"canisters":{"min":1,"kind":"ph_down","calibrated":true}}` | Kanister des Typs mit Pumpe, eingemessen, erkannt |
-| `config` | `{"config":"recipe"}` | Rezept vorhanden, Nutzvolumen gesetzt |
-| `function` | `{"function":"circulation"}` | andere Funktion eingeschaltet |
-| `device` | `{"device":"pump_cap"}` | Geräteklasse vorhanden |
+| `role` | `{"role":"tank.ph","calibrated":true}` | hardware present → role bound → calibrated → value valid (runtime) |
+| `canisters` | `{"canisters":{"min":1,"kind":"ph_down","calibrated":true}}` | canister of this type with a pump, calibrated, detected |
+| `config` | `{"config":"recipe"}` | recipe present, usable volume set |
+| `function` | `{"function":"circulation"}` | other function enabled |
+| `device` | `{"device":"pump_cap"}` | device class present |
 
-Skriptsprachen (Lua/JS) im Katalog wurden verworfen: Sie vergrößern die
-Angriffsfläche, und die Sicherheit läge im Skript (`architekt`).
+Scripting languages (Lua/JS) in the catalog were rejected: they enlarge
+the attack surface, and safety would depend on the script (`architekt`).
 
-## 3. Zustände je Funktion (zwei Achsen)
+## 3. States per function (two axes)
 
-**Einrichtung** (Resolver):
+**Setup** (resolver):
 
-| Zustand | Bedeutung | UI |
+| State | Meaning | UI |
 |---|---|---|
-| `unavailable` | Gerät der nötigen Klasse fehlt | „Dafür brauchst du: Kopf pH/EC“, sichtbar unter Geräte › Erweitern |
-| `needs_setup` | Gerät da; es fehlen Zuordnung, Kalibrierung oder Einstellung | Checkliste mit „Jetzt erledigen →“ |
-| `limited` | alles Harte erfüllt, Weiches fehlt | „Eingeschränkt: Ohne Umwälzpumpe … umrühren“ |
-| `ready` | vollständig | Schalter frei |
+| `unavailable` | no device of the required class | "For this you need: pH/EC head", visible under Devices › Expand |
+| `needs_setup` | device present; assignment, calibration or setting missing | checklist with "Do it now →" |
+| `limited` | all hard requirements met, a soft one missing | "Limited: without a circulation pump … stir" |
+| `ready` | complete | switch enabled |
 
-**Laufzeit** (Regler): `off`, `idle` (ruht), `working` (regelt), `waiting`
-(wartet), `blocked` (Einschaltsperre, hebt sich selbst auf), `latched`
-(gerastet, Quittierung nötig; Quelle: RAT-062).
+**Runtime** (controller): `off`, `idle` (resting), `working`
+(controlling), `waiting` (waiting), `blocked` (switch-on lock, clears
+itself), `latched` (latched, needs acknowledgement; Rationale: RAT-062).
 
-Ein eingerichtetes Gerät, das gerade nicht antwortet, macht eine Funktion
-nicht „nicht verfügbar“. Es zeigt „gesperrt: Gerät antwortet nicht“.
+A set-up device that is not responding right now does not make a
+function `unavailable`. It shows "blocked: device not responding".
 
-## 4. Konfigurationsbaum (`config.json`)
+## 4. Configuration tree (`config.json`)
 
 ```
 config {schemaVersion, revision}
-├─ system      Name, Zeitzone, Sprache, Update-Kanal, Update-Prüfung
-├─ limits      Grenze je Handgabe, Laufzeitgrenzen
-├─ devices[]   Geräte-ID → Klasse, Name   (flaches Inventar)
-├─ tanks[]     Nutzvolumen, Mindestfüllstand, Wasser, roles{tank.* → Gerät/Kanal}
-├─ zones[]     Anbaubereich: Name, Art (Raum/Zelt/Gewächshaus), Tank, roles{zone.* → Gerät/Kanal}
-├─ canisters[] Name, Typ (Nährstoff/pH−/pH+), Pumpe, Paar, Farbe, Größe
-├─ recipes[]   Schritte in Dosierreihenfolge (Kanister, ml/L)
-├─ functions{} eingeschaltet, Parameter
-├─ calibrations{Gerät → ph | ec | tank_curve}
-└─ grow        none | running | completed; Phasen = Parametersätze
+├─ system      name, time zone, language, update channel, update check
+├─ limits      cap per manual dose, run-time limits
+├─ devices[]   device ID → class, name   (flat inventory)
+├─ tanks[]     usable volume, minimum level, water, roles{tank.* → device/channel}
+├─ zones[]     growing area: name, kind (room/tent/greenhouse), tank, roles{zone.* → device/channel}
+├─ canisters[] name, type (nutrient/pH−/pH+), pump, pair, colour, size
+├─ recipes[]   steps in dosing order (canister, ml/L)
+├─ functions{} enabled, parameters
+├─ calibrations{device → ph | ec | tank_curve}
+└─ grow        cultivation run: none | running | completed; phases = parameter sets
 ```
 
-Getrennt davon liegen:
+Stored separately:
 
-- `state.json`: Vorrat, bekanntes Volumen, gelernte Wirkungen, Rastungen,
-  Sprungsperren, Handmessungen. Er ändert sich laufend; dafür braucht es keine
-  neue Konfigurations-Revision.
-- `auth.json`: nur Hash und Salz.
+- `state.json`: stock, known volume, learned effects, latches, jump locks,
+  manual measurements. It changes all the time; that needs no new
+  configuration revision.
+- `auth.json`: hash and salt only.
 - `events.json`, `history.bin`.
 
-**Versionierung:**
+**Versioning:**
 
-- `schemaVersion` ist eine ganze Zahl. Migrationen sind reine Funktionen
-  vN → vN+1 (`migrateConfig`) und getestet.
-  - v1 → v2: Rollen `tent.*` am Tank werden `zone.*` an der ersten Zone.
-    Messreihen und Sprungsperren unter den alten Namen werden nicht
-    umbenannt; der Klimaverlauf vor dem Update bleibt unter `tent.*`.
-- Ist die Datei unlesbar, startet der Hub mit Werkseinstellung, alle Aktoren
-  aus. Er meldet das laut und sichert die defekte Datei als
+- `schemaVersion` is an integer. Migrations are pure functions
+  vN → vN+1 (`migrateConfig`) and are tested.
+  - v1 → v2: roles `tent.*` on the tank become `zone.*` on the first zone.
+    Series and jump locks under the old names are not renamed; the climate
+    history from before the update stays under `tent.*`.
+- If the file cannot be read, the hub starts with factory settings and all
+  actuators off. It reports this loudly and saves the broken file as
   `config.broken.json`.
-- `revision` zählt jede Änderung. Vorgesehen ist sie als ETag gegen
-  gleichzeitiges Bearbeiten.
+- `revision` counts every change. It is meant as an ETag against
+  concurrent editing.
 
-**Prüfung in drei Stufen:**
+**Validation in three stages:**
 
-1. Struktur beim Lesen.
-2. Verweise: Rolle → Gerät mit passender Capability; Rezept → Kanister.
-3. Fachlich und sicherheitlich:
-   - pH nie im Rezept;
-   - Paare vollständig;
-   - eine Pumpe nur an einem Kanister;
-   - ein Kanister nur einmal je Rezept;
-   - Rollen am richtigen Ort (`tank.*` am Tank, `zone.*` an der Zone), höchstens eine Zone mit Namen;
-   - ein Schaltausgang nur für eine Rolle, Kanal im Bereich des Geräts;
-   - Parameter im Bereich, Toleranz nie 0.
+1. Structure, when reading.
+2. References: role → device with a matching capability; recipe →
+   canister.
+3. Domain and safety:
+   - pH never in the recipe;
+   - pairs complete;
+   - a pump on one canister only;
+   - a canister only once per recipe;
+   - roles in the right place (`tank.*` on the tank, `zone.*` on the zone), at most one zone, and it has a name;
+   - a switched output for one role only, channel within the device's range;
+   - parameters within range, tolerance never 0.
 
-**Phasen:** Wirksame Parameter = Katalog-Vorgabe ⊕ Einstellung ⊕ aktive Phase
-(nur Parameter mit `phase: true`). Regler sehen nur diese Sicht. Ein
-umbenannte Phase ändert nichts (Test M15-1).
+**Phases:** effective parameters = catalog default ⊕ setting ⊕ active
+phase (only parameters with `phase: true`). Controllers see only this
+view. Renaming a phase changes nothing (test M15-1).
 
-## 5. Bindung an die Geräte-ID
+## 5. Binding to the device ID
 
-- **Der Port ist ein Laufzeitattribut** („zuletzt an Port 3“), keine
-  Konfiguration. Umstecken ändert nichts.
-- **Beim Übernehmen** wird eine Messrolle automatisch gebunden, wenn es genau
-  einen Kandidaten gibt. Dosier- und Schaltrollen bindet der Hub nie
-  automatisch.
-- **Kommt eine Kappe nach dem Umstecken zurück**, fragt der Hub im
-  Ereignislog: „Sitzt sie noch auf Teil A?“. Elektrisch kann er nicht
-  erkennen, auf welchem Kanister sie sitzt.
+- **The port is a runtime attribute** ("last seen on port 3"), not
+  configuration. Re-plugging changes nothing.
+- **When a device is accepted**, a measuring role is bound automatically
+  if there is exactly one candidate. The hub never binds dosing or
+  switching roles automatically.
+- **If a cap comes back after re-plugging**, the hub asks in the event
+  log: "Is it still on Part A?". It cannot detect electrically which
+  canister the cap sits on.
 
-## 6. Offene Punkte
+## 6. Open points
 
-- **Mehrere Tanks:** Das Datenmodell ist bereit, UI und Logik nutzen einen
-  Tank.
-- **Lasten an Schaltausgängen deklarieren** (Art, „stromlos zu“, Leistung)
-  und daran Regeln knüpfen. Beispiel: Heizung nur an `switch.mains` mit
-  Auto-Off.
-- **Tausch-Assistent:** Altes Gerät fehlt, neues der gleichen Klasse ist da.
-- **Kalibrieralter:** Hinweis nach N Tagen; ob weich oder hart, ist offen.
-- **JSON-Schema für die Konfiguration**, damit die UI vorab prüfen kann.
+- **Multiple tanks:** the data model is ready; UI and logic use one tank.
+- **Declare loads on switched outputs** (kind, "normally closed", power)
+  and attach rules to them. Example: heater only on `switch.mains` with
+  auto-off.
+- **Swap assistant:** the old device is missing, a new one of the same
+  class is present.
+- **Calibration age:** a notice after N days; whether soft or hard is
+  open.
+- **JSON Schema for the configuration**, so the UI can validate in
+  advance.

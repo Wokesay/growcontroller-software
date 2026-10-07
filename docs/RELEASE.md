@@ -1,100 +1,122 @@
-# Versionen, Changelog, Releases, Updates
+# Versions, changelog, releases, updates
 
-Stand 06.10.2026. Grundlage: `produkt`, `regulatorik`, `software`, `kunde`.
-Einordnung, keine Rechtsberatung.
+As of 2026-10-07. Basis: `produkt`, `regulatorik`, `software`, `kunde`
+(agents of the product repository). An assessment, not legal advice.
 
-## Versionen
+## Versions
 
-- **SemVer** `MAJOR.MINOR.PATCH[-beta.N]`. Die Version steht in `VERSION`,
-  `web/package.json` und im Tag `vX.Y.Z`.
-- **MAJOR:** Bruch in Konfiguration, API oder Bus-Protokoll. Integratoren und
-  Busgeräte brauchen dieses Signal.
-- **PATCH:** nur Fehler- und Sicherheitskorrekturen. Damit kommen
-  Sicherheitsupdates, wo machbar, getrennt von Funktionsupdates (CRA Anhang I
-  Teil II).
-- **Prototyp-Phase:** `0.x.y-proto.N`. Keine Zusagen zur Kompatibilität.
+- **Self-describing (PD-037):** The name and description say what a
+  version is and what it contains. No code names. The exact schema is open;
+  proposal: SemVer with the channel in the name and a title that names the
+  content.
+- **SemVer** `MAJOR.MINOR.PATCH[-beta.N]` (draft E12). The version is in
+  `VERSION`, `web/package.json` and in the tag `vX.Y.Z`.
+- **MAJOR:** a break in configuration, API or bus protocol. Integrators and
+  bus devices need this signal.
+- **PATCH:** only bug and security fixes. This way security updates come
+  separately from feature updates where feasible (CRA Annex I Part II).
+- **Prototype phase:** `0.x.y-proto.N`. No compatibility promises.
+
+## Channels (PD-036)
+
+- **Stable (live):** firmware for the hub without any simulation code. It
+  is excluded at build time, and the web app has no simulator panel. Live
+  operation shows only real data.
+- **Beta:** a pre-release for real devices, for testing, plus a simulator
+  download to try things out (demo, time-lapse, faults).
+- **Development:** a build per commit with all switches, e.g. 300x
+  time-lapse, scenarios and fault injection.
+- Ready-made simulator downloads for Windows, macOS and Linux exist in Beta
+  and Development, not in Stable.
+- A Raspberry Pi runs only the simulator and the optional companion, never
+  the control (PD-038).
 
 ## Changelog
 
-[Keep a Changelog 1.1.0](https://keepachangelog.com/de/1.1.0/) mit den
-Abschnitten **Neu, Geändert, Behoben, Entfernt, Sicherheit**. Jeder PR trägt
-einen Eintrag unter `[Unreleased]` ein.
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) with the
+sections **Added, Changed, Fixed, Removed, Security**. Every PR adds an
+entry under `[Unreleased]`.
 
-- **„Sicherheit“** nennt betroffene Versionen, Schwere, Fix-Version und
-  GHSA- oder CVE-Kennung.
-- **Für die App** kommt aus jedem Release eine Kurzfassung in drei Zeilen:
-  „Neu / Behoben / Bitte beachten“ (`kunde`). Der vollständige Changelog ist
-  in der Firmware eingebettet (`GET /api/v1/changelog`) und in der App
-  lesbar.
+- **"Security"** names the affected versions, severity, fix version and
+  GHSA or CVE ID.
+- **For the app**, every release gets a three-line summary:
+  "New / Fixed / Please note" (`kunde`). The full changelog is embedded in
+  the firmware (`GET /api/v1/changelog`) and readable in the app.
 
-## Release-Ablauf
+## Release process
 
-1. **Vorbereiten:** `[Unreleased]` → `[X.Y.Z] – Datum`, `VERSION` und
-   `web/package.json` anheben, PR, Review (`reviewer`, `release`,
-   bei Sicherheitsthemen `security`), CI grün.
-2. **Taggen:** Tag `vX.Y.Z` auf `main`. Der Workflow `release.yml` baut
-   Simulator und Web-App, erzeugt SBOM (CycloneDX) und `SHA256SUMS` und
-   legt das GitHub-Release mit dem Changelog-Abschnitt an. Vorabversionen
-   (`-beta`, `-proto`) sind als Vorabversion markiert.
-3. **Firmware** (sobald `firmware/` baut):
-   - Die CI baut das ESP-IDF-Image und die SBOM (`idf.py sbom-create`).
-   - **Signiert wird offline** nach manueller Freigabe durch den
-     Projektinhaber. Der Schlüssel liegt nie im Repo und nicht ungeschützt
-     in der CI.
-   - Das Manifest (Version, Kanal, Größe, Hash, Signatur, Kurzfassung) kommt
-     ins Release.
-4. **Kanäle:** `beta` sofort, `stable` nach mindestens 7 Tagen ohne
-   Befund (V).
+1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION` and
+   `web/package.json`, PR, review (`reviewer`, `release`, and `security`
+   for security topics), CI green.
+2. **Tag:** tag `vX.Y.Z` on `main`. The workflow `release.yml` builds the
+   simulator and the web app, creates the SBOM (CycloneDX) and
+   `SHA256SUMS`, and creates the GitHub release with the changelog
+   section. Pre-releases (`-beta`, `-proto`) are marked as pre-release.
+   Simulator downloads belong only to Beta releases, not to Stable
+   (PD-036); `release.yml` does not yet tell the channels apart.
+3. **Firmware** (once `firmware/` builds):
+   - CI builds the ESP-IDF image and the SBOM (`idf.py sbom-create`).
+     The Stable image is built without simulation code (PD-036).
+   - **Signing happens offline** after manual approval by the project
+     owner. The key is never in the repository and never unprotected in
+     CI.
+   - The manifest (version, channel, size, hash, signature, summary) goes
+     into the release.
+4. **Channels:** Beta right away, Stable after at least 7 days without
+   findings (V). Development needs no release step; it is built per commit
+   (PD-036).
 
-## Updates auf dem Hub (Konzept, im Simulator als Attrappe)
+## Updates on the hub (concept, a mock-up in the simulator)
 
-- **Zwei App-Partitionen** (A/B) mit `otadata`. Die neue Version startet als
-  „pending verify“.
-- **Selbsttest** (Bus, Ports, Speicher, Webserver) bestätigt die neue
-  Version. Sonst kehrt der Hub automatisch zur alten zurück.
-- **Signatur vor der Installation:** mindestens Signaturprüfung ohne
-  Hardware-Secure-Boot (`CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT`, auf dem
-  S3 testen). Vor dem ersten verkauften Gerät: Secure Boot v2,
-  Flash-Verschlüsselung, Downgrade-Sperre über die Security-Version.
-- **Web-UI im App-Image:** Ein Update ist atomar; ein Rollback nimmt die UI
-  mit.
-- **Nur im sicheren Zustand:** kein Auftrag, keine Dosierung (API: 409).
-  Rezepte, Einmesswerte und Einstellungen bleiben erhalten (Kundensicht).
-- **Wege:**
-  - Aus der App gegen das Manifest der GitHub-Releases.
-  - Offline per Datei-Upload einer signierten Datei.
-  - Für Selbstbauer ein Web-Installer (ESP Web Tools, Chrome/Edge am
-    Desktop).
-- **Update-Prüfung:**
-  - Sie ist abschaltbar und sendet keine Gerätekennung.
-  - Ein Datenschutzhinweis ist nötig: Die IP geht an GitHub (§ 25 TDDDG).
-- **Sicherheitsupdates:**
-  - Laut CRA Anhang I 2(c) „wo zutreffend“ automatisch als Voreinstellung,
-    mit einfachem Opt-out, Hinweis und Aufschieben.
-  - Bei einem Dosiergerät nur im Ruhezustand.
-  - Ob das für dieses Gerät „zutreffend“ ist, entscheidet der
-    Projektinhaber (offen).
+- **Two app partitions** (A/B) with `otadata`. The new version starts as
+  "pending verify".
+- **Self-test** (bus, ports, storage, web server) confirms the new
+  version. Otherwise the hub rolls back to the old one automatically.
+- **Signature before installation:** at least signature verification
+  without hardware Secure Boot (`CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT`,
+  to be tested on the S3). Signed updates and any Secure Boot must let the
+  owner install their own firmware; no Secure Boot against the user
+  (PD-022). Whether Secure Boot v2, flash encryption and a downgrade lock
+  via the security version fit that rule is open.
+- **Web UI in the app image:** An update is atomic; a rollback takes the
+  UI along.
+- **Only in a safe state:** no job, no dosing (API: 409). Recipes,
+  calibration values and settings are kept (customer view).
+- **Ways:**
+  - From the app, against the manifest of the GitHub releases.
+  - Offline, by uploading a signed file.
+  - For self-builders, a web installer (ESP Web Tools, Chrome/Edge on the
+    desktop).
+- **Update check:**
+  - It can be turned off and sends no device ID.
+  - A privacy notice is needed: the IP address goes to GitHub (§ 25
+    TDDDG).
+- **Security updates:**
+  - Per CRA Annex I 2(c), "where applicable" automatic by default, with an
+    easy opt-out, a notice and postponement.
+  - For a dosing device only when idle.
+  - Whether this is "applicable" for this device is for the project owner
+    to decide (open).
 
-## Support und Pflichten (CRA, ab 11.12.2027; Meldepflicht seit 11.09.2026)
+## Support and obligations (CRA, from 2027-12-11; reporting obligation since 2026-09-11)
 
-- **Supportzeitraum:** mindestens 5 Jahre (Untergrenze). Er steht beim Kauf
-  als Monat und Jahr. Jedes Sicherheitsupdate bleibt mindestens 10 Jahre
-  verfügbar (Art. 13).
-- **Meldung aktiv ausgenutzter Schwachstellen:** 24 h / 72 h / 14 Tage über
-  die ENISA-Plattform (Art. 14). Dafür braucht es eine Vertretung, die die
-  24-h-Frist hält.
-- **SBOM** gehört in die technische Dokumentation, nicht zwingend
-  veröffentlicht.
-- **Exit-Plan bei Projektende:** Schlüssel freigeben oder
-  Eigentümer-Freischaltung, Marktüberwachung und Nutzer vorher informieren
-  (Art. 13(23), PD-005).
+- **Support period:** at least 5 years (lower bound). It is stated at
+  purchase as month and year. Every security update stays available for at
+  least 10 years (Art. 13).
+- **Reporting actively exploited vulnerabilities:** 24 h / 72 h / 14 days
+  via the ENISA platform (Art. 14). This needs a deputy who can meet the
+  24-hour deadline.
+- **SBOM** belongs in the technical documentation; publishing it is not
+  mandatory.
+- **Exit plan at project end:** release the keys or offer an owner unlock;
+  inform market surveillance and users in advance (Art. 13(23), PD-005).
 
-Quellen: Bericht `regulatorik` vom 06.10.2026, nur Suchtreffer, abgerufen
-06.10.2026:
+Sources: report of `regulatorik` from 2026-10-06, search results only,
+retrieved 2026-10-06:
 
-- CRA, Verordnung (EU) 2024/2847:
+- CRA, Regulation (EU) 2024/2847:
   https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ%3AL_202402847
-- Kommissions-Leitlinien C(2026) 5252, Zusammenfassung:
+- Commission guidance C(2026) 5252, summary:
   https://www.cyberresilienceact.eu/commission-guidance.html
-- ENISA Single Reporting Platform: im Bericht ohne URL, vor Gebrauch
-  nachschlagen.
+- ENISA Single Reporting Platform: no URL in the report; look it up before
+  use.
