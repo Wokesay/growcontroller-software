@@ -191,6 +191,11 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **Product decisions** (PD-100, SD-029): the software is worked on in a
+  session of its own with only this repository; product decisions are
+  written only in the product repository's session. Requirements arrive
+  here as issues, product questions are named instead of decided, and SD
+  and RAT IDs are still assigned here (`CLAUDE.md`, `docs/WORKFLOW.md`).
 - **Repository rules** (SD-027): pull requests are merged by squash only;
   `main` accepts changes only through pull requests with green quick
   checks; `v*` release tags can only be set by the project owner.

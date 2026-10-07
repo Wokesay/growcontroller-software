@@ -54,8 +54,8 @@ breadboard with the N8R8 (8 MB flash): shrink `partitions.csv` (history
      consent is the AND input of the hardware enable.
    - Modbus master with retries for reads only. Writes are idempotent via
      the job ID.
-3. **Dosing block protocol** (register map together with the `hardware`
-   agent of the product repository):
+3. **Dosing block protocol** (the register map comes from the product
+   repository as an issue, PD-100):
    - Run in ms with job ID, actual run time, result of the current check.
    - Heartbeat from the hub; if it stops, the block stops.
    - Read and write the calibration value in the ID chip (PD-010).

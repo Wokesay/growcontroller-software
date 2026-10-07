@@ -15,7 +15,7 @@ As of 2026-10-07. Proposal, unless a PD decided it; drafts in
 Signing keys are in no repository. Source: `produkt`.
 
 **Transparency of product decisions:** If a PD affects the software, this
-repository gets an SD entry "Product requirement (from PD-0xx)". It states
+repository gets an SD entry "Product requirement (from PD-xxx)". It states
 what applies and the public reason, without figures or suppliers. A one-way
 mirror `ref/software/` leads back into the product repository (PD-017);
 only the sync workflow may write there.
@@ -81,7 +81,7 @@ builds and tests.
 Other views stay in the product repository: `kunde` (customer), `anwender`
 (grower), `architekt` (architecture), `firmware`, `hardware`,
 `regulatorik` (regulatory), `produkt` (product and business). This
-repository asks them through the project owner or in a joint session.
+repository asks them through the project owner (PD-100).
 
 **Flow of a change:**
 
@@ -159,4 +159,7 @@ devices, so 2–5 h per week with Claude triage. Rules:
 - **Drafts** are kept separate and apply only after the project owner says
   "entschieden" (decided).
 - **Product decisions** stay in the product repository (PD). In this
-  repository they appear as "Product requirement (from PD-0xx)".
+  repository they appear as "Product requirement (from PD-xxx)".
+  They are written only in the product repository's session; this
+  repository receives requirements as issues and names product questions
+  instead of deciding them (PD-100, SD-029).

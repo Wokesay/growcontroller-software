@@ -12,8 +12,8 @@ Product, hardware and business live in the private product repository
 - **Idea or question** → discuss, options with a recommendation, change
   nothing.
 - **"entschieden" (decided)** → a software decision becomes an SD entry in
-  `docs/DECISIONS.md` as a PR; a product decision becomes a PD in the
-  product repository.
+  `docs/DECISIONS.md` as a PR. A product question is not decided here
+  (see "Product decisions" below).
 - **"umsetzen" (implement)** → the work as a PR, with tests.
 - **Unclear what is meant** → ask.
 - Claude talks to the project owner in German, short, and ends each
@@ -31,14 +31,32 @@ Product, hardware and business live in the private product repository
 - Use AskUserQuestion for this: one question per call, the recommendation
   as the first option marked "(Empfohlen)".
 - Move to the next item only after the project owner's answer. Record
-  decisions right away: software decisions as SD in `docs/DECISIONS.md`,
-  product decisions as PD in the product repository.
+  software decisions right away as SD in `docs/DECISIONS.md`; product
+  questions go to the product repository's session (see "Product
+  decisions" below).
 - Instructions to the project owner (for example permissions on GitHub)
   as numbered steps with links, then wait for confirmation.
 - If the project owner is away, collect open items and present them one
   at a time at the next contact.
 - At the end of each work phase: a complete list of all open items with
   their status.
+
+## Product decisions (PD-100, SD-029)
+
+- The software is worked on in a session of its own with access to this
+  repository only. The product repository's session works on hardware and
+  product and is the only place where product decisions (PD-xxx) are
+  written, so PD numbers do not collide. This session does not access the
+  product repository.
+- Product requirements arrive as English issues in this repository.
+  When a requirement comes from a PD, Claude records it as an SD
+  "Product requirement (from PD-xxx)" (as SD-028 does for #20).
+- When Claude runs into a product question, it names the question in the
+  issue and to the project owner and does not write a PD. The project
+  owner takes it to the product repository's session, where it is
+  decided and recorded.
+- Claude assigns SD and RAT IDs in this repository. The private mapping of RAT IDs
+  to their sources is kept in the product repository.
 
 ## At session start
 
@@ -72,10 +90,10 @@ Background: `docs/CONCEPT.md` §4.
   practice has an entry in `docs/RATIONALE.md` (RAT-001 …) in our own
   words, and a test (`docs/INVARIANTS.md`). Code, tests and docs cite only
   the RAT ID (PD-039).
-- **New rules** come from the product repository. They get the next free
-  RAT ID and an entry here; their private sources are mapped only in the
-  product repository. No names, numbers or texts of private sources in
-  this repository.
+- **New rules** come from the product repository as issues. Claude gives
+  them the next free RAT ID and an entry here; the mapping to their
+  private sources is kept only in the product repository. No names,
+  numbers or texts of private sources in this repository.
 - **OpenGrowBox** (license OGBCL): ideas only, no code.
 
 ## Tests and quality
