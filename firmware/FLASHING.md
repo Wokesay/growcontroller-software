@@ -14,7 +14,8 @@ Product requirement (PD-022, SD-010):
   SD-021). Over-the-air updates will be installed only with a valid
   signature, so nobody can push firmware onto your hub over the network.
   Over USB you can always install your own firmware; after that, your own
-  key applies to network updates. No eFuses are burned.
+  key applies to network updates. No eFuses are burned except the HMAC
+  key that encrypts stored secrets (SD-024); your firmware can use it too.
 - **The source code of every build is linked** in the web app (Settings ›
   Display and info) and on the login page (AGPL §13).
 

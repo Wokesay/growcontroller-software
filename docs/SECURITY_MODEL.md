@@ -50,12 +50,15 @@ lent must fully meet EN 18031-1. After that date the CRA applies. List:
 1. HTTPS locally, certificate per device.
 2. Signed OTA (EN 18031-1 SUM-2) checked by the firmware, without
    hardware Secure Boot; downgrade protection in software; no eFuses
-   burned (PD-043, SD-021). Over USB the owner can always install their own
-   firmware (PD-022). `tools/arch_check.sh` rejects sdkconfig options that
-   would burn eFuses for Secure Boot, flash encryption, a disabled download
-   mode or anti-rollback. Open (regulatory review): encrypted NVS for
-   secrets needs an HMAC key in an eFuse; the USB path and the remaining
-   storage risk.
+   burned except the HMAC key for encrypted NVS (PD-043, PD-047, SD-021,
+   SD-024). Secrets (Wi-Fi credentials, password hash, TLS key) in
+   encrypted NVS, sessions only as hashes, USB-JTAG off at run time. Over
+   USB the owner can always install their own firmware (PD-022).
+   `tools/arch_check.sh` rejects sdkconfig options that would burn eFuses
+   for Secure Boot, flash encryption, a disabled download mode or
+   anti-rollback. Residual risk, documented: someone with the device in
+   hand can load own code and use the HMAC key. Open: whether a test lab
+   accepts the USB path with the BOOT button.
 3. Setup access point only after a button press and for a limited time.
    Wi-Fi key per device on the label.
 4. Bluetooth off; JTAG and debug off in a way that keeps installing own

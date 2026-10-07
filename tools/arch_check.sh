@@ -33,10 +33,11 @@ if grep -rnE 'value_or\(0(\.0)?\)' core/; then
   err "fehlender Wert wird zu 0"
 fi
 
-# PD-022, PD-043: devices do not lock out third-party firmware, and no
-# eFuses are burned. No sdkconfig option that burns eFuses for Secure Boot,
-# flash encryption, a disabled ROM download mode or anti-rollback.
-if grep -nE '^CONFIG_(SECURE_BOOT|SECURE_FLASH_ENC_ENABLED|SECURE_FLASH_ENCRYPTION_MODE_RELEASE|SECURE_DISABLE_ROM_DL_MODE|SECURE_ENABLE_SECURE_ROM_DL_MODE|BOOTLOADER_APP_ANTI_ROLLBACK|NVS_SEC_KEY_PROTECT_USING_HMAC)=y' firmware/sdkconfig*; then
+# PD-022, PD-043, PD-047: devices do not lock out third-party firmware; the
+# only eFuse allowed is the HMAC key for encrypted NVS. No sdkconfig option
+# that burns eFuses for Secure Boot, flash encryption, a disabled ROM
+# download mode or anti-rollback.
+if grep -nE '^CONFIG_(SECURE_BOOT|SECURE_FLASH_ENC_ENABLED|SECURE_FLASH_ENCRYPTION_MODE_RELEASE|SECURE_DISABLE_ROM_DL_MODE|SECURE_ENABLE_SECURE_ROM_DL_MODE|BOOTLOADER_APP_ANTI_ROLLBACK)=y' firmware/sdkconfig*; then
   err "eFuse-burning security option in firmware/sdkconfig* (PD-022)"
 fi
 

@@ -20,7 +20,7 @@ that, decisions were made as PDs in the product repository.
   (PD-036). Versions are self-describing (PD-037). SemVer and OTA stay a
   draft.
 
-They are recorded below as SD-001 to SD-023. The other drafts are the
+They are recorded below as SD-001 to SD-024. The other drafts are the
 basis of the prototype and become SD entries once the project owner says
 "entschieden" (decided). What needs a PD is marked.
 
@@ -203,9 +203,8 @@ decision is in the product repository.
 - No eFuses are burned; downgrade protection is in software.
 - Secrets (for example password hash, sessions, Wi-Fi credentials) are to
   be stored encrypted in NVS.
-- Open: encrypted NVS needs an HMAC key in an eFuse on the ESP32-S3; this
-  is under regulatory review. Also open: whether the USB path and the
-  remaining storage risk are enough for EN 18031-1 and the CRA, and
+- Exception (SD-024): the HMAC key for encrypted NVS. Open: whether a test
+  lab accepts the USB path with the BOOT button for own firmware, and
   whether and when hardware Secure Boot with owner key slots comes.
 
 
@@ -226,6 +225,19 @@ decision is in the product repository.
 - The project owner's "mergen" is needed for releases, license and
   security rules (for example PD-022), and changes to the actuator gateway
   or to protective cut-offs. The move PR waits for "mergen" (PD-023).
+
+
+## SD-024: Product requirement (from PD-047): one eFuse for encrypted NVS
+
+- The only eFuse that may be burned is the HMAC key for encrypting the
+  NVS (SD-021 otherwise unchanged). It locks out no firmware: every
+  firmware on the device, own firmware included, can use it through the
+  HMAC peripheral; nobody can read it out.
+- It protects secrets (for example Wi-Fi credentials, password hash)
+  against read-out flash images, not against someone who loads their own
+  code with the device in hand; that stays a documented residual risk.
+- Together with it: USB-JTAG off at run time, a recessed BOOT button,
+  sessions stored only as hashes.
 
 ---
 
