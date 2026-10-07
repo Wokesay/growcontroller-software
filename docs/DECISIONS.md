@@ -435,6 +435,11 @@ checks (issue #35).
   (SD-026); `ci-ok` passes for it within about a minute.
 - The merge rule (SD-023) is unchanged; GitHub now enforces its "green
   CI" as well. The repository admin can still bypass the ruleset.
+- `ci-ok` judges a PR against the base it had when CI ran. After the base
+  branch of a PR changes, CI runs again (push or re-run) before the merge.
+- "Docs only" means only that CI cannot check a file. `CLAUDE.md`,
+  `.claude/` and `SECURITY.md` steer agents and process and are reviewed
+  as configuration.
 
 ---
 

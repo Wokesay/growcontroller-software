@@ -40,8 +40,10 @@ const yml = readFileSync(join(here, "..", ".github", "workflows", "ci.yml"), "ut
 const jobs = yml.slice(yml.indexOf("\njobs:\n"));
 
 test("ci.yml starts always and gates the heavy jobs on the filter", () => {
-  // paths-ignore would leave the required check ci-ok pending forever.
+  // paths-ignore would leave the required check ci-ok pending forever;
+  // continue-on-error could hide a failed job from ci-ok.
   assert.doesNotMatch(yml, /^\s*paths(-ignore)?:/m);
+  assert.doesNotMatch(yml, /continue-on-error/);
   for (const id of ["checks", "firmware", "packages"]) {
     const block = jobs.match(new RegExp(`^ {2}${id}:\\n((?: {4}.*\\n|\\s*\\n)*)`, "m"));
     assert.ok(block, id);

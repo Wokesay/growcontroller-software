@@ -24,7 +24,8 @@ function main([base, head]) {
       encoding: "utf8",
     });
     const files = out.split("\0").filter((f) => f !== "");
-    console.error(files.length ? files.join("\n") : "(no changed files)");
+    // JSON: control characters in a file name stay visible in the log.
+    console.error(files.length ? files.map((f) => JSON.stringify(f)).join("\n") : "(no changed files)");
     return needsFullCi(files);
   } catch (e) {
     console.error(`git diff ${base} ${head} failed, running the full CI: ${e.message}`);

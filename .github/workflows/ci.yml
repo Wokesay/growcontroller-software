@@ -17,8 +17,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
-  # Only superseded PR runs are cancelled; every commit on main keeps its run.
+  # Only superseded PR runs are cancelled. Every push to main gets a group
+  # of its own: in a shared group a newer run would cancel a pending one.
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # Source code link in the web app (AGPL-3.0 §13): the commit under test
@@ -52,7 +53,11 @@ jobs:
           elif [ "$EVENT" = push ] && [ "$BEFORE" = "$(git rev-parse -q --verify HEAD^1 || true)" ]; then
             base=HEAD^1
           fi
+          # File names go to the log; no workflow commands while they do.
+          token=$(cat /proc/sys/kernel/random/uuid)
+          echo "::stop-commands::$token"
           result=$(node tools/ci_changes.mjs "$base" HEAD)
+          echo "::$token::"
           echo "$result"
           case "$result" in
             code=true|code=false) echo "$result" >> "$GITHUB_OUTPUT" ;;
