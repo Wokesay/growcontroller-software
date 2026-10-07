@@ -353,10 +353,14 @@ repository.
   a secured time the night targets apply and "time missing" is reported.
 - **Continued clock (PD-069):** the hub saves its time and operating time
   regularly. Without a secured time after a start it continues from the
-  saved time, never before its newest event; the outage counts as 0. This
-  clock is not a secured time (light, socket schedule, time server, day
-  and night targets). Intervals between two moments use wall time only if
-  both were secured, otherwise operating time. Emergency doses need no
+  saved time; a newer event moves the start forward by at most 1 h. The
+  outage counts as 0. This clock is not a secured time (light, socket
+  schedule, time server, day and night targets). Intervals within one
+  start use operating time; across a restart they use wall time only if
+  both moments were secured, never less than the operating time, otherwise
+  operating time. This refines PD-069, which asks for wall time whenever
+  both moments were secured: within one start a network time step cannot
+  stretch an interval. Emergency doses need no
   secured time; the normal watering plan waits for a secured time and
   sensor truth.
 - **EC and pH control after a restart (PD-070, PD-071):** every controller

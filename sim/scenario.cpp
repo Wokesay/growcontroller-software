@@ -280,7 +280,7 @@ void Simulation::loadScenario(const std::string& name) {
   if (!opts_.dataDir.empty()) {
     // Nur die eigenen Dateien löschen, nie den ganzen Ordner.
     std::error_code ec;
-    for (const char* f : {"config.json", "config.broken.json", "state.json", "auth.json", "events.json",
+    for (const char* f : {"config.json", "config.broken.json", "state.json", "state.broken.json", "auth.json", "events.json",
                           "history.bin", "job.json", "world.json"})
       for (const std::string& file : {std::string(f), std::string(f) + ".tmp"})
         fs::remove(fs::path(opts_.dataDir) / file, ec);

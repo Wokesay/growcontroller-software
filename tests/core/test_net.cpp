@@ -141,6 +141,9 @@ TEST_CASE("Catalog: only the fans may come back on after a power loss") {
   j["roles"]["zone.exhaust"]["maxOnS"] = 3600;  // a maximum run time would go unenforced after a power loss
   CHECK_THROWS(gc::Catalog::fromJson(j));
   j = json::parse(gc::embedded::kCatalogJson);
+  j["roles"]["zone.exhaust"]["accepts"] = {"switch.12v", "switch.mains"};  // only mains sockets (PD-077)
+  CHECK_THROWS(gc::Catalog::fromJson(j));
+  j = json::parse(gc::embedded::kCatalogJson);
   j["roles"]["zone.exhaust"]["afterPowerLoss"] = "maybe";
   CHECK_THROWS(gc::Catalog::fromJson(j));
 }
@@ -210,6 +213,22 @@ TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)"
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
   CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);  // back to the fan setting
+}
+
+TEST_CASE("Not-Halt: a fan socket assigned during the stop stays off after a power loss (PD-076)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("POST", "/api/v1/stop");
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);
+  reboot(s, {{"outageMin", 1}});
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 1).on);
+  c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  c.ok("POST", "/api/v1/resume");
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);
 }
 
 TEST_CASE("Internal error: everything goes off except the fans (PD-077)") {

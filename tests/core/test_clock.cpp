@@ -9,6 +9,7 @@
 #include "client.hpp"
 #include "fakes.hpp"
 #include "gc/clock.hpp"
+#include "gc/hub.hpp"
 
 using gc::json;
 using test::Client;
@@ -20,6 +21,11 @@ bool hasEvent(Client& c, const std::string& title) {
   for (const auto& e : events)
     if (e.value("title", std::string()) == title) return true;
   return false;
+}
+
+void fakeRandom(std::uint8_t* p, size_t n) {
+  static std::uint8_t x = 7;
+  for (size_t i = 0; i < n; ++i) p[i] = x += 31;
 }
 
 }  // namespace
@@ -286,4 +292,77 @@ TEST_CASE("Clock: a network time step while secured keeps deadlines and is repor
   CHECK(restAfter <= rest);
   CHECK(restAfter >= rest - 4);
   CHECK(hasEvent(c, "Uhr gestellt"));
+}
+
+TEST_CASE("Clock: a platform time set before the secured flag follows keeps deadlines") {
+  // On the device the network time is set first and marked secured a moment
+  // later; a tick in between sees the new time while still unsecured.
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  clk.isSecured = false;
+  clk.start = 0;  // nothing saved, no network time yet
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  for (int i = 0; i < 3; ++i) {
+    clk.ms += 1000;
+    h.tick();
+  }
+  REQUIRE(h.maintenance(30).status == 200);
+  auto rest = [&] {
+    const json st = h.state();
+    return st["maintenanceUntil"].get<gc::Epoch>() - st["now"].get<gc::Epoch>();
+  };
+  const gc::Epoch before = rest();
+  clk.start = 1790000000;  // the platform sets the time ...
+  clk.ms += 1000;
+  h.tick();
+  clk.isSecured = true;  // ... and marks it secured on a later tick
+  clk.ms += 1000;
+  h.tick();
+  CHECK(h.now() == clk.epoch());
+  CHECK(rest() <= before);
+  CHECK(rest() >= before - 3);
+}
+
+TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is reported (PD-076)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("state.json", "[1, 2");
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(h.state()["stopped"] == true);
+  CHECK(store.read("state.broken.json") == std::optional<std::string>("[1, 2"));
+  bool alarm = false;
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (e.value("title", std::string()) == "Laufzeitzustand unlesbar") alarm = true;
+  CHECK(alarm);
+  REQUIRE(h.resume().status == 200);
+  CHECK(h.state()["stopped"] == false);
+}
+
+TEST_CASE("Clock jump: a jump lock loaded before the time was known never holds longer than 15 min (RAT-044)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  clk.isSecured = false;
+  clk.start = 0;                                                     // no network time yet
+  store.write("state.json", R"({"jumpLocks": {"tank.ph": 1790000600}})");  // saved without a clock
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  clk.ms += 1000;
+  h.tick();
+  clk.start = 1790000000;
+  clk.isSecured = true;
+  clk.ms += 1000;
+  h.tick();
+  h.flush();
+  const json st = json::parse(*store.read("state.json"));
+  const gc::Epoch until = st["jumpLocks"]["tank.ph"].get<gc::Epoch>();
+  CHECK(until - h.now() <= gc::kJumpHoldS);
 }

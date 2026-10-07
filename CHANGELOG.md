@@ -29,12 +29,17 @@ listed in every release under "Security".
   hub knows whether its time is secured (in the firmware after the first
   network time sync). It saves its time and an operating time with its
   run-time state. Without a secured time after a start it continues from
-  the saved time, never before its newest event, and reports "Uhrzeit
+  the saved time (a newer event moves it forward by at most 1 h) and
+  reports "Uhrzeit
   nicht gesichert" after 2 min; when the time is secured later it reports
   the jump. `GET /api/v1/state` shows `time` (`secured`, `source`,
-  `operatingS`). Intervals between two moments use wall time only if both
-  were secured, otherwise operating time, so an outage never stretches
-  them (used by the dosing intervals that follow).
+  `operatingS`). Intervals within one start use operating time; across a
+  restart they use wall time only if both moments were secured, otherwise
+  operating time, so an outage never stretches them (prepared for the
+  dosing intervals that follow). A clock step keeps the remaining time of
+  jump locks, maintenance and controller pauses; a jump lock never holds
+  longer than 15 min after a step. An unreadable run-time state keeps the
+  hub stopped (copy in `state.broken.json`) until someone resumes.
 - **Simulator:** a power cut can last a while (`outageMin`, the world runs
   on without power) and leave the hub without a secured time
   (`timeSecured: false`); `mainsLost: false` restarts only the hub. The

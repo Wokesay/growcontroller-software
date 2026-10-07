@@ -100,7 +100,9 @@ UI and API always match, and a rollback takes the UI along.
   RAT-007, RAT-028, RAT-044, RAT-063. PD-020 replaces the part for state
   functions (fans, light, irrigation): fan sockets come back on after a
   power loss and keep their state (PD-050, SD-028); light and irrigation
-  are open.
+  are open. An emergency stop survives a restart and keeps the fans off
+  too until someone resumes (PD-076); an internal error keeps the fans
+  running (PD-077).
 - **R7:** The catalog can only tighten safety. The minimum lives in the
   gateway: calibration value, run time limits, one run at a time,
   emergency stop, dry run, emergency limit of the inlet.

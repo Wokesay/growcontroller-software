@@ -157,7 +157,8 @@ Catalog Catalog::fromJson(const json& j) {
     // Only the fans may come back on by themselves (PD-050); the catalog can
     // only tighten safety (R7), so the list lives here, not in the data.
     const bool fan = id == "zone.exhaust" || id == "zone.circulation_fan";
-    if (r.onAfterPowerLoss && (!fan || r.profile != "dauer" || isNum(r.maxOnS)))
+    const bool mainsOnly = r.accepts.size() == 1 && r.accepts.front() == "switch.mains";
+    if (r.onAfterPowerLoss && (!fan || !mainsOnly || r.profile != "dauer" || isNum(r.maxOnS)))
       throw std::runtime_error("Katalog: Rolle " + id + ": nach Stromausfall an nur für Lüfter ohne Höchstlaufzeit");
     c.roles[id] = r;
   }

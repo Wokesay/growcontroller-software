@@ -87,7 +87,7 @@ void Hub::boot() {
   }
   savedEventId_ = log_.lastId();
   // Time base first (PD-069): without a secured time the clock continues
-  // from the moment saved last, never before the newest event.
+  // from the moment saved last; a newer event moves it forward by at most 1 h.
   const std::optional<std::string> stateRaw = store_.read(kStateFile);
   const json stateJson = stateRaw ? json::parse(*stateRaw, nullptr, false) : json();
   const bool stateObj = stateJson.is_object();
@@ -117,11 +117,17 @@ void Hub::boot() {
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
   if (stateRaw) {
     try {
+      if (!stateObj) throw std::runtime_error("kein gültiges JSON-Objekt");
       rt_ = runtimeFromJson(stateJson);
     } catch (const std::exception& e) {
+      // Whether an emergency stop was active is unknown: keep everything
+      // stopped until someone resumes (fail-safe, PD-076).
+      store_.write("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
+      rt_.stopped = true;
       log_.add(bootEpoch_, "system", "alarm", "Laufzeitzustand unlesbar",
-               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Grund: ") +
+               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Alles bleibt "
+                           "aus, bis jemand fortsetzt. Kopie in state.broken.json. Grund: ") +
                    e.what());
     }
   }
@@ -167,6 +173,7 @@ void Hub::boot() {
     }
   }
   log_.add(bootEpoch_, "system", "info", "Hub gestartet", std::string("Version ") + embedded::kVersion);
+  saveState();  // the boot count and the stop are durable from the start
 }
 
 void Hub::flush() {
@@ -244,8 +251,9 @@ void Hub::tick() {
     }
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
-    // Dosierung abbrechen, einmal laut melden. Fans keep running (PD-077).
-    act_.stopAll(cat_, cfg_, clock_.nowMs(), true);
+    // Dosierung abbrechen, einmal laut melden. Fans keep running (PD-077),
+    // except during an emergency stop (PD-076).
+    act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
     try {
       Ctx c = ctx();
       doser_.abort(c, act_, "Interner Fehler");
@@ -312,10 +320,11 @@ void Hub::watchClock(Ms now) {
                {{"jumpS", jump}, {"before", before}});
     unsecuredReported_ = false;
     stateDirty_ = true;
-  } else if (was && secured && (jump > 5 || jump < -5)) {
-    // The network time stepped the clock while it was secured.
+  } else if ((secured || (before == "unset" && std::string(clock_.source()) == "unset")) && (jump > 5 || jump < -5)) {
+    // The platform clock stepped: network time while secured, or set before
+    // the secured flag follows (on the device the time is set first).
     shiftDeadlines(jump, epoch);
-    if (jump > 120 || jump < -120)
+    if (secured && (jump > 120 || jump < -120))
       log_.add(epoch, "system", "info", "Uhr gestellt",
                std::string("Die Uhr springt um ") + spanText(jump) + (jump > 0 ? " vor." : " zurück."), {{"jumpS", jump}});
     stateDirty_ = true;
@@ -813,7 +822,8 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   const RoleDef* rd = cat_.role(role);
   // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
   if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
-    SwitchSafety want = safetyForRole(*rd);
+    // During an emergency stop a fan socket stays off after a power loss too (PD-076).
+    const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
       return Result::fail(502, "role.net.write", "Schutzeinstellung nicht geschrieben: " + e);
@@ -1182,7 +1192,8 @@ Result Hub::importConfig(const json& j) {
       }
       if (!ok)
         log_.add(clock_.epoch(), "device", "warn", rd->label + ": Schutz im Gerät nicht gesetzt",
-                 "Nach dem Import nicht bestätigt – bis zur neuen Zuordnung schaltet der Hub diese Dose nicht ein.",
+                 "Nach dem Import nicht bestätigt" + (e.empty() ? std::string() : " (" + e + ")") +
+                     ". Solange die Einstellung in der Dose nicht stimmt, schaltet der Hub sie nicht ein.",
                  {{"role", role}, {"device", b.device}});
     });
   saveConfig("Konfiguration importiert");
@@ -1618,14 +1629,16 @@ Result Hub::stop(const std::string& who) {
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", {"job.stopped", "Durch Not-Halt abgebrochen", json::object()});
-  if (!stopped_) {
-    log_.add(clock_.epoch(), "system", "alarm", "Not-Halt", "Alle Pumpen und Ausgänge aus. Ausgelöst: " + who);
-    // A manual emergency stop stops everything, also after a power loss (PD-076).
-    setFanSockets(false);
-  }
+  const bool first = !stopped_;
+  // Saved before the slow socket writes, so a power loss meanwhile keeps the stop.
   stopped_ = true;
   rt_.stopped = true;
   saveState();
+  if (first) log_.add(clock_.epoch(), "system", "alarm", "Not-Halt", "Alle Pumpen und Ausgänge aus. Ausgelöst: " + who);
+  // A manual emergency stop stops everything, also after a power loss
+  // (PD-076). Written on every stop, so pressing it again retries a socket
+  // that did not take the setting.
+  setFanSockets(false);
   return Result::ok();
 }
 
