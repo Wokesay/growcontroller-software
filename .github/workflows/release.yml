@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Release: a tag vX.Y.Z[-...] produces the downloads (simulator for Windows,
+# macOS and Linux, web app), SBOM and checksums as a GitHub release with the
+# matching CHANGELOG section. The firmware image goes into a release only
+# once it is signed offline (docs/RELEASE.md) – never from CI; CI still
+# builds it on every run. Channels (PD-036) are not told apart yet.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check the version
+        run: test "v$(tr -d '\r\n' < VERSION)" = "${GITHUB_REF_NAME}"
+
+  packages:
+    needs: verify
+    uses: ./.github/workflows/packages.yml
+
+  publish:
+    needs: packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Web app, SBOM, checksums, release notes
+        env:
+          GC_SOURCE_REV: ${{ github.sha }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
+          cp LICENSE web/dist/LICENSE.txt
+          tar -C web -czf "dist/growcontroller-web-$v.tar.gz" dist
+          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
+          (cd dist && sha256sum * > SHA256SUMS)
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
+          printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> NOTES.md
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file NOTES.md dist/*

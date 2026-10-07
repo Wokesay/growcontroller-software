@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Licensing information for files that cannot carry a header. Source files
+# carry their own "SPDX-License-Identifier: AGPL-3.0-or-later" header, so a
+# source file without one fails `reuse lint` (CI). The copyright notice for
+# all files is given here. If several annotations match a file, the last
+# one applies.
+version = 1
+
+# Copyright of all files; the license comes from each file's header.
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
+
+# Files without comment syntax: Markdown, JSON, SVG, plain text.
+[[annotations]]
+path = ["**/*.md", "*.md", "**/*.json", "*.json", "**/*.svg", "sim/README.txt", "VERSION"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+# Verbatim Apache License 2.0 text, shipped with the license notices of
+# nlohmann/json (tools/third_party.mjs).
+[[annotations]]
+path = "tools/licenses/Apache-2.0.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "The Apache Software Foundation"
+SPDX-License-Identifier = "Apache-2.0"

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+menu "growcontroller"
+    config GC_WIFI_SSID
+        string "WLAN-Name (Entwicklung; später Einrichtung über den Assistenten)"
+        default ""
+    config GC_WIFI_PASSWORD
+        string "WLAN-Passwort (Entwicklung)"
+        default ""
+    config GC_OUT1_GPIO
+        int "GPIO 12-V-Ausgang 1 (-1 = ohne Hardware)"
+        default -1
+    config GC_OUT2_GPIO
+        int "GPIO 12-V-Ausgang 2 (-1 = ohne Hardware)"
+        default -1
+endmenu

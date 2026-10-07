@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+build/
+build-*/
+sim-data/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+*.tmp
+.DS_Store
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/main/web_assets.cpp
+firmware/managed_components/
+/dist/
+/sim.log

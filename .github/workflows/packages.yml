@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Builds the simulator as a download: one file with the embedded web app for
+# Windows, macOS (universal: Apple silicon and Intel) and Linux, with a smoke
+# test. Called by ci.yml (artifacts of the run) and release.yml (release
+# assets).
+name: Packages
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulator:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux-x64
+            bin: growcontroller-simulator
+            cmake: -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          - os: macos-14
+            name: macos-universal
+            bin: growcontroller-simulator
+            cmake: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          - os: windows-2022
+            name: windows-x64
+            bin: growcontroller-simulator.exe
+            cmake: -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build and embed the web app
+        env:
+          # Source code link (AGPL-3.0 §13): always the commit (a tag can move)
+          GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          node tools/embed_web.mjs build-pkg/web_assets.cpp
+      - name: Build the simulator
+        run: |
+          cmake -S . -B build-pkg -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF -DGC_WERROR=OFF \
+            -DGC_SIM_WEB_ASSETS=build-pkg/web_assets.cpp ${{ matrix.cmake }}
+          cmake --build build-pkg --config Release --target gc_sim_server
+      - name: Package and smoke test (with arguments and plain start)
+        run: bash tools/package.sh "${{ matrix.bin }}" "${{ matrix.name }}"
+      - name: Zip
+        run: |
+          cd dist
+          if command -v zip > /dev/null; then zip -r "$PKG_ZIP" "$(basename "$PKG_DIR")"; else 7z a "$PKG_ZIP" "$(basename "$PKG_DIR")"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: growcontroller-simulator-${{ matrix.name }}
+          path: dist/*.zip
+          retention-days: 30

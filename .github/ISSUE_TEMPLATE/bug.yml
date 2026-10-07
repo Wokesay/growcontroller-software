@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Bug report
+description: Something does not work as described.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Please do not post passwords, Wi-Fi details or locations – issues are public.
+        Did you use "Report a problem" in the app? Then the **report ID** (GC-…) is enough; please share the diagnostic package only when asked.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      placeholder: e.g. The mix stopped at part B with the message "Blockage detected".
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: input
+    id: version
+    attributes:
+      label: Software version
+      description: Settings › Display and info
+      placeholder: 0.1.0-proto.1
+    validations:
+      required: true
+  - type: input
+    id: report
+    attributes:
+      label: Report ID from "Report a problem"
+      placeholder: GC-1a2b3c4d
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options:
+        - purchased hub
+        - self-built (breadboard or own board)
+        - simulator only
+    validations:
+      required: true
+  - type: dropdown
+    id: level
+    attributes:
+      label: Expansion level
+      options:
+        - "Level 0: mixing"
+        - "Level 1: pH/EC"
+        - "Level 2: level/inlet"
+        - "Level 3–4"
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: A pump ran although it should not have, or did not switch off (please report right away).

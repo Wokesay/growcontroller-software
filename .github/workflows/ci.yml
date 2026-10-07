@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CI: architecture rules, licenses, core with sanitizers, web app,
+# end-to-end in the browser against the simulator, firmware, packages.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  # Source code link in the web app (AGPL-3.0 §13): the commit under test
+  GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          pipx install reuse==6.2.0
+      - name: Architecture, licenses, core, tests, web app
+        run: tools/ci.sh
+      - name: Browser for E2E
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end
+        working-directory: web
+        env:
+          CI: "1"
+        run: npx playwright test
+      - name: E2E report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: build/e2e-*
+          retention-days: 14
+
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container: espressif/idf:v5.4.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build and embed the web app
+        run: |
+          cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
+          node tools/embed_web.mjs
+      - name: Build the firmware for the ESP32-S3
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32s3
+          path: |
+            firmware/build/growcontroller_hub.bin
+            firmware/build/bootloader/bootloader.bin
+            firmware/build/partition_table/partition-table.bin
+          retention-days: 14
+
+  packages:
+    uses: ./.github/workflows/packages.yml

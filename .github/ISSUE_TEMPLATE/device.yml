@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Device or sensor
+description: A device is not detected or should be supported.
+labels: ["device", "triage"]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device (manufacturer, model)
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options: ["Hub port (RJ45, Modbus)", "Collection box in the tent", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
+  - type: textarea
+    id: shown
+    attributes:
+      label: What does the hub show under Devices › Hub ports?
+  - type: input
+    id: version
+    attributes:
+      label: Software version
