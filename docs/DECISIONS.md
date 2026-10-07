@@ -410,6 +410,30 @@ repository.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
+
+## SD-030: GitHub enforces the full CI through the summary check `ci-ok`
+
+Replaces the sentence in SD-027 that GitHub enforces only the quick
+checks (issue #35).
+
+- The full CI (`ci.yml`) starts on every pull request and every push to
+  `main`. It no longer uses `paths-ignore`: a workflow that does not start
+  leaves a required check pending forever.
+- Its first job `changes` compares the change with its base
+  (`tools/ci_changes.mjs`). A docs-only change (the paths of PD-059:
+  `docs/`, `*.md`, `LICENSES/`, `.claude/`, issue templates) skips the
+  heavy jobs: core with sanitizers and E2E, firmware, simulator packages.
+  Any other change, or a range the filter cannot compare, runs them all.
+- Its last job `ci-ok` always runs. It fails if a job failed or was
+  cancelled, if the filter gave no result, or if a job was skipped
+  although the change touches code.
+- The ruleset on `main` requires `quick` and `ci-ok`, both from GitHub
+  Actions; the project owner adds `ci-ok` once this change is on `main`.
+  For a docs-only change "green CI" still means green quick checks
+  (SD-026); `ci-ok` passes for it within about a minute.
+- The merge rule (SD-023) is unchanged; GitHub now enforces its "green
+  CI" as well. The repository admin can still bypass the ruleset.
+
 ---
 
 ## Drafts (waiting for "entschieden")

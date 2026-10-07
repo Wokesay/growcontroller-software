@@ -29,12 +29,14 @@ E2E=1 tools/ci.sh    # plus Playwright (browser: npx playwright install chromium
 ```
 
 The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
-`main` that changes code. It runs exactly these steps plus E2E, the
-firmware build and the simulator packages for Windows, macOS and Linux. Docs-only changes
-run only the quick checks (`.github/workflows/checks.yml`: architecture
-rules, `reuse lint`, dependency licenses; PD-059). The ruleset on `main`
-requires only the quick checks; the full CI is required by the merge rule
-(SD-023, SD-027).
+`main`. For a change to code it runs exactly these steps plus E2E, the
+firmware build and the simulator packages for Windows, macOS and Linux.
+For a docs-only change its first job `changes` (`tools/ci_changes.mjs`)
+skips these heavy jobs, and only the quick checks run
+(`.github/workflows/checks.yml`: architecture rules, the change filter,
+`reuse lint`, dependency licenses; PD-059). The last job `ci-ok` fails if
+any job failed, was cancelled or was skipped for a change to code. The
+ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
 
 ## Rules
 

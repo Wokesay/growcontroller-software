@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Quick checks on every PR and push to main, also for docs-only changes
-# (PD-059): architecture rules, licenses (reuse lint), dependency licenses.
-# The full CI (ci.yml) skips docs-only changes.
+# (PD-059): architecture rules, change filter, licenses (reuse lint),
+# dependency licenses. The full CI (ci.yml) skips its heavy jobs for
+# docs-only changes (SD-030).
 name: Quick checks
 on:
   push:
@@ -29,6 +30,8 @@ jobs:
         run: pipx install reuse==6.2.0
       - name: Architecture rules
         run: tools/arch_check.sh
+      - name: Change filter of the full CI
+        run: node --test tools/ci_changes.test.mjs
       - name: Licenses (REUSE, npm dependencies)
         run: |
           reuse lint
