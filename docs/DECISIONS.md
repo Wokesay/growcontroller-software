@@ -394,6 +394,21 @@ repository.
   restarts are prepared (`elapsedS`) but not used yet. The per-socket fan
   setting in the app and the rest follow in stages (issue #20).
 
+
+## SD-029: Product requirement (from PD-100): product decisions only in the product repository's session
+
+- The software is worked on in a session of its own that has only this
+  repository. The product repository's session works on hardware and
+  product and is the only place where product decisions (PD) are
+  written, so PD numbers do not collide.
+- Product requirements arrive as English issues in this repository and
+  are recorded here as "Product requirement (from PD-0xx)" where useful.
+- A product question met here is named in the issue and to the project
+  owner, not decided here; it is decided and recorded in the product
+  repository's session.
+- SD and RAT IDs are still assigned here. The private mapping of RAT IDs
+  to their sources stays in the product repository.
+
 ---
 
 ## Drafts (waiting for "entschieden")

@@ -81,7 +81,7 @@ builds and tests.
 Other views stay in the product repository: `kunde` (customer), `anwender`
 (grower), `architekt` (architecture), `firmware`, `hardware`,
 `regulatorik` (regulatory), `produkt` (product and business). This
-repository asks them through the project owner or in a joint session.
+repository asks them through the project owner (PD-100).
 
 **Flow of a change:**
 
@@ -160,3 +160,6 @@ devices, so 2–5 h per week with Claude triage. Rules:
   "entschieden" (decided).
 - **Product decisions** stay in the product repository (PD). In this
   repository they appear as "Product requirement (from PD-0xx)".
+  They are written only in the product repository's session; this
+  repository receives requirements as issues and names product questions
+  instead of deciding them (PD-100, SD-029).
