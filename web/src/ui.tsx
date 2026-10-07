@@ -85,9 +85,9 @@ export function Button({ variant = "default", size, block, onClick, children, di
 }
 
 export type Tone = "ok" | "bad" | "warn" | "info" | "neutral" | "accent";
-export function Pill(p: { tone?: Tone; dot?: boolean; pulse?: boolean; children: ComponentChildren; title?: string }) {
+export function Pill(p: { tone?: Tone; dot?: boolean; pulse?: boolean; wrap?: boolean; children: ComponentChildren; title?: string }) {
   return (
-    <span class={`pill ${p.tone ?? ""}`} title={p.title}>
+    <span class={`pill ${p.tone ?? ""}${p.wrap ? " wrap" : ""}`} title={p.title}>
       {p.dot && <span class={`dot ${p.pulse ? "pulse" : ""}`} />}
       {p.children}
     </span>

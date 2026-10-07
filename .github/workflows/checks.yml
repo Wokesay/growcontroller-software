@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Quick checks on every PR and push to main, also for docs-only changes
+# (PD-059): architecture rules, licenses (reuse lint), dependency licenses.
+# The full CI (ci.yml) skips docs-only changes.
+name: Quick checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  quick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tools
+        run: pipx install reuse==6.2.0
+      - name: Architecture rules
+        run: tools/arch_check.sh
+      - name: Licenses (REUSE, npm dependencies)
+        run: |
+          reuse lint
+          node --test tools/check_licenses.test.mjs
+          node tools/check_licenses.mjs

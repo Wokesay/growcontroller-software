@@ -57,5 +57,7 @@ it.
 ## Manufacturer data
 
 Recipe templates in `catalog/catalog.json` cite the manufacturer's
-published feeding chart (source and date in each template). These are
-facts with a source, not third-party code.
+published feeding chart (source with edition and date in each template).
+They are marked as manufacturer data, not binding; the project is not
+affiliated with the manufacturer. These are facts with a source, not
+third-party code.

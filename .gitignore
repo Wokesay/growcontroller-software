@@ -15,3 +15,4 @@ firmware/main/web_assets.cpp
 firmware/managed_components/
 /dist/
 /sim.log
+.ccache/

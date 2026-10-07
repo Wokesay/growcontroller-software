@@ -361,7 +361,7 @@ function StepNutrients(p: { step: number; next: () => void }) {
           <div class="section-title">{t("setup.nut.existing")}</div>
           <div class="row wrap">
             {recipes.value.map((r) => (
-              <Pill tone="ok">
+              <Pill tone="ok" wrap>
                 {r.name} · {r.steps.map((s) => `${existing.find((k) => k.id === s.canister)?.name ?? "?"} ${num(s.mlPerL, 1)}`).join(", ")}
               </Pill>
             ))}
@@ -437,7 +437,7 @@ function StepNutrients(p: { step: number; next: () => void }) {
         </Field>
       )}
       {named.length === 0 && <Banner tone="warn">{t("setup.nut.needOne")}</Banner>}
-      {cur?.source && <p class="faint small">{t("setup.nut.source", { s: lang.value === "en" && cur.sourceEn ? cur.sourceEn : cur.source })}</p>}
+      {cur?.source && <p class="muted small">{t("setup.nut.source", { s: lang.value === "en" && cur.sourceEn ? cur.sourceEn : cur.source })}</p>}
     </Page>
   );
 }

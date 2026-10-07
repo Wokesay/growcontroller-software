@@ -38,22 +38,29 @@ only the sync workflow may write there.
    rationale register `docs/RATIONALE.md` replaces references to private
    sources (PD-039). Issue templates, `SECURITY.md` and the "Report a
    problem" link point to this repository.
+5. The product repository no longer carries `software/`; it mirrors this
+   repository into `ref/software/` (PD-054).
 
 **Remaining:**
 
 1. **Translate code comments, test names and UI defaults** into English in
    a separate PR (PD-034, PD-035).
 2. **Turn on secret scanning and push protection**, if not on yet.
-3. **Remove the interim solution** in the product repository: delete
-   `software/` and `.github/workflows/software.yml` (PD-017, PD-023). Set
-   up the mirror `ref/software/` (PD-017); first extend the rules for
-   `ref/` in the product repository's `CLAUDE.md`.
-4. **Optional:** activate the triage action from
+3. **Optional:** activate the triage action from
    `docs/templates/claude-triage.yml` (§4).
-5. **When going public:**
-   - Turn on private vulnerability reporting.
-   - Turn on Discussions.
-   - Check the trademark.
+4. **Going public** (PD-055 to PD-062, SD-026): the history moves into a
+   new repository without the last private references (PD-056). Before
+   the switch: Actions and ruleset settings; if `main` gets a required
+   status check, require only "Quick checks / quick", because the full
+   CI skips docs-only PRs. Right after the switch (these settings exist
+   only for public repositories): private vulnerability reporting,
+   approval for workflows from all outside contributors, secret scanning
+   and push protection, Dependabot alerts, Discussions.
+5. **Before the first public release tag:** build release assets in a
+   read-only job and publish them from a job without a build; pin actions
+   by commit SHA; protect `v*` tags with a ruleset.
+6. **Later:** a trademark search before a trademark of our own or the
+   first sale.
 
 ## 3. Roles and agents
 

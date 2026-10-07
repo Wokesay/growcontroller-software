@@ -18,13 +18,20 @@ Assistant required.
 > the port to the ESP32-S3 follows (`firmware/README.md`). Do not use it
 > with real hardware.
 
+> **Safety.** This is experimental prototype software, not a finished or
+> certified product (no CE marking). Do not use it to control real pumps,
+> valves, mains-powered devices or chemicals such as pH adjusters: a fault
+> can cause overdosing, overflow, water damage or fire. You use it at your
+> own risk; see sections 15 and 16 of the [`LICENSE`](LICENSE).
+
 ## Try it without installing
 
 From the next release on, **Releases** offers the simulator for Windows,
 macOS and Linux: one file, unpack, double-click. The browser opens the
 demo (password `demo-passwort`). Notes on Windows SmartScreen and macOS
-are in `README.txt` inside the package. Every CI run also stores the
-packages as artifacts.
+are in `README.txt` inside the package. Use only packages from
+Releases: CI runs also store packages as artifacts, but those of pull
+requests are built from code nobody has reviewed yet.
 
 ## Build it yourself (no hardware needed)
 
@@ -86,7 +93,7 @@ In plain words:
   source code it was built from (AGPL §13).
 - **No warranty.** The software comes as it is.
 - **No paid edition.** The project sells no licenses and has no
-  subscription and no dual licensing. It is funded by selling hardware.
+  subscription and no dual licensing.
 - **Your device is yours.** The hub does not lock out third-party
   firmware: there is no Secure Boot against the user, and you can install
   your own firmware. How: [`firmware/FLASHING.md`](firmware/FLASHING.md).
@@ -101,3 +108,10 @@ In plain words:
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 The hardware (circuit boards) is not part of this repository.
+
+## Trademarks
+
+Product and company names such as Athena and Shelly are trademarks of
+their respective owners. They are used only to describe compatibility or
+to cite a source; this project is not affiliated with, endorsed or
+sponsored by them.

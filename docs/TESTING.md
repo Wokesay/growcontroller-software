@@ -28,8 +28,11 @@ E2E=1 tools/ci.sh    # plus Playwright (browser: npx playwright install chromium
 ./build/gc_tests -tc="*Sprungsperre*"   # single cases
 ```
 
-The CI (`.github/workflows/ci.yml`) runs on every PR and on `main` and
-runs exactly these steps.
+The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
+`main` that changes code. It runs exactly these steps plus E2E, the
+firmware build and the simulator packages for Windows, macOS and Linux. Docs-only changes
+run only the quick checks (`.github/workflows/checks.yml`: architecture
+rules, `reuse lint`, dependency licenses; PD-059).
 
 ## Rules
 

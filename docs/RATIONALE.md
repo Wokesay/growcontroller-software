@@ -627,7 +627,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** Self-chosen EC targets drift far from what the product is designed for; pH targets on the edge of the band end up outside it because control stops about ±0.1 around the target.
 - **Evidence:** Measured on the reference installation (2026): the chart implies 0.615 mS/cm per ml/L per part, equal to the mixing-tank measurement (0.62) and 12 % above a soak-water measurement (0.55). Before alignment, EC targets up to 3.0 exceeded the chart maximum (2.6 with PK, 2.3 without), so from the start of flowering 1.3–3 times the manufacturer amount was dosed. Flowering week 1 starts with the switch to 12/12 light.
 - **Implemented in:** catalog/catalog.json (templates `athena_blended_veg`, `athena_blended_bloom`), docs/PLANT_AUTOMATION.md (§5)
-- **Tests:** tests/core/test_api.cpp – „Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der Fehlenden“, „Vorlagen: Paarname schon vergeben → freier Name, A/B skalieren gemeinsam“; web/e2e/betrieb.spec.ts – „Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen“ (template handling, not the values)
+- **Tests:** tests/core/test_api.cpp – „Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der Fehlenden“, „Vorlagen: Paarname schon vergeben → freier Name, A/B skalieren gemeinsam“; web/e2e/betrieb.spec.ts – „Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen“ (template handling and the manufacturer-data note, not the values); tests/core/test_catalog_config.cpp – "Catalog: recipe templates fit the name limit and cite their source"
 
 
 ### RAT-067 – Irrigation needs a minimum tank level

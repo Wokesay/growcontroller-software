@@ -8,6 +8,14 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Ready to go public** (PD-055 to PD-062, SD-026): a safety notice and a
+  trademark notice in the README; `SECURITY.md` takes reports only through
+  GitHub private vulnerability reporting, with targets of 7 days
+  (acknowledgement), 30 days (first assessment) and at most 90 days to
+  disclosure.
+- **Quick checks** (`.github/workflows/checks.yml`): architecture rules,
+  `reuse lint` and the dependency license check run on every PR, also for
+  docs-only changes; the full CI skips docs-only changes (PD-059).
 - **Own repository with history:** the software moved from the product
   repository into `Wokesay/growcontroller-software` with its 17 commits;
   every moved commit carries `LICENSE`.
@@ -24,7 +32,7 @@ listed in every release under "Security".
 - **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
   (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
   tests. Code and docs cite only these IDs.
-- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-025 record the
+- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-026 record the
   product decisions that apply to the software.
 - Simulator download for Windows, macOS (Apple silicon and Intel) and
   Linux: one file with the web app embedded; a double-click starts the demo
@@ -42,8 +50,8 @@ listed in every release under "Security".
   calibration; Nutrients starts with a template and its preview, and
   existing recipes are visible.
 - **Recipe templates** with a preview, mapped to your own bottles instead of
-  matching by name: Two-part nutrient, Athena Blended – Vegetative and
-  Athena Blended – Flowering (per Feed Program A01.004). API:
+  matching by name: Two-part nutrient, "Vegetative wk 1–4" and "Flowering
+  wk 1–2" per the Athena Blended Feed Program A01.004. API:
   `POST /recipes/template` takes `map` (part → bottle), reports missing
   parts in `missing` and rejects one bottle for two parts; a pair from the
   template carries over to bottles without a pair of their own, as "AB2"
@@ -72,8 +80,8 @@ listed in every release under "Security".
   profile's protection setting into the device (auto-off for humidifier,
   irrigation pump and inlet) and assigns it only once the read-back
   matches; before every switch-on it checks the setting again. On the
-  device, discovery via mDNS, login and RPC follow. Which sockets the shop
-  will carry is open (PD to follow). API: `POST /roles/{rolle}/test`,
+  device, discovery via mDNS, login and RPC follow. Which sockets are
+  recommended is open (PD to follow). API: `POST /roles/{rolle}/test`,
   `POST /roles/{rolle}/switch {on}` (manual mode).
 - **Validation:** a switched output serves only one role, and the channel
   must be within the device's range; the setting "valve open at most"
@@ -144,6 +152,18 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **Recipe templates from a manufacturer chart** are named after the
+  phase with the source behind it ("Vegetative wk 1–4 (per Athena
+  A01.004)") and say "manufacturer data, not binding; not affiliated with
+  the manufacturer" with edition and date of the source: in the template
+  dialog of the recipe page, in recipes created from it and in the
+  template cards of the setup wizard (PD-030, PD-062). The source line is
+  easier to read, and long recipe names wrap on phones.
+- **CI:** caches compiler output (ccache, saved only on `main`) for the
+  core and the firmware; every job has a time limit; only superseded PR
+  runs are cancelled.
+- The README no longer mentions selling hardware (PD-061); `CLAUDE.md`
+  names the project owner neutrally (PD-057).
 - **English:** docs, README, CONTRIBUTING, SECURITY, templates, agents,
   workflows and `CLAUDE.md` are in English; docs, templates and packaging
   files have English names (for example `docs/CONCEPT.md`,

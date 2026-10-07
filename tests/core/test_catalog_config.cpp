@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <cctype>
+
 #include "gc/catalog.hpp"
 #include "gc/config.hpp"
 
@@ -17,6 +19,32 @@ TEST_CASE("Katalog: eingebetteter Katalog lädt und ist in sich stimmig") {
   CHECK(c.classesProviding("measure.ph").size() == 2);  // pH/EC-Kopf oder eigener pH-Kopf
   CHECK(c.role("zone.air_temp") != nullptr);
   CHECK(c.role("tent.air_temp") == nullptr);
+}
+
+TEST_CASE("Catalog: recipe templates fit the name limit and cite their source") {
+  // A recipe created from a template takes its name, cut at 40 bytes
+  // (Hub::putRecipe); a cut name would no longer match the template.
+  Catalog c = Catalog::builtin();
+  REQUIRE(c.templates.contains("recipes"));
+  for (const auto& t : c.templates["recipes"]) {
+    for (const char* key : {"name", "nameEn"}) {
+      if (!t.contains(key)) continue;
+      INFO(t.value("id", std::string()) << " " << key);
+      CHECK(t[key].get<std::string>().size() <= 40);
+    }
+    // Templates from a manufacturer chart (PD-030): not binding, with the
+    // edition and the date of the source.
+    if (!t.contains("sourceEn")) continue;
+    INFO(t.value("id", std::string()));
+    CHECK(t.value("noteEn", std::string()).find("Manufacturer data, not binding") != std::string::npos);
+    CHECK(t.value("note", std::string()).find("Herstellerangabe, unverbindlich") != std::string::npos);
+    const std::string src = t["sourceEn"].get<std::string>();
+    CHECK(src.find("edition") != std::string::npos);
+    bool dated = false;
+    for (size_t i = 0; i + 10 <= src.size(); ++i)
+      if (std::isdigit(static_cast<unsigned char>(src[i])) && src[i + 4] == '-' && src[i + 7] == '-') dated = true;
+    CHECK(dated);
+  }
 }
 
 TEST_CASE("Katalog: unbekannte Capability wird abgelehnt") {

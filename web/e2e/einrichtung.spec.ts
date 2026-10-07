@@ -45,6 +45,7 @@ test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, reque
   // Nährstoffe: Vorlage ist vorbelegt (B, A, CalMag auf Pumpe 1–3, mit ml/L)
   await expect(page.getByRole("heading", { name: "Nährstoffe" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Zweikomponenten-Dünger/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Wachstum Wo\. 1–4/ })).toContainText("Herstellerangabe, unverbindlich");
   await expect(page.locator("input[name=bottle0]")).toHaveValue("Teil B");
   await expect(page.locator("input[name=dose2]")).toHaveValue("0,5");
   await page.getByTestId("wizard-next").click();

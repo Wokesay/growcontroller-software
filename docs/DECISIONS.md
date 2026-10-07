@@ -276,6 +276,33 @@ the software; the full decision is in the product repository.
   survive a restart.
 - Not implemented yet (issue #20); until then R6 applies.
 
+
+## SD-026: Product requirement (from PD-055 to PD-059, PD-061, PD-062): going public
+
+- **Public repository** (PD-055): this repository becomes public once
+  its history no longer carries private references. The history moves
+  into a new repository under the same name; the old one stays private
+  (PD-056). Open issues are created again with the same numbers; pull
+  request #1 and closed issues stay in the old repository, and closed
+  placeholders keep their numbers here.
+- **Project owner** (PD-057): `CLAUDE.md` names the project owner
+  neutrally.
+- **Security reports** (PD-058): only through GitHub private vulnerability
+  reporting; targets: acknowledgement 7 days, first assessment 30 days,
+  disclosure at the latest 90 days after the report.
+- **CI** (PD-059): Windows and macOS packages run for every PR that
+  changes code and after every merge to `main`, also for release tags and
+  on demand. Docs-only changes run only the quick checks (architecture
+  rules, `reuse lint`, dependency licenses); for them, "green CI" means
+  green quick checks. Superseded PR runs are cancelled; every job has a
+  time limit.
+- **README** (PD-061): no reference to selling hardware; a safety notice
+  and a trademark notice.
+- **Recipe templates from a manufacturer chart** (PD-030, PD-062): named
+  after the phase with the source behind it, marked "manufacturer data,
+  not binding; not affiliated with the manufacturer" with edition and
+  date, in the recipe list and in the setup wizard.
+
 ---
 
 ## Drafts (waiting for "entschieden")

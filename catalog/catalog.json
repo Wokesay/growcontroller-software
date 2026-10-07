@@ -204,8 +204,8 @@
     "recipes": [
       {
         "id": "two_part_basic", "name": "Zweikomponenten-Dünger", "nameEn": "Two-part nutrient",
-        "note": "Allgemeine Startwerte für A+B-Dünger mit CalMag, ohne Herstellerbezug. An die Herstellerangabe anpassen.",
-        "noteEn": "General starting values for A+B nutrient with CalMag, not from a manufacturer. Adjust to the manufacturer's chart.",
+        "note": "Allgemeine Startwerte für A+B-Dünger mit CalMag, nicht aus einem Herstellerplan. Passe sie an die Angaben deines Düngers an.",
+        "noteEn": "General starting values for A+B nutrient with CalMag, not from a manufacturer chart. Adjust them to your nutrient's label.",
         "basis": "Annahme",
         "ec": 1.6, "ph": [5.8, 6.2],
         "steps": [
@@ -215,11 +215,11 @@
         ]
       },
       {
-        "id": "athena_blended_veg", "name": "Athena Blended – Wachstum", "nameEn": "Athena Blended – Vegetative",
-        "note": "Wachstum Woche 1–4. Mit dem aktuellen Herstellerplan abgleichen.",
-        "noteEn": "Vegetative weeks 1–4. Check against the current manufacturer chart.",
-        "source": "Athena Blended Feed Program A01.004 (metrisch)",
-        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
+        "id": "athena_blended_veg", "name": "Wachstum Wo. 1–4 (nach Athena A01.004)", "nameEn": "Vegetative wk 1–4 (per Athena A01.004)",
+        "note": "Prüf die Werte vor dem Einsatz am aktuellen Plan des Herstellers. Herstellerangabe, unverbindlich; kein Bezug zum Hersteller.",
+        "noteEn": "Check against the manufacturer's current chart before use. Manufacturer data, not binding; not affiliated with the manufacturer.",
+        "source": "Athena Blended Feed Program, metrisch, Ausgabe A01.004 (PDF vom 05.12.2025, abgeglichen am 26.09.2026)",
+        "sourceEn": "Athena Blended Feed Program, metric, edition A01.004 (PDF dated 2025-12-05, checked 2026-09-26)",
         "basis": "RAT-066",
         "ec": 2.1, "ph": [5.8, 6.2],
         "steps": [
@@ -229,11 +229,11 @@
         ]
       },
       {
-        "id": "athena_blended_bloom", "name": "Athena Blended – Blüte", "nameEn": "Athena Blended – Flowering",
-        "note": "Blüte Woche 1–2 (ab Woche 3 höher, mit PK). Mit dem aktuellen Herstellerplan abgleichen.",
-        "noteEn": "Flowering weeks 1–2 (higher from week 3, with PK). Check against the current manufacturer chart.",
-        "source": "Athena Blended Feed Program A01.004 (metrisch)",
-        "sourceEn": "Athena Blended Feed Program A01.004 (metric)",
+        "id": "athena_blended_bloom", "name": "Blüte Wo. 1–2 (nach Athena A01.004)", "nameEn": "Flowering wk 1–2 (per Athena A01.004)",
+        "note": "Ab Woche 3 höher und mit PK-Zusatz (Phosphor, Kalium). Prüf die Werte vor dem Einsatz am aktuellen Plan des Herstellers. Herstellerangabe, unverbindlich; kein Bezug zum Hersteller.",
+        "noteEn": "Higher from week 3, plus a PK booster (phosphorus, potassium). Check against the manufacturer's current chart before use. Manufacturer data, not binding; not affiliated with the manufacturer.",
+        "source": "Athena Blended Feed Program, metrisch, Ausgabe A01.004 (PDF vom 05.12.2025, abgeglichen am 26.09.2026)",
+        "sourceEn": "Athena Blended Feed Program, metric, edition A01.004 (PDF dated 2025-12-05, checked 2026-09-26)",
         "basis": "RAT-066",
         "ec": 2.3, "ph": [5.8, 6.2],
         "steps": [

@@ -37,7 +37,7 @@ body:
     attributes:
       label: Hardware
       options:
-        - purchased hub
+        - hub (prototype)
         - self-built (breadboard or own board)
         - simulator only
     validations:

@@ -82,7 +82,7 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
         )}
         {twice && <Banner tone="warn">{t("recipes.tpl.twice")}</Banner>}
         {p.tpl.ec && <p class="faint small">{t("setup.nut.ec", { ec: num(p.tpl.ec, 1) })}</p>}
-        {p.tpl.source && <p class="faint small">{t("setup.nut.source", { s: lang.value === "en" && p.tpl.sourceEn ? p.tpl.sourceEn : p.tpl.source })}</p>}
+        {p.tpl.source && <p class="muted small">{t("setup.nut.source", { s: lang.value === "en" && p.tpl.sourceEn ? p.tpl.sourceEn : p.tpl.source })}</p>}
       </div>
     </Modal>
   );

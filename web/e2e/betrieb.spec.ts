@@ -67,14 +67,17 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
 test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ page }) => {
   await login(page);
   await page.goto("/#/rezepte");
-  await page.getByTestId("templates").getByRole("button", { name: /Athena Blended – Wachstum/ }).click();
+  await page.getByTestId("templates").getByRole("button", { name: /Wachstum Wo\. 1–4 \(nach Athena A01\.004\)/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Grow B");
+  // Manufacturer data with edition and date, not binding (PD-030)
+  await expect(page.getByRole("dialog")).toContainText("Herstellerangabe, unverbindlich");
+  await expect(page.getByRole("dialog")).toContainText("Ausgabe A01.004");
   await expect(page.getByRole("button", { name: "Rezept anlegen" })).toBeDisabled();
   await page.locator("select[name=map-b]").selectOption({ label: "Teil B" });
   await page.locator("select[name=map-a]").selectOption({ label: "Teil A" });
   await page.locator("select[name=map-calmag]").selectOption({ label: "CalMag" });
   await page.getByRole("button", { name: "Rezept anlegen" }).click();
-  await expect(page.getByText("Rezept „Athena Blended – Wachstum“ angelegt")).toBeVisible();
+  await expect(page.getByText("Rezept „Wachstum Wo. 1–4 (nach Athena A01.004)“ angelegt")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 

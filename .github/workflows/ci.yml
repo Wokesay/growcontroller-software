@@ -1,16 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # CI: architecture rules, licenses, core with sanitizers, web app,
 # end-to-end in the browser against the simulator, firmware, packages.
+# Docs-only changes skip this workflow; checks.yml runs for them (PD-059).
+# CHANGELOG.md is embedded in the build, but a change to it alone is
+# docs-only too; the next code change carries it into a build.
 name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "**.md", "LICENSES/**", ".claude/**", ".github/ISSUE_TEMPLATE/**"]
   pull_request:
+    paths-ignore: ["docs/**", "**.md", "LICENSES/**", ".claude/**", ".github/ISSUE_TEMPLATE/**"]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only superseded PR runs are cancelled; every commit on main keeps its run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # Source code link in the web app (AGPL-3.0 §13): the commit under test
   GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -29,10 +36,29 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Tools
         run: |
-          sudo apt-get update && sudo apt-get install -y ninja-build
+          sudo apt-get update && sudo apt-get install -y ninja-build ccache
           pipx install reuse==6.2.0
+      # Compiler cache: restored everywhere, saved only on main.
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-core-${{ github.sha }}
+          restore-keys: ccache-core-
       - name: Architecture, licenses, core, tests, web app
-        run: tools/ci.sh
+        env:
+          CCACHE_MAXSIZE: 500M
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          tools/ci.sh
+          ccache -s
+      - name: Save compiler cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-core-${{ github.sha }}
       - name: Browser for E2E
         working-directory: web
         run: npx playwright install --with-deps chromium
@@ -64,14 +90,32 @@ jobs:
         run: |
           cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
           node tools/embed_web.mjs
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-idf-v5.4.1-${{ github.sha }}
+          restore-keys: ccache-idf-v5.4.1-
       - name: Build the firmware for the ESP32-S3
         shell: bash
+        env:
+          CCACHE_MAXSIZE: 1G
         run: |
           . $IDF_PATH/export.sh
+          # In a container job the workspace path is only right from inside.
+          export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          if command -v ccache > /dev/null; then export IDF_CCACHE_ENABLE=1; fi
           cd firmware
           idf.py set-target esp32s3
           idf.py build
           idf.py size
+          if command -v ccache > /dev/null; then ccache -s; fi
+      - name: Save compiler cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-idf-v5.4.1-${{ github.sha }}
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-esp32s3
