@@ -55,6 +55,7 @@ endif()
 add_library(gc_core
   core/src/bus.cpp
   core/src/catalog.cpp
+  core/src/clock.cpp
   core/src/config.cpp
   core/src/truth.cpp
   core/src/history.cpp
@@ -105,6 +106,7 @@ if(GC_BUILD_TESTS)
   add_executable(gc_tests
     tests/core/main.cpp
     tests/core/test_catalog_config.cpp
+    tests/core/test_clock.cpp
     tests/core/test_truth.cpp
     tests/core/test_history.cpp
     tests/core/test_mix.cpp

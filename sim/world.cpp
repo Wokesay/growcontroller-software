@@ -195,10 +195,24 @@ std::string World::addNetPlug(const std::string& cls, const std::vector<std::pai
   return netPlugs.back().id;
 }
 
-void World::mainsOutage() {
+void World::powerFail() {
   for (auto& p : netPlugs)
-    for (auto& o : p.outlets)
-      if (o.initialOff) o.on = false;
+    for (auto& o : p.outlets) {
+      o.beforeOutage = o.on;
+      o.on = false;
+    }
+}
+
+void World::powerReturn() {
+  for (auto& p : netPlugs)
+    for (auto& o : p.outlets) {
+      const bool on = o.powerOn == gc::PowerOn::On || (o.powerOn == gc::PowerOn::Restore && o.beforeOutage);
+      if (on && !o.on) {
+        o.onSince = now_;  // the device's auto-off counts from here
+        ++o.switchOns;
+      }
+      o.on = on;
+    }
 }
 
 bool World::loadOn(const std::string& load) const {
@@ -371,7 +385,7 @@ json World::toJson() const {
              for (const auto& p : netPlugs) {
                json outs = json::array();
                for (const auto& o : p.outlets)
-                 outs.push_back({{"on", o.on}, {"load", o.load}, {"loadW", o.loadW}, {"initialOff", o.initialOff},
+                 outs.push_back({{"on", o.on}, {"load", o.load}, {"loadW", o.loadW}, {"powerOn", gc::powerOnName(o.powerOn)},
                                  {"autoOffS", gc::numOrNull(o.autoOffS)}, {"switchOns", o.switchOns}});
                a.push_back({{"id", p.id}, {"class", p.cls}, {"ip", p.ip}, {"fault", p.fault}, {"outlets", outs}});
              }
@@ -404,7 +418,7 @@ json World::save() const {
   for (const auto& p : netPlugs) {
     json outs = json::array();
     for (const auto& o : p.outlets)
-      outs.push_back({{"load", o.load}, {"loadW", o.loadW}, {"initialOff", o.initialOff},
+      outs.push_back({{"load", o.load}, {"loadW", o.loadW}, {"powerOn", gc::powerOnName(o.powerOn)},
                       {"autoOffS", gc::numOrNull(o.autoOffS)}, {"powerLimitW", gc::numOrNull(o.powerLimitW)}});
     np.push_back({{"id", p.id}, {"class", p.cls}, {"ip", p.ip}, {"outlets", outs}});
   }
@@ -438,10 +452,12 @@ void World::restore(const json& j) {
     np.cls = p.value("class", std::string());
     np.ip = p.value("ip", std::string());
     for (const auto& o : p.value("outlets", json::array())) {
-      NetOutlet dose;  // nach dem Neustart des Simulators aus
+      NetOutlet dose;
       dose.load = o.value("load", std::string());
       dose.loadW = o.value("loadW", 0.0);
-      dose.initialOff = o.value("initialOff", false);
+      if (auto po = gc::powerOnFromName(o.value("powerOn", std::string()))) dose.powerOn = *po;
+      else if (o.value("initialOff", false)) dose.powerOn = gc::PowerOn::Off;  // older world.json: a flag
+      dose.on = dose.powerOn == gc::PowerOn::On;  // the simulator restarted: like power returning
       dose.autoOffS = gc::jnum(o, "autoOffS");
       dose.powerLimitW = gc::jnum(o, "powerLimitW");
       np.outlets.push_back(dose);

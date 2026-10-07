@@ -8,6 +8,44 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Fan sockets come back on after a power loss** (PD-050, SD-028):
+  binding a socket to the exhaust or circulation fan sets it to "on after
+  power loss"; every other socket stays "off". After a restart the hub
+  leaves fans as they are. A socket that loses its fan role (unassigned,
+  moved, device removed, configuration imported) goes back to "off"; the
+  hub reads the setting back and reports a socket that keeps "on". The
+  catalog marks such roles with `afterPowerLoss: "on"`; the core accepts
+  it only for the exhaust and the circulation fan, as continuous loads
+  without a maximum run time. Fan sockets bound with an older version
+  report "Schutzeinstellung weicht ab" and need to be assigned again.
+- **The emergency stop survives a restart** (PD-076, SD-028): it is kept
+  in the run-time state; after a power loss or restart everything stays
+  off, fans included, and the hub reports "Not-Halt besteht weiter" until
+  someone resumes. During the stop the fan sockets are set to "off after
+  power loss"; resume restores their setting.
+- **Internal error keeps the fans running** (PD-077): the safe state after
+  a caught error switches everything off except the fans on sockets.
+- **Secured time and the continued clock** (PD-069, PD-073, SD-028): the
+  hub knows whether its time is secured (in the firmware after the first
+  network time sync). It saves its time and an operating time with its
+  run-time state. Without a secured time after a start it continues from
+  the saved time (a newer event moves it forward by at most 1 h) and
+  reports "Uhrzeit
+  nicht gesichert" after 2 min; when the time is secured later it reports
+  the jump. `GET /api/v1/state` shows `time` (`secured`, `source`,
+  `operatingS`). Intervals within one start use operating time; across a
+  restart they use wall time only if both moments were secured, otherwise
+  operating time, so an outage never stretches them (prepared for the
+  dosing intervals that follow). A clock step keeps the remaining time of
+  jump locks, maintenance and controller pauses; a jump lock never holds
+  longer than 15 min after a step. An unreadable run-time state keeps the
+  hub stopped (copy in `state.broken.json`) until someone resumes.
+- **Simulator:** a power cut can last a while (`outageMin`, the world runs
+  on without power) and leave the hub without a secured time
+  (`timeSecured: false`); `mainsLost: false` restarts only the hub. The
+  action `time` secures the time later, takes it away again or steps it
+  (`stepS`). The socket fault `crash` makes the hub's tick fail, to test
+  the internal-error path.
 - **Public repository** (PD-055 to PD-062, SD-026): a safety notice and a
   trademark notice in the README; `SECURITY.md` takes reports only through
   GitHub private vulnerability reporting, with targets of 7 days

@@ -14,6 +14,8 @@ struct Clock : gc::IClock {
   gc::Epoch start = 1790000000;
   gc::Ms nowMs() const override { return ms; }
   gc::Epoch epoch() const override { return start + ms / 1000; }
+  bool isSecured = true;
+  bool secured() const override { return isSecured; }
 };
 
 struct FakeBus : gc::IBus {

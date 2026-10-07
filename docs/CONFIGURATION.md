@@ -32,7 +32,10 @@ firmware. Contents:
   or mains socket), whether it goes into the history as a series, and for
   switched outputs the safety profile (`profile`: `dauer` continuous,
   `puls` pulse, `kompressor` compressor, `heizen` heating) with a maximum
-  run time (`maxOnS`).
+  run time (`maxOnS`). `afterPowerLoss: "on"` makes a mains socket with
+  this role come back on after a power loss (exhaust and circulation fan,
+  PD-050); it is allowed only with the profile `dauer`. Every other
+  socket stays off after a power loss.
 - **functions**: stage, group, text, hard and soft requirements,
   parameters with type, range, default and the flag "can be overridden by
   the phase".

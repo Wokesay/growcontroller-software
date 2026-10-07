@@ -27,7 +27,7 @@ test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen",
     const world = await (await page.request.get("/api/v1/sim")).json();
     return world.world.netPlugs.find((p: { id: string }) => p.id === id).outlets[0];
   };
-  expect((await outlet()).initialOff).toBe(true);
+  expect((await outlet()).powerOn).toBe("off");
   const before = (await outlet()).switchOns;
   await page.getByTestId(`outlets-${id}`).getByRole("button", { name: "Testen" }).click();
   // „Testen“ schaltet 3 s ein. Statt den kurzen Zustand abzufragen (verpasst

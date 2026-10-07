@@ -31,6 +31,7 @@ class EventLog {
                    json data = json::object());
   std::vector<Event> query(Epoch from, Epoch to, const std::string& type, size_t limit) const;
   std::uint64_t lastId() const { return next_ - 1; }
+  Epoch newestTs() const;  // 0 without events
   json toJson() const;
   void load(const json& j);
 

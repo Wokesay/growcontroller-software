@@ -68,6 +68,7 @@ void Actuators::stopPumps() { bus_.stopAllPumps(); }
 
 SwitchSafety safetyForRole(const RoleDef& rd) {
   SwitchSafety s;
+  if (rd.onAfterPowerLoss) s.powerOn = PowerOn::On;  // fans (PD-050)
   if ((rd.profile == "puls" || rd.profile == "heizen") && isNum(rd.maxOnS)) s.autoOffS = std::ceil(rd.maxOnS * 1.11 / 60.0) * 60.0;
   return s;
 }
@@ -204,13 +205,14 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
   return true;
 }
 
-void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now) {
+void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keepPowerLossOn) {
   bus_.stopAllPumps();
   cfg.forEachBinding([&](const std::string& role, const Binding& b) {
     // Alle Schaltrollen aus, auch wenn der Zustand unbekannt ist (Schaltbox
     // oder Dose nicht lesbar): der Befehl kostet nichts. Messrollen nicht.
     const RoleDef* rd = cat.role(role);
     if (!rd || rd->profile.empty()) return;
+    if (keepPowerLossOn && rd->onAfterPowerLoss) return;
     std::string e;
     sw(b.device, b.channel, false, e);
     offSince_[role] = now;  // Mindestpausen gelten auch nach Not-Halt und Neustart

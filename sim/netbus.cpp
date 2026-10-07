@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "netbus.hpp"
 
+#include <stdexcept>
+
 namespace sim {
 
 std::vector<gc::DeviceReport> SimNetBus::devices() const {
@@ -19,6 +21,11 @@ std::vector<gc::DeviceReport> SimNetBus::devices() const {
     out.push_back(d);
   }
   return out;
+}
+
+void SimNetBus::poll(gc::Ms) {
+  for (const auto& p : w_.netPlugs)
+    if (p.fault == "crash") throw std::runtime_error("simulated fault in " + p.id);
 }
 
 bool SimNetBus::owns(const std::string& dev) const { return w_.netPlug(dev) != nullptr; }
@@ -78,7 +85,7 @@ bool SimNetBus::configure(const std::string& dev, int channel, const gc::SwitchS
     return false;
   }
   if (p->fault == "ignore") return true;  // meldet Erfolg, speichert aber nichts – das Rücklesen fällt auf
-  o->initialOff = s.initialOff;
+  o->powerOn = s.powerOn;
   o->autoOffS = s.autoOffS;
   o->powerLimitW = s.powerLimitW;
   return true;
@@ -89,7 +96,7 @@ std::optional<gc::SwitchSafety> SimNetBus::readConfig(const std::string& dev, in
   NetOutlet* o = outlet(dev, channel, err);
   if (!o) return std::nullopt;
   gc::SwitchSafety s;
-  s.initialOff = o->initialOff;
+  s.powerOn = o->powerOn;
   s.autoOffS = o->autoOffS;
   s.powerLimitW = o->powerLimitW;
   return s;

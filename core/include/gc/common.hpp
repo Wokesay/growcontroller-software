@@ -36,7 +36,38 @@ class IClock {
   virtual ~IClock() = default;
   virtual Ms nowMs() const = 0;
   virtual Epoch epoch() const = 0;
+  // The wall clock was set from a trusted source since the start and has
+  // not been interrupted since (PD-073): network time, later a buffered
+  // clock or the device time confirmed in the app.
+  virtual bool secured() const = 0;
 };
+
+// A plausible wall time: not before this software existed (2026-01-01),
+// not absurdly far ahead. A saved time outside is unknown (R5).
+inline constexpr Epoch kNotBefore = 1767225600;
+inline constexpr Epoch kNotAfter = kNotBefore + 50LL * 365 * 86400;
+inline bool plausibleEpoch(Epoch e) { return e >= kNotBefore && e <= kNotAfter; }
+
+// A moment as the hub records it (PD-069): wall time, whether that wall
+// time was secured, the operating time in which every outage counts as 0,
+// and the start (boot) it belongs to.
+struct Stamp {
+  Epoch at = 0;
+  bool secured = false;
+  std::int64_t operatingS = 0;
+  std::uint32_t boot = 0;
+};
+void to_json(json& j, const Stamp& s);
+// nullopt if missing, malformed or implausible: an unknown moment is
+// never 0 (R5).
+std::optional<Stamp> stampFromJson(const json& j);
+// Seconds from `from` to `to`, never negative. Within one start: operating
+// time, which no clock step can stretch. Across a restart: the wall time
+// if both moments were secured (it counts the outage), never less than
+// the operating time; otherwise operating time. So an outage or a clock
+// that jumps once it is secured never makes an interval look longer than
+// it was (PD-069).
+std::int64_t elapsedS(const Stamp& from, const Stamp& to);
 
 // Klartext mit Schlüssel für spätere Übersetzung (Texte über Schlüssel mit
 // Argumenten, Vorschlag architekt). Der Kern liefert vorerst Deutsch.

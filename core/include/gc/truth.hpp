@@ -16,6 +16,9 @@
 
 namespace gc {
 
+// A jump lock lifts after 15 min of calm (RAT-044).
+inline constexpr Epoch kJumpHoldS = 15 * 60;
+
 // Stückweise lineare Kennlinie aus Stützpunkten (Quelle: RAT-078):
 // gültig ab 2 Punkten, Rohwerte streng steigend; unter dem ersten Punkt der
 // erste Wert, über dem letzten mit dessen Steigung.

@@ -60,8 +60,9 @@ Product, hardware and business live in the private product repository
 - **R4 phases provide parameters:** logic never reads phase names.
 - **R5 a missing value is never 0:** `nullopt`/`NaN`, JSON `null`.
 - **R6 restart:** afterwards everything is off; interrupted sequences are
-  reported, not resumed. PD-020 replaces this for state functions (fans,
-  light, irrigation); until it is implemented, R6 applies unchanged.
+  reported, not resumed. PD-020 replaces this for state functions: fans
+  keep their state (PD-050, SD-028); for light and irrigation R6 applies
+  until they are implemented.
 
 Background: `docs/CONCEPT.md` §4.
 

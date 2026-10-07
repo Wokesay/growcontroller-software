@@ -32,6 +32,8 @@ std::unique_ptr<gc::Api> g_api;
 
 void randomBytes(std::uint8_t* p, size_t n) { esp_fill_random(p, n); }
 
+void onTimeSync(struct timeval*) { g_clock.markSecured(); }
+
 void onWifi(void*, esp_event_base_t base, int32_t id, void*) {
   if (base == WIFI_EVENT && (id == WIFI_EVENT_STA_START || id == WIFI_EVENT_STA_DISCONNECTED)) esp_wifi_connect();
 }
@@ -55,6 +57,7 @@ void startWifi() {
   ESP_ERROR_CHECK(esp_wifi_start());
   esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
   esp_sntp_setservername(0, "pool.ntp.org");
+  sntp_set_time_sync_notification_cb(onTimeSync);
   esp_sntp_init();
 }
 

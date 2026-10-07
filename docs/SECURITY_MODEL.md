@@ -21,7 +21,9 @@ legal advice. Two kinds of safety and security:
 | Data leak when reporting a problem | diagnostic package without hash, sessions, Wi-Fi, IP; preview before download; note "GitHub is public" | upload only with consent, deletion period |
 | A firmware bug doses too much | gateway with fixed limits in code, configuration only tightens them (R1, R7); calibration value mandatory; job ID per attempt and start against double dosing; deadline per run (without feedback: off, counted as run) | time limit and "one channel" in hardware in the dosing block, enable in hardware per port [PD-012] |
 | A sensor lies | sensor truth: freshness, frozen readings, band, jump lock, calibration; EC gate | measurement window with the pump off until the galvanic isolation has passed acceptance (RAT-044) |
-| Power failure in the middle of a run | after start-up everything is off, nothing resumes, a message | the dosing block stops without a sign of life from the hub |
+| Power failure in the middle of a run | after start-up everything is off, nothing resumes, a message; exception: fan sockets come back on (PD-050), not during an emergency stop (PD-076) | the dosing block stops without a sign of life from the hub |
+| A socket switches on by itself when mains returns | only roles on a fixed allowlist in code (exhaust, circulation fan) may be "on after power loss", only continuous loads without a maximum run time; a socket that loses the role, its device or its binding in an import goes back to "off", read back, failure reported | the setting is stored in the socket; the user can change it there |
+| Wrong or spoofed time | plausibility bounds for the saved clock and events; continued clock without a secured time; clock steps keep the remaining time of locks and pauses and are logged; intervals across restarts use operating time unless both moments were secured | plausibility checks of network time and the app's device time (PD-073) are open |
 
 ## Logging (CRA Annex I 2(l))
 

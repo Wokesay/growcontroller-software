@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "gc/events.hpp"
 
+#include <algorithm>
+
 namespace gc {
 
 void to_json(json& j, const Event& e) {
   j = {{"id", e.id}, {"ts", e.ts}, {"type", e.type}, {"severity", e.severity},
        {"title", e.title}, {"text", e.text}, {"data", e.data}};
+}
+
+Epoch EventLog::newestTs() const {
+  Epoch t = 0;
+  for (const auto& e : events_) t = std::max(t, e.ts);
+  return t;
 }
 
 const Event& EventLog::add(Epoch ts, std::string type, std::string severity, std::string title, std::string text,
@@ -49,8 +57,10 @@ void EventLog::load(const json& j) {
     if (!e.is_object()) continue;
     Event ev;
     double id = jnum(e, "id", 0), ts = jnum(e, "ts", 0);
-    ev.id = isNum(id) && id >= 0 ? static_cast<std::uint64_t>(id) : 0;
-    ev.ts = isNum(ts) ? static_cast<Epoch>(ts) : 0;
+    ev.id = isNum(id) && id >= 0 && id < 9e15 ? static_cast<std::uint64_t>(id) : 0;
+    // A time outside any plausible range (a broken file) is not carried
+    // over: it would anchor the clock after a restart (PD-069).
+    ev.ts = isNum(ts) && ts >= 0 && ts <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(ts) : 0;
     ev.type = jstr(e, "type");
     ev.severity = jstr(e, "severity");
     ev.title = jstr(e, "title");

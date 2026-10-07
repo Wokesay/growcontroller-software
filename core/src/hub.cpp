@@ -26,6 +26,7 @@ constexpr const char* kAuthFile = "auth.json";
 constexpr const char* kEventsFile = "events.json";
 constexpr const char* kHistoryFile = "history.bin";
 constexpr const char* kJobFile = "job.json";
+constexpr Epoch kMaxMaintenanceS = 240 * 60;  // longest maintenance window
 
 // Kurzname für IDs: Kleinbuchstaben, Ziffern, Bindestrich; deutsche Umlaute
 // umschrieben („Blüte“ → „bluete“), damit IDs lesbar bleiben.
@@ -79,14 +80,26 @@ void Hub::logEvent(const std::string& type, const std::string& sev, const std::s
 
 void Hub::boot() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  bootEpoch_ = clock_.epoch();
-  bootMs_ = clock_.nowMs();
   doser_.setBootTag(newId("b"));  // Bus-Job-IDs über Neustarts eindeutig
   if (auto s = store_.read(kEventsFile)) {
     auto j = json::parse(*s, nullptr, false);
     if (!j.is_discarded()) log_.load(j);
   }
   savedEventId_ = log_.lastId();
+  // Time base first (PD-069): without a secured time the clock continues
+  // from the moment saved last; a newer event moves it forward by at most 1 h.
+  const std::optional<std::string> stateRaw = store_.read(kStateFile);
+  const json stateJson = stateRaw ? json::parse(*stateRaw, nullptr, false) : json();
+  const bool stateObj = stateJson.is_object();
+  const std::uint32_t boot = stateObj && stateJson.contains("bootCount") && stateJson["bootCount"].is_number_unsigned()
+                                 ? stateJson["bootCount"].get<std::uint32_t>() + 1
+                                 : 1;
+  clock_.start(stateObj && stateJson.contains("clock") ? stampFromJson(stateJson["clock"]) : std::nullopt, log_.newestTs(),
+               boot);
+  bootEpoch_ = clock_.epoch();
+  bootMs_ = clock_.nowMs();
+  lastTickEpoch_ = bootEpoch_;
+  lastTickMs_ = bootMs_;
   if (auto s = store_.read(kConfigFile)) {
     auto j = json::parse(*s, nullptr, false);
     try {
@@ -102,13 +115,19 @@ void Hub::boot() {
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
-  if (auto s = store_.read(kStateFile)) {
+  if (stateRaw) {
     try {
-      rt_ = runtimeFromJson(json::parse(*s, nullptr, false));
+      if (!stateObj) throw std::runtime_error("kein gültiges JSON-Objekt");
+      rt_ = runtimeFromJson(stateJson);
     } catch (const std::exception& e) {
+      // Whether an emergency stop was active is unknown: keep everything
+      // stopped until someone resumes (fail-safe, PD-076).
+      store_.write("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
+      rt_.stopped = true;
       log_.add(bootEpoch_, "system", "alarm", "Laufzeitzustand unlesbar",
-               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Grund: ") +
+               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Alles bleibt "
+                           "aus, bis jemand fortsetzt. Kopie in state.broken.json. Grund: ") +
                    e.what());
     }
   }
@@ -121,8 +140,16 @@ void Hub::boot() {
     log_.add(bootEpoch_, "system", "alarm", "Zugangsdaten fehlen",
              "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
   if (auto s = store_.read(kHistoryFile)) history_.load(*s);
+  rt_.bootCount = boot;
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
-  act_.stopAll(cat_, cfg_, clock_.nowMs());
+  // Fans keep their state: their sockets come back on after a power loss
+  // (PD-050), and after a restart of the hub alone they keep running.
+  // An emergency stop survives the restart and stops the fans too (PD-076).
+  stopped_ = rt_.stopped;
+  act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
+  if (stopped_)
+    log_.add(bootEpoch_, "system", "alarm", "Not-Halt besteht weiter",
+             "Nach dem Neustart bleibt alles aus, auch die Lüfter, bis jemand fortsetzt.");
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
@@ -146,6 +173,7 @@ void Hub::boot() {
     }
   }
   log_.add(bootEpoch_, "system", "info", "Hub gestartet", std::string("Version ") + embedded::kVersion);
+  saveState();  // the boot count and the stop are durable from the start
 }
 
 void Hub::flush() {
@@ -165,6 +193,7 @@ void Hub::saveConfig(const std::string& what) {
 }
 
 void Hub::saveState() {
+  rt_.clock = clock_.stamp();
   store_.write(kStateFile, json(rt_).dump());
   stateDirty_ = false;
 }
@@ -222,8 +251,9 @@ void Hub::tick() {
     }
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
-    // Dosierung abbrechen, einmal laut melden.
-    act_.stopAll(cat_, cfg_, clock_.nowMs());
+    // Dosierung abbrechen, einmal laut melden. Fans keep running (PD-077),
+    // except during an emergency stop (PD-076).
+    act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
     try {
       Ctx c = ctx();
       doser_.abort(c, act_, "Interner Fehler");
@@ -246,15 +276,86 @@ void Hub::tick() {
     }
     if (!tickFault_) {
       tickFault_ = true;
-      log_.add(clock_.epoch(), "system", "alarm", "Interner Fehler – alles aus",
-               std::string("Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet: ") +
+      log_.add(clock_.epoch(), "system", "alarm", "Interner Fehler – alles aus außer den Lüftern",
+               std::string("Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet; "
+                           "die Lüfter laufen weiter: ") +
                    e.what());
     }
   }
 }
 
+namespace {
+std::string spanText(Epoch s) {
+  s = s < 0 ? -s : s;
+  if (s < 120) return std::to_string(s) + " s";
+  if (s < 2 * 3600) return std::to_string(s / 60) + " min";
+  return fmt(static_cast<double>(s) / 3600.0, 1) + " h";
+}
+}  // namespace
+
+// Secured time and clock steps (PD-069, PD-073).
+void Hub::watchClock(Ms now) {
+  const bool was = clock_.secured();
+  const std::string before = clock_.source();
+  clock_.poll();
+  const bool secured = clock_.secured();
+  const Epoch expected = lastTickEpoch_ + (now - lastTickMs_) / 1000;
+  if (was && !secured) {
+    // Lost while running: continue from the last secured time, no jump.
+    clock_.lose(expected);
+    unsecuredReported_ = true;
+    log_.add(expected, "system", "warn", "Uhrzeit nicht mehr gesichert",
+             "Der Hub zählt ab der letzten gesicherten Uhrzeit weiter.", {{"source", clock_.source()}});
+  }
+  const Epoch epoch = clock_.epoch();
+  const Epoch jump = epoch - expected;
+  if (!was && secured) {
+    shiftDeadlines(jump, epoch);
+    if (unsecuredReported_ || jump > 120 || jump < -120)
+      log_.add(epoch, "system", "info", "Uhrzeit gesichert",
+               before == "unset" ? "Netzwerkzeit empfangen. Uhrzeiten davor im Verlauf stimmen nicht."
+               : jump > 0        ? "Die Uhr springt um " + spanText(jump) + " vor; so lange fehlte die Uhrzeit."
+               : jump < 0        ? "Die Uhr springt um " + spanText(jump) + " zurück."
+                                 : "Netzwerkzeit empfangen.",
+               {{"jumpS", jump}, {"before", before}});
+    unsecuredReported_ = false;
+    stateDirty_ = true;
+  } else if ((secured || (before == "unset" && std::string(clock_.source()) == "unset")) && (jump > 5 || jump < -5)) {
+    // The platform clock stepped: network time while secured, or set before
+    // the secured flag follows (on the device the time is set first).
+    shiftDeadlines(jump, epoch);
+    if (secured && (jump > 120 || jump < -120))
+      log_.add(epoch, "system", "info", "Uhr gestellt",
+               std::string("Die Uhr springt um ") + spanText(jump) + (jump > 0 ? " vor." : " zurück."), {{"jumpS", jump}});
+    stateDirty_ = true;
+  } else if (!secured && !unsecuredReported_ && now - bootMs_ >= 2 * kMinute) {
+    unsecuredReported_ = true;
+    log_.add(epoch, "system", "warn", "Uhrzeit nicht gesichert",
+             std::string(clock_.source()) == "continued"
+                 ? "Keine Netzwerkzeit. Der Hub zählt ab dem zuletzt gespeicherten Stand weiter; die Dauer des Ausfalls fehlt in der Uhrzeit."
+                 : "Keine Netzwerkzeit und keine gespeicherte Uhrzeit. Uhrzeiten im Verlauf stimmen erst, wenn die Uhrzeit gesichert ist.",
+             {{"source", clock_.source()}});
+  }
+  lastTickEpoch_ = epoch;
+  lastTickMs_ = now;
+}
+
+// The wall clock jumped: deadlines in wall time keep their distance; jump
+// locks and maintenance never last longer than they can (RAT-044).
+void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
+  for (Epoch* t : {&lastSample_, &lastWatch_, &lastStateSave_, &lastHistorySave_, &bootEpoch_}) *t += jump;
+  if (watch_.evaluatedAt > 0) watch_.evaluatedAt += jump;
+  if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
+  if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
+  for (auto& [role, until] : rt_.jumpLocks) until = std::min(until + jump, epoch + kJumpHoldS);
+  ec_.shiftClock(jump);
+  ph_.shiftClock(jump);
+  refill_.shiftClock(jump);
+}
+
 void Hub::tickImpl() {
   Ms now = clock_.nowMs();
+  watchClock(now);
   Epoch epoch = clock_.epoch();
   bus_.poll(now);
   devices_ = bus_.devices();
@@ -389,6 +490,11 @@ void Hub::sampleHistory(Epoch epoch) {
 
 // ------------------------------------------------------------------ Lesen
 
+Epoch Hub::now() const {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  return clock_.epoch();
+}
+
 json Hub::info() const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   return {{"product", "growcontroller"},
@@ -408,6 +514,7 @@ json Hub::state() {
   json j;
   j["now"] = epoch;
   j["uptimeS"] = (clock_.nowMs() - bootMs_) / 1000;
+  j["time"] = {{"secured", clock_.secured()}, {"source", clock_.source()}, {"operatingS", clock_.operatingS()}};
   j["setupDone"] = cfg_.system.setupDone;
   j["stopped"] = stopped_;
   j["maintenanceUntil"] = maintenanceUntil_;
@@ -690,6 +797,7 @@ Result Hub::removeDevice(const std::string& id) {
       Ctx c = ctx();
       if (!act_.setRole(c, role, false, "Gerät entfernt", e))
         log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Gerät entfernt: " + e.text, {{"role", role}, {"device", id}});
+      if (const Binding* b = cfg_.binding(role)) releaseSocket(*rd, *b);
     }
   it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
   cfg_.devices.erase(it);
@@ -714,16 +822,17 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   const RoleDef* rd = cat_.role(role);
   // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
   if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
-    SwitchSafety want = safetyForRole(*rd);
+    // During an emergency stop a fan socket stays off after a power loss too (PD-076).
+    const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
       return Result::fail(502, "role.net.write", "Schutzeinstellung nicht geschrieben: " + e);
     auto got = net_->readConfig(device, channel);
     if (!got || !sameSafety(*got, want))
       return Result::fail(502, "role.net.verify", "Schutzeinstellung im Gerät nicht bestätigt – nicht zugeordnet");
+    const std::string afterLoss = want.powerOn == PowerOn::On ? "Nach Stromausfall an" : "Nach Stromausfall aus";
     log_.add(clock_.epoch(), "device", "info", rd->label + ": Schutz im Gerät gesetzt",
-             isNum(want.autoOffS) ? "Nach Stromausfall aus, Abschaltung im Gerät nach " + fmt(want.autoOffS / 60, 0) + " min"
-                                  : "Nach Stromausfall aus",
+             isNum(want.autoOffS) ? afterLoss + ", Abschaltung im Gerät nach " + fmt(want.autoOffS / 60, 0) + " min" : afterLoss,
              {{"device", device}, {"channel", channel}});
   }
   // War die Rolle schon anderswo zugeordnet: dort erst ausschalten, sonst
@@ -733,6 +842,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     Ctx c = ctx();
     if (!act_.setRole(c, role, false, "Zuordnung geändert", e))
       log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Alter Ausgang: " + e.text, {{"role", role}, {"device", old->device}});
+    releaseSocket(*rd, *old);
   }
   cfg_ = next;
   saveConfig("Zuordnung: " + (rd ? rd->label : role));
@@ -763,6 +873,46 @@ Result Hub::testRole(const std::string& role) {
   return Result::ok();
 }
 
+// A socket that loses a role which comes back on after a power loss goes
+// back to "off after power loss" (PD-050).
+void Hub::releaseSocket(const RoleDef& rd, const Binding& b) {
+  if (!rd.onAfterPowerLoss || !net_ || !net_->owns(b.device)) return;
+  std::string e;
+  bool ok = net_->configure(b.device, b.channel, SwitchSafety{}, e);
+  if (ok) {
+    auto got = net_->readConfig(b.device, b.channel);
+    ok = got && sameSafety(*got, SwitchSafety{});
+    if (!ok) e = "im Gerät nicht bestätigt";
+  }
+  if (!ok)
+    log_.add(clock_.epoch(), "device", "warn", rd.label + ": Dose bleibt „nach Stromausfall an“",
+             "Zurücksetzen auf „nach Stromausfall aus“ gescheitert: " + e + ". Bitte in der Dose selbst einstellen.",
+             {{"device", b.device}, {"channel", b.channel}});
+}
+
+// Fan sockets come back on after a power loss, except during an emergency
+// stop (PD-050, PD-076). Written and read back; a failure is reported.
+void Hub::setFanSockets(bool comeBackOn) {
+  if (!net_) return;
+  cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
+    const RoleDef* rd = cat_.role(role);
+    if (!rd || !rd->onAfterPowerLoss || !net_->owns(b.device)) return;
+    const SwitchSafety want = comeBackOn ? safetyForRole(*rd) : SwitchSafety{};
+    std::string e;
+    bool ok = net_->configure(b.device, b.channel, want, e);
+    if (ok) {
+      auto got = net_->readConfig(b.device, b.channel);
+      ok = got && sameSafety(*got, want);
+      if (!ok) e = "im Gerät nicht bestätigt";
+    }
+    if (!ok)
+      log_.add(clock_.epoch(), "device", "warn",
+               rd->label + (comeBackOn ? ": „nach Stromausfall an“ nicht gesetzt" : ": „nach Stromausfall aus“ nicht gesetzt"),
+               e + (comeBackOn ? ". Dose neu zuordnen." : ". Läuft nach einem Stromausfall womöglich wieder an."),
+               {{"role", role}, {"device", b.device}});
+  });
+}
+
 Result Hub::unbindRole(const std::string& role) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
@@ -771,6 +921,7 @@ Result Hub::unbindRole(const std::string& role) {
     const Binding* old = cfg_.binding(role);
     if (old && !act_.setRole(c, role, false, "Zuordnung entfernt", e))
       log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Zuordnung entfernt: " + e.text, {{"role", role}, {"device", old->device}});
+    if (old) releaseSocket(*rd, *old);
   }
   cfg_.rolesFor(role).erase(role);
   saveConfig("Zuordnung entfernt: " + role);
@@ -1017,10 +1168,34 @@ Result Hub::importConfig(const json& j) {
   if (userJobActive() || doser_.busy())
     return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
   act_.stopAll(cat_, cfg_, clock_.nowMs());
+  // A socket that loses its fan role goes back to "off after power loss";
+  // every switched socket in the import gets the setting of its role.
+  cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
+    const RoleDef* rd = cat_.role(role);
+    const Binding* nb = next.binding(role);
+    if (rd && (!nb || nb->device != b.device || nb->channel != b.channel)) releaseSocket(*rd, b);
+  });
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
   cfg_ = next;
+  if (net_)
+    cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
+      const RoleDef* rd = cat_.role(role);
+      if (!rd || rd->profile.empty() || !net_->owns(b.device)) return;
+      const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
+      std::string e;
+      bool ok = net_->configure(b.device, b.channel, want, e);
+      if (ok) {
+        auto got = net_->readConfig(b.device, b.channel);
+        ok = got && sameSafety(*got, want);
+      }
+      if (!ok)
+        log_.add(clock_.epoch(), "device", "warn", rd->label + ": Schutz im Gerät nicht gesetzt",
+                 "Nach dem Import nicht bestätigt" + (e.empty() ? std::string() : " (" + e + ")") +
+                     ". Solange die Einstellung in der Dose nicht stimmt, schaltet der Hub sie nicht ein.",
+                 {{"role", role}, {"device", b.device}});
+    });
   saveConfig("Konfiguration importiert");
   return Result::ok();
 }
@@ -1454,21 +1629,34 @@ Result Hub::stop(const std::string& who) {
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", {"job.stopped", "Durch Not-Halt abgebrochen", json::object()});
-  if (!stopped_) log_.add(clock_.epoch(), "system", "alarm", "Not-Halt", "Alle Pumpen und Ausgänge aus. Ausgelöst: " + who);
+  const bool first = !stopped_;
+  // Saved before the slow socket writes, so a power loss meanwhile keeps the stop.
   stopped_ = true;
+  rt_.stopped = true;
+  saveState();
+  if (first) log_.add(clock_.epoch(), "system", "alarm", "Not-Halt", "Alle Pumpen und Ausgänge aus. Ausgelöst: " + who);
+  // A manual emergency stop stops everything, also after a power loss
+  // (PD-076). Written on every stop, so pressing it again retries a socket
+  // that did not take the setting.
+  setFanSockets(false);
   return Result::ok();
 }
 
 Result Hub::resume() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (stopped_) log_.add(clock_.epoch(), "system", "info", "Automatik fortgesetzt", "Not-Halt aufgehoben");
+  if (stopped_) {
+    log_.add(clock_.epoch(), "system", "info", "Automatik fortgesetzt", "Not-Halt aufgehoben");
+    setFanSockets(true);
+  }
   stopped_ = false;
+  rt_.stopped = false;
+  saveState();
   return Result::ok();
 }
 
 Result Hub::maintenance(double minutes) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (!isNum(minutes) || minutes < 0 || minutes > 240) return Result::fail(422, "maint.minutes", "0–240 min");
+  if (!isNum(minutes) || minutes < 0 || minutes * 60 > kMaxMaintenanceS) return Result::fail(422, "maint.minutes", "0–240 min");
   maintenanceUntil_ = minutes > 0 ? clock_.epoch() + static_cast<Epoch>(minutes * 60) : 0;
   log_.add(clock_.epoch(), "system", "info", minutes > 0 ? "Pflegemodus" : "Pflegemodus beendet",
            minutes > 0 ? "Automatik ruht " + fmt(minutes, 0) + " min. Sperren und Sensorwahrheit bleiben aktiv." : "");

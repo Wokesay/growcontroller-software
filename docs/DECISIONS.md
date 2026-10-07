@@ -26,10 +26,10 @@ basis of the prototype and become SD entries once the project owner says
 
 ## Log
 
-All entries below were recorded on 2026-10-07. SD-001 to SD-026 name what
-applies from a product decision; the full decision is in the product
-repository. From SD-027 on, decisions about this repository itself are
-recorded here in full.
+All entries below were recorded on 2026-10-07. Entries titled "Product
+requirement" name what applies from a product decision; the full decision
+is in the product repository. From SD-027 on, decisions about this
+repository itself are recorded here in full.
 
 
 ## SD-001: Product requirement (from PD-013): standalone software
@@ -325,6 +325,74 @@ below were set when the repository went public.
 - Actions: only actions created by GitHub; workflows get read-only tokens
   by default and cannot create or approve pull requests; workflows from
   outside contributors need approval.
+
+
+## SD-028: Product requirement (from PD-063 to PD-077): restart, clock and hub failure
+
+What the software has to do; hardware details stay in the product
+repository.
+
+- **Emergency doses (PD-063, PD-064):** after an emergency dose and
+  another maximum pause, the next one follows; at most one per 24 h, each
+  reported, until someone acknowledges or watering is safe again. The time
+  of the last emergency dose survives a restart. If the time of the last
+  dose is unknown, the maximum pause counts from the restart, and "last
+  dose unknown" is reported.
+- **Light socket without a schedule (PD-065):** the hub sets an auto-off in
+  the socket of the remaining light window plus a short buffer, at every
+  switch-on and when the window changes. Setup warns that there is no
+  fallback for the day rhythm.
+- **Circulation pump and dehumidifier (PD-066):** keep their state if the
+  hub fails; no auto-off. Setup recommends a dehumidifier with its own
+  hygrostat and full-tank cut-off.
+- **Time server (PD-067):** the hub offers network time to the sockets and
+  sets itself as their time server; it gives out time only while its own
+  time is secured.
+- **Climate after a restart (PD-068):** if the dehumidifier's last off
+  time is unknown, its full minimum pause counts from the restart. Without
+  a secured time the night targets apply and "time missing" is reported.
+- **Continued clock (PD-069):** the hub saves its time and operating time
+  regularly. Without a secured time after a start it continues from the
+  saved time; a newer event moves the start forward by at most 1 h. The
+  outage counts as 0. This clock is not a secured time (light, socket
+  schedule, time server, day and night targets). Intervals within one
+  start use operating time; across a restart they use wall time only if
+  both moments were secured, never less than the operating time, otherwise
+  operating time. This refines PD-069, which asks for wall time whenever
+  both moments were secured: within one start a network time step cannot
+  stretch an interval. Emergency doses need no
+  secured time; the normal watering plan waits for a secured time and
+  sensor truth.
+- **EC and pH control after a restart (PD-070, PD-071):** every controller
+  dose is saved before the pump starts and its result when it ends. If a
+  dose was in flight or not yet mixed in, the controller waits the full
+  settle time, counted from when circulation runs again; while EC waits,
+  pH waits too. Counters, locks and pauses survive a restart. The
+  interrupted round is reported with the booked amounts, not resumed. If
+  the run-time state is unreadable, the controller waits the full settle
+  time once.
+- **Secured time (PD-072, PD-073):** sources are network time, a buffered
+  clock in the hub, and the device time of the app after the user
+  confirms it; the device time never overwrites a secured time. The age of
+  the last sync only warns (from about 2 min estimated error); the time
+  counts as unsecured only from about 15 min estimated error.
+- **Dimming output and 12 V outputs (PD-074, PD-075):** the firmware gives
+  a sign of life from the control loop to an external watchdog. After a
+  restart the hub sets the light to its planned value again (PD-048).
+- **Emergency stop and internal error (PD-076, PD-077):** a manual
+  emergency stop stops everything, fans included, until someone resumes,
+  also across a power loss or restart. During it the fan sockets are set
+  to "off after power loss"; resume restores their setting. The restart
+  of fans is configurable per socket (default on, the app warns on a
+  change); every other socket stays "off after power loss". An internal
+  error switches everything off except the fans on sockets.
+- Implemented so far: fan sockets (PD-050); the emergency stop across a
+  restart with fan sockets off during it (PD-076); fans kept running on
+  an internal error (PD-077); the continued clock with operating time
+  (PD-069); clock steps that keep the remaining time of deadlines and
+  locks; secured time from network time in the firmware. Intervals across
+  restarts are prepared (`elapsedS`) but not used yet. The per-socket fan
+  setting in the app and the rest follow in stages (issue #20).
 
 ---
 
