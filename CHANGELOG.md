@@ -53,7 +53,8 @@ listed in every release under "Security".
   disclosure.
 - **Quick checks** (`.github/workflows/checks.yml`): architecture rules,
   `reuse lint` and the dependency license check run on every PR, also for
-  docs-only changes; the full CI skips docs-only changes (PD-059).
+  docs-only changes; the full CI skips its heavy jobs for them (PD-059,
+  SD-030).
 - **Own repository with history:** the software moved from the product
   repository into `Wokesay/growcontroller-software` with its 17 commits;
   every moved commit carries `LICENSE`.

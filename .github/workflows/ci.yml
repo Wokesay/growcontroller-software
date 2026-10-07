@@ -2,8 +2,8 @@
 # CI: architecture rules, licenses, core with sanitizers, web app,
 # end-to-end in the browser against the simulator, firmware, packages.
 # It runs on every PR and push to main. Docs-only changes skip the heavy
-# jobs (`changes`, tools/ci_changes.mjs); checks.yml runs the quick checks
-# for them (PD-059). `ci-ok` sums up all jobs and is a required check of
+# jobs (decided by the job `changes` with tools/ci_changes.mjs); checks.yml
+# runs the quick checks for them (PD-059). `ci-ok` sums up all jobs and is a required check of
 # the ruleset on main (SD-030). No paths-ignore here: a workflow that does
 # not start leaves a required check pending forever.
 # CHANGELOG.md is embedded in the build, but a change to it alone is
@@ -41,16 +41,17 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
-          # PR: the merge commit against its first parent, the base branch.
-          # Push to main: the pushed commit against the previous main, if
-          # the push held only that commit. Anything else runs everything.
+          # PR: GitHub's merge commit against its first parent, the base
+          # branch; only if HEAD really is a merge commit (a checkout of the
+          # PR head would compare only its last commit). Push to main: the
+          # pushed commit against the previous main, if the push held only
+          # that commit. Anything else runs everything.
           base=""
-          if [ "$EVENT" = pull_request ]; then
+          if [ "$EVENT" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
             base=HEAD^1
           elif [ "$EVENT" = push ] && [ "$BEFORE" = "$(git rev-parse -q --verify HEAD^1 || true)" ]; then
             base=HEAD^1
           fi
-          if [ -n "$base" ]; then git diff --name-only --no-renames "$base" HEAD; fi
           result=$(node tools/ci_changes.mjs "$base" HEAD)
           echo "$result"
           case "$result" in
@@ -171,9 +172,12 @@ jobs:
     uses: ./.github/workflows/packages.yml
 
   # The job id `ci-ok` is a required check of the ruleset on main (SD-030);
-  # renaming it blocks every merge until the ruleset follows. always():
-  # it also runs when a job before it failed or the run was cancelled, and
-  # then fails. A skipped job passes only if the filter said docs only.
+  # renaming it blocks every merge until the ruleset follows. Every other
+  # job of this workflow must be in its needs (tools/ci_changes.test.mjs
+  # checks this). always(): it also runs when a job before it failed or the
+  # run was cancelled, and then fails; not !cancelled(), because a skipped
+  # ci-ok would count as passed. A skipped job passes only if the filter
+  # said docs only.
   ci-ok:
     needs: [changes, checks, firmware, packages]
     if: always()

@@ -420,10 +420,12 @@ checks (issue #35).
   `main`. It no longer uses `paths-ignore`: a workflow that does not start
   leaves a required check pending forever.
 - Its first job `changes` compares the change with its base
-  (`tools/ci_changes.mjs`). A docs-only change (the paths of PD-059:
-  `docs/`, `*.md`, `LICENSES/`, `.claude/`, issue templates) skips the
-  heavy jobs: core with sanitizers and E2E, firmware, simulator packages.
-  Any other change, or a range the filter cannot compare, runs them all.
+  (`tools/ci_changes.mjs`, in the repository because only GitHub's own
+  actions are allowed, SD-027). A docs-only change (the paths ci.yml
+  ignored before, PD-059: `docs/`, `*.md`, `LICENSES/`, `.claude/`, issue
+  templates) skips the heavy jobs: core with sanitizers and E2E, firmware,
+  simulator packages. Any other change, or a range the filter cannot
+  compare, runs them all.
 - Its last job `ci-ok` always runs. It fails if a job failed or was
   cancelled, if the filter gave no result, or if a job was skipped
   although the change touches code.
