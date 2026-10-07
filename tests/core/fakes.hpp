@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Testhilfen: steuerbare Uhr und ein minimaler Bus für Unit-Tests.
 #pragma once
 

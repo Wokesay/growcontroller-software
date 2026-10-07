@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Anmeldung und Erstpasswort. Kein Standardpasswort, kein Überspringen
 // (EN 18031-1 AUM-5-1).
 import { useState } from "preact/hooks";
 import { KeyRound, Sprout } from "lucide-preact";
 import { ApiError, post } from "../api";
 import { afterLogin, info } from "../store";
+import { t } from "../i18n";
+import { sourceUrl } from "../source";
 import { Banner, Field } from "../ui";
 
 export function Login() {
@@ -64,6 +67,11 @@ export function Login() {
         </button>
         <p class="faint small">
           Die Web-App läuft auf dem Hub in deinem Heimnetz – ohne Cloud und ohne Konto. Die Steuerung läuft weiter, auch wenn diese Seite zu ist.
+        </p>
+        <p class="faint small">
+          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" data-testid="source-link">
+            {t("login.source")}
+          </a>
         </p>
       </form>
     </div>

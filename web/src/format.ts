@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Formatierung in der Sprache der App. Ein fehlender Wert wird als „–“
 // gezeigt, nie als 0.
 import { locale, t } from "./i18n";

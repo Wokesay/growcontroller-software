@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Übersicht: auf einen Blick, ob alles läuft, was gerade passiert und was zu tun ist.
 import { useEffect, useState } from "preact/hooks";
 import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";

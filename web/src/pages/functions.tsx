@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Funktionen = Konfigurationsbaum. Jede Funktion zeigt, was mit der
 // vorhandenen Hardware geht, was fehlt (mit „Jetzt erledigen“) und klappt
 // ihre Einstellungen erst auf, wenn sie einrichtbar ist.

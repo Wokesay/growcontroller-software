@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Update-Attrappe des Simulators. Auf dem Hub: signiertes Manifest aus den
 // GitHub-Releases, Download, Signaturprüfung, A/B-Partition, Neustart,
 // Selbsttest, sonst automatischer Rückfall (docs/RELEASE.md).

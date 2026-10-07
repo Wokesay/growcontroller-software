@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 idf_component_register(
   SRCS "main.cpp" "esp_bus.cpp" "esp_storage.cpp" "esp_web.cpp" "web_assets.cpp"
   INCLUDE_DIRS "."

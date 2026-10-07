@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Architekturregeln, maschinell geprüft (docs/CONCEPT.md §4).
 set -u
 cd "$(dirname "$0")/.."

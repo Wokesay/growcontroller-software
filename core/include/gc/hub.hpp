@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Kompositionswurzel des Hub-Kerns: verbindet Bus, Sensorwahrheit, Gateway,
 // Aufträge, Regler, Resolver, Watchdog, Verlauf und Speicher. Läuft als eine
 // Ereignisschleife mit injizierter Uhr (Regel R8); die API ruft die

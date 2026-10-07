@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Verlauf: Kurven mit Zielband und Dosier-Markierungen, Ereignisse, Export.
 import { useEffect, useState } from "preact/hooks";
 import { Download, History, LineChart } from "lucide-preact";

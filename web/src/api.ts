@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // REST-Client und Typen der Hub-API (/api/v1). Die Web-App nutzt nur diese API.
 
 export type Msg = { key: string; text: string; args?: Record<string, unknown> };

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schaltbare Steckdosen (Shelly im Simulator): in der Einrichtung finden,
 // übernehmen, je Dose sagen, was eingesteckt ist, testen.
 import { expect, test } from "@playwright/test";

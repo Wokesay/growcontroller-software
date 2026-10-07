@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
 import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";

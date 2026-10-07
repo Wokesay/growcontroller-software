@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Simulator-Panel: Zeitraffer, Szenarien und Störknöpfe, um Abläufe und
 // Texte ohne Hardware zu prüfen (Vorschlag anwender). Nur im Simulator.
 import { useEffect, useState } from "preact/hooks";

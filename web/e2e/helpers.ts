@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { expect, type Page, type APIRequestContext } from "@playwright/test";
 
 export async function scenario(request: APIRequestContext, name: "neu" | "stufe1" | "demo") {

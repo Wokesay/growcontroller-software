@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Wiederverwendete Teile mehrerer Seiten: Messwert-Kachel, Regelzeile,
 // Auftragsanzeige, Ereignisliste, Vorrat.
 import { useEffect, useState } from "preact/hooks";

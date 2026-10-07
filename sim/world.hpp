@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Digitaler Zwilling: Hub-Ports, Dosierblock mit Pumpenkappen, Köpfe und ein
 // einfaches Tankmodell. Zahlen gemessen, wo möglich (siehe
 // docs/SIMULATOR.md), sonst als Annahme gekennzeichnet.

@@ -1,7 +1,9 @@
-# Baut den Simulator als Download: eine Datei mit eingebetteter Web-App für
-# Windows, macOS (Universal: Apple-Chip und Intel) und Linux, mit Kurztest.
-# Aufgerufen von ci.yml (Artefakte am Lauf) und release.yml (Anhänge am Release).
-name: Pakete
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Builds the simulator as a download: one file with the embedded web app for
+# Windows, macOS (universal: Apple silicon and Intel) and Linux, with a smoke
+# test. Called by ci.yml (artifacts of the run) and release.yml (release
+# assets).
+name: Packages
 on:
   workflow_call:
   workflow_dispatch:
@@ -39,16 +41,19 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Web-App bauen und einbetten
+      - name: Build and embed the web app
+        env:
+          # Source code link (AGPL-3.0 §13): the tag of a release, else the commit
+          GC_SOURCE_REV: ${{ github.ref_type == 'tag' && github.ref_name || github.event.pull_request.head.sha || github.sha }}
         run: |
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
           node tools/embed_web.mjs build-pkg/web_assets.cpp
-      - name: Simulator bauen
+      - name: Build the simulator
         run: |
           cmake -S . -B build-pkg -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF -DGC_WERROR=OFF \
             -DGC_SIM_WEB_ASSETS=build-pkg/web_assets.cpp ${{ matrix.cmake }}
           cmake --build build-pkg --config Release --target gc_sim_server
-      - name: Paket und Kurztest (mit Argumenten und Einfachstart)
+      - name: Package and smoke test (with arguments and plain start)
         run: bash tools/package.sh "${{ matrix.bin }}" "${{ matrix.name }}"
       - name: Zip
         run: |

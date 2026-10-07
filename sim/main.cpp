@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Host-Server des Simulators: liefert die Web-App aus, bindet die REST-API
 // des Kerns an HTTP und schickt den Live-Zustand per Server-Sent Events.
 // Auf dem Hub übernimmt esp_http_server diese Rolle (firmware/README.md).

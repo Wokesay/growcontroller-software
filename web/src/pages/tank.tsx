@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Tank & Regelung: Regelzeilen mit Checkliste, Überwachung, Ausgänge,
 // Rastungen, Pflegemodus, Tank-Einstellungen, Durchgang und Phasen.
 import { useState } from "preact/hooks";

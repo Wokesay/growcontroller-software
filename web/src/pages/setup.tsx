@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Setup-Assistent: vom ersten Einschalten bis zur ersten Mischung, in fünf
 // Schritten. Geräte werden erkannt statt ausgewählt (Kundensicht); Einmessen
 // ist Pflicht, bevor eine Pumpe dosiert (Produktregel, strenger als

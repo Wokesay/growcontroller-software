@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Szenario-Tests gegen den digitalen Zwilling: Abläufe Ende zu Ende über die
 // API, wie sie die Web-App nutzt. Die Erwartungen stammen aus den
 // Fachregeln (docs/INVARIANTS.md).

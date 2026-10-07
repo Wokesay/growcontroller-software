@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Erzeugt embedded.cpp mit Katalog, Changelog und Version. Die Texte stehen als
 # Byte-Felder im Code: MSVC begrenzt Zeichenketten-Literale auf rund 16 KB.
 function(gc_embed_bytes var file out)

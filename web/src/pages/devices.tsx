@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Geräte: Ports des Hubs, erkannte Geräte, Übernehmen, Kalibrieren,
 // Zuordnung der Messstellen und Ausgänge, „Erweitern“.
 import { useEffect, useState } from "preact/hooks";

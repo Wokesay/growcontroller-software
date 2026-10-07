@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // SHA-256, HMAC-SHA-256 und PBKDF2 (FIPS 180-4, RFC 2104, RFC 8018).
 // Auf dem Gerät später durch mbedTLS mit Hardware-Beschleunigung ersetzbar.
 #pragma once

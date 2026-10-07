@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Einstieg des Hubs: Ablage, WLAN, Kern, Takt, Webserver.
 // Die fachliche Logik steckt vollständig in core/ – derselbe Code wie im Simulator.
 #include <cstring>

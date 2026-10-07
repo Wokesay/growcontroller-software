@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Vom ersten Einschalten bis zur ersten Mischung – so, wie ein Kunde es erlebt.
 import { expect, test } from "@playwright/test";
 import { login, scenario, simSpeed } from "./helpers";

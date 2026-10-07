@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Hardware-Abstraktion zum Bus (Schicht 0–3). Implementiert vom Simulator
 // (sim/simbus.cpp) und später von der ESP32-Plattform (Modbus je Port,
 // Port-Freigabe nach PD-012). Der Kern ruft nur diese Schnittstelle.

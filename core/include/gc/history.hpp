@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Verlauf (Schicht 10): Messreihen in drei Auflösungsstufen als Ringpuffer.
 //   L0: 10 s, Mittelwert, 24 h
 //   L1: 1 min, min/Ø/max, 7 Tage

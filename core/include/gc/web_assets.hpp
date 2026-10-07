@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Web-App als gzip-Daten im Programm (tools/embed_web.mjs). Genutzt von der
 // Firmware und vom Simulator-Download (eine Datei, ohne web/dist daneben).
 #pragma once

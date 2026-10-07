@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schicht 7: Regelfunktionen. Sie lesen nur die Sensorwahrheit und ihre
 // wirksamen Parameter (ParamView), nie Phasennamen (R4), und stellen nur
 // Anträge an das Aktor-Gateway (R1).

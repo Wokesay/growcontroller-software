@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Rezepte und Kanister: Nährstoffe den Pumpen zuordnen, Paare (A:B), Vorrat,
 // Rezepte mit Reihenfolge, Vorlagen.
 import { useState } from "preact/hooks";

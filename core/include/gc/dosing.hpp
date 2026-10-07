@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schicht 8: Aktor-Gateway und Dosierausführung.
 //
 // Actuators ist der EINZIGE Weg zu Pumpen und Schaltausgängen (Regel R1).

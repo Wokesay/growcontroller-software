@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Raumklima: Klima-Kopf im Simulator, abgeleiteter VPD (fester Code, R5),
 // Verlauf, Wirkung von Licht, Abluft, Befeuchter und Entfeuchter.
 #include <doctest/doctest.h>

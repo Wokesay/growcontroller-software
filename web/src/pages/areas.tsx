@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bereiche der Anlage: Klima, Licht, Bewässerung. Jede Seite zeigt die
 // Messwerte des Bereichs und seine Schaltausgänge mit Handbetrieb. Alle
 // Sperren gelten auch hier (Aktor-Gateway); eine abgelehnte Schaltung zeigt

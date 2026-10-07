@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Zustand der App: Info, Sitzung, Live-Zustand (SSE), Konfiguration, Katalog.
 import { computed, signal } from "@preact/signals";
 import { ApiError, get, setUnauthorizedHandler, type Catalog, type Config, type HubState, type Info } from "./api";

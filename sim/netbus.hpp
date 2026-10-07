@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // INetBus-Umsetzung des Simulators: schaltbare Steckdosen (Shelly Gen2+) im
 // WLAN, wie der Hub sie über lokales RPC sehen würde. Auf dem Gerät folgt
 // ein HTTP-RPC-Client mit mDNS und Digest (Konzept §2, §8 Schritt 7).

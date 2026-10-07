@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schicht 11: REST-API /api/v1, transportneutral. Die Plattform (Simulator:
 // cpp-httplib; ESP32: esp_http_server) übersetzt nur Anfrage und Antwort.
 // Die Web-UI nutzt ausschließlich diese API – was die UI kann, kann die API.

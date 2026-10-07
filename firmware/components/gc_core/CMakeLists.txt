@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Der plattformneutrale Kern als ESP-IDF-Komponente – dieselben Quellen wie im Simulator.
 set(GC_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../..")
 file(GLOB GC_SRCS "${GC_ROOT}/core/src/*.cpp")

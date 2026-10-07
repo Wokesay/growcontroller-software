@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Geführte Kalibrierung: Pumpe einmessen (Messbecher), pH-Sonde (2 Puffer),
 // EC-Sonde (1 Referenz), Füllstand (Stützpunkte, stückweise linear).
 import { useEffect, useState } from "preact/hooks";

@@ -1,8 +1,9 @@
-# Release: aus einem Tag vX.Y.Z[-...] entstehen die Downloads (Simulator für
-# Windows, macOS und Linux, Web-App), SBOM und Prüfsummen als GitHub-Release
-# mit dem passenden CHANGELOG-Abschnitt. Das Firmware-Image kommt erst ins
-# Release, wenn es offline signiert ist (docs/RELEASE.md) – nie aus der CI;
-# gebaut wird es weiter bei jedem Lauf der CI.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Release: a tag vX.Y.Z[-...] produces the downloads (simulator for Windows,
+# macOS and Linux, web app), SBOM and checksums as a GitHub release with the
+# matching CHANGELOG section. The firmware image goes into a release only
+# once it is signed offline (docs/RELEASE.md) – never from CI; CI still
+# builds it on every run. Channels (PD-036) are not told apart yet.
 name: Release
 on:
   push:
@@ -10,21 +11,21 @@ on:
 permissions:
   contents: read
 jobs:
-  pruefen:
+  verify:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Version prüfen
+      - name: Check the version
         run: test "v$(tr -d '\r\n' < VERSION)" = "${GITHUB_REF_NAME}"
 
-  pakete:
-    needs: pruefen
+  packages:
+    needs: verify
     uses: ./.github/workflows/packages.yml
 
-  veroeffentlichen:
-    needs: pakete
+  publish:
+    needs: packages
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -39,7 +40,9 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Web-App, SBOM, Prüfsummen, Release-Notiz
+      - name: Web app, SBOM, checksums, release notes
+        env:
+          GC_SOURCE_REV: ${{ github.ref_name }}
         run: |
           v="${GITHUB_REF_NAME#v}"
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
@@ -48,8 +51,8 @@ jobs:
           (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
           (cd dist && sha256sum * > SHA256SUMS)
           awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
-          printf '\n---\n**Ausprobieren ohne Hardware:** Simulator für dein System laden, entpacken, starten (siehe README.txt im Paket). Passwort der Demo: `demo-passwort`.\n' >> NOTES.md
-      - name: GitHub-Release
+          printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> NOTES.md
+      - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

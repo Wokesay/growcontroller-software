@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Mischen: Rezept, Wassermenge, Vorschau mit ml je Kanister, geführter Ablauf.
 // Handgabe für einzelne Kanister.
 import { useEffect, useState } from "preact/hooks";

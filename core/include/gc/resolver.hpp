@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schicht 6: Resolver. Bewertet jede Funktion datengetrieben aus Katalog,
 // Konfiguration, erkannten Geräten und Sensorwahrheit – auf zwei Achsen
 // (Vorschlag architekt):

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Konfiguration: Bereichsbaum plus flaches Geräteinventar (Vorschlag architekt).
 // Rollen binden an die Geräte-ID, nie an den Port. Laufzeitzustand (Vorrat,
 // Rastungen, Sprungsperren, gelernte Wirkungen) steht getrennt in RuntimeState,

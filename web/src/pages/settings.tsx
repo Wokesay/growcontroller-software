@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Einstellungen: System, Zugang, Darstellung, Updates mit „Was ist neu“,
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
@@ -7,9 +8,10 @@ import { get, post, put } from "../api";
 import { dateTime, num } from "../format";
 import { config, info, logoutLocal, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
+import { sourceLabel, sourceUrl } from "../source";
 
-// Ziel für öffentliche Fehlermeldungen. Zieht mit, wenn die Software ein eigenes Repo bekommt.
-const ISSUE_URL = "https://github.com/Wokesay/growcontroller/issues/new";
+// Target for public bug reports.
+const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
 
 function Markdown(p: { text: string }) {
   // Kleiner Darsteller für den Changelog: Überschriften, Listen, Absätze.
@@ -131,7 +133,7 @@ function Report() {
     a.click();
   };
   const issue = diag
-    ? `${ISSUE_URL}?labels=fehler&title=${encodeURIComponent(`[${diag.reportId}] ${text.slice(0, 60) || "Problem"}`)}&body=${encodeURIComponent(
+    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${text.slice(0, 60) || "Problem"}`)}&body=${encodeURIComponent(
         `**Beschreibung**\n${text}\n\n**Version:** ${diag.info.version}\n**Plattform:** ${diag.info.platform.kind}\n**Vorgang:** ${diag.reportId}\n\n(Diagnosepaket bitte nur auf Nachfrage teilen – Issues sind öffentlich.)`,
       )}`
     : "";
@@ -326,8 +328,17 @@ export function SettingsPage() {
                 <tr><td class="muted">Katalog</td><td>{info.value?.catalogVersion}</td></tr>
                 <tr><td class="muted">Konfiguration</td><td>Schema {cfg.schemaVersion}, Revision {num(cfg.revision, 0)}</td></tr>
                 <tr><td class="muted">Plattform</td><td>{simulated.value ? "Simulator (digitaler Zwilling)" : info.value?.platform.kind}</td></tr>
+                <tr>
+                  <td class="muted">{t("about.source")}</td>
+                  <td>
+                    <a href={sourceUrl} target="_blank" rel="noopener noreferrer" data-testid="source-link">
+                      {sourceLabel}
+                    </a>
+                  </td>
+                </tr>
               </tbody>
             </table>
+            <p class="faint small">{t("about.license")}</p>
             <p class="faint small">Offene Bausteine: Preact, @preact/signals, uPlot, lucide (MIT/ISC); im Hub nlohmann/json (MIT). Lizenzliste und SBOM liegen jedem Release bei.</p>
           </div>
         </Card>

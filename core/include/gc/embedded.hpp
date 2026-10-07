@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Zur Bauzeit eingebettete Daten (cmake/embed.cmake).
 #pragma once
 

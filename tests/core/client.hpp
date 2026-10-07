@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Testhilfe: spricht die REST-API des Kerns ohne HTTP an (gleicher Code wie
 // im Server), merkt sich das Sitzungs-Token aus Set-Cookie.
 #pragma once

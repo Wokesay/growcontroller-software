@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Dosierplanung als reine Funktionen (gut testbar, keine Seiteneffekte).
 //   Mischen nach Rezept (Stufe 0), EC-Nachdosierung und pH-Gabe (Stufe 1).
 // Invarianten: pH immer zuletzt (RAT-004); gepaarte Nährstoffe

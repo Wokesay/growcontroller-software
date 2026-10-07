@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schaltbare Netzsteckdosen (Shelly im Simulator): Erkennen, Übernehmen,
 // Schutzeinstellung im Gerät mit Rücklesen, Sicherheitsprofile im Gateway,
 // Not-Halt und Stromausfall (Konzept PLANT_AUTOMATION.md §2–§3).

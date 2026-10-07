@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # ESP-IDF-Projekt des Hubs (ESP32-S3). Bauen:
 #   (cd ../web && npm ci && npm run build) && node ../tools/embed_web.mjs
 #   idf.py set-target esp32s3 build

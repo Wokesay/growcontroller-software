@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Deutsche Texte der App. Schlüssel sind stabil; die englische Tabelle
 // (en.ts) muss jeden Schlüssel haben. Platzhalter in {geschweiften Klammern}.
 export const de = {
@@ -28,6 +29,9 @@ export const de = {
   "common.connecting": "verbinde …",
   "common.simulator": "Simulator",
   "common.version": "Version {v}",
+  "about.source": "Quellcode",
+  "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",
+  "login.source": "Quellcode (AGPL-3.0-or-later)",
   "common.step": "Schritt {n} von {total}",
   "common.justNow": "gerade eben",
   "common.secondsAgo": "vor {n} s",

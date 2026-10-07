@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Entwicklung: Simulator bauen und starten (Demo mit 48 h Verlauf), Web-App bauen.
 #   tools/dev.sh              → http://127.0.0.1:8080, Passwort „demo-passwort“
 #   SCENARIO=neu tools/dev.sh → leerer Hub mit Ersteinrichtung

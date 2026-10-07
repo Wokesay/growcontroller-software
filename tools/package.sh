@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Packt den Simulator als Download und prüft das Paket zweimal:
 #   1. Start mit Argumenten (API und eingebettete Web-App antworten),
 #   2. Einfachstart ohne Argumente wie per Doppelklick (Port, Datenordner

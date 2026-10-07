@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Sensorwahrheit (Schicht 4): Rohwert → kalibrierter Wert → Gültigkeit.
 // Läuft immer, auch ohne Grow und im Pflegemodus, weil Dosier-Sperren davon
 // abhängen (Quelle: RAT-075, RAT-023). Regelnde Funktionen lesen nur

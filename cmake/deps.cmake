@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Fremdbibliotheken als einzelne Header, Version und SHA256 gepinnt.
 # Sie werden beim Konfigurieren nach build/_deps geladen und nicht
 # eingecheckt. Lizenzen: alle MIT (siehe README.md, Abschnitt Lizenz).

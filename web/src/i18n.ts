@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Sprachen der App: Deutsch und Englisch. Texte stehen unter festen Schlüsseln
 // in lang/de.ts und lang/en.ts; die englische Tabelle muss jeden deutschen
 // Schlüssel haben (prüft der Compiler).

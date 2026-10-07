@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // English texts. Every key of de.ts must exist here (checked by the compiler).
 import type { de } from "./de";
 
@@ -28,6 +29,9 @@ export const en: Record<keyof typeof de, string> = {
   "common.connecting": "connecting …",
   "common.simulator": "Simulator",
   "common.version": "Version {v}",
+  "about.source": "Source code",
+  "about.license": "Free software under AGPL-3.0-or-later. The link leads to the source code of exactly this version.",
+  "login.source": "Source code (AGPL-3.0-or-later)",
   "common.step": "Step {n} of {total}",
   "common.justNow": "just now",
   "common.secondsAgo": "{n} s ago",

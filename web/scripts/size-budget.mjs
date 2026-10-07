@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Größenbudget der Web-App: Sie liegt gzip-komprimiert im Flash des Hubs
 // (Vorschlag software: höchstens ca. 250 KB gzip). Bricht den Build, wenn
 // das Budget überschritten wird.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Lesemodell der Messwerte (Regel R2): Watchdog und UI sehen nur diese
 // Typen, keinen Bus und keine Aktoren.
 #pragma once

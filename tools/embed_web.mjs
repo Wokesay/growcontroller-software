@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bettet die gebaute Web-App (web/dist) gzip-komprimiert ein. Aufruf nach
 // `npm run build`:
 //   node tools/embed_web.mjs              → firmware/main/web_assets.cpp

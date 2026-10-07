@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bindung der transportneutralen API an esp_http_server, dazu die
 // eingebettete Web-App. Live-Daten: Die Web-App fällt ohne SSE auf Abfragen
 // alle 3 s zurück; SSE über asynchrone Handler folgt (firmware/README.md).

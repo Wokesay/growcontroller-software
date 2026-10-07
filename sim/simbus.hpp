@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // IBus-Umsetzung des Simulators: übersetzt den Zwilling in das, was der Hub
 // über RS485/Modbus und die Port-Prüfmessung sehen würde.
 #pragma once

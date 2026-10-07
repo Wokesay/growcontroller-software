@@ -1,204 +1,239 @@
 # Changelog
 
-Alle wesentlichen Änderungen an growcontroller-software. Format nach
-[Keep a Changelog 1.1.0](https://keepachangelog.com/de/1.1.0/), Versionen
-nach [SemVer](https://semver.org/lang/de/). Sicherheitsrelevante Änderungen
-stehen in jedem Release unter „Sicherheit“.
+All notable changes to growcontroller-software. Format according to
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), versions
+according to [SemVer](https://semver.org/). Security-relevant changes are
+listed in every release under "Security".
 
 ## [Unreleased]
 
-### Neu
-- Simulator als Download für Windows, macOS (Apple-Chip und Intel) und
-  Linux: eine Datei mit eingebetteter Web-App; Doppelklick startet die Demo
-  und öffnet den Browser, die Daten liegen neben dem Programm. Ist der Port
-  belegt, nimmt er den nächsten freien; ist der Ordner nicht beschreibbar,
-  läuft die Demo nur im Speicher. Releases hängen die Pakete automatisch an,
-  mit Lizenzhinweisen der enthaltenen Bibliotheken
-  (`THIRD_PARTY_LICENSES.txt`, auch im Web-Paket; mit den Fremdteilen in
-  nlohmann/json und dem Apache-2.0-Wortlaut). Ein Firmware-Image kommt erst
-  ins Release, wenn es offline signiert wird (`docs/RELEASE.md`); die CI
-  baut die Firmware weiterhin bei jedem Lauf.
-- **Einrichtung in fünf Schritten** (Start, Geräte, Tank, Nährstoffe,
-  Einmessen): feste Leiste mit Zurück, Überspringen und Weiter; erledigte
-  Schritte anklickbar; Erklärungen (ⓘ) zu Nutzvolumen, Mindestfüllstand,
-  Kanister, Paar und Einmessen; Nährstoffe beginnen mit einer Vorlage samt
-  Vorschau, vorhandene Rezepte sind sichtbar.
-- **Rezept-Vorlagen** mit Vorschau und Zuordnung zu den eigenen Kanistern
-  statt Namensabgleich: Zweikomponenten-Dünger, Athena Blended Wachstum und
-  Blüte (nach Feed Program A01.004). API: `POST /recipes/template` nimmt `map`
-  (Teil → Kanister), meldet fehlende Teile in `missing` und lehnt einen
-  Kanister für zwei Teile ab; ein Paar der Vorlage geht auf Kanister ohne
-  eigenes Paar über, bei schon vergebenem Namen als „AB2“ usw. Die
-  Herstellerquelle steht auch auf Englisch (`sourceEn`). Die bisherigen Vorlagen `athena_pro_veg` und
-  `ab_basic` entfallen.
-- **Anbaubereich (Schema v2):** Die Einrichtung fragt, wo die Pflanzen
-  stehen (Raum, Zelt, Gewächshaus), mit eigenem Namen. Im Datenmodell ist das
-  eine Zone mit eigenen Rollen (`zone.*`, vorher `tent.*` am Tank); die
-  Konfiguration wird beim Start migriert. API: `PUT /zone`. Für fremde
-  API-Clients: `/roles/tent.*` heißt jetzt `/roles/zone.*`; Messreihen vor
-  dem Update bleiben unter dem alten Namen.
-- **pH und EC als ein Kopf oder zwei:** neue Geräteklassen „Sensorkopf pH“
-  und „Sensorkopf EC“ (mit Wassertemperatur) neben dem gemeinsamen
-  pH/EC-Kopf. Messrollen werden nur zugeordnet, wenn genau ein Gerät passt.
-  Einmessen und Geräte zeigen die Kalibrierungen je Kopf aus dem Katalog; im
-  Simulator lassen sich beide Varianten stecken, Störungen treffen den
-  passenden Kopf. Welche Hardware-Variante es geben wird, ist offen (PD
-  folgt); die Software trägt beide.
-- **Schaltbare Steckdosen (Shelly, lokal), im Simulator:** Steckdosen
-  (Plug S Gen3, Power Strip 4 Gen4) erscheinen in der Einrichtung und unter
-  Geräte. Je Dose sagt man, was eingesteckt ist (Umwälzpumpe, Licht, Abluft,
-  Umluft, Befeuchter, Entfeuchter, Gießpumpe, Zulauf), und testet sie (3 s
-  an). Beim Übernehmen setzt der Hub jede Dose auf „nach Stromausfall aus“;
-  beim Zuordnen schreibt er die Schutzeinstellung des Profils ins Gerät
-  (Auto-Off bei Befeuchter, Gießpumpe und Zulauf) und ordnet erst zu, wenn
-  das Rücklesen stimmt; vor jedem Einschalten prüft er sie erneut. Auf dem
-  Gerät folgen Finden per mDNS, Anmeldung und RPC. Welche Steckdosen der
-  Shop führt, ist offen (PD folgt). API: `POST /roles/{rolle}/test`,
-  `POST /roles/{rolle}/switch {on}` (Handbetrieb).
-- **Prüfung:** ein Schaltausgang nur für eine Rolle, Kanal im Bereich des
-  Geräts; „Ventil höchstens offen“ höchstens 25 min.
-- **Bereiche Klima, Licht, Bewässerung:** eigene Seiten in der
-  Navigation mit Messwerten und Schaltausgängen samt Handbetrieb; die
-  Übersicht zeigt Raumklima und alle zugeordneten Schaltausgänge.
-  Automatische Regelung (Lichtplan, Klima, Gießplan) gibt es noch nicht.
-- **VPD:** Luft-VPD ohne Blatt-Offset; fehlt ein Quellwert, entsteht
-  eine Lücke statt 0 (Quelle: RAT-017). Formel FAO-56 Gl. 11. Beide
-  Werte dürfen höchstens 60 s auseinander liegen (eigene Regel, Annahme).
-  Im Verlauf mit Lufttemperatur, Feuchte und CO2.
-- **Simulator:** einfaches Raumklima (Licht und Heizung wärmen, Abluft
-  tauscht Luft, Befeuchter und Entfeuchter, Verdunstung bei Licht;
-  Annahmen); Klima- und CO2-Kopf liefern Werte. Die Demo hat einen
-  Klima-Kopf und eine Steckdosenleiste mit Licht, Abluft, Umluft und
-  Befeuchter. Eine Dose ohne WLAN versorgt ihre Last weiter (Raumklima,
-  Umwälzung). Neue Störung `stuck`: Die Dose lehnt Schaltbefehle ab
-  und bleibt im Zustand; Auto-Off im Gerät und Stromausfall wirken weiter.
-  Der Simulator zählt je Dose die Einschaltvorgänge (`switchOns`), damit
-  Tests kurze Pulse sicher erkennen.
-- **Deutsch und Englisch:** Einrichtung, Navigation, Rahmen, Zahlen und
-  Datum; weitere Seiten folgen. Die Sprache wird am Hub gespeichert und ist
-  je Browser wählbar.
+### Added
+- **Own repository with history:** the software moved from the product
+  repository into `Wokesay/growcontroller-software` with its 17 commits;
+  every moved commit carries `LICENSE`.
+- **Licensing:** AGPL-3.0-or-later for code, docs, catalog and templates
+  (`LICENSE`, `LICENSES/`, `REUSE.toml`, an SPDX header in every source
+  file); an additional permission under AGPL §7 for the binary-only ESP-IDF
+  libraries (`ADDITIONAL_PERMISSION.md`); `THIRD_PARTY_NOTICES.md`. CI runs
+  `reuse lint` and a license check of all npm dependencies
+  (`tools/check_licenses.mjs`).
+- **Source code link** (AGPL §13): the login page and Settings › Display
+  and info link to the source code of exactly the running build (commit or
+  release tag, set at build time).
+- **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
+  (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
+  tests. Code and docs cite only these IDs.
+- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-020 record the
+  product decisions that apply to the software.
+- Simulator download for Windows, macOS (Apple silicon and Intel) and
+  Linux: one file with the web app embedded; a double-click starts the demo
+  and opens the browser, and the data is stored next to the program. If the
+  port is busy, it takes the next free one; if the folder is not writable,
+  the demo runs in memory only. Releases attach the packages automatically,
+  with the license notices of the bundled libraries
+  (`THIRD_PARTY_LICENSES.txt`, also in the web package; with the
+  third-party parts in nlohmann/json and the Apache-2.0 text). A firmware
+  image goes into a release only once it is signed offline
+  (`docs/RELEASE.md`); CI still builds the firmware on every run.
+- **Setup in five steps** (Start, Devices, Tank, Nutrients, Calibrate): a
+  fixed bar with Back, Skip and Next; completed steps can be clicked;
+  explanations (ⓘ) for usable volume, minimum level, bottle, pair and
+  calibration; Nutrients starts with a template and its preview, and
+  existing recipes are visible.
+- **Recipe templates** with a preview, mapped to your own bottles instead of
+  matching by name: Two-part nutrient, Athena Blended – Vegetative and
+  Athena Blended – Flowering (per Feed Program A01.004). API:
+  `POST /recipes/template` takes `map` (part → bottle), reports missing
+  parts in `missing` and rejects one bottle for two parts; a pair from the
+  template carries over to bottles without a pair of their own, as "AB2"
+  and so on if the name is already taken. The manufacturer source is also
+  available in English (`sourceEn`). The previous templates `athena_pro_veg`
+  and `ab_basic` are dropped.
+- **Growing area (schema v2):** setup asks where the plants are (room,
+  tent, greenhouse), with a name of your own. In the data model this is a
+  zone with its own roles (`zone.*`, previously `tent.*` on the tank); the
+  configuration is migrated at startup. API: `PUT /zone`. For third-party
+  API clients: `/roles/tent.*` is now `/roles/zone.*`; series recorded
+  before the update keep the old name.
+- **pH and EC as one head or two:** new device classes "Sensor head pH"
+  and "Sensor head EC" (with water temperature) next to the combined pH/EC
+  head. Measurement roles are assigned only when exactly one device fits.
+  Calibrate and Devices show the calibrations per head from the catalog; in
+  the simulator both variants can be plugged in, and faults hit the
+  matching head. Which hardware variant will exist is open (PD to follow);
+  the software supports both.
+- **Switchable sockets (Shelly, local), in the simulator:** sockets (Plug S
+  Gen3, Power Strip 4 Gen4) appear in setup and under Devices. For each
+  outlet you say what is plugged in (circulation pump, light, exhaust fan,
+  circulation fan, humidifier, dehumidifier, irrigation pump, inlet) and
+  test it (on for 3 s). When a socket is added, the hub sets every outlet
+  to "off after power loss"; when an outlet is assigned, the hub writes the
+  profile's protection setting into the device (auto-off for humidifier,
+  irrigation pump and inlet) and assigns it only once the read-back
+  matches; before every switch-on it checks the setting again. On the
+  device, discovery via mDNS, login and RPC follow. Which sockets the shop
+  will carry is open (PD to follow). API: `POST /roles/{rolle}/test`,
+  `POST /roles/{rolle}/switch {on}` (manual mode).
+- **Validation:** a switched output serves only one role, and the channel
+  must be within the device's range; the setting "valve open at most"
+  allows no more than 25 min.
+- **Climate, Light and Irrigation areas:** own pages in the navigation with
+  readings and switched outputs, including manual mode; the overview shows
+  the room climate and all assigned switched outputs. Automatic control
+  (light schedule, climate, irrigation schedule) does not exist yet.
+- **VPD:** air VPD without a leaf offset; if an input value is missing,
+  there is a gap instead of 0 (Rationale: RAT-017). Formula FAO-56 eq. 11.
+  The two values may be at most 60 s apart (own rule, assumption). Shown in
+  the history together with air temperature, humidity and CO2.
+- **Simulator:** simple room climate (light and heating warm the room, the
+  exhaust fan exchanges air, humidifier and dehumidifier, evaporation while
+  the light is on; assumptions); climate and CO2 heads deliver values. The
+  demo has a climate head and a power strip with light, exhaust fan,
+  circulation fan and humidifier. An outlet without Wi-Fi keeps powering
+  its load (room climate, circulation). New fault `stuck`: the outlet
+  rejects switching commands and keeps its state; the device's auto-off and
+  power loss still take effect. The simulator counts the switch-ons per
+  outlet (`switchOns`), so tests reliably detect short pulses.
+- **German and English:** setup, navigation, app shell, numbers and dates;
+  more pages follow. The language is stored on the hub and can be chosen
+  per browser.
 
-### Sicherheit
-- **Sicherheitsprofile im Aktor-Gateway** für Steckdosen und 12-V-Ausgänge:
-  dauer, puls, kompressor.
-  - Befeuchter und Entfeuchter laufen nie zugleich; ist der Zustand des
-    Gegengeräts unbekannt, bleibt das andere aus (Quelle: RAT-034, R5).
-  - Entfeuchter: 5 min Pause nach dem Ausschalten, auch nach Not-Halt und
-    Neustart (Quelle: RAT-034).
-  - Höchstlaufzeit für Befeuchter (5 min, Annahme), Gießpumpe (10 min,
-    Annahme) und Zulauf (25 min, Quelle: RAT-079); das Gerät
-    schaltet knapp danach selbst ab.
-  - Gießpumpe nur über dem Mindestfüllstand, im Lauf darunter aus; bei
-    unlesbarem Pegel gesperrt (Abweichung von RAT-068, PD folgt).
-  - Befeuchter: Ist ein Feuchtesensor zugeordnet, nur mit gültigem Wert
-    unter 85 % (Annahme).
-  - Umzuordnen oder Entfernen schaltet den alten Ausgang erst aus; klappt
-    das nicht, steht „Aus nicht bestätigt“ im Ereignisprotokoll.
-  - Schutzabschaltungen (Trockenlauf der Umwälzpumpe, Zulauf-Notgrenze,
-    Gießpumpe, Höchstlaufzeit): Scheitert das Ausschalten, meldet der Hub
-    „Aus nicht bestätigt“ statt „aus“, einmal je Grund; der Zulauf
-    unterscheidet Füllstand, Notgrenze und Öffnungsdauer. Er versucht es
-    weiter, solange der Grund oder die Rastung besteht, und meldet „Aus
-    bestätigt“, sobald der Ausgang als aus gelesen wird. Vorher stand „aus“
-    im Protokoll, bei Umwälzpumpe und Zulauf in jedem Takt ein neuer
-    Eintrag.
-  - Läuft die Umwälzpumpe oder steht der Zulauf offen, obwohl die Rastung
-    noch nicht quittiert ist (Ausschalten gescheitert, Taster am Gerät),
-    schaltet der Hub sie erneut aus.
-  - Höchstlaufzeit: Hat das Gerät schon selbst abgeschaltet (Auto-Off), gibt
-    es keinen weiteren Schaltversuch. Nach dem Umzuordnen endet die
-    Verfolgung des alten Ausgangs ohne Entwarnung. Not-Halt beendet die
-    Wiederholung bei der Höchstlaufzeit (offen; Rückfall: Auto-Off im
-    Gerät).
-  - Lösen einer Zuordnung: Geht der Ausgang nicht aus, steht „Aus nicht
-    bestätigt“ im Protokoll (wie beim Umzuordnen).
-  - Not-Halt und Neustart schalten alle Schaltrollen aus;
-    laufen Umluft und Abluft nicht nach (Quelle: RAT-036).
-  - Heizungen gibt es noch nicht als Rolle: erst mit der rastenden
-    Notabschaltung nach RAT-060.
+### Security
+- **Safety profiles in the actuator gateway** for sockets and 12 V
+  outputs: `dauer` (continuous), `puls` (pulse), `kompressor`
+  (compressor).
+  - Humidifier and dehumidifier never run at the same time; if the state
+    of the other device is unknown, this one stays off (Rationale: RAT-034,
+    R5).
+  - Dehumidifier: 5 min pause after switching off, also after an emergency
+    stop and a restart (Rationale: RAT-034).
+  - Maximum run time for the humidifier (5 min, assumption), the irrigation
+    pump (10 min, assumption) and the inlet (25 min, Rationale: RAT-079);
+    the device switches off by itself shortly after.
+  - Irrigation pump only above the minimum level, switched off when the
+    level drops below it while running; locked when the level is
+    unreadable (deviation from RAT-068; since decided in PD-031, which adds
+    a limited emergency dose and irrigation without a level sensor, not
+    implemented yet).
+  - Humidifier: if a humidity sensor is assigned, only with a valid value
+    below 85 % (assumption).
+  - Reassigning or removing first switches the old output off; if that
+    fails, the event log shows "Off not confirmed".
+  - Protective cut-offs (dry run of the circulation pump, inlet emergency
+    limit, irrigation pump, maximum run time): if switching off fails, the
+    hub reports "Off not confirmed" instead of "off", once per reason; the
+    inlet distinguishes level, emergency limit and open time. The hub keeps
+    trying as long as the reason or the latch persists, and reports "Off
+    confirmed" as soon as the output reads as off. Before, the log said
+    "off", and for the circulation pump and the inlet it added a new entry
+    on every cycle.
+  - If the circulation pump runs or the inlet is open although the latch
+    has not been released yet (switching off failed, button on the
+    device), the hub switches it off again.
+  - Maximum run time: if the device has already switched off by itself
+    (auto-off), there is no further switching attempt. After reassigning,
+    tracking of the old output ends without an all-clear. An emergency stop
+    ends the retries at the maximum run time (open; fallback: auto-off in
+    the device).
+  - Unassigning a role: if the output does not switch off, the log shows
+    "Off not confirmed" (as with reassigning).
+  - Emergency stop and restart switch off all switched roles; circulation
+    fan and exhaust fan do not run on (Rationale: RAT-036).
+  - Heaters are not available as a role yet: only once the latching
+    emergency shutdown exists (Rationale: RAT-060).
 
-### Geändert
-- Entscheidungen: E1, E2, E7, E8 und E9 sind als PD-013 bis PD-017 im
-  Produkt-Repo entschieden; das Konzept der Pflanzenautomatisierung
-  verweist auf PD-018 bis PD-021 (Umfang und Sprachen, Steckdosen,
-  Stromausfall, pH/EC-Köpfe). Das Verhalten nach Stromausfall (PD-020)
-  ist noch nicht umgesetzt.
-- Eingebettete Texte (Katalog, Changelog) als Byte-Felder, damit der Kern
-  auch mit MSVC übersetzt.
-- Katalog Version 2 (Rollen `zone.*`, Köpfe pH und EC einzeln),
-  Konfiguration Schema 2.
-- Benennung: „Anschluss 1–8“ am Hub, „Pumpe 1–6“ am Dosierblock,
-  „Sensorkopf“, „Raum“ statt „Zelt“, Untertitel „Pflanzenautomatisierung“.
-  Anschlüsse zeigen das Symbol des Geräts.
-- Die App nutzt die ganze Bildschirmbreite; Kacheln brechen um, Tabellen
-  der Einrichtung werden auf dem Handy zu Karten.
-- Meldungen sagen „Mindestfüllstand“, „Anschluss n“ und „Pumpe n am
-  Dosierblock“.
+### Changed
+- **English:** docs, README, CONTRIBUTING, SECURITY, templates, agents,
+  workflows and `CLAUDE.md` are in English; docs, templates and packaging
+  files have English names (for example `docs/CONCEPT.md`,
+  `docs/INVARIANTS.md`, `sim/README.txt`, `tools/package.sh`). Code
+  comments and test names follow in a separate PR.
+- **Contributions** need no sign-off any more (no DCO, no CLA);
+  inbound = outbound under the AGPL.
+- "Report a problem" and the issue templates point to this repository; the
+  label of a bug report is `bug`.
+- Decisions: E1, E2, E7, E8 and E9 are decided as PD-013 to PD-017 in the
+  product repository; the plant automation concept refers to PD-018 to
+  PD-021 (scope and languages, sockets, power loss, pH/EC heads). The
+  behaviour after a power loss (PD-020) is not implemented yet.
+- Embedded texts (catalog, changelog) as byte arrays, so the core also
+  compiles with MSVC.
+- Catalog version 2 (roles `zone.*`, separate pH and EC heads),
+  configuration schema 2.
+- Naming: "Port 1–8" on the hub, "Pump 1–6" on the dosing block, "sensor
+  head", "Room" instead of "Tent", tagline "Plant automation". Ports show
+  the device's icon.
+- The app uses the full screen width; tiles wrap, and setup tables become
+  cards on phones.
+- Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
-### Behoben
-- Messwert-Kacheln: Bei Sensorausfall ragten Hinweis und Kurve aus der
-  Kachel.
-- Demo: Die Phase „Blüte“ verwies auf ein fehlendes Rezept. IDs schreiben
-  Umlaute jetzt um („Blüte“ → „bluete“).
-- Rezepte mit demselben Kanister zweimal werden abgelehnt.
-- Namen (Hub, Bereich, Tank, Gerät, Kanister, Rezept, Durchgang) werden
-  auf 40 Byte gekürzt, ohne ein Zeichen zu zerschneiden; vorher machte ein
-  Umlaut an der Grenze die Konfiguration unlesbar.
-- Übernimmt man ein Gerät, ordnet der Hub nur dessen Messrollen zu; eine
-  bewusst gelöste Rolle bleibt gelöst.
-- Simulator: „Wert friert“ hält den letzten Wert fest statt „kein Wert“.
-- `PUT /system`: Eine abgelehnte Angabe ändert auch die übrigen nicht.
-- Simulator: macOS bindet ohne `SO_REUSEADDR`; ein nicht beschreibbarer
-  Datenordner wird gemerkt („nur im Speicher“), statt vergessen; das
-  Paket-Skript erkennt Windows auch lokal.
+### Fixed
+- Reading tiles: when a sensor failed, the notice and the chart stuck out
+  of the tile.
+- Demo: the phase "Blüte" (flowering) pointed to a missing recipe. IDs now
+  transliterate umlauts ("Blüte" → "bluete").
+- Recipes that use the same bottle twice are rejected.
+- Names (hub, area, tank, device, bottle, recipe, cultivation run) are cut
+  to 40 bytes without splitting a character; before, an umlaut at the
+  limit made the configuration unreadable.
+- When you add a device, the hub assigns only that device's measurement
+  roles; a role you unassigned on purpose stays unassigned.
+- Simulator: "freeze value" keeps the last value instead of "no value".
+- `PUT /system`: if one field is rejected, the others do not change
+  either.
+- Simulator: on macOS the server binds without `SO_REUSEADDR`; a data
+  folder that is not writable is remembered ("in memory only") instead of
+  forgotten; the packaging script also detects Windows when run locally.
 
 ## [0.1.0-proto.1] – 2026-10-06
 
-Erster Prototyp. Läuft im Simulator; die Firmware für den ESP32-S3 ist ein
-Gerüst ohne Bus. Keine Zusagen zur Kompatibilität.
+First prototype. Runs in the simulator; the firmware for the ESP32-S3 is a
+skeleton without a bus. No compatibility promises.
 
-### Neu
-- **Kern (C++17, plattformneutral):** Katalog mit Capabilities,
-  Geräteklassen, Rollen, Funktionen und Vorlagen; Konfiguration mit Migration
-  und Prüfung in drei Stufen; Resolver mit Einrichtungszuständen und
-  Checklisten; Phasen liefern Parameter.
-- **Sensorwahrheit:** Frische, Stillstand, Plausibilität, Sprungsperre
-  (überlebt den Neustart), Kalibrierung pH, EC und Füllstand-Kennlinie;
-  angekündigte Änderungen erklären Sprünge (Quelle: RAT-042).
-- **Dosieren:** Mischen nach Rezept mit A:B als Paar, Handgabe,
-  Pumpen-Einmessen und Schlauchfüllen; Teilläufe mit Ist-Laufzeit und
-  Buchung je Lauf; Job-ID je Versuch; „Nachholen“ nach Blockade.
-- **Regelung:** EC und pH (Quelle: RAT-053 u. a.),
-  Nachfüllen über den Zulauf, Umwälzpumpe; Zustände
-  ruht, regelt, wartet, gesperrt, gerastet; Checkliste je Regler.
-- **Watchdog**, der nur bewertet (OK, Problem, neutral).
-- **Verlauf** in drei Stufen (10 s, 1 min, 15 min), Ereignislog, CSV-Export.
-- **API** `/api/v1` mit Live-Kanal (SSE) und Simulator-Endpunkten.
-- **Web-App:** Übersicht, Mischen, Tank und Regelung, Verlauf, Rezepte und
-  Kanister, Geräte, Funktionen, Einstellungen, Setup-Assistent in 8 Schritten;
-  hell und dunkel, mobil.
-- **Simulator** als digitaler Zwilling mit Szenarien `neu`, `stufe1`, `demo`,
-  Fehlereinspielung, Zeitraffer und Neustart.
-- **Firmware-Gerüst** für den ESP32-S3 (ESP-IDF): Kern, Web-App im Image,
-  API, Ablage, 12-V-Ausgänge, A/B-Partitionen.
-- **Tests:** Unit- und Szenariotests (doctest, auch mit ASan/UBSan),
-  End-to-End-Tests (Playwright), Architekturprüfung `tools/arch_check.sh`,
-  CI für Simulator, Web-App und Firmware.
-- **Updates und Changelog** in der App (im Simulator als Attrappe).
+### Added
+- **Core (C++17, platform-neutral):** catalog with capabilities, device
+  classes, roles, functions and templates; configuration with migration
+  and validation in three stages; resolver with setup states and
+  checklists; phases provide parameters.
+- **Sensor truth:** freshness, frozen values, plausibility, jump lock
+  (survives a restart), calibration of pH, EC and the level curve;
+  announced changes explain jumps (Rationale: RAT-042).
+- **Dosing:** mixing by recipe with A:B as a pair, manual dose, pump
+  calibration and tube priming; partial runs with actual run time and a
+  booking per run; a job ID per attempt; "catch up" after a block.
+- **Control:** EC and pH (Rationale: RAT-053 and others, see
+  `docs/RATIONALE.md`), refilling via the inlet, circulation pump; states
+  idle, controlling, waiting, blocked, latched; a checklist per controller.
+- **Watchdog** that only evaluates (OK, problem, neutral).
+- **History** in three tiers (10 s, 1 min, 15 min), event log, CSV export.
+- **API** `/api/v1` with a live channel (SSE) and simulator endpoints.
+- **Web app:** Overview, Mixing, Tank & control, History, Recipes &
+  bottles, Devices, Functions, Settings, setup wizard in 8 steps; light and
+  dark, mobile.
+- **Simulator** as a digital twin with the scenarios `neu` (new, empty
+  hub), `stufe1` (stage 1) and `demo`, fault injection, time-lapse and
+  restart.
+- **Firmware skeleton** for the ESP32-S3 (ESP-IDF): core, web app in the
+  image, API, storage, 12 V outputs, A/B partitions.
+- **Tests:** unit and scenario tests (doctest, also with ASan/UBSan),
+  end-to-end tests (Playwright), architecture check
+  `tools/arch_check.sh`, CI for simulator, web app and firmware.
+- **Updates and changelog** in the app (a mock-up in the simulator).
 
-### Sicherheit
-- Pflicht-Erstpasswort ohne Standardpasswort; PBKDF2-HMAC-SHA256 mit Salz;
-  Sperre nach 5 Fehlversuchen; Sitzung als HttpOnly-/SameSite-Cookie.
-- Sicherheitskopfzeilen (CSP, `X-Frame-Options`, `nosniff`).
-- Aktoren nur über das Aktor-Gateway mit festen Grenzen im Code; die
-  Konfiguration (auch per Import oder Phase) kann sie nur verschärfen. Nach
-  dem Neustart ist alles aus; ohne Einmesswert keine Dosierung.
-- Doser mit Frist je Lauf; ein Abbruch bucht, was schon gelaufen ist;
-  Bus-Job-IDs sind über Neustarts eindeutig.
-- Herkunftsprüfung gegen CSRF und DNS-Rebinding; Hash-Vergleich in
-  konstanter Zeit; ist das Passwort verloren, ist die Einrichtung über das
-  Netz gesperrt.
-- Kaputte Eingaben und Dateien führen zu 400/500 bzw. zu „alles aus“ mit
-  Alarm, nicht zum Absturz. Simulator: Szenario-Reset nur angemeldet.
-- Noch nicht enthalten: HTTPS, signiertes OTA, Secure Boot
+### Security
+- Mandatory first password, no default password; PBKDF2-HMAC-SHA256 with
+  salt; lockout after 5 failed attempts; session as an HttpOnly/SameSite
+  cookie.
+- Security headers (CSP, `X-Frame-Options`, `nosniff`).
+- Actuators only via the actuator gateway with fixed limits in the code;
+  the configuration (also via import or a phase) can only tighten them.
+  After a restart everything is off; no dosing without a calibration
+  value.
+- Doser with a deadline per run; an abort books what has already run; bus
+  job IDs are unique across restarts.
+- Origin check against CSRF and DNS rebinding; constant-time hash
+  comparison; if the password is lost, setup over the network is locked.
+- Broken inputs and files lead to 400/500 or to "everything off" with an
+  alarm, not to a crash. Simulator: scenario reset only when logged in.
+- Not included yet: HTTPS, signed OTA, Secure Boot
   (`docs/SECURITY_MODEL.md`).

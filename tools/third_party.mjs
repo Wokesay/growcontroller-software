@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Lizenzhinweise der mitgelieferten Fremdbibliotheken (MIT/ISC verlangen sie
 // auch in Kopien).
 //   node tools/third_party.mjs <ziel.txt>         Simulator: Web-App und C++
@@ -65,7 +66,7 @@ if (!webOnly) {
   const httpVersion = httplib.match(/CPPHTTPLIB_VERSION "([^"]+)"/)?.[1] ?? fail("Version von cpp-httplib nicht gefunden");
   const httpCopy = httplib.match(/Copyright \(c\) [^\n]+/)?.[0] ?? fail("Copyright von cpp-httplib nicht gefunden");
   parts.push(`cpp-httplib ${httpVersion} (MIT)\n\n${httpCopy}\n\n${mit}`);
-  parts.push(`Apache License 2.0 (für die Abseil-Teile in nlohmann/json)\n\n${readFileSync(join(root, "tools", "lizenzen", "Apache-2.0.txt"), "utf8").trim()}`);
+  parts.push(`Apache License 2.0 (für die Abseil-Teile in nlohmann/json)\n\n${readFileSync(join(root, "tools", "licenses", "Apache-2.0.txt"), "utf8").trim()}`);
 }
 
 const head = "growcontroller – Lizenzhinweise der enthaltenen Fremdbibliotheken\n" + "Third-party licenses of included libraries\n";

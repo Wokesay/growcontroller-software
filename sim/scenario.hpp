@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Simulation = Zwilling + Uhr + Bus + Speicher + Hub + API in einem Paket.
 // Wird vom Host-Server (main.cpp) und von den Szenario-Tests genutzt.
 #pragma once

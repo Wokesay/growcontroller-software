@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Schicht 9: Watchdog. Bewertet nur (OK / Problem / neutral) und steuert
 // keine Aktoren (Quelle: RAT-074). Dieser Header bindet ausschließlich
 // Lesemodell und Konfiguration ein; kein Bus, kein Gateway, kein Regler.

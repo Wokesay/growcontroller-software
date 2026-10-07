@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Ereignislog: Dosierungen, Mischläufe, Sperren, Konfigurationsänderungen,
 // Anmeldungen, Updates. Ersetzt das Nachtragen im Tagebuch.
 // Sicherheitsrelevante Vorgänge werden protokolliert (CRA Anhang I 2(l)).

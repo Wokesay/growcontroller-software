@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Diagramme: uPlot für Verläufe (klein, schnell, MIT), SVG-Sparkline für Kacheln.
 import { useEffect, useRef } from "preact/hooks";
 import uPlot from "uplot";

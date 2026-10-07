@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Gerätekatalog: Capabilities, Geräteklassen, Rollen, Funktionen.
 // Der Katalog ist Daten (catalog/catalog.json) und wächst ohne Codeänderung,
 // solange die festen Voraussetzungsarten reichen. Sicherheit hängt nicht am

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Plattform-Schicht des Hubs (ESP-IDF): Uhr, Ablage, Bus, Webserver.
 #pragma once
 

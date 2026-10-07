@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Gerüst: Navigation, Kopfzeile mit Not-Halt, Seitenwahl, Anmeldung, Einrichtung.
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";

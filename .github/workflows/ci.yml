@@ -1,5 +1,6 @@
-# CI des Software-Repos: Architekturregeln, Kern mit Sanitizern, Web-App,
-# Ende-zu-Ende im Browser gegen den Simulator.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CI: architecture rules, licenses, core with sanitizers, web app,
+# end-to-end in the browser against the simulator, firmware, packages.
 name: CI
 on:
   push:
@@ -10,8 +11,11 @@ permissions:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Source code link in the web app (AGPL-3.0 §13): the commit under test
+  GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
-  pruefen:
+  checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -23,23 +27,25 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Werkzeuge
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-      - name: Architektur, Kern, Tests, Web-App
+      - name: Tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          pipx install reuse==6.2.0
+      - name: Architecture, licenses, core, tests, web app
         run: tools/ci.sh
-      - name: Browser für E2E
+      - name: Browser for E2E
         working-directory: web
         run: npx playwright install --with-deps chromium
-      - name: Ende-zu-Ende
+      - name: End-to-end
         working-directory: web
         env:
           CI: "1"
         run: npx playwright test
-      - name: E2E-Bericht bei Fehler
+      - name: E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-bericht
+          name: e2e-report
           path: build/e2e-*
           retention-days: 14
 
@@ -54,11 +60,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Web-App bauen und einbetten
+      - name: Build and embed the web app
         run: |
           cd web && npm ci --ignore-scripts --no-audit --no-fund && npx vite build && cd - >/dev/null
           node tools/embed_web.mjs
-      - name: Firmware für ESP32-S3 bauen
+      - name: Build the firmware for the ESP32-S3
         shell: bash
         run: |
           . $IDF_PATH/export.sh
@@ -75,5 +81,5 @@ jobs:
             firmware/build/partition_table/partition-table.bin
           retention-days: 14
 
-  pakete:
+  packages:
     uses: ./.github/workflows/packages.yml

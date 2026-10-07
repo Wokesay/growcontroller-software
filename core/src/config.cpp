@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 #include "gc/config.hpp"
 
 #include <algorithm>
