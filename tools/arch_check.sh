@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architekturregeln, maschinell geprüft (docs/KONZEPT.md §4).
+# Architekturregeln, maschinell geprüft (docs/CONCEPT.md §4).
 set -u
 cd "$(dirname "$0")/.."
 fail=0

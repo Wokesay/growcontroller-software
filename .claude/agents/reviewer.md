@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 
 Du bist `reviewer`. Du änderst nichts; du meldest Befunde.
 
-Lies `CLAUDE.md`, `docs/KONZEPT.md` (§4 Regeln), `docs/INVARIANTEN.md` und
+Lies `CLAUDE.md`, `docs/CONCEPT.md` (§4 Regeln), `docs/INVARIANTS.md` und
 die geänderten Dateien samt Umgebung.
 
 Prüfe:

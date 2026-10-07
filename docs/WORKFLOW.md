@@ -1,7 +1,7 @@
 # Arbeitsweise: eigenes Repo, Issues, Agenten, Entscheidungen
 
 Stand 06.10.2026. Vorschlag; Entscheidungen dazu in
-`docs/ENTSCHEIDUNGEN.md` (Entwürfe).
+`docs/DECISIONS.md` (Entwürfe).
 
 ## 1. Repo-Schnitt
 
@@ -67,11 +67,11 @@ wo vermerkt.
 |---|---|---|---|
 | `triage` | Support / Issue-Triage | neue Issues einordnen, im Simulator nachstellen, Duplikate, Schwere, Antwortentwurf | lesen, Shell zum Bauen und Starten des Simulators, GitHub lesen |
 | `reviewer` | Code-Review | Korrektheit, Architekturregeln R1–R8, Invarianten, Lesbarkeit, Testabdeckung je Diff | lesen |
-| `qa` | Qualitätssicherung | Testfälle ableiten, Tests ausführen, Lücken in `INVARIANTEN.md`, Abnahme vor Release | lesen, Shell zum Testen |
+| `qa` | Qualitätssicherung | Testfälle ableiten, Tests ausführen, Lücken in `INVARIANTS.md`, Abnahme vor Release | lesen, Shell zum Testen |
 | `security` | Produktsicherheit | Bedrohungsmodell, EN 18031/CRA technisch, Abhängigkeiten und SBOM, Auth, OTA, Diagnosedaten | lesen, Web |
 | `release` | Release- und Build-Verantwortung | Version, Changelog, Kurzfassung „Was ist neu“, Artefakte, Kanäle, Rollback-Plan | lesen, Shell zum Bauen |
-| `ux` | UX/UI-Design und Texte | Informationsarchitektur, Texte nach den Grundsätzen in `BEDIENUNG.md`, mobil, Barrierefreiheit | lesen, Web |
-| `fachlogik` | Domänenexperte Fertigation | Regel- und Dosierlogik gegen `INVARIANTEN.md`, Zahlen im Simulator, neue Fachregeln einordnen | lesen, Web |
+| `ux` | UX/UI-Design und Texte | Informationsarchitektur, Texte nach den Grundsätzen in `UX.md`, mobil, Barrierefreiheit | lesen, Web |
+| `fachlogik` | Domänenexperte Fertigation | Regel- und Dosierlogik gegen `INVARIANTS.md`, Zahlen im Simulator, neue Fachregeln einordnen | lesen, Web |
 
 Fachsichten aus dem Produkt-Repo (`kunde`, `anwender`, `architekt`,
 `firmware`, `hardware`, `regulatorik`, `produkt`) bleiben dort. Das
@@ -102,7 +102,7 @@ code.claude.com/docs/en/github-actions, …/routines):
      Kommentar-Entwurf an den Projektinhaber.
    - Sie postet nichts öffentlich, ohne dass er es freigibt.
 3. **GitHub Action mit `@claude`:**
-   - Vorlage in `docs/vorlagen/claude-triage.yml`.
+   - Vorlage in `docs/templates/claude-triage.yml`.
    - Braucht die Claude-GitHub-App und ein Secret (`ANTHROPIC_API_KEY` oder
      `CLAUDE_CODE_OAUTH_TOKEN`).
 
@@ -147,7 +147,7 @@ also 2–5 h pro Woche mit Claude-Triage. Regeln:
 
 ## 6. Entscheidungen
 
-- **SD-Log:** `docs/ENTSCHEIDUNGEN.md`, Format `## SD-XXX: Titel`,
+- **SD-Log:** `docs/DECISIONS.md`, Format `## SD-XXX: Titel`,
   fortlaufend, chronologisch. Kein Status-Feld; ein späteres SD ersetzt ein
   früheres.
 - **Entwürfe** stehen getrennt und gelten erst nach „entschieden“ des

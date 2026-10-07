@@ -2,7 +2,7 @@
 
 Stand 06.10.2026. **V** = Vorschlag, **A** = Annahme, [PD-xxx] = im
 Produkt-Repo entschieden. Software-Entscheidungen sind noch Entwürfe
-(`docs/ENTSCHEIDUNGEN.md`).
+(`docs/DECISIONS.md`).
 
 ## 1. Ziel
 
@@ -141,7 +141,7 @@ damit passen UI und API immer zusammen, und ein Rollback nimmt die UI mit.
 - **ESP-IDF-Portierung:** Modbus je Port, Port-Freigabe, NVS/Flash-Ringpuffer,
   OTA. Plan in `firmware/README.md`.
 - **HTTPS im Heimnetz** mit Zertifikat je Gerät und signiertes OTA
-  (`docs/SICHERHEIT.md`).
+  (`docs/SECURITY_MODEL.md`).
 - **Benachrichtigungen ohne Herstellercloud** (ntfy, E-Mail, Webhook),
   Morgenbericht.
 - **MQTT mit HA-Discovery** (nur lesend und wenige Befehle).

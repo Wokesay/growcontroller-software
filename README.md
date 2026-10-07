@@ -23,7 +23,7 @@ Home Assistant.
 Ab dem nächsten Release liegt unter **Releases** der Simulator für Windows,
 macOS und Linux: eine Datei, entpacken, doppelklicken. Der Browser öffnet sich mit der Demo
 (Passwort `demo-passwort`). Hinweise zu Windows-SmartScreen und macOS stehen in
-`LIESMICH.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
+`README.txt` im Paket. Jeder Lauf der CI legt die Pakete außerdem als
 Artefakte ab.
 
 ## Selbst bauen (ohne Hardware)
@@ -74,7 +74,7 @@ E2E=1 tools/ci.sh      # zusätzlich 9 Browser-Tests gegen den Simulator
 
 ## Lizenz
 
-Noch nicht festgelegt (Entwurf E10 in `docs/ENTSCHEIDUNGEN.md`: GPL-3.0-or-later
+Noch nicht festgelegt (Entwurf E10 in `docs/DECISIONS.md`: GPL-3.0-or-later
 mit DCO). Bis zur Lizenzentscheidung alle Rechte vorbehalten; Ziel ist Open
 Source (PD-005, PD-008). Fremdbibliotheken: nlohmann/json,
 cpp-httplib, doctest (MIT); Preact, @preact/signals, uPlot (MIT), lucide (ISC).

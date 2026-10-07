@@ -59,10 +59,10 @@ Steckbrett mit N8R8 (8 MB Flash): `partitions.csv` verkleinern (Verlauf 3 MB).
    - Einmesswert im ID-Chip lesen und schreiben (PD-010).
 4. **Ablage:**
    - LittleFS für Konfiguration und Zustand.
-   - Verlauf als Ringpuffer in der Partition `history` (`docs/VERLAUF.md`).
+   - Verlauf als Ringpuffer in der Partition `history` (`docs/HISTORY.md`).
 5. **Live-Kanal:** SSE über asynchrone Handler oder WebSocket
    (`CONFIG_HTTPD_WS_SUPPORT`).
-6. **Sicherheit vor dem ersten Gerät bei Dritten** (`docs/SICHERHEIT.md`):
+6. **Sicherheit vor dem ersten Gerät bei Dritten** (`docs/SECURITY_MODEL.md`):
    HTTPS, signiertes OTA mit Selbsttest, Setup-Zugangspunkt per Taste.
 
 Abnahme auf dem Steckbrett nach `docs/prototyp/README.md` §5 im Produkt-Repo

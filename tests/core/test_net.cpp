@@ -1,6 +1,6 @@
 // Schaltbare Netzsteckdosen (Shelly im Simulator): Erkennen, Übernehmen,
 // Schutzeinstellung im Gerät mit Rücklesen, Sicherheitsprofile im Gateway,
-// Not-Halt und Stromausfall (Konzept PFLANZENAUTOMATISIERUNG §2–§3).
+// Not-Halt und Stromausfall (Konzept PLANT_AUTOMATION.md §2–§3).
 #include <doctest/doctest.h>
 
 #include <cmath>

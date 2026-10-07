@@ -63,7 +63,7 @@ Damit ersetzt das Log das Nachtragen in einem Tagebuch.
 - **CSV** je Zeitraum: Semikolon, Dezimalkomma, leere Felder statt 0.
 - **Einstellungen** als JSON sichern und laden. Das Laden wird geprüft und
   schaltet vorher alle Aktoren aus.
-- **Diagnosepaket** für „Problem melden“, siehe `SICHERHEIT.md`.
+- **Diagnosepaket** für „Problem melden“, siehe `SECURITY_MODEL.md`.
 
 ## Später
 

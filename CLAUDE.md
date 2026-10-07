@@ -21,14 +21,14 @@ Paket. Bis zum Umzug heißt das vor allem:
   Fachsichten holt Claude selbst über die Agenten unten.
 - **Idee oder Frage** → diskutieren, Optionen mit Empfehlung, nichts ändern.
 - **„entschieden“** → im Produkt-Repo als PD; nach dem Umzug SD-Eintrag in
-  `docs/ENTSCHEIDUNGEN.md` als PR.
+  `docs/DECISIONS.md` als PR.
 - **„umsetzen“** → die Arbeit als PR, mit Tests.
 - **Unklar, was gemeint ist** → nachfragen.
 - Deutsch, kurz. Am Ende jeder Antwort die nächsten 2–3 Schritte.
 
 ## Bei Sessionstart
 
-1. `docs/KONZEPT.md`, `docs/ENTSCHEIDUNGEN.md`, `docs/ROADMAP.md` lesen.
+1. `docs/CONCEPT.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md` lesen.
 2. Ist ein Software-Repo mit Issues angebunden: offene Issues mit Label
    `triage` listen und mit `triage` bewerten. Ergebnis kurz melden, nichts
    öffentlich posten ohne Freigabe.
@@ -47,13 +47,13 @@ Paket. Bis zum Umzug heißt das vor allem:
   fortgesetzt. PD-020 ersetzt den Teil für Zustandsfunktionen (Lüfter,
   Licht, Gießen); bis zur Umsetzung gilt R6 unverändert.
 
-Hintergrund: `docs/KONZEPT.md` §4.
+Hintergrund: `docs/CONCEPT.md` §4.
 
 ## Fachwissen
 
 - **Quelle:** Fachwissen kommt nur über das Produkt-Repo.
 - **Neu dokumentieren, nicht kopieren:** Jede übernommene Regel nennt
-  „Quelle: RAT-xxx“ und hat einen Test (`docs/INVARIANTEN.md`).
+  „Quelle: RAT-xxx“ und hat einen Test (`docs/INVARIANTS.md`).
 - **Code und Texte der Referenzanlage** sind Vorlage, kein Bauteil. Aus
   OpenGrowBox (Lizenz OGBCL) nur Ideen, kein Code.
 
@@ -90,8 +90,8 @@ Sie ändern keine Dateien. Web-Aussagen tragen URL und Abrufdatum.
 |---|---|
 | `triage` | neue Issues einordnen, im Simulator nachstellen, Duplikate, Schwere, Antwortentwurf |
 | `reviewer` | Code-Review je Diff: Korrektheit, Regeln R1–R8, Invarianten, Tests, Lesbarkeit |
-| `qa` | Testfälle ableiten, Tests ausführen, Lücken in `INVARIANTEN.md`, Abnahme vor Release |
+| `qa` | Testfälle ableiten, Tests ausführen, Lücken in `INVARIANTS.md`, Abnahme vor Release |
 | `security` | Bedrohungsmodell, EN 18031/CRA technisch, Auth, OTA, Abhängigkeiten, Diagnosedaten |
 | `release` | Version, Changelog, „Was ist neu“, Artefakte, Kanäle, Rollback-Plan |
-| `ux` | Bedienkonzept, Texte, mobil, Barrierefreiheit (`docs/BEDIENUNG.md`) |
-| `fachlogik` | Regel- und Dosierlogik gegen `INVARIANTEN.md`, Simulator-Zahlen, neue Fachregeln |
+| `ux` | Bedienkonzept, Texte, mobil, Barrierefreiheit (`docs/UX.md`) |
+| `fachlogik` | Regel- und Dosierlogik gegen `INVARIANTS.md`, Simulator-Zahlen, neue Fachregeln |

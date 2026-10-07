@@ -76,4 +76,4 @@ jobs:
           retention-days: 14
 
   pakete:
-    uses: ./.github/workflows/pakete.yml
+    uses: ./.github/workflows/packages.yml

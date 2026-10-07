@@ -17,7 +17,7 @@ class EspClock : public gc::IClock {
 };
 
 // Dateien auf SPIFFS unter /data; schreibt atomar über tmp + rename.
-// Ziel laut docs/VERLAUF.md: LittleFS für Konfiguration, Verlauf als
+// Ziel laut docs/HISTORY.md: LittleFS für Konfiguration, Verlauf als
 // Ringpuffer in der Partition "history".
 class EspStorage : public gc::IStorage {
  public:

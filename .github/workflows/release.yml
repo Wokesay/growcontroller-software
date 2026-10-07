@@ -21,7 +21,7 @@ jobs:
 
   pakete:
     needs: pruefen
-    uses: ./.github/workflows/pakete.yml
+    uses: ./.github/workflows/packages.yml
 
   veroeffentlichen:
     needs: pakete
@@ -48,7 +48,7 @@ jobs:
           (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
           (cd dist && sha256sum * > SHA256SUMS)
           awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
-          printf '\n---\n**Ausprobieren ohne Hardware:** Simulator für dein System laden, entpacken, starten (siehe LIESMICH.txt im Paket). Passwort der Demo: `demo-passwort`.\n' >> NOTES.md
+          printf '\n---\n**Ausprobieren ohne Hardware:** Simulator für dein System laden, entpacken, starten (siehe README.txt im Paket). Passwort der Demo: `demo-passwort`.\n' >> NOTES.md
       - name: GitHub-Release
         env:
           GH_TOKEN: ${{ github.token }}

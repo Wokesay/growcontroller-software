@@ -17,7 +17,7 @@ Funktion läuft einmal Ende zu Ende im Browser.
 
 Die Testfälle der Regellogik folgen der Liste von `firmware` (M1-1 …
 M15-3). Welche Regel welcher Test abdeckt und was offen ist, steht in
-`INVARIANTEN.md`.
+`INVARIANTS.md`.
 
 ## Ausführen
 

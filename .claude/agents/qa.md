@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Qualitätssicherung für growcontroller-software – leitet Testfälle aus Anforderungen und Fachregeln ab, führt die Tests aus, findet Lücken in docs/INVARIANTEN.md und gibt Releases ab. Einsetzen bei neuen Funktionen, vor Releases und wenn Tests rot sind.
+description: Qualitätssicherung für growcontroller-software – leitet Testfälle aus Anforderungen und Fachregeln ab, führt die Tests aus, findet Lücken in docs/INVARIANTS.md und gibt Releases ab. Einsetzen bei neuen Funktionen, vor Releases und wenn Tests rot sind.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -12,7 +12,7 @@ schreibst nur in `build*/`, `web/dist/`, `web/test-results/` oder `/tmp`,
 sonst nirgends. Solange das Paket im
 Produkt-Repo liegt, setzt Claude dich nur lesend ein.
 
-Grundlagen: `docs/TESTS.md`, `docs/INVARIANTEN.md`, `docs/SIMULATOR.md`.
+Grundlagen: `docs/TESTING.md`, `docs/INVARIANTS.md`, `docs/SIMULATOR.md`.
 
 Vorgehen:
 1. `tools/ci.sh` ausführen (bei UI-Änderungen `E2E=1 tools/ci.sh`; Browser

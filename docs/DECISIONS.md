@@ -38,7 +38,7 @@ Projektinhaber „entschieden“ sagt. Was eine PD braucht, ist markiert.
 | E12 | Versionen und Updates | SemVer, Keep a Changelog mit Abschnitt „Sicherheit“, Kanäle stable/beta, GitHub Releases mit SBOM und Prüfsummen, OTA A/B signiert, Update nur im Ruhezustand, offline signieren | nein |
 | E13 | Zugang | Pflichtpasswort vor jeder Funktion, PBKDF2, Sperre nach Fehlversuchen; HTTPS lokal vor dem ersten Gerät bei Dritten | nein (Pflicht aus EN 18031) |
 | E14 | Fehler melden | technische Issues über GitHub mit Formularen; in der App „Problem melden“ mit Vorgangsnummer und Diagnosepaket, ohne Telemetrie | nein |
-| E15 | Rollen und Ablauf | Agenten `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `fachlogik`; Ablauf in `ARBEITSWEISE.md`; Issue-Workflows nur lesend | nein |
+| E15 | Rollen und Ablauf | Agenten `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `fachlogik`; Ablauf in `WORKFLOW.md`; Issue-Workflows nur lesend | nein |
 
-Herleitung, Optionen und Quellen: `KONZEPT.md`, `KONFIGURATION.md`,
-`RELEASE.md`, `SICHERHEIT.md`, `ARBEITSWEISE.md`.
+Herleitung, Optionen und Quellen: `CONCEPT.md`, `CONFIGURATION.md`,
+`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.

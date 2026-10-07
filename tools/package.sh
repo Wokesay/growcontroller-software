@@ -4,7 +4,7 @@
 #   2. Einfachstart ohne Argumente wie per Doppelklick (Port, Datenordner
 #      neben dem Programm).
 # Aufruf aus software/ nach dem Bau in build-pkg/:
-#   tools/paket.sh <programmname> <plattform>
+#   tools/package.sh <programmname> <plattform>
 # In GitHub Actions landen PKG_DIR und PKG_ZIP in $GITHUB_ENV.
 set -euo pipefail
 bin="$1"
@@ -17,7 +17,7 @@ rm -rf "dist/$d"
 mkdir -p "dist/$d"
 if [ -f build-pkg/Release/gc_sim_server.exe ]; then src=build-pkg/Release/gc_sim_server.exe; else src=build-pkg/gc_sim_server; fi
 cp "$src" "dist/$d/$bin"
-cp sim/LIESMICH.txt "dist/$d/"
+cp sim/README.txt "dist/$d/"
 node tools/third_party.mjs "dist/$d/THIRD_PARTY_LICENSES.txt"
 
 # Unter Windows (Git-Bash, auch lokal) beendet taskkill das Programm

@@ -49,7 +49,7 @@ jobs:
             -DGC_SIM_WEB_ASSETS=build-pkg/web_assets.cpp ${{ matrix.cmake }}
           cmake --build build-pkg --config Release --target gc_sim_server
       - name: Paket und Kurztest (mit Argumenten und Einfachstart)
-        run: bash tools/paket.sh "${{ matrix.bin }}" "${{ matrix.name }}"
+        run: bash tools/package.sh "${{ matrix.bin }}" "${{ matrix.name }}"
       - name: Zip
         run: |
           cd dist

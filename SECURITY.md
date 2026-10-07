@@ -37,5 +37,5 @@ meldet, wird nicht verfolgt.
 Der Supportzeitraum für verkaufte Geräte wird vor dem ersten Verkauf
 festgelegt (mindestens 5 Jahre, CRA Art. 13).
 
-Hintergrund: [`docs/SICHERHEIT.md`](docs/SICHERHEIT.md),
+Hintergrund: [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md),
 [`docs/RELEASE.md`](docs/RELEASE.md).

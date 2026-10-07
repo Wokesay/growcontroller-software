@@ -14,5 +14,5 @@ Stand 06.10.2026. Reihenfolge als Vorschlag, Aufwand grob nach `software`
 | **M6 Begleiter** | Langzeitarchiv, Vergleich von Durchgängen, Push-Relay, Fernzugriff (Abo) | E2, E11 |
 | laufend | Sprachen (DE/EN), Barrierefreiheit, Fuzzing, Langlauftests | – |
 
-Offene Fragen an den Projektinhaber stehen in `ENTSCHEIDUNGEN.md` (Entwürfe
+Offene Fragen an den Projektinhaber stehen in `DECISIONS.md` (Entwürfe
 mit „braucht PD“).

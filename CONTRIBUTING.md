@@ -21,12 +21,12 @@ tools/ci.sh                     # alle Prüfungen vor dem PR
 - **Logik liest Parameter, nie Phasennamen.**
 
 `tools/arch_check.sh` prüft diese Regeln; die CI bricht bei Verstoß ab.
-Hintergrund: `docs/KONZEPT.md` §4.
+Hintergrund: `docs/CONCEPT.md` §4.
 
 ## Regeln für Fachlogik
 
 Jede Fachregel trägt ihre Quelle („Quelle: RAT-xxx“) und einen Test.
-Neue Regeln gehören in `docs/INVARIANTEN.md`. Simulator-Zahlen sind entweder
+Neue Regeln gehören in `docs/INVARIANTS.md`. Simulator-Zahlen sind entweder
 gemessen (mit Quelle) oder als Annahme markiert.
 
 ## Pull Requests

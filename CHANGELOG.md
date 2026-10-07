@@ -201,4 +201,4 @@ Gerüst ohne Bus. Keine Zusagen zur Kompatibilität.
 - Kaputte Eingaben und Dateien führen zu 400/500 bzw. zu „alles aus“ mit
   Alarm, nicht zum Absturz. Simulator: Szenario-Reset nur angemeldet.
 - Noch nicht enthalten: HTTPS, signiertes OTA, Secure Boot
-  (`docs/SICHERHEIT.md`).
+  (`docs/SECURITY_MODEL.md`).
