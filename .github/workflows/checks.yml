@@ -13,6 +13,8 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # The job id `quick` is the required check of the ruleset on main
+  # (SD-027); renaming it blocks every merge until the ruleset follows.
   quick:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

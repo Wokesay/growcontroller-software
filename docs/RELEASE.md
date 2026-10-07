@@ -52,7 +52,8 @@ entry under `[Unreleased]`.
    repository admin can set `v*` tags, SD-027). The workflow
    `release.yml` builds the simulator and the web app, creates the SBOM
    (CycloneDX) and `SHA256SUMS`, and creates the GitHub release with the
-   changelog section. Pre-releases (`-beta`, `-proto`) are marked as pre-release.
+   changelog section. Pre-releases (`-beta`, `-proto`) are marked as
+   pre-release.
    Simulator downloads belong only to Beta releases, not to Stable
    (PD-036); `release.yml` does not yet tell the channels apart.
 3. **Firmware** (once `firmware/` builds):
