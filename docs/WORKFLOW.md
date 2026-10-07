@@ -141,7 +141,9 @@ devices, so 2–5 h per week with Claude triage. Rules:
 - **PR:** template with safety items (gateway, missing value, rationale
   RAT ID, changelog).
 - **Merge** only through a pull request, after green CI and the reviews
-  above. The project owner decides who merges.
+  above. Claude merges, except releases, license and security rules and
+  changes to the actuator gateway or protective cut-offs, which wait for
+  the project owner's "mergen" (PD-045, SD-023).
 
 ## 6. Decisions
 

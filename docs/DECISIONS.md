@@ -20,7 +20,7 @@ that, decisions were made as PDs in the product repository.
   (PD-036). Versions are self-describing (PD-037). SemVer and OTA stay a
   draft.
 
-They are recorded below as SD-001 to SD-022. The other drafts are the
+They are recorded below as SD-001 to SD-023. The other drafts are the
 basis of the prototype and become SD entries once the project owner says
 "entschieden" (decided). What needs a PD is marked.
 
@@ -215,7 +215,17 @@ decision is in the product repository.
   itself once a valid level is back above the minimum level plus a margin;
   the release is reported.
 - Dry run, emergency limit and latches with an unknown cause still hold
-  until acknowledged (RAT-051, RAT-063). Not implemented yet.
+  until acknowledged (RAT-051, RAT-062, RAT-063). Not implemented yet.
+
+
+## SD-023: Product requirement (from PD-045): who merges
+
+- Claude merges own PRs with green CI, no open review threads and no
+  blocking findings from `reviewer` and `qa` (plus `security`/`ux` where
+  needed).
+- The project owner's "mergen" is needed for releases, license and
+  security rules (for example PD-022), and changes to the actuator gateway
+  or to protective cut-offs. The move PR waits for "mergen" (PD-023).
 
 ---
 
