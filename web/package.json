@@ -2,8 +2,9 @@
   "name": "growcontroller-web",
   "private": true,
   "version": "0.1.0-proto.1",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
-  "description": "Web-App des growcontroller-Hubs (läuft aus dem Flash des ESP32-S3 oder gegen den Simulator)",
+  "description": "Web app of the growcontroller hub (runs from the flash of the ESP32-S3 or against the simulator)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs",

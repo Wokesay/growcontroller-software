@@ -134,11 +134,11 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     if (*rh.value >= kHumidifierMaxRh)
       return msg("act.humidifier.rh", "Luftfeuchte " + fmt(*rh.value, 0) + " % – über " + fmt(kHumidifierMaxRh, 0) + " % kein Befeuchter");
   }
-  // Gießpumpe: nur mit gültigem Füllstand über dem Mindestfüllstand, sonst
-  // läuft sie trocken. Abweichung von RAT-068 („Pegel unlesbar →
-  // gießen und melden“): hier gesperrt (Annahme, Empfehlung hardware
-  // 06.10.2026; PD folgt). Hier zählt der aktuelle Pegel,
-  // kein vorausberechneter.
+  // Irrigation pump: only with a valid level above the minimum level,
+  // otherwise it runs dry. An unreadable level blocks (deviation noted in
+  // RAT-068; confirmed by SD-017, which adds an emergency dose and dry-run
+  // detection, not implemented yet). The current level counts, not a
+  // predicted one.
   if (role == "zone.irrigation_pump") {
     if (!levelBound || !level.usable()) return msg("act.irrigation.level", "Ohne gültigen Füllstand keine Gießpumpe (Trockenlauf)");
     if (!isNum(tank.minL)) return msg("act.irrigation.level", "Mindestfüllstand des Tanks fehlt");

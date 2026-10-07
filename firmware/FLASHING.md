@@ -4,26 +4,20 @@ The hub is yours. You may build the firmware from this repository – changed
 or unchanged – and flash it onto your hub. This page says how, and what the
 project promises about it.
 
-## The rule: the hub never locks out your firmware
+## The rule: devices do not lock out third-party firmware
 
 Product requirement (PD-022, SD-010):
 
-- **No Secure Boot against the owner.** The hub never runs only firmware
-  signed by the project. Firmware the owner builds from this source code
-  can always be installed.
-- **Signed updates stay possible.** Over-the-air updates from the project
-  are signed so that nobody else can push firmware onto your hub over the
-  network. This protects against attackers, not against the owner: flashing
-  over USB always works, and an owner mode for your own signing key is
-  planned before the first device ships (`docs/RELEASE.md`).
-- **No eFuse that takes the hub away from you.** The project never burns
-  eFuses that permanently disable USB download mode, enable flash
-  encryption in release mode, or enable Secure Boot with project keys only.
-  If Secure Boot or flash encryption is ever used, it must leave the owner
-  a documented way to install their own firmware (for example an owner key
-  slot); that decision is made before the first device ships
-  (`docs/SECURITY_MODEL.md`, checklist item 2).
-- **The source code of every release is linked** in the web app (Settings ›
+- **No Secure Boot against the user.** Devices do not lock out
+  third-party firmware; users can install their own firmware.
+- **Signed updates must allow this too.** Over-the-air updates from the
+  project will be signed so that nobody else can push firmware onto your
+  hub over the network. Signed updates and any Secure Boot must still let
+  you install your own firmware. How exactly (for example flashing over
+  USB, an owner key, or an unlock on the device) is open and is settled
+  before the first device ships (`docs/RELEASE.md`,
+  `docs/SECURITY_MODEL.md`, checklist item 2).
+- **The source code of every build is linked** in the web app (Settings ›
   Display and info) and on the login page (AGPL §13).
 
 Status 2026-10-07: the firmware is a skeleton (`firmware/README.md`). It
@@ -72,10 +66,11 @@ partition table are next to it (`build/bootloader/`,
    python -m esptool --chip esp32s3 -b 460800 write_flash @flash_args
    ```
 
-3. After the first start the hub sets up as usual (first password in the
-   web app). Configuration, calibration values and history stay on the
+3. Configuration, password, calibration values and history stay on the
    `storage` and `history` partitions as long as you flash only app,
-   bootloader and partition table with an unchanged `partitions.csv`.
+   bootloader and partition table with an unchanged `partitions.csv`. On a
+   new or erased hub, setup starts as usual (first password in the web
+   app).
 
 ## Going back to an official release
 

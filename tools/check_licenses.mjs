@@ -8,23 +8,34 @@
 //   node tools/check_licenses.mjs
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const RUNTIME = new Set(["MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "0BSD", "Zlib", "CC0-1.0", "Unlicense"]);
 // CC-BY-4.0: browser usage data (caniuse-lite), read by the build only.
-const DEV = new Set([...RUNTIME, "CC-BY-4.0", "BlueOak-1.0.0", "Python-2.0"]);
+const DEV = new Set([...RUNTIME, "CC-BY-4.0"]);
 
-/** SPDX expression with OR/AND and brackets: OR needs one allowed side, AND both. */
+/**
+ * SPDX expression with AND, OR and brackets: OR needs one allowed side, AND
+ * both. Anything else (WITH, lower-case operators, missing operators, stray
+ * brackets) makes the expression invalid, and an invalid one is never
+ * allowed.
+ */
 export function allowed(expr, ok) {
-  const tokens = expr.replace(/[()]/g, " $& ").split(/\s+/).filter(Boolean);
+  const tokens = String(expr).replace(/[()]/g, " $& ").split(/\s+/).filter(Boolean);
+  const OPS = new Set(["AND", "OR", "WITH", "(", ")"]);
   let i = 0;
+  let valid = tokens.length > 0;
   const atom = () => {
     const t = tokens[i++];
     if (t === "(") {
       const v = or();
-      i++; // ")"
+      if (tokens[i++] !== ")") valid = false;
       return v;
+    }
+    if (t === undefined || OPS.has(t) || !/^[A-Za-z0-9.+-]+$/.test(t) || /^(and|or|with)$/i.test(t)) {
+      valid = false;
+      return false;
     }
     return ok.has(t);
   };
@@ -44,24 +55,34 @@ export function allowed(expr, ok) {
     }
     return v;
   };
-  return or();
+  const v = or();
+  return valid && i === tokens.length && v;
 }
 
-const lock = JSON.parse(readFileSync(join(root, "web", "package-lock.json"), "utf8"));
-const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
-const problems = [];
-let count = 0;
-for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
-  if (!path) continue;
-  count++;
-  const name = path.replace(/^.*node_modules\//, "");
-  const lic = typeof pkg.license === "string" ? pkg.license : "";
-  if (!lic) problems.push(`${name}: no license in package-lock.json`);
-  else if (!allowed(lic, pkg.dev ? DEV : RUNTIME)) problems.push(`${name}: license ${lic} not allowed${pkg.dev ? " (build tool)" : ""}`);
-  if (!pkg.dev && !notices.includes(`\`${name}\``)) problems.push(`${name}: runtime package missing in THIRD_PARTY_NOTICES.md`);
+function main() {
+  const lock = JSON.parse(readFileSync(join(root, "web", "package-lock.json"), "utf8"));
+  const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
+  if (!(lock.lockfileVersion >= 2) || !lock.packages) {
+    console.error("License check failed: web/package-lock.json must be lockfile version 2 or later");
+    process.exit(1);
+  }
+  const problems = [];
+  let count = 0;
+  for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
+    if (!path) continue;
+    count++;
+    const name = path.replace(/^.*node_modules\//, "");
+    const lic = typeof pkg.license === "string" ? pkg.license : "";
+    if (!lic) problems.push(`${name}: no license in package-lock.json`);
+    else if (!allowed(lic, pkg.dev ? DEV : RUNTIME)) problems.push(`${name}: license ${lic} not allowed${pkg.dev ? " (build tool)" : ""}`);
+    if (!pkg.dev && !notices.includes(`\`${name}\``)) problems.push(`${name}: runtime package missing in THIRD_PARTY_NOTICES.md`);
+  }
+  if (count === 0) problems.push("no packages found in web/package-lock.json");
+  if (problems.length) {
+    console.error("License check failed:\n- " + problems.join("\n- "));
+    process.exit(1);
+  }
+  console.log(`License check: ${count} npm packages OK.`);
 }
-if (problems.length) {
-  console.error("License check failed:\n- " + problems.join("\n- "));
-  process.exit(1);
-}
-console.log(`License check: ${count} npm packages OK.`);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

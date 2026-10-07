@@ -6,12 +6,13 @@
 
 - [ ] Actuators only through the gateway, watchdog without an actuator path (`tools/arch_check.sh`)
 - [ ] A missing value stays missing, never 0
-- [ ] New domain rule? RAT entry in `docs/RATIONALE.md` and test case named
+- [ ] New domain rule? RAT entry in `docs/RATIONALE.md`, row in `docs/INVARIANTS.md` and test case named
 - [ ] Safety relevant (pumps, inlet, login, updates)? Then a "Security" section in the CHANGELOG
 
 ## Tests
 
-- [ ] `tools/ci.sh` green, for UI changes also `E2E=1 tools/ci.sh`
+- [ ] `tools/ci.sh` green (needs `reuse`), for UI changes also `E2E=1 tools/ci.sh`
+- [ ] Reviews: `reviewer` and `qa`; `security` for gateway, sensor truth, login or updates; `ux` for UI
 - [ ] New logic has a unit or scenario test
 
 ## Licensing and language

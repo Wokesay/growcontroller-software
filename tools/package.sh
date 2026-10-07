@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Packt den Simulator als Download und prüft das Paket zweimal:
-#   1. Start mit Argumenten (API und eingebettete Web-App antworten),
-#   2. Einfachstart ohne Argumente wie per Doppelklick (Port, Datenordner
-#      neben dem Programm).
-# Aufruf aus software/ nach dem Bau in build-pkg/:
-#   tools/package.sh <programmname> <plattform>
-# In GitHub Actions landen PKG_DIR und PKG_ZIP in $GITHUB_ENV.
+# Packs the simulator as a download and tests the package twice:
+#   1. start with arguments (API and embedded web app answer),
+#   2. plain start without arguments as by double-click (port, data folder
+#      next to the program).
+# Run from the repository root after the build in build-pkg/:
+#   tools/package.sh <program name> <platform>
+# In GitHub Actions PKG_DIR and PKG_ZIP go to $GITHUB_ENV.
 set -euo pipefail
 bin="$1"
 name="$2"
@@ -19,6 +19,7 @@ mkdir -p "dist/$d"
 if [ -f build-pkg/Release/gc_sim_server.exe ]; then src=build-pkg/Release/gc_sim_server.exe; else src=build-pkg/gc_sim_server; fi
 cp "$src" "dist/$d/$bin"
 cp sim/README.txt "dist/$d/"
+cp LICENSE "dist/$d/LICENSE.txt"
 node tools/third_party.mjs "dist/$d/THIRD_PARTY_LICENSES.txt"
 
 # Unter Windows (Git-Bash, auch lokal) beendet taskkill das Programm

@@ -1,6 +1,6 @@
 # Test strategy
 
-As of 2026-10-06. Goal: every domain rule (see `docs/RATIONALE.md`) has a
+As of 2026-10-07. Goal: every domain rule (see `docs/RATIONALE.md`) has a
 test. Every visible function runs end to end in the browser at least once.
 
 ## Levels
@@ -8,12 +8,13 @@ test. Every visible function runs end to end in the browser at least once.
 | Level | Tool | Location | Count today | Checks |
 |---|---|---|---|---|
 | Architecture rules | shell/grep | `tools/arch_check.sh` | 5 rules | core without platform headers, actuators only through the gateway, watchdog without an actuator path, no phase names in the logic, no `value_or(0)` |
-| Unit | doctest (C++) | `tests/core/test_*.cpp` | 44 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, mix planning, resolver, watchdog, SHA-256/PBKDF2, login |
-| API contract | doctest against the core | `tests/core/test_api.cpp` | 8 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
-| Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 15 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart |
+| Unit | doctest (C++) | `tests/core/test_*.cpp` | 77 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, mix planning, resolver, watchdog, SHA-256/PBKDF2, login, sockets and gateway (`test_net`), room climate and VPD (`test_climate`) |
+| API contract | doctest against the core | `tests/core/test_api.cpp` | 17 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
+| Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 19 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart |
+| Licenses | reuse, Node | `tools/ci.sh` | REUSE 3.3, npm, 3 parser tests | SPDX information for every file, allowed licenses of all npm packages, runtime packages listed in `THIRD_PARTY_NOTICES.md` (`tools/check_licenses.test.mjs`) |
 | Memory errors | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | all C++ tests | overflows, use-after-free, undefined behaviour |
 | Web | TypeScript strict, size budget | `npm run build` | – | types, ≤ 250 KB gzip |
-| End to end | Playwright + Chromium | `web/e2e/*.spec.ts` | 9 cases | first-time setup up to the first mix run, emergency stop, jump lock visible, functions and history, mis-plug, diagnostic bundle, access protection, security headers |
+| End to end | Playwright + Chromium | `web/e2e/*.spec.ts` | 15 cases | first-time setup up to the first mix run, English switch, emergency stop, jump lock visible, functions and history, mis-plug, diagnostic bundle, recipe template, tiles on sensor failure, climate areas with VPD, socket adoption and test, access protection, security headers, source code link (AGPL §13) |
 
 The test cases for the control logic follow the list by `firmware`
 (M1-1 … M15-3). `INVARIANTS.md` shows which test covers which rule and
@@ -22,7 +23,7 @@ what is still open.
 ## Running
 
 ```bash
-tools/ci.sh          # architecture, core with sanitizers, all C++ tests, web build
+tools/ci.sh          # architecture, licenses (needs reuse), core with sanitizers, all C++ tests, web build
 E2E=1 tools/ci.sh    # plus Playwright (browser: npx playwright install chromium)
 ./build/gc_tests -tc="*Sprungsperre*"   # single cases
 ```

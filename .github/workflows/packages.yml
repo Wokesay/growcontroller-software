@@ -43,8 +43,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Build and embed the web app
         env:
-          # Source code link (AGPL-3.0 §13): the tag of a release, else the commit
-          GC_SOURCE_REV: ${{ github.ref_type == 'tag' && github.ref_name || github.event.pull_request.head.sha || github.sha }}
+          # Source code link (AGPL-3.0 §13): always the commit (a tag can move)
+          GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
           node tools/embed_web.mjs build-pkg/web_assets.cpp

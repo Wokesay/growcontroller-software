@@ -77,7 +77,9 @@ entry under `[Unreleased]`.
   to be tested on the S3). Signed updates and any Secure Boot must let the
   owner install their own firmware; no Secure Boot against the user
   (PD-022). Whether Secure Boot v2, flash encryption and a downgrade lock
-  via the security version fit that rule is open.
+  via the security version fit that rule is open; until it is decided,
+  `tools/arch_check.sh` rejects the sdkconfig options that would burn
+  such eFuses.
 - **Web UI in the app image:** An update is atomic; a rollback takes the
   UI along.
 - **Only in a safe state:** no job, no dosing (API: 409). Recipes,

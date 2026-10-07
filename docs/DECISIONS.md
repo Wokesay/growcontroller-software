@@ -36,31 +36,28 @@ decision is in the product repository.
 - The hub is operated through its own web app, without cloud and without
   an account. Home Assistant can be connected optionally over MQTT; the
   logic never lives in Home Assistant.
-- Reason: the controller must work on its own, also offline.
 
 
 ## SD-002: Product requirement (from PD-014, PD-038): hub platform ESP32-S3
 
 - Control, safety, API, web app and one year of history run on an
   ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB PSRAM). No Linux in the hub.
-- A Raspberry Pi runs only the simulator and, later, the optional
-  companion for convenience, never the control.
-- Reason: one small, robust device that keeps controlling on its own.
+- An optional companion (Docker, NAS, Home Assistant add-on) provides only
+  convenience, never control or safety. A Raspberry Pi runs only the
+  simulator (Beta and Development) and, later, the companion.
 
 
 ## SD-003: Product requirement (from PD-015): no dosing without a calibration value
 
-- A pump without a measured calibration value does not dose; planning and
-  the actuator gateway refuse (RAT-015).
-- Reason: a guessed flow rate doses wrong amounts without anyone noticing.
+- A pump without a calibration value does not dose; planning and the
+  actuator gateway refuse. A missing value is never 0 (RAT-006, RAT-015).
 
 
 ## SD-004: Product requirement (from PD-016): level 0 does not dose pH blindly
 
 - pH correction doses only with a secured measurement path (RAT-044).
-  Without a pH probe there is a manual measurement and a hint, no pH dose
-  by recipe.
-- Reason: pH acid or base without a measurement can harm the plants.
+  Without a pH probe (level 0) there is a manual measurement and a hint, no
+  pH dose by recipe.
 
 
 ## SD-005: Product requirement (from PD-017, PD-023): own repository, moved with history
@@ -108,12 +105,14 @@ decision is in the product repository.
 ## SD-010: Product requirement (from PD-022, PD-032, PD-033): license AGPL-3.0-or-later
 
 - Code, docs, catalog and templates are licensed under AGPL-3.0-or-later.
-  No CLA, no DCO: contributions come in under the same license. The
-  software is never sold under another license.
+  No CLA, no DCO: contributions come in under the same license (inbound =
+  outbound). No dual licensing, no commercial license; income comes only
+  from the hardware.
 - An additional permission under AGPL §7 covers the binary-only ESP-IDF
   libraries (`ADDITIONAL_PERMISSION.md`).
-- The hub never locks out firmware the owner builds; signed updates and
-  any Secure Boot must allow it.
+- Devices do not lock out third-party firmware: no Secure Boot against the
+  user; users can install their own firmware. Signed updates and any Secure
+  Boot must allow this.
 - The web app links to the source code of the running version (AGPL §13).
 
 
@@ -131,9 +130,13 @@ decision is in the product repository.
 
 ## SD-013: Product requirement (from PD-026): configurable maintenance mode
 
-- What maintenance mode pauses is configurable. The preset pauses water
-  (dosing, refill, irrigation, circulation automation) and CO2; climate
-  devices and fans can be set to keep running.
+- The user configures what maintenance mode pauses. Principle: whatever
+  directly affects an open tent pauses or at least causes no harm.
+- Preset: water and CO2 pause; "water" as proposed means dosing, refill,
+  irrigation and the circulation pump automation. Selectable in addition,
+  among others: whether climate pauses or humidifier, dehumidifier and
+  circulation fan keep running.
+- Sensor truth and locks always stay active (RAT-023, RAT-075).
 
 
 ## SD-014: Product requirement (from PD-027, PD-035): language and units
@@ -151,8 +154,10 @@ decision is in the product repository.
 
 ## SD-016: Product requirement (from PD-030): manufacturer tables as templates
 
-- Manufacturer feeding charts become recipe templates with source and
-  date; the community maintains them through pull requests.
+- Manufacturer feeding charts ship as recipe templates. Each template
+  carries its source, date and the note "manufacturer data, not binding".
+- Templates are data in this repository; new or changed charts come as
+  pull requests and are checked before the merge.
 
 
 ## SD-017: Product requirement (from PD-031): irrigation without a readable level

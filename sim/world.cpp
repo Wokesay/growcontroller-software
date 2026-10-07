@@ -9,7 +9,7 @@
 namespace sim {
 
 namespace {
-constexpr Ms kSampleMs = 5000;        // Kopf liefert alle 5 s
+constexpr Ms kSampleMs = 5000;        // head delivers every 5 s (as on the reference installation)
 constexpr Ms kPhDeadMs = 60000;       // pH-Totzeit (RAT-052: ~80–99 s, hier gekürzt)
 constexpr Ms kHwLimitMs = 90000;      // Zeitlimit in Hardware (Vorschlag firmware: 90 s)
 constexpr double kPi = 3.14159265358979323846;
@@ -27,7 +27,7 @@ void World::reset() {
   probeBuffer.reset();
   phTrail_.clear();
   runningCap_.clear();
-  // Wirkungen nach Messungen (Quelle in docs/SIMULATOR.md), pH-Wirkung als Annahme
+  // Effects from measurements (sources in docs/SIMULATOR.md), pH effect as an assumption
   liquids = {
       {"grow_a", {"Teil A", 0.275, -0.12}},
       {"grow_b", {"Teil B", 0.275, -0.10}},
@@ -106,7 +106,7 @@ bool World::plugCap(const std::string& blockId, int slot, const std::string& liq
   Cap c;
   c.id = id.empty() ? newId("CAP") : id;
   c.liquid = liquid;
-  // Förderraten der Kappen streuen wie gemessen (RAT-054)
+  // Flow rates of the pump heads scatter as measured (RAT-054)
   std::uniform_real_distribution<double> fl(42.0, 53.0);
   c.trueFlow = fl(rng_);
   b->slots[slot] = c;
@@ -291,7 +291,7 @@ void World::step(Ms dt) {
   tank.pendingEc *= (1.0 - k);
   tank.ph += tank.pendingPh * k;
   tank.pendingPh *= (1.0 - k);
-  // Drift (Annahme, nicht gemessen): pH steigt, EC sinkt, Wasser verdunstet
+  // Drift (assumption, not measured): pH rises, EC falls, water evaporates
   double hours = dts / 3600.0;
   if (tank.volumeL > 1) {
     tank.ph += 0.006 * hours * (7.6 - tank.ph) / 1.5;

@@ -19,6 +19,8 @@ test("Source code link of the build on the login page and in settings", async ({
   await expect(inSettings).toBeVisible();
   const href = await inSettings.getAttribute("href");
   expect(href).toMatch(SOURCE);
-  // A build from a checkout links the commit it was built from.
-  expect(href).toContain("/tree/");
+  // CI passes the revision it builds; then the link must point to exactly it.
+  const rev = process.env.GC_SOURCE_REV;
+  if (rev) expect(href).toBe(`https://github.com/Wokesay/growcontroller-software/tree/${rev}`);
+  else expect(href).toContain("/tree/"); // a build from a git checkout links its commit
 });

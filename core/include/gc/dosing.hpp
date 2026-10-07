@@ -36,18 +36,18 @@ struct Ctx {
   Epoch maintenanceUntil = 0;    // Pflegemodus: Automatik ruht
 };
 
-// Mindestpause eines Kompressorgeräts nach dem Ausschalten (Quelle: RAT-034).
-// Eine Gegensperre für das Gegengerät gehört zur Klimafunktion; hier gilt
-// „nie zugleich“.
+// Minimum pause of a compressor device after switching off (rationale:
+// RAT-034). A lock against the opposite device belongs to the climate
+// function; here the rule is "never both at once".
 constexpr Ms kCompressorPause = 5 * kMinute;
 // Obergrenze der Luftfeuchte für den Befeuchter: Kondensat an Lampen und
 // Steckdosen vermeiden (Annahme, Vorschlag hardware 06.10.2026).
 constexpr double kHumidifierMaxRh = 85.0;
 
-// Schutzeinstellung im Netzgerät je Profil: nach Stromausfall aus (Quelle:
-// RAT-019); bei puls und heizen Auto-Off knapp über der Höchstlaufzeit,
-// Verhältnis 1,11 (Quelle: RAT-060; für puls
-// übertragen, Annahme).
+// Protection setting in the network device per profile: off after a power
+// loss (rationale: RAT-019); for puls and heizen an auto-off slightly above
+// the maximum run time, ratio 1.11 (rationale: RAT-060; applied to puls as
+// an assumption).
 SwitchSafety safetyForRole(const RoleDef& rd);
 
 class Actuators {

@@ -28,7 +28,8 @@ packages as artifacts.
 
 ## Build it yourself (no hardware needed)
 
-Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22.
+Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22; for
+`tools/ci.sh` also [reuse](https://reuse.software/) (`pipx install reuse==6.2.0`).
 
 ```bash
 tools/dev.sh
@@ -86,16 +87,16 @@ In plain words:
 - **No warranty.** The software comes as it is.
 - **No paid edition.** The project sells no licenses and has no
   subscription and no dual licensing. It is funded by selling hardware.
-- **Your device is yours.** The hub never locks out firmware you build
-  yourself; there is no Secure Boot against the owner. How to flash your
-  own firmware: [`firmware/FLASHING.md`](firmware/FLASHING.md).
+- **Your device is yours.** The hub does not lock out third-party
+  firmware: there is no Secure Boot against the user, and you can install
+  your own firmware. How: [`firmware/FLASHING.md`](firmware/FLASHING.md).
 - **One license for everything here.** Code, docs, catalog and templates
   are under the AGPL. One additional permission (AGPL §7) lets the
   firmware be combined and shared with Espressif's binary-only ESP-IDF
   libraries (Wi-Fi, PHY, coexistence), see
-  [`LICENSES/LicenseRef-ESP-IDF-binary-libraries-exception.txt`](LICENSES/LicenseRef-ESP-IDF-binary-libraries-exception.txt).
-- **Contributions** are accepted under the same license (inbound =
-  outbound); no CLA, no sign-off.
+  [`ADDITIONAL_PERMISSION.md`](ADDITIONAL_PERMISSION.md).
+- **Contributions** are accepted under the same license, including the
+  additional permission (inbound = outbound); no CLA, no sign-off.
 - **Third-party components** keep their own licenses:
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 

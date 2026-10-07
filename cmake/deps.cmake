@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Fremdbibliotheken als einzelne Header, Version und SHA256 gepinnt.
-# Sie werden beim Konfigurieren nach build/_deps geladen und nicht
-# eingecheckt. Lizenzen: alle MIT (siehe README.md, Abschnitt Lizenz).
+# Third-party libraries as single headers, version and SHA-256 pinned.
+# They are downloaded to build/_deps at configure time and not checked in.
+# Licenses: THIRD_PARTY_NOTICES.md (nlohmann/json also contains CC0 and
+# Apache-2.0 parts).
 #
-# Offline: GC_DEPS_DIR auf einen Ordner mit den drei Dateien setzen.
+# Offline: set GC_DEPS_DIR to a folder with the three files.
 
 set(GC_DEPS_DIR "${CMAKE_BINARY_DIR}/_deps/include" CACHE PATH "Ordner der Header-Abhängigkeiten")
 

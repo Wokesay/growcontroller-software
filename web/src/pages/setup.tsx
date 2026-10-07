@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Setup-Assistent: vom ersten Einschalten bis zur ersten Mischung, in fünf
-// Schritten. Geräte werden erkannt statt ausgewählt (Kundensicht); Einmessen
-// ist Pflicht, bevor eine Pumpe dosiert (Produktregel, strenger als
-// RAT-015). Die Leiste unten (Zurück / Überspringen / Weiter) ist immer
-// sichtbar; „Weiter“ speichert den Schritt.
+// Setup wizard: from first power-on to the first mix, in five steps. Devices
+// are detected instead of selected (customer view); calibration is required
+// before a pump doses (SD-003, RAT-015). The bar at the bottom (Back / Skip /
+// Next) is always visible; "Next" saves the step.
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { ArrowLeft, ArrowRight, Check, PackagePlus, Sprout } from "lucide-preact";

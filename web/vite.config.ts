@@ -5,15 +5,20 @@ import preact from "@preact/preset-vite";
 
 // Source revision for the source code link in the app (AGPL-3.0 §13): a
 // release sets GC_SOURCE_REV to its tag; CI has GITHUB_SHA; locally the
-// current commit. Empty if none is known (the link then shows the repository).
+// current commit. Empty if none is known (the app then says so); CI and
+// release builds must know it.
 function sourceRev(): string {
-  const env = process.env.GC_SOURCE_REV || process.env.GITHUB_SHA;
-  if (env) return env.trim();
-  try {
-    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
-  } catch {
-    return "";
+  let rev = (process.env.GC_SOURCE_REV || process.env.GITHUB_SHA || "").trim();
+  if (!rev) {
+    try {
+      rev = execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      rev = "";
+    }
   }
+  if (rev && !/^[0-9A-Za-z._-]+$/.test(rev)) throw new Error(`Invalid source revision: ${rev}`);
+  if (!rev && process.env.CI) throw new Error("Source revision unknown: set GC_SOURCE_REV (AGPL-3.0 §13)");
+  return rev;
 }
 
 // Entwicklung: API an den Simulator weiterreichen (cmake-build/gc_sim_server --port 8080).

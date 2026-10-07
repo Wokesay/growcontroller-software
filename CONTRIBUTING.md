@@ -5,16 +5,20 @@ in English.
 
 ## License of contributions
 
-This project is licensed under AGPL-3.0-or-later (`LICENSE`). By opening a
-pull request you agree that your contribution is licensed under the same
-terms (inbound = outbound). There is no CLA and no sign-off (DCO). The
-project never relicenses contributions and offers no paid edition.
+This project is licensed under AGPL-3.0-or-later (`LICENSE`) with the
+additional permission in `ADDITIONAL_PERMISSION.md`. By opening a pull
+request you agree that your contribution is licensed under the same terms,
+including that additional permission (inbound = outbound). There is no CLA
+and no sign-off (DCO). The project offers no other license for the
+software: no dual licensing, no commercial license.
 
 Every new source file starts with an SPDX header:
 
+<!-- REUSE-IgnoreStart -->
 ```cpp
 // SPDX-License-Identifier: AGPL-3.0-or-later
 ```
+<!-- REUSE-IgnoreEnd -->
 
 (`#` for shell, CMake and YAML; `<!-- -->` is not needed for Markdown and
 JSON, which `REUSE.toml` covers.) CI runs `reuse lint` and a license check
@@ -59,7 +63,8 @@ either measured (with source) or marked as an assumption.
    Security).
 4. **Language:** code, comments, docs, commits and the PR in English.
 5. **Approval:** CI green, review by `reviewer` and `qa`; additionally
-   `security` for gateway, sensor truth, login or updates.
+   `security` for gateway, sensor truth, login or updates, and `ux` for UI
+   changes.
 
 ## Ideas and questions
 

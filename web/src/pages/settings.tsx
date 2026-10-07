@@ -8,7 +8,7 @@ import { get, post, put } from "../api";
 import { dateTime, num } from "../format";
 import { config, info, logoutLocal, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
-import { sourceLabel, sourceUrl } from "../source";
+import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 
 // Target for public bug reports.
 const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
@@ -332,13 +332,13 @@ export function SettingsPage() {
                   <td class="muted">{t("about.source")}</td>
                   <td>
                     <a href={sourceUrl} target="_blank" rel="noopener noreferrer" data-testid="source-link">
-                      {sourceLabel}
+                      {sourceKnown ? sourceLabel : t("about.sourceUnknown")}
                     </a>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <p class="faint small">{t("about.license")}</p>
+            <p class="faint small">{t(sourceKnown ? "about.license" : "about.licenseUnknown")}</p>
             <p class="faint small">Offene Bausteine: Preact, @preact/signals, uPlot, lucide (MIT/ISC); im Hub nlohmann/json (MIT). Lizenzliste und SBOM liegen jedem Release bei.</p>
           </div>
         </Card>

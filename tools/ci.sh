@@ -14,6 +14,7 @@ end
 
 group "Licenses (REUSE, npm dependencies)"
 "${REUSE:-reuse}" lint
+node --test tools/check_licenses.test.mjs
 node tools/check_licenses.mjs
 end
 

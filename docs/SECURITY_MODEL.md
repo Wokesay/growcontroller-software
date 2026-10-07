@@ -48,13 +48,16 @@ According to `regulatorik`, before 2027-12-11 every device that is sold or
 lent must fully meet EN 18031-1. After that date the CRA applies. List:
 
 1. HTTPS locally, certificate per device.
-2. Signed OTA, Secure Boot v2, flash encryption, eFuse plan. All of them
-   must still let the owner install their own firmware; no Secure Boot
-   against the owner (PD-022).
+2. Signed OTA (EN 18031-1 SUM-2) with downgrade protection; a decision
+   whether a hardware root of trust (Secure Boot v2, flash encryption) is
+   needed; an eFuse plan. Whatever is chosen must let users install their
+   own firmware; no Secure Boot against the user (PD-022). Until a decision,
+   `tools/arch_check.sh` rejects sdkconfig options that burn such eFuses.
 3. Setup access point only after a button press and for a limited time.
    Wi-Fi key per device on the label.
-4. Bluetooth, JTAG and debug off. MQTT and Home Assistant only when the
-   user switches them on.
+4. Bluetooth off; JTAG and debug off in a way that keeps installing own
+   firmware possible (PD-022). MQTT and Home Assistant only when the user
+   switches them on.
 5. Cyber risk assessment, EN 18031 self-assessment, technical
    documentation, support period, reporting process.
 

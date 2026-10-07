@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Ereignislog: Dosierungen, Mischläufe, Sperren, Konfigurationsänderungen,
-// Anmeldungen, Updates. Ersetzt das Nachtragen im Tagebuch.
-// Sicherheitsrelevante Vorgänge werden protokolliert (CRA Anhang I 2(l)).
+// Event log: doses, mixes, locks, configuration changes, logins, updates.
+// Replaces keeping a diary by hand. Security-relevant events are logged
+// (CRA Annex I 2(l)).
 #pragma once
 
 #include <cstdint>

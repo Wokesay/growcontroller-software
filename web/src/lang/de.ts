@@ -31,6 +31,8 @@ export const de = {
   "common.version": "Version {v}",
   "about.source": "Quellcode",
   "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",
+  "about.sourceUnknown": "Repository (Version unbekannt)",
+  "about.licenseUnknown": "Freie Software unter AGPL-3.0-or-later. Aus welchem Commit diese Version gebaut wurde, ist nicht bekannt; der Link führt zum Repository.",
   "login.source": "Quellcode (AGPL-3.0-or-later)",
   "common.step": "Schritt {n} von {total}",
   "common.justNow": "gerade eben",

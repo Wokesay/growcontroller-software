@@ -30,6 +30,10 @@ More options: growcontroller-simulator --help
 
 Language: the app offers English and German; choose under Settings.
 
+License: free software under the GNU Affero General Public License,
+version 3 or later (LICENSE.txt). Source code:
+https://github.com/Wokesay/growcontroller-software
+The running app links the exact version under Settings.
 Third-party licenses of the bundled libraries: THIRD_PARTY_LICENSES.txt
 
 Deutsch
@@ -51,3 +55,6 @@ Der Browser öffnet http://127.0.0.1:8080. Passwort der Demo: demo-passwort
 Die Daten liegen im Ordner „growcontroller-daten“ neben dem Programm;
 Ordner löschen = Demo von vorn. Beenden: Fenster schließen oder Strg+C.
 Sprache: Deutsch oder Englisch, wählbar in der App unter Einstellungen.
+Lizenz: freie Software unter der GNU Affero General Public License,
+Version 3 oder später (LICENSE.txt). Quellcode:
+https://github.com/Wokesay/growcontroller-software
