@@ -17,18 +17,17 @@ that, decisions were made as PDs in the product repository.
   templates, no CLA, no DCO (PD-022, PD-032, PD-033).
 - E11 dropped: there is no subscription (PD-024).
 - E12 decided differently for the channels: Stable, Beta, Development
-  (PD-036). Versions are self-describing (PD-037). SemVer and OTA stay a
-  draft.
+  (PD-036). Versions are self-describing (PD-037). Signed OTA without
+  eFuses for the first devices (PD-043, PD-047). SemVer stays a draft.
 
-They are recorded below as SD-001 to SD-024. The other drafts are the
+Product requirements are recorded below as SD entries. The other drafts are the
 basis of the prototype and become SD entries once the project owner says
 "entschieden" (decided). What needs a PD is marked.
 
 ## Log
 
-All entries below were recorded on 2026-10-07 when the log started. Each
-names what applies to the software and the public reason; the full
-decision is in the product repository.
+All entries below were recorded on 2026-10-07. Each names what applies to
+the software; the full decision is in the product repository.
 
 
 ## SD-001: Product requirement (from PD-013): standalone software
@@ -92,7 +91,7 @@ decision is in the product repository.
 - Fans tend to be on; irrigation only when it is safe or the plants are
   too dry; light depending on how long the power was out. This replaces
   the part of R6 for state functions once implemented; until then
-  everything stays off after a restart. Limits are open.
+  everything stays off after a restart. The limits are decided in SD-025.
 
 
 ## SD-009: Product requirement (from PD-021): pH and EC as one head or as two
@@ -195,7 +194,7 @@ decision is in the product repository.
 
 ## SD-021: Product requirement (from PD-043): signed OTA without eFuses
 
-- Updates over the network are installed only with a valid signature,
+- For the first devices: updates over the network are installed only with a valid signature,
   checked by the firmware (application image), without hardware Secure
   Boot.
 - Over USB every owner can always install their own firmware; after that,
@@ -236,8 +235,31 @@ decision is in the product repository.
 - It protects secrets (for example Wi-Fi credentials, password hash)
   against read-out flash images, not against someone who loads their own
   code with the device in hand; that stays a documented residual risk.
-- Together with it: USB-JTAG off at run time, a recessed BOOT button,
-  sessions stored only as hashes.
+- Planned alongside (recommended with the question, not chosen
+  separately): USB-JTAG off at run time without a further eFuse
+  (feasibility open), a recessed BOOT button, sessions stored only as
+  hashes.
+
+
+## SD-025: Product requirement (from PD-048 to PD-051): limits after a power loss
+
+- **Light (PD-048):** after a restart the light comes on only with a
+  secured time and only inside the planned light window (with ramp);
+  missed light time is not made up, the day ends as planned; without a
+  secured time the light stays off and this is reported.
+- **"Too dry" (PD-049):** more time has passed since the last dose than
+  the maximum pause per phase (default: twice the normal interval, at most
+  24 h). Then exactly one emergency dose of one normal dose, a report, and
+  waiting again. With a substrate sensor its value counts later.
+- **Fan sockets (PD-050):** sockets of exhaust and circulation fan are
+  set to "on after power loss"; light, humidifier, pumps, inlet and heater
+  stay "off after power loss".
+- **Hub failure (PD-051):** the planned light window is also written as a
+  local schedule into the light socket, so the light keeps its rhythm if
+  the hub fails (without dimming and ramps); the hub keeps both schedules
+  equal. Pumps, inlet and humidifier are protected by their auto-off in
+  the device; fans keep running.
+- Not implemented yet (issue #20); until then R6 applies.
 
 ---
 
@@ -256,7 +278,7 @@ decision is in the product repository.
 | E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
 | E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
 | E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
-| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: decided differently by PD-036; rest: no |
+| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
 | E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
 | E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
 | E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |

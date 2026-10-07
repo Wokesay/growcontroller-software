@@ -18,8 +18,9 @@ listed in every release under "Security".
   `reuse lint` and a license check of all npm dependencies
   (`tools/check_licenses.mjs`).
 - **Source code link** (AGPL §13): the login page and Settings › Display
-  and info link to the source code of exactly the running build (commit or
-  release tag, set at build time).
+  and info link to the source code of exactly the running build (the
+  commit, set at build time). CI and release builds fail without a
+  revision; otherwise the app says the version is unknown.
 - **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
   (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
   tests. Code and docs cite only these IDs.

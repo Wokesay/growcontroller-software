@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
 
 // Source revision for the source code link in the app (AGPL-3.0 §13): a
-// release sets GC_SOURCE_REV to its tag; CI has GITHUB_SHA; locally the
+// release or CI sets GC_SOURCE_REV to the commit; else GITHUB_SHA; locally the
 // current commit. Empty if none is known (the app then says so); CI and
 // release builds must know it.
 function sourceRev(): string {

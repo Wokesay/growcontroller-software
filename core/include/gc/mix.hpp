@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dosierplanung als reine Funktionen (gut testbar, keine Seiteneffekte).
 //   Mischen nach Rezept (Stufe 0), EC-Nachdosierung und pH-Gabe (Stufe 1).
-// Invariants (docs/RATIONALE.md): pH immer zuletzt (RAT-004); gepaarte Nährstoffe
-// an jeder Grenze gemeinsam skalieren, nie je Pumpe kappen oder runden
-// (RAT-054); ohne Einmesswert keine Dosierung (strenger als RAT-015); fehlende
-// Größe → Abbruch ohne Ersatzwert (RAT-006); unter 1 s Laufzeit nicht dosieren
-// (RAT-050); große Gaben in gleiche Teilgaben (RAT-055).
+// Invariants (docs/RATIONALE.md): pH always last (RAT-004); scale paired
+// nutrients together at every limit, never cap or round per pump (RAT-054);
+// no dosing without a calibration value (stricter than RAT-015); a missing
+// quantity aborts without a substitute (RAT-006); no runs under 1 s
+// (RAT-050); large doses in equal partial runs (RAT-055).
 #pragma once
 
 #include <map>

@@ -31,7 +31,7 @@ export const en: Record<keyof typeof de, string> = {
   "common.version": "Version {v}",
   "about.source": "Source code",
   "about.license": "Free software under AGPL-3.0-or-later. The link leads to the source code of exactly this version.",
-  "about.sourceUnknown": "repository (version unknown)",
+  "about.sourceUnknown": "Repository (version unknown)",
   "about.licenseUnknown": "Free software under AGPL-3.0-or-later. The commit this version was built from is not known; the link leads to the repository.",
   "login.source": "Source code (AGPL-3.0-or-later)",
   "common.step": "Step {n} of {total}",

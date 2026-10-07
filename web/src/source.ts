@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Where the source code of this build lives (AGPL-3.0 §13): the repository
-// and the commit or tag the web app was built from. vite.config.ts sets the
+// and the commit the web app was built from. vite.config.ts sets the
 // revision at build time; CI and release builds fail without one.
 declare const __GC_SOURCE_REV__: string;
 

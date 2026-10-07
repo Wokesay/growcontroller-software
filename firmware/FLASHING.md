@@ -71,6 +71,10 @@ partition table are next to it (`build/bootloader/`,
    new or erased hub, setup starts as usual (first password in the web
    app).
 
+Once secrets are stored in encrypted NVS (SD-024), your own firmware needs
+the same NVS encryption setting and HMAC key ID to read them; otherwise it
+starts without them (as after a factory reset).
+
 ## Going back to an official release
 
 Flash the official image of a release the same way, or install it as an

@@ -58,3 +58,4 @@ Sprache: Deutsch oder Englisch, wählbar in der App unter Einstellungen.
 Lizenz: freie Software unter der GNU Affero General Public License,
 Version 3 oder später (LICENSE.txt). Quellcode:
 https://github.com/Wokesay/growcontroller-software
+Die App verlinkt die genaue Version unter Einstellungen.

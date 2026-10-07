@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Tests for the SPDX expression check of tools/check_licenses.mjs.
+// Tests for the SPDX expression check used by tools/check_licenses.mjs.
 //   node --test tools/check_licenses.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { allowed } from "./check_licenses.mjs";
+import { allowed } from "./spdx_expr.mjs";
 
 const OK = new Set(["MIT", "Apache-2.0", "ISC"]);
 

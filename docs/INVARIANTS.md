@@ -1,6 +1,6 @@
 # Domain rules (invariants): implementation and test evidence
 
-As of 2026-10-06. These are the domain rules documented in
+As of 2026-10-07. These are the domain rules documented in
 [`RATIONALE.md`](RATIONALE.md), grouped by module (M1–M15), with their
 implementation and test evidence. "Rationale" cites the RAT ID;
 "proposal by <agent>" marks a rule that came from a review; R1–R8 are the
@@ -31,7 +31,7 @@ dedicated test or with a deviation · **○** open.
 | Job ID against double dosing on retry | proposal by `firmware` | ✓ | dosing block in the simulator; every attempt and every start has its own ID · test_scenarios "nachholen", "Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu" |
 | Deadline per run: without feedback, off and counted as run | proposal by `reviewer` | ✓ | `Doser::tick` · test_scenarios "Szenario: Dosierblock antwortet im Lauf nicht", "Kappe im Lauf abgezogen" |
 | Fixed limits in code, configuration only tightens them | R7 | ✓ | `Limits::bounded`, `validateConfig` · test_catalog_config, test_api "Import" |
-| Actual run time from the dosing block, not the requested one | RAT-070 | ✓ | `RunStatus::actualMs`, booking per run |
+| Actual run time from the dosing block, not the requested one | RAT-070 | ◐ | `RunStatus::actualMs`, booking per run |
 | Hardware time limit above the longest run (SW 60 s / HW 90 s) | RAT-007, RAT-018 | ◐ | gateway 60 s; dosing-block twin 90 s. In hardware: open |
 | One channel at a time | PD-010, proposal by `firmware` | ◐ | gateway and twin refuse |
 
@@ -68,7 +68,7 @@ dedicated test or with a deviation · **○** open.
 | Reserve for the following pH− dose | RAT-053 | ◐ | `EcController::tick` |
 | No movement after 2 rounds → abort | RAT-055 | ◐ | latch `ec.no_effect` |
 | pH only at EC ≥ 0.5; invalid EC blocks; missing history does not block | RAT-046 | ✓ | test_scenarios "EC-Gate" |
-| Rest time 240 s after an EC dose | RAT-058 | ✓ | `kEcRestS` |
+| Rest time 240 s after an EC dose | RAT-058 | ◐ | `kEcRestS` |
 | EC can only be raised | RAT-012 | ◐ | control line "lowering only works with fresh water" |
 | No dosing during inlet and calibration | RAT-055 | ◐ | `ControlEnv::refilling`, `calibrating` |
 
@@ -76,7 +76,7 @@ dedicated test or with a deviation · **○** open.
 
 | Rule | Rationale | Status | Implementation / test |
 |---|---|---|---|
-| No control dosing without circulation | RAT-047, RAT-051 | ✓ | gateway `act.no_mixing` |
+| No control dosing without circulation | RAT-047, RAT-051 | ◐ | gateway `act.no_mixing` |
 | Wait time ≥ 2 × smoothing window; derived from measurement | RAT-052, RAT-058 | ◐ | fixed parameters (pH 5 min, EC 4 min) |
 | Mixing time grows with volume / circulation flow | RAT-052 | ○ | open; modelled in the simulator |
 
@@ -100,7 +100,7 @@ dedicated test or with a deviation · **○** open.
 | No path to actuators | RAT-074 | ✓ | `arch_check.sh` R2 |
 | Invalid value = problem, never neutral | RAT-015 | ✓ | test_watchdog M9-1 |
 | Neutral in maintenance mode, during the start-up grace period, without a target | RAT-073, RAT-005 | ✓ | test_watchdog |
-| Assessment older than 3 min → red | RAT-073 | ✓ | `stale` in the API, overview |
+| Assessment older than 3 min → red | RAT-073 | ◐ | `stale` in the API, overview |
 | Narrow control band, wide alarm band | RAT-033 | ✓ | test_watchdog |
 | Tolerance never 0 | RAT-008 | ✓ | catalog lower limit · test_catalog_config |
 

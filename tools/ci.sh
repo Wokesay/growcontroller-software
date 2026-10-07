@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # All checks as CI runs them. Locally: tools/ci.sh  (E2E: E2E=1 tools/ci.sh)
-# Needs reuse (pip install reuse==6.2.0); REUSE=<path> selects another binary.
+# Needs reuse (pipx install reuse==6.2.0); REUSE=<path> selects another binary.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

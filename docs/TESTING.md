@@ -7,7 +7,7 @@ test. Every visible function runs end to end in the browser at least once.
 
 | Level | Tool | Location | Count today | Checks |
 |---|---|---|---|---|
-| Architecture rules | shell/grep | `tools/arch_check.sh` | 5 rules | core without platform headers, actuators only through the gateway, watchdog without an actuator path, no phase names in the logic, no `value_or(0)` |
+| Architecture rules | shell/grep | `tools/arch_check.sh` | 6 rules | no sdkconfig option that burns eFuses (PD-022, SD-024), core without platform headers, actuators only through the gateway, watchdog without an actuator path, no phase names in the logic, no `value_or(0)` |
 | Unit | doctest (C++) | `tests/core/test_*.cpp` | 77 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, mix planning, resolver, watchdog, SHA-256/PBKDF2, login, sockets and gateway (`test_net`), room climate and VPD (`test_climate`) |
 | API contract | doctest against the core | `tests/core/test_api.cpp` | 17 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
 | Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 19 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart |

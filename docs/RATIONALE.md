@@ -10,11 +10,12 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
   dropped.
 - **Reference installation** means the private installation on which the
   rules were first developed and measured. Evidence names the year only.
-- **Evidence** says whether a number was measured, observed or
-  calculated. "—" means there is no number behind the rule.
+- **Evidence** says whether a number was measured, observed, calculated
+  or found in a review. "—" means there is no number behind the rule.
 - **Planned** marks rules that are described here but not implemented
   yet. **Deviation** marks where this software deliberately differs from
-  the reference installation.
+  the reference installation. **Decided** notes a later decision on the
+  rule (SD-xxx) that is not implemented yet.
 - New rules get the next free ID, an entry here and a test
   (`docs/INVARIANTS.md`).
 
@@ -733,7 +734,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 
 - **Rule:** The level is derived from the raw value through a piecewise-linear curve: valid from 2 points, raw values strictly rising by at least 3 mV, volumes not falling; below the first point the first value, above the last point extrapolated with the last slope. Outputs protected by the minimum level switch on again only 0.5 L above the switch-off threshold. The simulator models a level sensor that is non-linear at the bottom.
 - **Why:** A level sensor can be non-linear near the bottom of a vessel; a two-point straight line misreads the volume exactly where the dry-run thresholds sit. Points too close together make the slope noise-dominated.
-- **Evidence:** Measured on the reference installation (2026) (60-L drum, 2026): 1.9607 V = 0 L, 1.9871 V = 1.0 L, 2.0114 V = 2.0 L, 2.0198 V = 2.5 L, 2.1291 V = 10 L — segment slopes 37.9 / 41.2 / 59.5 / 68.6 L/V. A two-point line read 3.5 L at a real 2.5 L and 32.6 L at a real 36 L. Thresholds were set to 2.5 L off / 3 L on, since all submerged parts are covered from 2.5 L. A check at a real 10 L still read 0.4–0.5 L high (cause unresolved), so points should be re-checked.
+- **Evidence:** Measured on the reference installation (60-L drum, 2026): 1.9607 V = 0 L, 1.9871 V = 1.0 L, 2.0114 V = 2.0 L, 2.0198 V = 2.5 L, 2.1291 V = 10 L — segment slopes 37.9 / 41.2 / 59.5 / 68.6 L/V. A two-point line read 3.5 L at a real 2.5 L and 32.6 L at a real 36 L. Thresholds were set to 2.5 L off / 3 L on, since all submerged parts are covered from 2.5 L. A check at a real 10 L still read 0.4–0.5 L high (cause unresolved), so points should be re-checked.
 - **Implemented in:** core/include/gc/truth.hpp (`Curve`), core/src/truth.cpp, core/src/dosing.cpp (`kInletHysteresisL`), sim/world.cpp, docs/CONCEPT.md, docs/SIMULATOR.md, docs/INVARIANTS.md
 - **Tests:** tests/core/test_truth.cpp – „Kennlinie: stückweise linear, streng steigend …“
 
