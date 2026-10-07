@@ -53,7 +53,10 @@ only the sync workflow may write there.
 1. **Translate code comments, test names and UI defaults** into English in
    a separate PR (PD-034, PD-035; #25).
 2. **Optional:** activate the triage action from
-   `docs/templates/claude-triage.yml` (§4).
+   `docs/templates/claude-triage.yml` (§4). It needs
+   `anthropics/claude-code-action` on the Actions allow list, pinned by
+   commit SHA, because only actions created by GitHub are allowed
+   (SD-027).
 3. **Before the first public release tag:** release hardening (#29).
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
@@ -86,7 +89,7 @@ repository asks them through the project owner or in a joint session.
 Issue/idea ─► triage ─► project owner decides (priority, whether at all)
    ─► Claude: branch, test first, then code ─► tools/ci.sh green
    ─► reviewer + qa (+ security for gateway/sensor truth/auth/update, + ux for UI)
-   ─► PR with CHANGELOG entry ─► CI green ─► approval ─► merge ─► release collects
+   ─► PR with CHANGELOG entry ─► CI green ─► reviews ─► merge ─► release collects
 ```
 
 ## 4. Making issues visible in Claude Code and working through them
@@ -146,7 +149,8 @@ devices, so 2–5 h per week with Claude triage. Rules:
 - **Merge** only through a pull request, after green CI and the reviews
   above. Claude merges, except releases, license and security rules and
   changes to the actuator gateway or protective cut-offs, which wait for
-  the project owner's "mergen" (PD-045, SD-023).
+  the project owner's "mergen" (PD-045, SD-023). Squash only; the
+  ruleset on `main` enforces "pull request only" (SD-027).
 
 ## 6. Decisions
 

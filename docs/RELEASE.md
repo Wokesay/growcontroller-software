@@ -48,10 +48,11 @@ entry under `[Unreleased]`.
 1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION` and
    `web/package.json`, PR, review (`reviewer`, `release`, and `security`
    for security topics), CI green.
-2. **Tag:** tag `vX.Y.Z` on `main`. The workflow `release.yml` builds the
-   simulator and the web app, creates the SBOM (CycloneDX) and
-   `SHA256SUMS`, and creates the GitHub release with the changelog
-   section. Pre-releases (`-beta`, `-proto`) are marked as pre-release.
+2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
+   repository admin can set `v*` tags, SD-027). The workflow
+   `release.yml` builds the simulator and the web app, creates the SBOM
+   (CycloneDX) and `SHA256SUMS`, and creates the GitHub release with the
+   changelog section. Pre-releases (`-beta`, `-proto`) are marked as pre-release.
    Simulator downloads belong only to Beta releases, not to Stable
    (PD-036); `release.yml` does not yet tell the channels apart.
 3. **Firmware** (once `firmware/` builds):

@@ -8,7 +8,7 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
-- **Ready to go public** (PD-055 to PD-062, SD-026): a safety notice and a
+- **Public repository** (PD-055 to PD-062, SD-026): a safety notice and a
   trademark notice in the README; `SECURITY.md` takes reports only through
   GitHub private vulnerability reporting, with targets of 7 days
   (acknowledgement), 30 days (first assessment) and at most 90 days to
@@ -32,8 +32,9 @@ listed in every release under "Security".
 - **Rationale register** `docs/RATIONALE.md`: one entry per domain rule
   (RAT-001 … RAT-084) with rule, reason, evidence, implementation and
   tests. Code and docs cite only these IDs.
-- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-027 record the
-  product decisions that apply to the software.
+- **Decision log** `docs/DECISIONS.md` starts: SD-001 to SD-026 record the
+  product decisions that apply to the software; SD-027 is the first
+  decision about this repository itself.
 - Simulator download for Windows, macOS (Apple silicon and Intel) and
   Linux: one file with the web app embedded; a double-click starts the demo
   and opens the browser, and the data is stored next to the program. If the
