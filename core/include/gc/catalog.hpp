@@ -39,6 +39,9 @@ struct RoleDef {
   // folgt die Abschaltung im Gerät (Auto-Off) knapp darüber.
   std::string profile;
   double maxOnS = kNaN;
+  // A network socket with this role comes back on after a power loss
+  // (fans, PD-050); every other socket stays off. Only for `dauer`.
+  bool onAfterPowerLoss = false;
   bool allows(const std::string& cap) const;
 };
 

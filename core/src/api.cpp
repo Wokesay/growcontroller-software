@@ -190,7 +190,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     return r;
   }
   if (is("GET", {"history"})) {
-    Epoch now = clock_.epoch();
+    Epoch now = hub_.clock().epoch();
     auto it = req.query.find("series");
     if (it == req.query.end()) return fail(422, "history.series", "series fehlt");
     Epoch from = qnum(req, "from", now - 24 * 3600), to = qnum(req, "to", now);
@@ -202,13 +202,13 @@ ApiResponse Api::route(const ApiRequest& req) {
     return jsonResp(200, {{"from", from}, {"to", to}, {"series", out}});
   }
   if (is("GET", {"events"})) {
-    Epoch now = clock_.epoch();
+    Epoch now = hub_.clock().epoch();
     auto t = req.query.find("type");
     return jsonResp(200, hub_.events(qnum(req, "from", 0), qnum(req, "to", now), t == req.query.end() ? "" : t->second,
                                      static_cast<size_t>(std::min<Epoch>(qnum(req, "limit", 200), 2000))));
   }
   if (is("GET", {"export.csv"})) {
-    Epoch now = clock_.epoch();
+    Epoch now = hub_.clock().epoch();
     std::vector<std::string> series;
     auto it = req.query.find("series");
     std::stringstream ss(it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second);

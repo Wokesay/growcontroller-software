@@ -72,7 +72,9 @@ class Actuators {
 
   // Not-Halt: alle Pumpen und Ausgänge aus, idempotent (Quelle: RAT-036).
   // Zählt als Ausschalten: Mindestpausen gelten auch danach.
-  void stopAll(const Catalog& cat, const Config& cfg, Ms now);
+  // keepPowerLossOn: after a restart, roles that come back on after a power
+  // loss (fans, PD-050) keep their state.
+  void stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keepPowerLossOn = false);
   // Je Takt: Trockenlauf, Notgrenze, Zeitlimits; schaltet nur AUS, nie EIN.
   void enforce(const Ctx& c);
 

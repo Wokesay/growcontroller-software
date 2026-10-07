@@ -16,12 +16,17 @@ class SimClock : public gc::IClock {
   explicit SimClock(gc::Epoch start) : start_(start) {}
   gc::Ms nowMs() const override { return ms_; }
   gc::Epoch epoch() const override { return start_ + ms_ / 1000; }
+  // The host clock counts as network time; a power failure can clear it
+  // until the time is secured again (PD-069, PD-073).
+  bool secured() const override { return secured_; }
+  void setSecured(bool s) { secured_ = s; }
   void advance(gc::Ms dt) { ms_ += dt; }
   void set(gc::Ms ms) { ms_ = ms; }
 
  private:
   gc::Epoch start_;
   gc::Ms ms_ = 0;
+  bool secured_ = true;
 };
 
 class SimBus : public gc::IBus {

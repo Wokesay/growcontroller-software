@@ -12,6 +12,7 @@
 #include <string>
 
 #include "gc/auth.hpp"
+#include "gc/clock.hpp"
 #include "gc/control.hpp"
 #include "gc/history.hpp"
 #include "gc/resolver.hpp"
@@ -63,6 +64,8 @@ class Hub {
   // ---- Lesen
   json info() const;
   json state();
+  // The hub's time base; the API reads wall time here, not from the platform.
+  const IClock& clock() const { return clock_; }
   json configJson() const;
   json history(const std::string& series, Epoch from, Epoch to, size_t points) const;
   json events(Epoch from, Epoch to, const std::string& type, size_t limit) const;
@@ -120,6 +123,7 @@ class Hub {
   Ctx ctx();
   void saveConfig(const std::string& what);
   void autoBindMeasures();
+  void releaseSocket(const RoleDef& rd, const Binding& b);
   void saveState();
   void saveJob();
   void sampleHistory(Epoch epoch);
@@ -139,7 +143,7 @@ class Hub {
   const Catalog& cat_;
   IBus& bus_;
   IStorage& store_;
-  const IClock& clock_;
+  HubClock clock_;  // wall time, secured flag, continued clock, operating time (PD-069)
   RandomFn rng_;
   IUpdater* updater_ = nullptr;
   INetBus* net_ = nullptr;
@@ -173,6 +177,10 @@ class Hub {
   Epoch bootEpoch_ = 0;
   Ms bootMs_ = 0;
   Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastHistorySave_ = 0;
+  Epoch lastTickEpoch_ = 0;
+  Ms lastTickMs_ = 0;
+  bool wasSecured_ = false, unsecuredReported_ = false;
+  void watchClock(Epoch epoch, Ms now);
   bool stateDirty_ = false;
   std::uint64_t savedEventId_ = 0;
   int idSeq_ = 0;

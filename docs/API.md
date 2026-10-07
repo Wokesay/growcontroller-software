@@ -34,7 +34,7 @@ UI can do, an integration can do as well.
 
 | Method | Path | Content |
 |---|---|---|
-| GET | `/state` | live state: ports, devices, readings with quality and reason, tank, controllers with control line and checklist, outputs, job, dosing, watchdog (with `stale`), functions (resolver), latches, stock, cultivation run |
+| GET | `/state` | live state: ports, devices, readings with quality and reason, tank, controllers with control line and checklist, outputs, job, dosing, watchdog (with `stale`), functions (resolver), latches, stock, cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware |

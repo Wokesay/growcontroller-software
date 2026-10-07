@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "gc/bus.hpp"
 #include "gc/common.hpp"
 
 namespace sim {
@@ -54,7 +55,8 @@ struct NetOutlet {
   bool on = false;
   std::string load;      // z. B. "circulation", "light" – für die Physik und die Leistung
   double loadW = 0;      // Leistung, wenn an (Annahme je Gerät)
-  bool initialOff = false;  // Werkseinstellung „wie vorher“ (Annahme, ungeprüft)
+  gc::PowerOn powerOn = gc::PowerOn::Restore;  // factory default "as before" (assumption, unchecked)
+  bool beforeOutage = false;                    // state when the power failed (for Restore)
   double autoOffS = gc::kNaN;
   double powerLimitW = gc::kNaN;
   Ms onSince = 0;
@@ -108,8 +110,10 @@ class World {
   std::vector<NetPlug> netPlugs;
   NetPlug* netPlug(const std::string& id);
   std::string addNetPlug(const std::string& cls, const std::vector<std::pair<std::string, double>>& loads);
-  // Stromausfall im Haus: Dosen mit „nach Stromausfall aus“ gehen aus.
-  void mainsOutage();
+  // Power failure in the house: every outlet is without power until
+  // powerReturn(); then each takes its setting for after a power loss.
+  void powerFail();
+  void powerReturn();
   // Wird umgewälzt? Hub-Ausgang 1 oder eine Dose mit der Umwälzpumpe.
   bool circulating() const;
   // Ist eine Dose mit dieser Last an (z. B. "light")?

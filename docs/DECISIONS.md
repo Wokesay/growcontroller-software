@@ -26,10 +26,10 @@ basis of the prototype and become SD entries once the project owner says
 
 ## Log
 
-All entries below were recorded on 2026-10-07. SD-001 to SD-026 name what
-applies from a product decision; the full decision is in the product
-repository. From SD-027 on, decisions about this repository itself are
-recorded here in full.
+All entries below were recorded on 2026-10-07. Entries titled "Product
+requirement" name what applies from a product decision; the full decision
+is in the product repository. From SD-027 on, decisions about this
+repository itself are recorded here in full.
 
 
 ## SD-001: Product requirement (from PD-013): standalone software
@@ -325,6 +325,59 @@ below were set when the repository went public.
 - Actions: only actions created by GitHub; workflows get read-only tokens
   by default and cannot create or approve pull requests; workflows from
   outside contributors need approval.
+
+
+## SD-028: Product requirement (from PD-063 to PD-075): restart, clock and hub failure
+
+What the software has to do; hardware details stay in the product
+repository.
+
+- **Emergency doses (PD-063, PD-064):** after an emergency dose and
+  another maximum pause, the next one follows; at most one per 24 h, each
+  reported, until someone acknowledges or watering is safe again. The time
+  of the last emergency dose survives a restart. If the time of the last
+  dose is unknown, the maximum pause counts from the restart, and "last
+  dose unknown" is reported.
+- **Light socket without a schedule (PD-065):** the hub sets an auto-off in
+  the socket of the remaining light window plus a short buffer, at every
+  switch-on and when the window changes. Setup warns that there is no
+  fallback for the day rhythm.
+- **Circulation pump and dehumidifier (PD-066):** keep their state if the
+  hub fails; no auto-off. Setup recommends a dehumidifier with its own
+  hygrostat and full-tank cut-off.
+- **Time server (PD-067):** the hub offers network time to the sockets and
+  sets itself as their time server; it gives out time only while its own
+  time is secured.
+- **Climate after a restart (PD-068):** if the dehumidifier's last off
+  time is unknown, its full minimum pause counts from the restart. Without
+  a secured time the night targets apply and "time missing" is reported.
+- **Continued clock (PD-069):** the hub saves its time and operating time
+  regularly. Without a secured time after a start it continues from the
+  saved time, never before its newest event; the outage counts as 0. This
+  clock is not a secured time (light, socket schedule, time server, day
+  and night targets). Intervals between two moments use wall time only if
+  both were secured, otherwise operating time. Emergency doses need no
+  secured time; the normal watering plan waits for a secured time and
+  sensor truth.
+- **EC and pH control after a restart (PD-070, PD-071):** every controller
+  dose is saved before the pump starts and its result when it ends. If a
+  dose was in flight or not yet mixed in, the controller waits the full
+  settle time, counted from when circulation runs again; while EC waits,
+  pH waits too. Counters, locks and pauses survive a restart. The
+  interrupted round is reported with the booked amounts, not resumed. If
+  the run-time state is unreadable, the controller waits the full settle
+  time once.
+- **Secured time (PD-072, PD-073):** sources are network time, a buffered
+  clock in the hub, and the device time of the app after the user
+  confirms it; the device time never overwrites a secured time. The age of
+  the last sync only warns (from about 2 min estimated error); the time
+  counts as unsecured only from about 15 min estimated error.
+- **Dimming output and 12 V outputs (PD-074, PD-075):** the firmware gives
+  a sign of life from the control loop to an external watchdog. After a
+  restart the hub sets the light to its planned value again (PD-048).
+- Implemented so far: fan sockets (PD-050), the continued clock with
+  operating time and intervals (PD-069), secured time from network time
+  in the firmware. The rest follows in stages (issue #20).
 
 ---
 

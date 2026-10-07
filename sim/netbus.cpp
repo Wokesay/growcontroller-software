@@ -78,7 +78,7 @@ bool SimNetBus::configure(const std::string& dev, int channel, const gc::SwitchS
     return false;
   }
   if (p->fault == "ignore") return true;  // meldet Erfolg, speichert aber nichts – das Rücklesen fällt auf
-  o->initialOff = s.initialOff;
+  o->powerOn = s.powerOn;
   o->autoOffS = s.autoOffS;
   o->powerLimitW = s.powerLimitW;
   return true;
@@ -89,7 +89,7 @@ std::optional<gc::SwitchSafety> SimNetBus::readConfig(const std::string& dev, in
   NetOutlet* o = outlet(dev, channel, err);
   if (!o) return std::nullopt;
   gc::SwitchSafety s;
-  s.initialOff = o->initialOff;
+  s.powerOn = o->powerOn;
   s.autoOffS = o->autoOffS;
   s.powerLimitW = o->powerLimitW;
   return s;

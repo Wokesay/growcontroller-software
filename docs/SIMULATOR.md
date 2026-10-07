@@ -55,7 +55,7 @@ default password (EN 18031-1).
 | Block/pull off a cap | run fails after 0.3 s, or the cap is missing | pair fault, "catch up"; amount estimated from the run time |
 | Dosing block offline | block does not respond, hub sees the last state | deadline per run: pumps off, counted as run |
 | Cap on hub port 2 | identification does not match, port is not enabled | mis-plug message (PD-012) |
-| Power cut | hub restarts, outputs de-energised | R6: everything off, sequence reported, not resumed |
+| Power cut | hub restarts, outputs de-energised; optionally lasting `outageMin` (the world runs on, everything off) and without a secured time afterwards (`timeSecured: false`); the action `time` secures the clock later | R6: everything off except the fan sockets (PD-050), sequence reported, not resumed; without a secured time the clock continues from the saved time (PD-069) |
 | Fresh water | set volume, EC and pH | mixing, EC gate, dry run |
 | Time-lapse 1–300× | – | settle times, history |
 | Scenario | everything reset; only when logged in, without login only with `--allow-reset` (Playwright) | first-time setup |
@@ -74,7 +74,7 @@ default password (EN 18031-1).
 | Quantity | Value in the simulator | Source |
 |---|---|---|
 | Devices | Plug S Gen3 (1 outlet), Power Strip 4 Gen4 (4 outlets), IP 192.168.1.60 onwards | **Assumption** |
-| Factory state after a power cut | "as before", until the hub sets "off" | **Assumption** (factory setting not checked) |
+| Factory state after a power cut | "as before", until the hub sets "off" (or "on" for exhaust and circulation fan, PD-050) | **Assumption** (factory setting not checked) |
 | Load per outlet | circulation pump 18 W, light 240 W, exhaust fan 35 W, circulating fan 15 W, humidifier 30 W | **Assumption** |
 | Auto-off | works in the device, even without the hub | RAT-019, RAT-060 |
 | Outlet without Wi-Fi | load keeps running; counts for room climate and circulation | **Assumption** (power flows independently of Wi-Fi) |

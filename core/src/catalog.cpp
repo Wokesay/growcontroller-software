@@ -151,6 +151,12 @@ Catalog Catalog::fromJson(const json& j) {
       throw std::runtime_error("Katalog: Rolle " + id + " mit unbekanntem Profil " + r.profile);
     if ((r.profile == "puls" || r.profile == "heizen") && !(isNum(r.maxOnS) && r.maxOnS > 0))
       throw std::runtime_error("Katalog: Rolle " + id + " braucht eine Höchstlaufzeit (Profil " + r.profile + ")");
+    const std::string apl = jstr(v, "afterPowerLoss", "off");
+    if (apl != "off" && apl != "on") throw std::runtime_error("Katalog: Rolle " + id + ": afterPowerLoss muss on oder off sein");
+    r.onAfterPowerLoss = apl == "on";
+    // Only loads without a maximum run time may come back on by themselves.
+    if (r.onAfterPowerLoss && r.profile != "dauer")
+      throw std::runtime_error("Katalog: Rolle " + id + ": nach Stromausfall an nur mit Profil dauer");
     c.roles[id] = r;
   }
   for (const auto& v : j.at("functions")) {

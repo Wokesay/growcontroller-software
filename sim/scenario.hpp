@@ -47,7 +47,10 @@ class Simulation {
 
   void step(gc::Ms dt);                       // Uhr vorstellen, Hub tickt je ≤ 1 s
   void fastForward(double hours, gc::Ms tick = 5000);
-  void reboot();                              // Stromausfall: Hub neu, Ausgänge stromlos
+  // Power failure: hub restarts, outputs without power. outageMs: how long
+  // the power is gone (the world runs on, everything off); timeSecured:
+  // whether the hub gets a secured time right away (PD-069, PD-073).
+  void reboot(gc::Ms outageMs = 0, bool timeSecured = true);
   void loadScenario(const std::string& name); // alles neu (Speicher leer)
   gc::json simState();
   gc::json control(const std::string& action, const gc::json& body);  // Störknöpfe

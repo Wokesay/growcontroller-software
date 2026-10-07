@@ -2,6 +2,7 @@
 // Plattform-Schicht des Hubs (ESP-IDF): Uhr, Ablage, Bus, Webserver.
 #pragma once
 
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <string>
@@ -15,6 +16,13 @@ class EspClock : public gc::IClock {
  public:
   gc::Ms nowMs() const override;
   gc::Epoch epoch() const override;
+  // Secured after the first network time sync since the start (PD-073).
+  // The buffered clock (PD-072) and the device time from the app follow.
+  bool secured() const override { return secured_.load(); }
+  void markSecured() { secured_.store(true); }
+
+ private:
+  std::atomic<bool> secured_{false};
 };
 
 // Dateien auf SPIFFS unter /data; schreibt atomar über tmp + rename.

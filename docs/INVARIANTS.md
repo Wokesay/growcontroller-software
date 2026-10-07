@@ -25,7 +25,9 @@ dedicated test or with a deviation · **○** open.
 
 | Rule | Rationale | Status | Implementation / test |
 |---|---|---|---|
-| After a restart everything is off, nothing resumes | RAT-007 | ✓ | `Hub::boot`, `Actuators::stopAll` · test_scenarios "Stromausfall". PD-020 replaces this for state functions (fans, light, irrigation); implementation open |
+| After a restart everything is off, nothing resumes; fan sockets come back on and keep their state (PD-050) | RAT-007 | ◐ | `Hub::boot`, `Actuators::stopAll` · test_scenarios "Stromausfall", test_net "fans come back on after a power loss". Light and irrigation (PD-020) open; interrupted controller rounds and refills are not reported yet (PD-070, issue #20) |
+| A socket bound to the exhaust or circulation fan is "on after power loss", every other socket "off"; a role change resets it | RAT-019, PD-050 | ✓ | `safetyForRole`, `Hub::releaseSocket` · test_net "a socket that loses its fan role" |
+| Without a secured time the clock continues from the saved time, the outage counts as 0; intervals use wall time only if both moments were secured, otherwise operating time | PD-069, PD-073 | ◐ | `HubClock`, `elapsedS` · test_clock. Used by the dosing intervals that follow (PD-063, PD-070) |
 | No dosing below 1.0 s, and this is visible | RAT-050 | ✓ | `splitRuns`, gateway · test_mix |
 | Manual dose capped in ml | RAT-039 | ✓ | `Limits::handDoseMaxMl` (5 ml, fixed maximum 50 ml) · test_catalog_config "Grenzen" |
 | Job ID against double dosing on retry | proposal by `firmware` | ✓ | dosing block in the simulator; every attempt and every start has its own ID · test_scenarios "nachholen", "Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu" |

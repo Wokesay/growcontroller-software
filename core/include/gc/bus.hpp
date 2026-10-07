@@ -67,10 +67,17 @@ class IBus {
   virtual bool writePumpCalibration(const std::string& pump, double mlPerMin, std::string& err) = 0;
 };
 
+// State of a network outlet when mains power returns, stored in the device.
+// Restore ("as before") is the factory default of many sockets; the hub
+// never sets it (RAT-019, PD-050).
+enum class PowerOn { Off, On, Restore };
+const char* powerOnName(PowerOn p);
+std::optional<PowerOn> powerOnFromName(const std::string& s);
+
 // Schutzeinstellung eines Netz-Schaltkanals, im Gerät selbst gespeichert:
 // Sie wirkt auch, wenn der Hub ausfällt (Konzept §3, Quelle: RAT-060).
 struct SwitchSafety {
-  bool initialOff = true;    // nach Stromausfall aus
+  PowerOn powerOn = PowerOn::Off;  // after a power loss: off unless the role says on
   double autoOffS = kNaN;    // Hardware-Abschaltung nach dieser Zeit; NaN = keine
   double powerLimitW = kNaN; // Leistungsgrenze im Gerät; NaN = keine
 };

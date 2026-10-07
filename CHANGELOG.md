@@ -8,6 +8,26 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Fan sockets come back on after a power loss** (PD-050, SD-028):
+  binding a socket to the exhaust or circulation fan sets it to "on after
+  power loss"; every other socket stays "off". After a restart the hub
+  leaves fans as they are. A socket that loses its fan role goes back to
+  "off". The catalog marks such roles with `afterPowerLoss: "on"` (only
+  for continuous loads). Fan sockets bound with an older version report
+  "Schutzeinstellung weicht ab" and need to be assigned again.
+- **Secured time and the continued clock** (PD-069, PD-073, SD-028): the
+  hub knows whether its time is secured (in the firmware after the first
+  network time sync). It saves its time and an operating time with its
+  run-time state. Without a secured time after a start it continues from
+  the saved time, never before its newest event, and reports "Uhrzeit
+  nicht gesichert" after 2 min; when the time is secured later it reports
+  the jump. `GET /api/v1/state` shows `time` (`secured`, `source`,
+  `operatingS`). Intervals between two moments use wall time only if both
+  were secured, otherwise operating time, so an outage never stretches
+  them (used by the dosing intervals that follow).
+- **Simulator:** a power cut can last a while (`outageMin`, the world runs
+  on without power) and leave the hub without a secured time
+  (`timeSecured: false`); the action `time` secures it later.
 - **Public repository** (PD-055 to PD-062, SD-026): a safety notice and a
   trademark notice in the README; `SECURITY.md` takes reports only through
   GitHub private vulnerability reporting, with targets of 7 days

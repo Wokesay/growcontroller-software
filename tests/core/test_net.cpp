@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "client.hpp"
+#include "gc/embedded.hpp"
 
 using gc::json;
 using test::Client;
@@ -55,7 +56,7 @@ TEST_CASE("Steckdose: übernehmen setzt „nach Stromausfall aus“, Umwälzpump
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
-  CHECK(outlet(s, id, 0).initialOff);
+  CHECK(outlet(s, id, 0).powerOn == gc::PowerOn::Off);
   c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
   CHECK(std::isnan(outlet(s, id, 0).autoOffS));  // Profil dauer: kein Auto-Off
   c.ok("POST", "/api/v1/roles/tank.circulation/test");
@@ -63,6 +64,65 @@ TEST_CASE("Steckdose: übernehmen setzt „nach Stromausfall aus“, Umwälzpump
   CHECK(s.world().circulating());
   s.step(4000);
   CHECK_FALSE(outlet(s, id, 0).on);  // Testen: 3 s
+}
+
+TEST_CASE("Sockets: fans come back on after a power loss, every other role stays off (PD-050)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4",
+                    {{{"load", "light"}, {"watts", 240}}, {{"load", "exhaust"}, {"watts", 35}}, {{"load", "fan"}, {"watts", 20}},
+                     {{"load", "circulation"}, {"watts", 18}}});
+  for (int ch = 0; ch < 4; ++ch) CHECK(outlet(s, id, ch).powerOn == gc::PowerOn::Off);  // accepted: every outlet off
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 0}});
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("PUT", "/api/v1/roles/zone.circulation_fan", {{"device", id}, {"channel", 2}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 3}});
+  CHECK(outlet(s, id, 0).powerOn == gc::PowerOn::Off);
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);
+  CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::On);
+  CHECK(outlet(s, id, 3).powerOn == gc::PowerOn::Off);
+  c.ok("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
+  c.ok("POST", "/api/v1/roles/zone.circulation_fan/switch", {{"on", true}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  CHECK_FALSE(outlet(s, id, 1).on);  // exhaust off before the outage
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("reboot", {{"outageMin", 5}});
+  }
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 0).on);  // light: off (R6)
+  CHECK(outlet(s, id, 1).on);        // exhaust: on, although it was off before
+  CHECK(outlet(s, id, 2).on);        // circulation fan: on, the hub leaves it on
+  CHECK_FALSE(outlet(s, id, 3).on);  // circulation pump: off (R6)
+  c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  c.ok("POST", "/api/v1/roles/zone.exhaust/switch", {{"on", false}});  // the setting in the socket is still accepted
+  CHECK_FALSE(outlet(s, id, 1).on);
+}
+
+TEST_CASE("Sockets: a socket that loses its fan role goes back to off after a power loss (PD-050)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 2}});  // moved
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);
+  CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::On);
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 1}});  // former fan socket, new role
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);
+  c.ok("DELETE", "/api/v1/roles/zone.exhaust");
+  CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::Off);
+}
+
+TEST_CASE("Catalog: only continuous loads may come back on after a power loss") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["roles"]["zone.humidifier"]["afterPowerLoss"] = "on";  // pulse role
+  CHECK_THROWS(gc::Catalog::fromJson(j));
+  j = json::parse(gc::embedded::kCatalogJson);
+  j["roles"]["zone.exhaust"]["afterPowerLoss"] = "maybe";
+  CHECK_THROWS(gc::Catalog::fromJson(j));
 }
 
 TEST_CASE("Steckdose: Handbetrieb und Leistung im Zustand") {

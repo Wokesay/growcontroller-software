@@ -98,7 +98,7 @@ void Simulation::createHub() {
   hub_->setUpdater(updater_.get());
   hub_->setNetBus(net_.get());
   hub_->setPlatform({{"kind", "simulator"}, {"simulated", true}, {"scenario", opts_.scenario}});
-  api_ = std::make_unique<gc::Api>(*hub_, *clock_);
+  api_ = std::make_unique<gc::Api>(*hub_, *clock_);  // wall time comes from the hub (PD-069)
   hub_->boot();
 }
 
@@ -255,7 +255,7 @@ void Simulation::fastForward(double hours, gc::Ms tick) {
   }
 }
 
-void Simulation::reboot() {
+void Simulation::reboot(gc::Ms outageMs, bool timeSecured) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // Stromausfall: Ausgänge stromlos, laufende Pumpen stehen (Dosierblock nach Reset aus)
   hub_->flush();
@@ -263,7 +263,13 @@ void Simulation::reboot() {
   hub_.reset();
   world_.stopAllPumps();
   world_.out[0] = world_.out[1] = false;
-  world_.mainsOutage();  // Steckdosen mit „nach Stromausfall aus“ gehen aus
+  world_.powerFail();
+  if (outageMs > 0) {
+    clock_->advance(outageMs);
+    world_.advance(clock_->nowMs());  // the world runs on without power
+  }
+  world_.powerReturn();  // each socket takes its setting for after a power loss
+  clock_->setSecured(timeSecured);
   createHub();
 }
 
@@ -346,7 +352,12 @@ json Simulation::control(const std::string& action, const json& b) {
     if (b.contains("buffer") && b["buffer"].is_number()) world_.probeBuffer = b["buffer"].get<double>();
     else world_.probeBuffer.reset();
   } else if (action == "reboot") {
-    reboot();
+    double outageMin = gc::jnum(b, "outageMin", 0);
+    if (!gc::isNum(outageMin) || outageMin < 0 || outageMin > 72 * 60) return err("Ausfall 0–4320 min");
+    reboot(static_cast<gc::Ms>(outageMin * 60000.0), gc::jbool(b, "timeSecured", true));
+  } else if (action == "time") {
+    // Network time arrives (or goes away) without a restart.
+    clock_->setSecured(gc::jbool(b, "secured", true));
   } else if (action == "scenario") {
     std::string n = b.value("name", std::string("demo"));
     if (n != "demo" && n != "neu" && n != "stufe1") return err("Szenario: demo, neu oder stufe1");

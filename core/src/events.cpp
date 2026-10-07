@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "gc/events.hpp"
 
+#include <algorithm>
+
 namespace gc {
 
 void to_json(json& j, const Event& e) {
   j = {{"id", e.id}, {"ts", e.ts}, {"type", e.type}, {"severity", e.severity},
        {"title", e.title}, {"text", e.text}, {"data", e.data}};
+}
+
+Epoch EventLog::newestTs() const {
+  Epoch t = 0;
+  for (const auto& e : events_) t = std::max(t, e.ts);
+  return t;
 }
 
 const Event& EventLog::add(Epoch ts, std::string type, std::string severity, std::string title, std::string text,

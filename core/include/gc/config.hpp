@@ -189,6 +189,7 @@ struct RuntimeState {
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis
   std::map<std::string, double> manual;    // Handmessungen, z. B. "ph"
   Epoch manualAt = 0;
+  std::optional<Stamp> clock;  // time and operating time when saved (PD-069)
 };
 void to_json(json& j, const RuntimeState& s);
 RuntimeState runtimeFromJson(const json& j);

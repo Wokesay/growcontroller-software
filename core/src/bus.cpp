@@ -34,7 +34,23 @@ bool MemoryStorage::write(const std::string& name, const std::string& data) {
 
 bool sameSafety(const SwitchSafety& a, const SwitchSafety& b) {
   auto same = [](double x, double y) { return (std::isnan(x) && std::isnan(y)) || (!std::isnan(x) && !std::isnan(y) && std::fabs(x - y) < 0.5); };
-  return a.initialOff == b.initialOff && same(a.autoOffS, b.autoOffS) && same(a.powerLimitW, b.powerLimitW);
+  return a.powerOn == b.powerOn && same(a.autoOffS, b.autoOffS) && same(a.powerLimitW, b.powerLimitW);
+}
+
+const char* powerOnName(PowerOn p) {
+  switch (p) {
+    case PowerOn::On: return "on";
+    case PowerOn::Restore: return "restore";
+    case PowerOn::Off: break;
+  }
+  return "off";
+}
+
+std::optional<PowerOn> powerOnFromName(const std::string& s) {
+  if (s == "off") return PowerOn::Off;
+  if (s == "on") return PowerOn::On;
+  if (s == "restore") return PowerOn::Restore;
+  return std::nullopt;
 }
 
 }  // namespace gc
