@@ -12,7 +12,9 @@ namespace sim {
 class SimNetBus : public gc::INetBus {
  public:
   explicit SimNetBus(World& w) : w_(w) {}
-  void poll(gc::Ms) override {}
+  // Fault "crash" makes the poll throw: a stand-in for an internal error in
+  // the hub's tick (PD-077), for tests only.
+  void poll(gc::Ms) override;
   std::vector<gc::DeviceReport> devices() const override;
   bool owns(const std::string& dev) const override;
   bool setSwitch(const std::string& dev, int channel, bool on, std::string& err) override;

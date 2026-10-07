@@ -154,9 +154,11 @@ Catalog Catalog::fromJson(const json& j) {
     const std::string apl = jstr(v, "afterPowerLoss", "off");
     if (apl != "off" && apl != "on") throw std::runtime_error("Katalog: Rolle " + id + ": afterPowerLoss muss on oder off sein");
     r.onAfterPowerLoss = apl == "on";
-    // Only loads without a maximum run time may come back on by themselves.
-    if (r.onAfterPowerLoss && r.profile != "dauer")
-      throw std::runtime_error("Katalog: Rolle " + id + ": nach Stromausfall an nur mit Profil dauer");
+    // Only the fans may come back on by themselves (PD-050); the catalog can
+    // only tighten safety (R7), so the list lives here, not in the data.
+    const bool fan = id == "zone.exhaust" || id == "zone.circulation_fan";
+    if (r.onAfterPowerLoss && (!fan || r.profile != "dauer" || isNum(r.maxOnS)))
+      throw std::runtime_error("Katalog: Rolle " + id + ": nach Stromausfall an nur für Lüfter ohne Höchstlaufzeit");
     c.roles[id] = r;
   }
   for (const auto& v : j.at("functions")) {

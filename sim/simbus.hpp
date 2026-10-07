@@ -20,6 +20,9 @@ class SimClock : public gc::IClock {
   // until the time is secured again (PD-069, PD-073).
   bool secured() const override { return secured_; }
   void setSecured(bool s) { secured_ = s; }
+  // The platform clock is set to another wall time (e.g. a network time
+  // correction); monotonic time is unaffected.
+  void stepWall(gc::Epoch d) { start_ += d; }
   void advance(gc::Ms dt) { ms_ += dt; }
   void set(gc::Ms ms) { ms_ = ms; }
 

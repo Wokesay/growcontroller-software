@@ -255,7 +255,7 @@ void Simulation::fastForward(double hours, gc::Ms tick) {
   }
 }
 
-void Simulation::reboot(gc::Ms outageMs, bool timeSecured) {
+void Simulation::reboot(gc::Ms outageMs, bool timeSecured, bool mainsLost) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // Stromausfall: Ausgänge stromlos, laufende Pumpen stehen (Dosierblock nach Reset aus)
   hub_->flush();
@@ -263,12 +263,12 @@ void Simulation::reboot(gc::Ms outageMs, bool timeSecured) {
   hub_.reset();
   world_.stopAllPumps();
   world_.out[0] = world_.out[1] = false;
-  world_.powerFail();
+  if (mainsLost) world_.powerFail();
   if (outageMs > 0) {
     clock_->advance(outageMs);
     world_.advance(clock_->nowMs());  // the world runs on without power
   }
-  world_.powerReturn();  // each socket takes its setting for after a power loss
+  if (mainsLost) world_.powerReturn();  // each socket takes its setting for after a power loss
   clock_->setSecured(timeSecured);
   createHub();
 }
@@ -329,8 +329,8 @@ json Simulation::control(const std::string& action, const json& b) {
   } else if (action == "fault") {
     std::string dev = b.value("device", std::string()), f = b.value("fault", std::string());
     if (NetPlug* np = world_.netPlug(dev)) {
-      if (f != "none" && f != "offline" && f != "readonly" && f != "ignore" && f != "stuck")
-        return err("Störung: offline, readonly, ignore, stuck oder none");
+      if (f != "none" && f != "offline" && f != "readonly" && f != "ignore" && f != "stuck" && f != "crash")
+        return err("Störung: offline, readonly, ignore, stuck, crash oder none");
       np->fault = f == "none" ? "" : f;
     } else if (Cap* c = world_.cap(dev)) {
       c->blocked = f == "blocked";
@@ -352,12 +352,18 @@ json Simulation::control(const std::string& action, const json& b) {
     if (b.contains("buffer") && b["buffer"].is_number()) world_.probeBuffer = b["buffer"].get<double>();
     else world_.probeBuffer.reset();
   } else if (action == "reboot") {
+    if ((b.contains("outageMin") && !b["outageMin"].is_number()) || (b.contains("timeSecured") && !b["timeSecured"].is_boolean()) ||
+        (b.contains("mainsLost") && !b["mainsLost"].is_boolean()))
+      return err("outageMin: Zahl, timeSecured und mainsLost: true/false");
     double outageMin = gc::jnum(b, "outageMin", 0);
     if (!gc::isNum(outageMin) || outageMin < 0 || outageMin > 72 * 60) return err("Ausfall 0–4320 min");
-    reboot(static_cast<gc::Ms>(outageMin * 60000.0), gc::jbool(b, "timeSecured", true));
+    reboot(static_cast<gc::Ms>(outageMin * 60000.0), gc::jbool(b, "timeSecured", true), gc::jbool(b, "mainsLost", true));
   } else if (action == "time") {
-    // Network time arrives (or goes away) without a restart.
-    clock_->setSecured(gc::jbool(b, "secured", true));
+    // Network time arrives or goes away, or the clock is set, without a restart.
+    if ((b.contains("secured") && !b["secured"].is_boolean()) || (b.contains("stepS") && !b["stepS"].is_number_integer()))
+      return err("secured: true/false, stepS: ganze Sekunden");
+    if (b.contains("secured")) clock_->setSecured(b["secured"].get<bool>());
+    if (b.contains("stepS")) clock_->stepWall(b["stepS"].get<gc::Epoch>());
   } else if (action == "scenario") {
     std::string n = b.value("name", std::string("demo"));
     if (n != "demo" && n != "neu" && n != "stufe1") return err("Szenario: demo, neu oder stufe1");

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "netbus.hpp"
 
+#include <stdexcept>
+
 namespace sim {
 
 std::vector<gc::DeviceReport> SimNetBus::devices() const {
@@ -19,6 +21,11 @@ std::vector<gc::DeviceReport> SimNetBus::devices() const {
     out.push_back(d);
   }
   return out;
+}
+
+void SimNetBus::poll(gc::Ms) {
+  for (const auto& p : w_.netPlugs)
+    if (p.fault == "crash") throw std::runtime_error("simulated fault in " + p.id);
 }
 
 bool SimNetBus::owns(const std::string& dev) const { return w_.netPlug(dev) != nullptr; }

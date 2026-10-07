@@ -16,23 +16,34 @@ class HubClock : public IClock {
   explicit HubClock(const IClock& base) : base_(base) {}
   Ms nowMs() const override { return base_.nowMs(); }
   Epoch epoch() const override;
-  bool secured() const override { return base_.secured(); }
+  // The platform's flag as taken by the last poll(): all readings within a
+  // tick agree, even if the flag changes on another task meanwhile.
+  bool secured() const override { return secured_; }
+  void poll() { secured_ = base_.secured(); }
 
-  // At the start: the moment saved last (nullopt: nothing saved) and the
-  // newest wall time the hub has recorded anywhere, e.g. in the event log.
-  // The continued clock never starts before either of them.
-  void start(const std::optional<Stamp>& saved, Epoch newestRecorded = 0);
+  // At the start: the moment saved last (nullopt: nothing saved), the
+  // newest wall time recorded anywhere (e.g. the event log) and the number
+  // of this start. The continued clock starts at the saved time, or at the
+  // newest record if that is at most an hour later; implausible times are
+  // ignored.
+  void start(const std::optional<Stamp>& saved, Epoch newestRecorded, std::uint32_t boot);
+  // The secured time was lost while running: continue from `at` without a
+  // jump; the operating time goes on.
+  void lose(Epoch at);
   std::int64_t operatingS() const;
-  Stamp stamp() const { return {epoch(), secured(), operatingS()}; }
-  // "secured", "continued" (from the saved time) or "unset" (no secured
-  // time and nothing saved: the platform's own clock, e.g. 1970).
+  Stamp stamp() const { return {epoch(), secured_, operatingS(), boot_}; }
+  // "secured", "continued" (from a saved or last secured time) or "unset"
+  // (no secured time and nothing saved: the platform's own clock).
   const char* source() const;
 
  private:
   const IClock& base_;
-  Ms startMs_ = 0;
+  bool secured_ = false;
+  Ms startMs_ = 0;  // base of the operating time
   std::optional<Epoch> continueFrom_;
+  Ms continueMs_ = 0;
   std::int64_t savedOperatingS_ = 0;
+  std::uint32_t boot_ = 0;
 };
 
 }  // namespace gc

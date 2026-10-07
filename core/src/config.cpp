@@ -473,7 +473,9 @@ void to_json(json& j, const RuntimeState& s) {
        {"jumpLocks", s.jumpLocks},
        {"manual", s.manual},
        {"manualAt", s.manualAt},
-       {"clock", s.clock ? json(*s.clock) : json(nullptr)}};
+       {"clock", s.clock ? json(*s.clock) : json(nullptr)},
+       {"bootCount", s.bootCount},
+       {"stopped", s.stopped}};
 }
 
 RuntimeState runtimeFromJson(const json& j) {
@@ -491,6 +493,8 @@ RuntimeState runtimeFromJson(const json& j) {
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});
   if (j.contains("clock")) s.clock = stampFromJson(j["clock"]);
+  if (j.contains("bootCount") && j["bootCount"].is_number_unsigned()) s.bootCount = j["bootCount"].get<std::uint32_t>();
+  s.stopped = jbool(j, "stopped", false);
   return s;
 }
 

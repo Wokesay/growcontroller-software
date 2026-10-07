@@ -49,6 +49,18 @@ void fault(sim::Simulation& s, const std::string& id, const std::string& f) {
   s.control("fault", {{"device", id}, {"fault", f}});
 }
 
+void reboot(sim::Simulation& s, const json& b) {
+  std::lock_guard<std::recursive_mutex> l(s.mutex());
+  s.control("reboot", b);
+}
+
+bool hasEvent(Client& c, const std::string& title) {
+  const json events = c.ok("GET", "/api/v1/events?limit=2000")["events"];
+  for (const auto& e : events)
+    if (e.value("title", std::string()) == title) return true;
+  return false;
+}
+
 }  // namespace
 
 TEST_CASE("Steckdose: übernehmen setzt „nach Stromausfall aus“, Umwälzpumpe schaltet über die Dose") {
@@ -96,8 +108,10 @@ TEST_CASE("Sockets: fans come back on after a power loss, every other role stays
   CHECK(outlet(s, id, 2).on);        // circulation fan: on, the hub leaves it on
   CHECK_FALSE(outlet(s, id, 3).on);  // circulation pump: off (R6)
   c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
-  c.ok("POST", "/api/v1/roles/zone.exhaust/switch", {{"on", false}});  // the setting in the socket is still accepted
+  c.ok("POST", "/api/v1/roles/zone.exhaust/switch", {{"on", false}});
   CHECK_FALSE(outlet(s, id, 1).on);
+  c.ok("POST", "/api/v1/roles/zone.exhaust/switch", {{"on", true}});  // switching on reads the setting back: still "on"
+  CHECK(outlet(s, id, 1).on);
 }
 
 TEST_CASE("Sockets: a socket that loses its fan role goes back to off after a power loss (PD-050)") {
@@ -116,13 +130,132 @@ TEST_CASE("Sockets: a socket that loses its fan role goes back to off after a po
   CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::Off);
 }
 
-TEST_CASE("Catalog: only continuous loads may come back on after a power loss") {
+TEST_CASE("Catalog: only the fans may come back on after a power loss") {
   auto j = json::parse(gc::embedded::kCatalogJson);
   j["roles"]["zone.humidifier"]["afterPowerLoss"] = "on";  // pulse role
   CHECK_THROWS(gc::Catalog::fromJson(j));
   j = json::parse(gc::embedded::kCatalogJson);
+  j["roles"]["tank.circulation"]["afterPowerLoss"] = "on";  // continuous, but not a fan
+  CHECK_THROWS(gc::Catalog::fromJson(j));
+  j = json::parse(gc::embedded::kCatalogJson);
+  j["roles"]["zone.exhaust"]["maxOnS"] = 3600;  // a maximum run time would go unenforced after a power loss
+  CHECK_THROWS(gc::Catalog::fromJson(j));
+  j = json::parse(gc::embedded::kCatalogJson);
   j["roles"]["zone.exhaust"]["afterPowerLoss"] = "maybe";
   CHECK_THROWS(gc::Catalog::fromJson(j));
+}
+
+TEST_CASE("Sockets: removing the device or importing a configuration releases fan sockets (PD-050)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("PUT", "/api/v1/roles/zone.circulation_fan", {{"device", id}, {"channel", 2}});
+  json cfg = c.ok("GET", "/api/v1/config");
+  bool edited = false;
+  for (auto& z : cfg["zones"]) {
+    if (!z["roles"].contains("zone.exhaust")) continue;
+    z["roles"]["zone.exhaust"]["channel"] = 3;  // moved
+    z["roles"].erase("zone.circulation_fan");   // dropped
+    edited = true;
+  }
+  REQUIRE(edited);
+  c.ok("POST", "/api/v1/config/import", cfg);
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);
+  CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::Off);
+  CHECK(outlet(s, id, 3).powerOn == gc::PowerOn::On);  // the import writes the setting of the new fan socket
+  c.ok("DELETE", "/api/v1/devices/" + id);
+  CHECK(outlet(s, id, 3).powerOn == gc::PowerOn::Off);
+}
+
+TEST_CASE("Sockets: a fan socket that keeps \"on after power loss\" is reported") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("PUT", "/api/v1/roles/zone.circulation_fan", {{"device", id}, {"channel", 2}});
+  fault(s, id, "ignore");  // reports success, stores nothing
+  c.ok("DELETE", "/api/v1/roles/zone.exhaust");
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);
+  CHECK(hasEvent(c, "Abluft: Dose bleibt „nach Stromausfall an“"));
+  fault(s, id, "offline");
+  s.step(2000);
+  c.ok("DELETE", "/api/v1/roles/zone.circulation_fan");
+  CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::On);
+  CHECK(hasEvent(c, "Umluft: Dose bleibt „nach Stromausfall an“"));
+}
+
+TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", {{{"load", "light"}, {"watts", 240}}, {{"load", "exhaust"}, {"watts", 35}}});
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 0}});
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("POST", "/api/v1/roles/zone.exhaust/switch", {{"on", true}});
+  c.ok("POST", "/api/v1/stop");
+  CHECK_FALSE(outlet(s, id, 1).on);
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);  // during the stop the fan socket stays off after a power loss
+  reboot(s, {{"outageMin", 5}});
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 0).on);
+  CHECK_FALSE(outlet(s, id, 1).on);
+  c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  CHECK(c.state()["stopped"] == true);
+  CHECK(hasEvent(c, "Not-Halt besteht weiter"));
+  s.step(60000);
+  CHECK_FALSE(outlet(s, id, 1).on);  // the hub does not switch it on either
+  c.ok("POST", "/api/v1/resume");
+  CHECK(c.state()["stopped"] == false);
+  CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);  // back to the fan setting
+}
+
+TEST_CASE("Internal error: everything goes off except the fans (PD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4",
+                    {{{"load", "light"}, {"watts", 240}}, {{"load", "exhaust"}, {"watts", 35}}, {{"load", "fan"}, {"watts", 20}},
+                     {{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 0}});
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("PUT", "/api/v1/roles/zone.circulation_fan", {{"device", id}, {"channel", 2}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 3}});
+  for (const char* role : {"zone.light", "zone.exhaust", "zone.circulation_fan", "tank.circulation"})
+    c.ok("POST", std::string("/api/v1/roles/") + role + "/switch", {{"on", true}});
+  fault(s, id, "crash");
+  s.step(2000);
+  CHECK_FALSE(outlet(s, id, 0).on);  // light off
+  CHECK(outlet(s, id, 1).on);        // exhaust keeps running
+  CHECK(outlet(s, id, 2).on);        // circulation fan keeps running
+  CHECK_FALSE(outlet(s, id, 3).on);  // circulation pump off
+  CHECK(hasEvent(c, "Interner Fehler – alles aus außer den Lüftern"));
+  fault(s, id, "none");
+  s.step(2000);
+  CHECK(hasEvent(c, "Steuerung läuft wieder"));
+}
+
+TEST_CASE("Restart without a power loss: fans keep their state, everything else goes off (R6, PD-050)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4",
+                    {{{"load", "light"}, {"watts", 240}}, {{"load", "exhaust"}, {"watts", 35}}, {{"load", "fan"}, {"watts", 20}},
+                     {{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 0}});
+  c.ok("PUT", "/api/v1/roles/zone.exhaust", {{"device", id}, {"channel", 1}});
+  c.ok("PUT", "/api/v1/roles/zone.circulation_fan", {{"device", id}, {"channel", 2}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 3}});
+  for (const char* role : {"zone.light", "zone.exhaust", "tank.circulation"})
+    c.ok("POST", std::string("/api/v1/roles/") + role + "/switch", {{"on", true}});
+  reboot(s, {{"outageMin", 0}, {"mainsLost", false}});  // only the hub restarts, the sockets keep power
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 0).on);  // light off (R6)
+  CHECK(outlet(s, id, 1).on);        // exhaust stays on
+  CHECK_FALSE(outlet(s, id, 2).on);  // circulation fan stays off, as before
+  CHECK_FALSE(outlet(s, id, 3).on);  // circulation pump off (R6)
 }
 
 TEST_CASE("Steckdose: Handbetrieb und Leistung im Zustand") {

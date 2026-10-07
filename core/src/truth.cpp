@@ -25,7 +25,6 @@ const char* qualityName(Quality q) {
 namespace {
 
 constexpr Ms kJumpWindow = 5 * kMinute;     // Sprung innerhalb von 5 min (RAT-039)
-constexpr Epoch kJumpHoldS = 15 * 60;       // frei nach 15 min Ruhe (RAT-044)
 constexpr Ms kFrozenAfter = 15 * kMinute;   // Rohwert steht still
 
 std::string calibrationKind(const std::string& cap) {

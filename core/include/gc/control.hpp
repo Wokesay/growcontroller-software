@@ -55,6 +55,11 @@ class EcController {
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle; }
   Epoch lastDoseAt() const { return lastDoseAt_; }
+  // The wall clock stepped by `d`: keep the distance of the pauses.
+  void shiftClock(Epoch d) {
+    if (lastDoseAt_ > 0) lastDoseAt_ += d;
+    if (cooldownUntil_ > 0) cooldownUntil_ += d;
+  }
 
  private:
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
@@ -76,6 +81,9 @@ class PhController {
   const CtlStatus& status() const { return st_; }
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle || pendingCirc_; }
+  void shiftClock(Epoch d) {
+    if (cooldownUntil_ > 0) cooldownUntil_ += d;
+  }
 
  private:
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
@@ -93,6 +101,9 @@ class RefillController {
   void tick(const Ctx& c, ControlEnv& env);
   const CtlStatus& status() const { return st_; }
   bool filling() const { return filling_; }
+  void shiftClock(Epoch d) {
+    if (cooldownUntil_ > 0) cooldownUntil_ += d;
+  }
 
  private:
   bool filling_ = false;

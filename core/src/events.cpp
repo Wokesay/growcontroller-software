@@ -57,8 +57,10 @@ void EventLog::load(const json& j) {
     if (!e.is_object()) continue;
     Event ev;
     double id = jnum(e, "id", 0), ts = jnum(e, "ts", 0);
-    ev.id = isNum(id) && id >= 0 ? static_cast<std::uint64_t>(id) : 0;
-    ev.ts = isNum(ts) ? static_cast<Epoch>(ts) : 0;
+    ev.id = isNum(id) && id >= 0 && id < 9e15 ? static_cast<std::uint64_t>(id) : 0;
+    // A time outside any plausible range (a broken file) is not carried
+    // over: it would anchor the clock after a restart (PD-069).
+    ev.ts = isNum(ts) && ts >= 0 && ts <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(ts) : 0;
     ev.type = jstr(e, "type");
     ev.severity = jstr(e, "severity");
     ev.title = jstr(e, "title");

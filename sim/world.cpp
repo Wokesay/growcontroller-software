@@ -452,11 +452,12 @@ void World::restore(const json& j) {
     np.cls = p.value("class", std::string());
     np.ip = p.value("ip", std::string());
     for (const auto& o : p.value("outlets", json::array())) {
-      NetOutlet dose;  // nach dem Neustart des Simulators aus
+      NetOutlet dose;
       dose.load = o.value("load", std::string());
       dose.loadW = o.value("loadW", 0.0);
       if (auto po = gc::powerOnFromName(o.value("powerOn", std::string()))) dose.powerOn = *po;
       else if (o.value("initialOff", false)) dose.powerOn = gc::PowerOn::Off;  // older world.json: a flag
+      dose.on = dose.powerOn == gc::PowerOn::On;  // the simulator restarted: like power returning
       dose.autoOffS = gc::jnum(o, "autoOffS");
       dose.powerLimitW = gc::jnum(o, "powerLimitW");
       np.outlets.push_back(dose);

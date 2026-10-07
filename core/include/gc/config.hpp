@@ -190,6 +190,8 @@ struct RuntimeState {
   std::map<std::string, double> manual;    // Handmessungen, z. B. "ph"
   Epoch manualAt = 0;
   std::optional<Stamp> clock;  // time and operating time when saved (PD-069)
+  std::uint32_t bootCount = 0;   // number of starts; tells moments of one start apart
+  bool stopped = false;          // emergency stop survives a restart (RAT-036, PD-076)
 };
 void to_json(json& j, const RuntimeState& s);
 RuntimeState runtimeFromJson(const json& j);

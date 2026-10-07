@@ -346,8 +346,8 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** If control loops merely stop issuing new commands, a stop freezes the last state and devices keep running unnoticed.
 - **Evidence:** Observed on the reference installation (2026): a stop that only halted new commands left light, fans and the circulation pump running for hours.
 - **Deviation:** The reference installation stopped in stages: running sequences ended first, all loads were switched off 30 s later, and air circulation and exhaust ran on for 5 min to carry off warm, humid air; a few devices were deliberately never switched at their outlets. The software's stop is an emergency stop and switches everything off at once, fans included; a confirming second stage after 30 s and repeating unconfirmed "off" commands are still open.
-- **Implemented in:** core/src/hub.cpp (Hub::stop), core/include/gc/dosing.hpp and core/src/dosing.cpp (Actuators::stopAll), CHANGELOG.md, docs/INVARIANTS.md
-- **Tests:** tests/core/test_scenarios.cpp "Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen"; tests/core/test_net.cpp "Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klartext"; web/e2e/betrieb.spec.ts "Not-Halt stoppt alles und lässt sich fortsetzen"
+- **Implemented in:** core/src/hub.cpp (Hub::stop, Hub::resume, Hub::setFanSockets, `RuntimeState::stopped` across a restart), core/include/gc/dosing.hpp and core/src/dosing.cpp (Actuators::stopAll), CHANGELOG.md, docs/INVARIANTS.md
+- **Tests:** tests/core/test_scenarios.cpp "Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen"; tests/core/test_net.cpp "Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klartext", "Not-Halt: survives a power loss, fans stay off until resume (PD-076)"; web/e2e/betrieb.spec.ts "Not-Halt stoppt alles und lässt sich fortsetzen"
 
 
 ### RAT-037 – Display follows the actual state; every block is a visible line with its reason
@@ -421,7 +421,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** A safety lock held only in volatile memory vanishes exactly when the system restarts, possibly while the fault persists. The plausibility band alone is no protection: a disturbed reading can still look plausible.
 - **Evidence:** Calculated on the reference installation (2026): after a restart had cleared the jump lock, the next automatic run would have dosed acid into a tank at about pH 4 on a disturbed reading of about 8.5. Interference from the running circulation pump put pH readings at about 7.9–12.1, and the part up to 9.0 lies inside the 3–9 plausibility band.
 - **Deviation:** The reference installation also allowed pH dosing only with a pump-off measurement window or after the galvanic isolation had passed an acceptance test (raw value differing by less than 0.05 V between pump on and off). Here that measurement window is listed as a later hardware measure and is not part of the prototype.
-- **Implemented in:** `core/src/truth.cpp` (`kJumpHoldS`, jump detection), `core/include/gc/config.hpp` (`RuntimeState::jumpLocks`, `latches`), `core/include/gc/readmodel.hpp` (`Quality::Jump`), `docs/CONCEPT.md` (R6), `docs/SECURITY_MODEL.md`, `docs/DECISIONS.md` (SD-004)
+- **Implemented in:** `core/src/truth.cpp` (jump detection), `core/include/gc/truth.hpp` (`kJumpHoldS`), `core/include/gc/config.hpp` (`RuntimeState::jumpLocks`, `latches`), `core/include/gc/readmodel.hpp` (`Quality::Jump`), `core/src/hub.cpp` (`Hub::watchClock`: a clock step keeps the remaining hold), `docs/CONCEPT.md` (R6), `docs/SECURITY_MODEL.md`, `docs/DECISIONS.md` (SD-004)
 - **Tests:** `tests/core/test_truth.cpp` – "Sensorwahrheit: Sprungsperre, überlebt Neustart, frei nach 15 min Ruhe (M8-2)"; `tests/core/test_scenarios.cpp` – "Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereignis sichtbar"; `web/e2e/betrieb.spec.ts` – "Sprungsperre der pH-Sonde wird sichtbar mit Grund"
 
 

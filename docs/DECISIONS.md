@@ -327,7 +327,7 @@ below were set when the repository went public.
   outside contributors need approval.
 
 
-## SD-028: Product requirement (from PD-063 to PD-075): restart, clock and hub failure
+## SD-028: Product requirement (from PD-063 to PD-077): restart, clock and hub failure
 
 What the software has to do; hardware details stay in the product
 repository.
@@ -375,9 +375,20 @@ repository.
 - **Dimming output and 12 V outputs (PD-074, PD-075):** the firmware gives
   a sign of life from the control loop to an external watchdog. After a
   restart the hub sets the light to its planned value again (PD-048).
-- Implemented so far: fan sockets (PD-050), the continued clock with
-  operating time and intervals (PD-069), secured time from network time
-  in the firmware. The rest follows in stages (issue #20).
+- **Emergency stop and internal error (PD-076, PD-077):** a manual
+  emergency stop stops everything, fans included, until someone resumes,
+  also across a power loss or restart. During it the fan sockets are set
+  to "off after power loss"; resume restores their setting. The restart
+  of fans is configurable per socket (default on, the app warns on a
+  change); every other socket stays "off after power loss". An internal
+  error switches everything off except the fans on sockets.
+- Implemented so far: fan sockets (PD-050); the emergency stop across a
+  restart with fan sockets off during it (PD-076); fans kept running on
+  an internal error (PD-077); the continued clock with operating time
+  (PD-069); clock steps that keep the remaining time of deadlines and
+  locks; secured time from network time in the firmware. Intervals across
+  restarts are prepared (`elapsedS`) but not used yet. The per-socket fan
+  setting in the app and the rest follow in stages (issue #20).
 
 ---
 

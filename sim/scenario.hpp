@@ -50,7 +50,9 @@ class Simulation {
   // Power failure: hub restarts, outputs without power. outageMs: how long
   // the power is gone (the world runs on, everything off); timeSecured:
   // whether the hub gets a secured time right away (PD-069, PD-073).
-  void reboot(gc::Ms outageMs = 0, bool timeSecured = true);
+  // mainsLost=false: only the hub restarts (e.g. its watchdog); the sockets
+  // keep their power and state.
+  void reboot(gc::Ms outageMs = 0, bool timeSecured = true, bool mainsLost = true);
   void loadScenario(const std::string& name); // alles neu (Speicher leer)
   gc::json simState();
   gc::json control(const std::string& action, const gc::json& body);  // Störknöpfe

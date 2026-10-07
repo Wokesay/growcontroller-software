@@ -64,8 +64,8 @@ class Hub {
   // ---- Lesen
   json info() const;
   json state();
-  // The hub's time base; the API reads wall time here, not from the platform.
-  const IClock& clock() const { return clock_; }
+  // The hub's wall time (PD-069); the API reads it here, not from the platform.
+  Epoch now() const;
   json configJson() const;
   json history(const std::string& series, Epoch from, Epoch to, size_t points) const;
   json events(Epoch from, Epoch to, const std::string& type, size_t limit) const;
@@ -124,6 +124,9 @@ class Hub {
   void saveConfig(const std::string& what);
   void autoBindMeasures();
   void releaseSocket(const RoleDef& rd, const Binding& b);
+  void setFanSockets(bool comeBackOn);
+  void watchClock(Ms now);
+  void shiftDeadlines(Epoch jump, Epoch epoch);
   void saveState();
   void saveJob();
   void sampleHistory(Epoch epoch);
@@ -179,8 +182,7 @@ class Hub {
   Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastHistorySave_ = 0;
   Epoch lastTickEpoch_ = 0;
   Ms lastTickMs_ = 0;
-  bool wasSecured_ = false, unsecuredReported_ = false;
-  void watchClock(Epoch epoch, Ms now);
+  bool unsecuredReported_ = false;
   bool stateDirty_ = false;
   std::uint64_t savedEventId_ = 0;
   int idSeq_ = 0;
