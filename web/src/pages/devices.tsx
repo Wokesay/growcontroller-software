@@ -6,7 +6,7 @@ import { Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
 import { del, patch, post, probeKinds, put, type Device } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
-import { t } from "../i18n";
+import { msg, t } from "../i18n";
 import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
@@ -173,7 +173,7 @@ function Roles() {
                     ))}
                   </select>
                 </td>
-                <td class="hide-sm small muted">{reading ? reading.reason.text : b ? (st.outputs[id] ? t("common.on") : t("common.off")) : ""}</td>
+                <td class="hide-sm small muted">{reading ? msg(reading.reason) : b ? (st.outputs[id] ? t("common.on") : t("common.off")) : ""}</td>
               </tr>
             );
           })}

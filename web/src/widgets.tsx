@@ -75,7 +75,7 @@ export function ControllerRow(p: { name: string; st: CtlStatus; open?: boolean }
           {p.st.checks.map((c) => (
             <CheckRow ok={c.ok} text={c.text} />
           ))}
-          {(p.st.state === "latched" || p.st.line.text.startsWith("Gerastet")) && <LatchActions />}
+          {(p.st.state === "latched" || latchedLine(p.st.line.key)) && <LatchActions />}
         </div>
       )}
     </div>
@@ -103,6 +103,9 @@ function LatchActions() {
     </div>
   );
 }
+
+// Lines the core sends while a latch holds; by key, not by its German text.
+const latchedLine = (key: string) => key.endsWith(".latched") || key === "refill.stopped";
 
 const latchText: Record<string, TextKey> = { "circulation.dry": "widgets.latch.dry", "inlet.fault": "widgets.latch.inletFault", "ph.no_effect": "widgets.latch.phNoEffect", "ec.no_effect": "widgets.latch.ecNoEffect" };
 export const latchLabel = (k: string) => (latchText[k] ? t(latchText[k]) : k);

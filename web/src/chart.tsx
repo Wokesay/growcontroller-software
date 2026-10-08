@@ -57,7 +57,7 @@ export function TimeChart(p: {
         },
       ],
       series: [
-        { value: (_u, v) => (v ? new Date(v * 1000).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
+        { label: t("widgets.chartTime"), value: (_u, v) => (v ? new Date(v * 1000).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
         {
           label: p.label,
           stroke: color,

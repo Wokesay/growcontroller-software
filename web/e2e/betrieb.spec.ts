@@ -43,6 +43,7 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await expect(page.getByTestId("fn-climate_watch")).not.toContainText("Dafür brauchst du");  // Demo hat einen Klima-Kopf
   await page.goto("/#/verlauf");
   await expect(page.locator(".chart canvas").first()).toBeVisible();
+  await expect(page.locator(".u-legend").first()).toContainText("Zeit");
   await expect(page.getByTestId("event").first()).toBeVisible();
 });
 
@@ -51,6 +52,9 @@ test("Numbers follow the page language: range with a comma, field re-formats on 
   await page.goto("/#/funktionen");
   await page.getByTestId("fn-ph_control").click();
   await expect(page.getByTestId("fn-ph_control")).toContainText("0,3–3");
+  // No thousands separator: "1.000" typed back would be 1 L.
+  await page.goto("/#/funktionen?f=refill");
+  await expect(page.getByTestId("fn-refill")).toContainText("1–1000");
   await page.goto("/#/einstellungen");
   await page.getByLabel("Grenze je Handgabe").fill("2,5");
   try {
@@ -58,6 +62,8 @@ test("Numbers follow the page language: range with a comma, field re-formats on 
     await page.getByRole("tab", { name: "English" }).click();
     await saved;
     await expect(page.getByLabel("Limit per manual dose")).toHaveValue("2.5");
+    await page.goto("/#/funktionen?f=refill");
+    await expect(page.getByTestId("fn-refill")).toContainText("1–1000");
   } finally {
     // The switch also sets the hub's language; later tests expect German.
     const res = await page.request.put("/api/v1/system", { data: { language: "de" } });
