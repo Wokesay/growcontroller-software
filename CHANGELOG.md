@@ -148,6 +148,16 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **Release hardening** (#29): `release.yml` checks that a release tag
+  points at a commit on `main`; every file is built in jobs without write
+  access and without a cache; the publishing job only checks the files
+  against their checksums, attests their build provenance (check with
+  `gh attestation verify` naming the release workflow and tag, see
+  `docs/RELEASE.md`) and creates the release. A second SBOM lists
+  the C++ libraries of the simulator. All actions are pinned by commit SHA
+  and updated by Dependabot after a 7-day cooldown; a test keeps them
+  GitHub's own and pinned. Pull requests that change the release
+  machinery run the release as a dry run.
 - **Safety profiles in the actuator gateway** for sockets and 12 V
   outputs: `dauer` (continuous), `puls` (pulse), `kompressor`
   (compressor).

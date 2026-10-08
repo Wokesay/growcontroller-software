@@ -1,6 +1,6 @@
 # Versions, changelog, releases, updates
 
-As of 2026-10-07. Basis: `produkt`, `regulatorik`, `software`, `kunde`
+As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 (agents of the product repository). An assessment, not legal advice.
 
 ## Versions
@@ -50,12 +50,42 @@ entry under `[Unreleased]`.
    for security topics), CI green.
 2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
    repository admin can set `v*` tags, SD-027). The workflow
-   `release.yml` builds the simulator and the web app, creates the SBOM
-   (CycloneDX) and `SHA256SUMS`, and creates the GitHub release with the
-   changelog section. Pre-releases (`-beta`, `-proto`) are marked as
-   pre-release.
-   Simulator downloads belong only to Beta releases, not to Stable
-   (PD-036); `release.yml` does not yet tell the channels apart.
+   `release.yml` (#29):
+   - `verify`: the tag matches `VERSION` and points at a commit on
+     `main`.
+   - `packages` and `build`, without write access and without a cache:
+     the simulator for three platforms, the web app, the license notices,
+     two SBOMs (CycloneDX: web app from npm, C++ libraries from
+     `cmake/deps.cmake`), `SHA256SUMS` and the release notes from the
+     changelog section.
+   - `publish`, the only job that can write: checks the files against
+     `SHA256SUMS`, attests their build provenance and creates the GitHub
+     release. It runs no npm and builds nothing.
+   - Pre-releases (`-beta`, `-proto`) are marked as pre-release.
+   - A pull request that changes the release machinery runs everything
+     except `publish` as a dry run.
+   - All actions are GitHub's own, pinned by commit SHA
+     (`tools/workflows.test.mjs`); Dependabot proposes updates after a
+     cooldown of 7 days.
+   - Anyone can check a download; the check must name the release
+     workflow and the tag, otherwise any workflow of the repository would
+     pass:
+
+     ```bash
+     gh attestation verify <file> --repo Wokesay/growcontroller-software \
+       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+       --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
+     ```
+
+   - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
+     the statically linked compiler runtimes; the web app embedded in the
+     simulator is in the web SBOM. Dependabot does not cover
+     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
+     are updated by hand.
+   - If `publish` fails after the release was created, delete the
+     unfinished release (not the tag) and run the job again.
+   - Simulator downloads belong only to Beta releases, not to Stable
+     (PD-036); `release.yml` does not yet tell the channels apart (#19).
 3. **Firmware** (once `firmware/` builds):
    - CI builds the ESP-IDF image and the SBOM (`idf.py sbom-create`).
      The Stable image is built without simulation code (PD-036).

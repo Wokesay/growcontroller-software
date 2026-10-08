@@ -12,8 +12,8 @@ group "Architecture rules"
 tools/arch_check.sh
 end
 
-group "Change filter of the full CI"
-node --test tools/ci_changes.test.mjs
+group "CI and release scripts, workflow pins"
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs
 end
 
 group "Licenses (REUSE, npm dependencies)"
