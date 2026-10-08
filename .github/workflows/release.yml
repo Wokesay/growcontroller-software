@@ -94,6 +94,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       sums: ${{ steps.files.outputs.sums }}
+      notes: ${{ steps.files.outputs.notes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -151,6 +152,7 @@ jobs:
           cat out/dist/SHA256SUMS
           # Later jobs accept only this checksum list.
           echo "sums=$(sha256sum out/dist/SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "notes=$(sha256sum out/NOTES.md | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release
@@ -171,10 +173,12 @@ jobs:
       - name: Check the files against their checksums
         env:
           SUMS: ${{ needs.build.outputs.sums }}
+          NOTES: ${{ needs.build.outputs.notes }}
         run: |
           cd out/dist
-          # The checksum list is the one build produced, not a replaced one.
+          # Checksum list and notes are the ones build produced.
           echo "$SUMS  SHA256SUMS" | sha256sum -c -
+          echo "$NOTES  ../NOTES.md" | sha256sum -c -
           sha256sum -c SHA256SUMS
           # Every file to publish is listed, and every listed file is there.
           listed=$(awk '{sub(/^\*/, "", $2); print $2}' SHA256SUMS | sort)
@@ -201,10 +205,12 @@ jobs:
       - name: Check the files against their checksums
         env:
           SUMS: ${{ needs.build.outputs.sums }}
+          NOTES: ${{ needs.build.outputs.notes }}
         run: |
           cd out/dist
-          # The checksum list is the one build produced, not a replaced one.
+          # Checksum list and notes are the ones build produced.
           echo "$SUMS  SHA256SUMS" | sha256sum -c -
+          echo "$NOTES  ../NOTES.md" | sha256sum -c -
           sha256sum -c SHA256SUMS
           # Every file to publish is listed, and every listed file is there.
           listed=$(awk '{sub(/^\*/, "", $2); print $2}' SHA256SUMS | sort)
@@ -221,8 +227,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          # The tag must still point at the commit that was built.
-          at=$(gh api "repos/$GH_REPO/commits/$REF_NAME" --jq .sha)
+          # The tag (looked up as a tag, not a branch of the same name) must
+          # still point at the commit that was built.
+          read -r at type < <(gh api "repos/$GH_REPO/git/ref/tags/$REF_NAME" --jq '.object.sha + " " + .object.type')
+          if [ "$type" = tag ]; then at=$(gh api "repos/$GH_REPO/git/tags/$at" --jq .object.sha); fi
           if [ "$at" != "$GITHUB_SHA" ]; then
             echo "::error::Tag $REF_NAME moved to $at since the build of $GITHUB_SHA"; exit 1
           fi

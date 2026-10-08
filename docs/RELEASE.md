@@ -70,9 +70,13 @@ entry under `[Unreleased]`.
    - Anyone can check a download; the check must name the release
      workflow and the tag, otherwise any workflow of the repository would
      pass:
-     `gh attestation verify <file> --repo Wokesay/growcontroller-software
-     --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml
-     --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners`.
+
+     ```bash
+     gh attestation verify <file> --repo Wokesay/growcontroller-software \
+       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+       --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
+     ```
+
    - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
      the statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. Dependabot does not cover
