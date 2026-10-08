@@ -26,8 +26,9 @@ basis of the prototype and become SD entries once the project owner says
 
 ## Log
 
-All entries below were recorded on 2026-10-07. Entries titled "Product
-requirement" name what applies from a product decision; the full decision
+SD-001 to SD-030 were recorded on 2026-10-07; later entries name their
+date. Entries titled "Product requirement" name what applies from a
+product decision; the full decision
 is in the product repository. From SD-027 on, decisions about this
 repository itself are recorded here in full.
 
@@ -442,6 +443,17 @@ checks (issue #35).
 - "Docs only" means only that CI cannot check a file. `CLAUDE.md`,
   `.claude/` and `SECURITY.md` steer agents and process and are reviewed
   as configuration.
+
+
+## SD-031: Product requirement (from PD-078): no collection box
+
+Recorded on 2026-10-08.
+
+- Every sensor head and the dosing block hang directly on a hub port;
+  there is no collection box in the tent. This replaces the sentence on
+  the collection box in SD-015.
+- The catalog attaches the climate and CO2 heads to a hub port; the issue
+  form for devices no longer offers the collection box (issue #46).
 
 ---
 

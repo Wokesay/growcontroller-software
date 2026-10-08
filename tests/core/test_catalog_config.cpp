@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <cctype>
+#include <set>
 
 #include "gc/catalog.hpp"
 #include "gc/config.hpp"
@@ -19,6 +20,15 @@ TEST_CASE("Katalog: eingebetteter Katalog lädt und ist in sich stimmig") {
   CHECK(c.classesProviding("measure.ph").size() == 2);  // pH/EC-Kopf oder eigener pH-Kopf
   CHECK(c.role("zone.air_temp") != nullptr);
   CHECK(c.role("tent.air_temp") == nullptr);
+}
+
+TEST_CASE("Catalog: every device attaches to a hub port, the dosing block, the hub itself or the network (SD-031)") {
+  // There is no collection box any more (PD-078).
+  const std::set<std::string> kinds{"hub_port", "dosing_port", "builtin", "net"};
+  const Catalog c = Catalog::builtin();
+  for (const auto& [id, d] : c.deviceClasses) CHECK_MESSAGE(kinds.count(d.attach) == 1, (id + ": " + d.attach));
+  CHECK(c.deviceClasses.at("head_climate").attach == "hub_port");
+  CHECK(c.deviceClasses.at("head_co2").attach == "hub_port");
 }
 
 TEST_CASE("Catalog: recipe templates fit the name limit and cite their source") {
