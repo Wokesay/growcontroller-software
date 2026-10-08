@@ -151,8 +151,9 @@ listed in every release under "Security".
 - **Release hardening** (#29): `release.yml` checks that a release tag
   points at a commit on `main`; every file is built in jobs without write
   access and without a cache; the publishing job only checks the files
-  against their checksums, attests their build provenance
-  (`gh attestation verify`) and creates the release. A second SBOM lists
+  against their checksums, attests their build provenance (check with
+  `gh attestation verify` naming the release workflow and tag, see
+  `docs/RELEASE.md`) and creates the release. A second SBOM lists
   the C++ libraries of the simulator. All actions are pinned by commit SHA
   and updated by Dependabot after a 7-day cooldown; a test keeps them
   GitHub's own and pinned. Pull requests that change the release

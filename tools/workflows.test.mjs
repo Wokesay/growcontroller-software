@@ -76,6 +76,8 @@ test("the publishing job builds nothing and the release build uses no cache", ()
   assert.doesNotMatch(publish, /actions\/(checkout|setup-node|cache)@/);
   assert.doesNotMatch(publish, /\b(npm|npx|cmake|pip|pipx)\b|\bnode\s/);
   assert.doesNotMatch(release, /actions\/cache/);
+  // Merged downloads would let one artifact overwrite another's files.
+  assert.doesNotMatch(release, /merge-multiple/);
   for (const m of release.matchAll(/uses: actions\/setup-node@\S+.*\n((?: {8}.*\n)*)/g)) {
     assert.match(m[1], /package-manager-cache: false/);
     assert.doesNotMatch(m[1], /^\s*cache:/m);
