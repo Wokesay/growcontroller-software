@@ -58,6 +58,8 @@ function parts(file) {
   return { de: keys(text.slice(0, m.index), file), en: keys(text.slice(m.index), file) };
 }
 
+const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+
 test("German and English use the same placeholders", () => {
   const read = (file) => {
     const text = readFileSync(join(dir, file), "utf8");
@@ -81,8 +83,6 @@ test("the key reader refuses keys it cannot read", () => {
   assert.throws(() => keys('  "a": "x", "b": "y",\n'));
   assert.throws(() => keys('export const de = { "a": "x" };\n'));
 });
-
-const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
 
 test("no text key is defined in two files", () => {
   const seen = new Map();

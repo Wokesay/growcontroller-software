@@ -5,7 +5,7 @@ import { useEffect, useState } from "preact/hooks";
 import { Beaker, Check, Timer } from "lucide-preact";
 import { get, post, sim } from "./api";
 import { num } from "./format";
-import { t, type TextKey } from "./i18n";
+import { msg, t, type TextKey } from "./i18n";
 import { refreshConfig, refreshState, simulated, state, toast } from "./store";
 import { Banner, Button, Field, Modal, NumberInput } from "./ui";
 
@@ -57,7 +57,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           </div>
         </div>
       ) : !waiting ? (
-        <Banner icon={<Beaker size={18} />}>{t("calibration.running")} {job?.message.text}</Banner>
+        <Banner icon={<Beaker size={18} />}>{t("calibration.running")} {msg(job?.message)}</Banner>
       ) : (
         <div class="stack">
           <p>{t("calibration.howMuch")}</p>

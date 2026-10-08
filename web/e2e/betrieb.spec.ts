@@ -46,7 +46,7 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await expect(page.getByTestId("event").first()).toBeVisible();
 });
 
-test("Zahlen in der Sprache der Seite: Bereich mit Komma, Feld folgt dem Sprachwechsel (PD-035)", async ({ page }) => {
+test("Numbers follow the page language: range with a comma, field re-formats on a language switch (PD-035)", async ({ page }) => {
   await login(page);
   await page.goto("/#/funktionen");
   await page.getByTestId("fn-ph_control").click();
@@ -54,11 +54,14 @@ test("Zahlen in der Sprache der Seite: Bereich mit Komma, Feld folgt dem Sprachw
   await page.goto("/#/einstellungen");
   await page.getByLabel("Grenze je Handgabe").fill("2,5");
   try {
+    const saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/system") && r.request().method() === "PUT");
     await page.getByRole("tab", { name: "English" }).click();
+    await saved;
     await expect(page.getByLabel("Limit per manual dose")).toHaveValue("2.5");
   } finally {
     // The switch also sets the hub's language; later tests expect German.
-    await page.request.put("/api/v1/system", { data: { language: "de" } });
+    const res = await page.request.put("/api/v1/system", { data: { language: "de" } });
+    expect(res.ok()).toBeTruthy();
   }
 });
 
@@ -131,7 +134,7 @@ test("English page: devices and the simulator panel speak English (#18)", async 
   await page.reload();
   await expect(page.getByRole("tab", { name: "Expand" })).toBeVisible();
   await page.getByRole("button", { name: "Simulator" }).click();
-  await expect(page.getByText("Time lapse")).toBeVisible();
+  await expect(page.getByText("Speed", { exact: true })).toBeVisible();
   await expect(page.getByText("Faults", { exact: true })).toBeVisible();
 });
 

@@ -18,7 +18,8 @@ export function num(v: number | null | undefined, decimals = 1): string {
 // A plain number in the language of the page (5,8 / 5.8), with as many
 // decimals as it has (PD-035).
 export function figure(v: number): string {
-  return v.toLocaleString(locale(), { maximumFractionDigits: 6 });
+  // No thousands separator: a field would read "1.000" or "1,000" as 1.
+  return v.toLocaleString(locale(), { maximumFractionDigits: 6, useGrouping: false });
 }
 
 export function ago(seconds: number | null | undefined): string {

@@ -236,7 +236,7 @@ function StepTank(p: { step: number; next: () => void }) {
   const tk = cfg.tanks[0];
   const hubOut = cfg.devices.find((d) => d.class === "hub_outputs");
   const hasLevel = cfg.devices.some((d) => d.class === "head_level");
-  const [name, setName] = useState(tk?.name ?? t("setupx.tankName"));
+  const [name, setName] = useState(tk?.name ?? t("setup.tank.defaultName"));
   const [cap, setCap] = useState<number | null>(tk?.capacityL ?? null);
   const [water, setWater] = useState(tk?.water ?? "ro");
   const [circ, setCirc] = useState(!!tk?.roles?.["tank.circulation"]);

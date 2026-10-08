@@ -34,7 +34,7 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
           {p.label}
         </span>
         {bad ? (
-          <Pill tone={r!.quality === "uncalibrated" ? "warn" : "bad"} title={r!.reason.text}>
+          <Pill tone={r!.quality === "uncalibrated" ? "warn" : "bad"} title={msg(r!.reason)}>
             {qualityText[r!.quality] && t(qualityText[r!.quality])}
           </Pill>
         ) : outOfBand ? (
@@ -152,7 +152,7 @@ export function JobView(p: { job: Job; compact?: boolean }) {
         </div>
       )}
       <p class={j.state === "failed" ? "" : "muted"} style={j.state === "failed" ? "color:var(--bad);font-weight:600" : ""}>
-        {j.message.text}
+        {msg(j.message)}
       </p>
       <div class="row">
         {(j.state === "waiting_user" || j.state === "mixing") && j.type === "mix" && (

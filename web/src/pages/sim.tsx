@@ -21,8 +21,8 @@ export function SimPanel() {
   useEffect(() => {
     if (!open) return;
     load();
-    const t = setInterval(load, 2000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 2000);
+    return () => clearInterval(timer);
   }, [open]);
 
   const act = async (action: string, body: unknown = {}, msg?: string) => {
