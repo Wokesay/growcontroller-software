@@ -9,7 +9,7 @@ namespace {
 
 // A saved message; events written before SD-032 hold plain German text,
 // which stays as it is (no key). Anything else of the wrong type loads as an
-// empty message; key and text are capped, so a damaged file stays small.
+// empty message; key and text are capped (args and data are not yet).
 Msg msgFromJson(const json& e, const char* field) {
   constexpr size_t kMaxKey = 64, kMaxText = 2048;
   if (!e.contains(field)) return {};

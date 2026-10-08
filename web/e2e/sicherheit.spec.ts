@@ -50,3 +50,20 @@ test("Damaged event messages leave the page and STOP usable (SD-032)", async ({ 
   await expect(page.getByText("In the tank: Teil A 40.0 ml")).toBeVisible();
   await expect(page.locator(".stop-btn")).toBeVisible();
 });
+
+test("A part that fails to draw shows a notice; the page around it and STOP stay usable (SD-032)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  // A record that is no object at all: the event list itself fails to draw.
+  await page.route(/\/api\/v1\/events\?/, (route) => route.fulfill({ body: '{"events":[null]}', contentType: "application/json" }));
+  await login(page);
+  await expect(page.getByText("Dieser Teil lässt sich nicht anzeigen")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Seite neu laden" })).toBeVisible();
+  await expect(page.getByTestId("watchdog")).toBeVisible();  // the rest of the overview
+  await page.locator(".stop-btn").click();
+  await expect(page.getByText("Not-Halt auslösen?")).toBeVisible();
+  await page.getByRole("button", { name: "Abbrechen" }).click();
+  await page.unroute(/\/api\/v1\/events\?/);
+  await page.getByRole("button", { name: "Seite neu laden" }).click();
+  await expect(page.getByTestId("event").first()).toBeVisible();
+  await expect(page.getByText("Dieser Teil lässt sich nicht anzeigen")).toHaveCount(0);
+});

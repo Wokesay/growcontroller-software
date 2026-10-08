@@ -375,6 +375,25 @@ TEST_CASE("Restart: unreadable settings start with factory settings and name the
   CHECK(alarm);
 }
 
+TEST_CASE("Restart: settings with wrong types also start with factory settings and name the reason (SD-032)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("config.json", "{\"tanks\": 5}");
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(store.read("config.broken.json") == std::optional<std::string>("{\"tanks\": 5}"));
+  bool alarm = false;
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.config_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "ev.plain");  // the library's own text, as it is
+    }
+  CHECK(alarm);
+}
+
 TEST_CASE("Clock jump: a jump lock loaded before the time was known never holds longer than 15 min (RAT-044)") {
   gc::Catalog cat = gc::Catalog::builtin();
   gc::MemoryStorage store;

@@ -16,7 +16,8 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   const [ml, setMl] = useState<number | null>(null);
   const [result, setResult] = useState<{ changed: boolean; message: Msg } | null>(null);
   const [simCup, setSimCup] = useState<number | null>(null);
-  const job = st.job && st.job.id === jobId ? st.job : null;
+  // The running job, or how it ended (e.g. stopped by STOP): the window follows the hub, not the request.
+  const job = [st.job, st.lastJob].find((j) => j && j.id === jobId) ?? null;
   const waiting = job?.state === "waiting_user";
 
   useEffect(() => {
@@ -57,7 +58,9 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           </div>
         </div>
       ) : !waiting ? (
-        <Banner icon={<Beaker size={18} />}>{msg(job?.message) || t("calibration.running")}</Banner>
+        <Banner tone={job?.state === "failed" ? "bad" : job?.state === "aborted" ? "warn" : "info"} icon={job?.state === "failed" || job?.state === "aborted" ? undefined : <Beaker size={18} />}>
+          {msg(job?.message) || t("calibration.running")}
+        </Banner>
       ) : (
         <div class="stack">
           <p>{t("calibration.howMuch")}</p>
@@ -77,7 +80,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
                 const r = await post(`/jobs/${jobId}/result`, { ml });
                 setResult({ changed: r.changed, message: r.message });
                 await refreshState();
-                toast(t("calibration.pumpDone"));
+                toast(t("calibration.pumpDone"), r.changed ? "info" : "ok");
               }}
             >
               {t("common.save")}
@@ -90,6 +93,18 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
       )}
       {result !== null && (
         <div class="modal-foot">
+          {result.changed && (
+            <button
+              class="btn"
+              onClick={() => {
+                setResult(null);
+                setJobId(null);
+                setMl(null);
+              }}
+            >
+              {t("calibration.again")}
+            </button>
+          )}
           <button class="btn primary" onClick={p.onClose}>
             {t("common.done")}
           </button>

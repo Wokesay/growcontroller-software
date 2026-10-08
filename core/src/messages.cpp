@@ -327,7 +327,7 @@ constexpr Entry kMessages[] = {
     {"ev.probe_calibrated.text", "{name} ({kind})"},
     {"kind.ph", "pH"},
     {"kind.ec", "EC"},
-    {"kind.tank_curve", "level"},
+    {"kind.tank_curve", "Level"},
     {"ev.manual_reading", "Manual reading saved"},
     {"ev.manual_reading.text", "{values}"},
     {"ev.grow.started", "Grow cycle started"},
@@ -352,10 +352,10 @@ constexpr Entry kMessages[] = {
     {"mix.after_manual", "pH comes last: measure pH by hand now and enter it."},
     {"mix.circulate", "Mixing with the circulation pump (1 min)"},
     {"mix.stir", "Added: {name} {ml:1} ml. Now stir for 1 minute, then tap \"Continue\"."},
-    {"cal.running", "The pump runs for {s:0} s into the measuring cup …"},
+    {"cal.running", "Pump is running into the measuring cup for {s:0} s …"},
     {"cal.measure", "How much is in the measuring cup? Enter the amount in ml."},
     {"cal.done", "Saved in the pump: {flow:1} ml/min. The value stays when you replug the pump."},
-    {"cal.done_changed", "Saved in the pump: {flow:1} ml/min. The value stays when you replug the pump. Clearly different from before ({prev:1} ml/min) – check the tubing."},
+    {"cal.done_changed", "Saved in the pump: {flow:1} ml/min – clearly different from before ({prev:1} ml/min). Check the tubing for kinks or air; if you find any, fix it and calibrate again."},
 };
 // clang-format on
 

@@ -340,5 +340,5 @@ export const msgDe: Record<string, string> = {
   "cal.running": "Pumpe läuft {s:0} s in den Messbecher …",
   "cal.measure": "Wie viel ist im Messbecher? Menge in ml eintragen.",
   "cal.done": "Gespeichert in der Pumpe: {flow:1} ml/min. Bleibt beim Umstecken erhalten.",
-  "cal.done_changed": "Gespeichert in der Pumpe: {flow:1} ml/min. Bleibt beim Umstecken erhalten. Deutlich anders als vorher ({prev:1} ml/min) – Schlauch prüfen.",
+  "cal.done_changed": "Gespeichert in der Pumpe: {flow:1} ml/min – deutlich anders als vorher ({prev:1} ml/min). Prüf den Schlauch auf Knicke und Luft; findest du etwas, beheb es und miss neu ein.",
 };

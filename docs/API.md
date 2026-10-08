@@ -76,11 +76,13 @@ can be a list (joined with ", "). Events written before keep their
 plain text without a key. The other texts follow under #18 and are still
 German until then.
 
-A job that cannot start or go on (`/mix/start`, `/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
-`/pumps/{id}/calibrate`, `/pumps/{id}/prime`) answers with the error key
-`job.start_failed`; the cause is the message in `args.reason`, for
-example `dose.too_small` or `act.stopped` in `args.reason.key`. Clients
-read the cause there. Job messages (`job.message`) use their own keys,
+When the dosing of a job step cannot start or go on (`/mix/start`,
+`/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
+`/pumps/{id}/calibrate`, `/pumps/{id}/prime`), the answer has the error
+key `job.start_failed` and the cause as the message in `args.reason`,
+for example `dose.too_small` or `act.stopped` in `args.reason.key`.
+Checks of the request itself keep their own keys (for example
+`job.busy`, `dose.hand_limit`, `job.state`). Job messages (`job.message`) use their own keys,
 for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 `job.emergency_stop`.
 

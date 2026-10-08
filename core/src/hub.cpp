@@ -953,7 +953,8 @@ void Hub::setFanSockets(bool comeBackOn) {
 
 Result Hub::unbindRole(const std::string& role) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
+  const RoleDef* rd = cat_.role(role);
+  if (rd && !rd->profile.empty()) {
     Msg e;
     Ctx c = ctx();
     const Binding* old = cfg_.binding(role);
@@ -963,8 +964,7 @@ Result Hub::unbindRole(const std::string& role) {
     if (old) releaseSocket(*rd, *old);
   }
   cfg_.rolesFor(role).erase(role);
-  const RoleDef* removed = cat_.role(role);
-  saveConfig(say("ev.cfg.role_removed", {{"role", removed ? removed->label : role}}));
+  saveConfig(say("ev.cfg.role_removed", {{"role", rd ? rd->label : role}}));
   return Result::ok();
 }
 
@@ -1556,6 +1556,9 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
   if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, "cal.write", "Schreiben in die Pumpe fehlgeschlagen: " + e);
   if (auto it = pumps_.find(pump); it != pumps_.end()) it->second.flowMlPerMin = flow;  // sofort gültig, nicht erst im nächsten Takt
   double prev = jnum(job_->info, "previous");
+  if (isNum(prev) && prev <= 0) prev = kNaN;  // a chip reporting 0 has no previous rate (R5)
+  // Assumption: more than 30 % away from the previous rate points to the
+  // tubing (kinked, air in it) rather than to wear; only a warning.
   const bool changed = isNum(prev) && std::fabs(flow - prev) / prev > 0.3;
   const json calArgs{{"name", job_->steps[0].dose.name}, {"flow", flow}, {"prev", numOrNull(prev)}};
   log_.add(clock_.epoch(), "calibration", "info", say("ev.pump_calibrated"),
@@ -1645,10 +1648,10 @@ Result Hub::probeCalibration(const json& j) {
       return Result::fail(422, "probe.invalid", "Kalibrierung unplausibel (Steigung oder Faktor außerhalb) – Sonde oder Puffer prüfen");
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
-    const Msg what = kindName(kind);
-    saveConfig(say("ev.cfg.calibration", {{"kind", what}, {"name", cfg_.device(dev)->name}}));
+    const Msg kindMsg = kindName(kind);
+    saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", cfg_.device(dev)->name}}));
     log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
-             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", what}}));
+             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", kindMsg}}));
     return Result::ok({{"calibration", data}});
   }
   return Result::fail(422, "probe.action", "Unbekannter Schritt");

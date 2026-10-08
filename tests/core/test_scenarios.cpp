@@ -263,6 +263,8 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   s.control("fault", {{"device", "LVL-77B210"}, {"fault", "none"}});
   s.step(5 * 60 * 1000);
   CHECK(c.state()["outputs"]["tank.inlet"] == false);
+  c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+  CHECK(findEvents(c, "block").at(0)["text"]["key"] == "latch.inlet.fault");  // named as on the Release button
 }
 
 TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen") {
@@ -422,6 +424,7 @@ TEST_CASE("Sonden: pH und EC als getrennte Köpfe, Wassertemperatur vom EC-Kopf"
   // A probe calibration names its kind as a message, not as an ID (SD-032)
   s.world().fill(20, 1.2, 6.0);
   s.step(30000);
+  REQUIRE(c.state()["readings"]["tank.ec"]["value"].is_number());
   const double now = c.state()["readings"]["tank.ec"]["value"];
   c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "start"}});
   c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "point"}, {"reference", now}});
@@ -478,16 +481,30 @@ TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
 TEST_CASE("Messages: pump calibration and emergency stop name their result and cause (SD-032)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
+  s.world().cap(kB)->storedFlow = 0;  // a chip that reports 0: no previous rate, not "clearly different" (R5)
   setupStage0(s, c);
-  json r = calibrate(s, c, kA);
-  CHECK(r["message"]["key"] == (r["changed"] == true ? "cal.done_changed" : "cal.done"));
+  json r = calibrate(s, c, kA);  // first calibration: no previous rate
+  CHECK(r["changed"] == false);
+  CHECK(r["message"]["key"] == "cal.done");
+  CHECK(r["message"]["args"]["prev"].is_null());
   CHECK(r["message"]["args"]["flow"].get<double>() == doctest::Approx(r["flowMlPerMin"].get<double>()));
+  r = calibrate(s, c, kB);
+  CHECK(r["changed"] == false);
+  CHECK(r["message"]["args"]["prev"].is_null());
   r = calibrate(s, c, kA, 0.5);  // half the amount: clearly different, check the tubing
   CHECK(r["changed"] == true);
   CHECK(r["message"]["key"] == "cal.done_changed");
   CHECK(r["message"]["args"]["prev"].is_number());
-  for (const char* id : {kB, kC}) calibrate(s, c, id);
+  calibrate(s, c, kC);
   calibrate(s, c, kA);
+  // Cancelled at "how much is in the cup?": it went into the cup, so nothing into the tank
+  const std::string cal = c.ok("POST", std::string("/api/v1/pumps/") + kC + "/calibrate", {{"seconds", 30}})["job"]["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 60000));
+  c.ok("POST", "/api/v1/jobs/" + cal + "/abort");
+  CHECK(c.state()["lastJob"]["message"]["key"] == "job.aborted_none");
+  const json aborted = findEvents(c, "mix").at(0);
+  CHECK(aborted["title"]["key"] == "ev.job.aborted");  // not a mix
+  CHECK(aborted["text"]["key"] == "ev.contents_none");
   // Too small for one exact run: the start fails, the cause travels as the reason
   auto [code, tiny] = c.call("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 0.05}});
   CHECK(code == 422);

@@ -278,8 +278,19 @@ export class ErrorBoundary extends Component<{ children: ComponentChildren }, { 
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch(e: unknown) {
+    console.error(e);  // still diagnosable in the browser console
+  }
   render() {
-    return this.state.failed ? <Banner tone="bad">{t("common.renderError")}</Banner> : this.props.children;
+    if (!this.state.failed) return this.props.children;
+    return (
+      <Banner tone="bad">
+        <p>{t("common.renderError")}</p>
+        <button class="btn sm" onClick={() => location.reload()}>
+          {t("common.reload")}
+        </button>
+      </Banner>
+    );
   }
 }
 
