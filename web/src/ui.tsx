@@ -231,7 +231,7 @@ export function Modal(p: { title: ComponentChildren; onClose: () => void; childr
       <div class={`modal ${p.wide ? "wide" : ""}`} role="dialog" aria-modal="true">
         <div class="row-between">
           <h2>{p.title}</h2>
-          <button class="btn ghost sm" onClick={p.onClose} aria-label="Schließen">
+          <button class="btn ghost sm" onClick={p.onClose} aria-label={t("common.close")}>
             <X size={18} />
           </button>
         </div>
@@ -284,7 +284,7 @@ export function CheckRow(p: { ok: boolean; soft?: boolean; text: string; fix?: s
       <span>{p.text}</span>
       {!p.ok && href && (
         <a class="fix" href={href}>
-          Jetzt erledigen →
+          {t("shell.fixNow")} →
         </a>
       )}
     </div>
@@ -302,12 +302,18 @@ export function useNow(intervalMs = 1000) {
 
 export const ctlTone = (s: string): Tone =>
   s === "working" ? "info" : s === "blocked" || s === "latched" ? "bad" : s === "waiting" ? "warn" : s === "idle" ? "ok" : "neutral";
+// Getters, so that each read gives the text in the current language.
 export const ctlLabel: Record<string, string> = {
-  off: "Aus", idle: "Ruht", working: "Arbeitet", waiting: "Wartet", blocked: "Gesperrt", latched: "Gerastet",
+  get off() { return t("shell.ctl.off"); },
+  get idle() { return t("shell.ctl.idle"); },
+  get working() { return t("shell.ctl.working"); },
+  get waiting() { return t("shell.ctl.waiting"); },
+  get blocked() { return t("shell.ctl.blocked"); },
+  get latched() { return t("shell.ctl.latched"); },
 };
 export const setupLabel: Record<string, [string, Tone]> = {
-  unavailable: ["Nicht verfügbar", "neutral"],
-  needs_setup: ["Einzurichten", "warn"],
-  limited: ["Eingeschränkt", "info"],
-  ready: ["Bereit", "ok"],
+  get unavailable(): [string, Tone] { return [t("shell.setup.unavailable"), "neutral"]; },
+  get needs_setup(): [string, Tone] { return [t("shell.setup.needsSetup"), "warn"]; },
+  get limited(): [string, Tone] { return [t("shell.setup.limited"), "info"]; },
+  get ready(): [string, Tone] { return [t("shell.setup.ready"), "ok"]; },
 };

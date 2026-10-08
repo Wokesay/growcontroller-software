@@ -3,6 +3,7 @@ import { render } from "preact";
 import "./styles.css";
 import { App } from "./app";
 import { boot } from "./store";
+import { t } from "./i18n";
 
 try {
   const t = localStorage.getItem("gc-theme");
@@ -14,5 +15,5 @@ try {
 render(<App />, document.getElementById("app")!);
 boot().catch(() => {
   document.getElementById("app")!.innerHTML =
-    '<div class="login"><p>Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?</p></div>';
+    `<div class="login"><p>${t("shell.noAnswer")}</p></div>`;
 });

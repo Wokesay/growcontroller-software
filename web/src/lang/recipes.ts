@@ -1,6 +1,91 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Texts of one area of the app (#18), German first. de.ts and en.ts merge
 // all areas; en must have every key of de (checked by the compiler).
-export const de = {} as const;
+export const de = {
+  // Kanister
+  "recipes.bottles": "Kanister",
+  "recipes.noBottles": "Noch keine Kanister",
+  "recipes.noBottlesText": "Lege für jede Pumpe den Nährstoff an, der darunter steht.",
+  "recipes.type": "Typ",
+  "recipes.stock": "Vorrat",
+  "recipes.pairOf": "Paar {p}",
+  "recipes.calibrate": "einmessen",
+  "recipes.noPump": "keine",
+  "recipes.bottleChanged": "Kanister gewechselt (voll)",
+  "recipes.newBottle": "{name}: neuer Kanister",
+  "recipes.remove": "Entfernen",
+  "recipes.bottleRemoved": "Kanister entfernt",
 
-export const en: Record<keyof typeof de, string> = {};
+  // Kanister bearbeiten
+  "recipes.bottleTitle": "Kanister „{name}“",
+  "recipes.addBottle": "Kanister anlegen",
+  "recipes.bottleSaved": "Kanister gespeichert",
+  "recipes.nameHint": "z. B. Teil A",
+  "recipes.phDownAcid": "pH− (Säure)",
+  "recipes.phUpBase": "pH+ (Lauge)",
+  "recipes.pumpHint": "Die Pumpe sitzt auf diesem Kanister",
+  "recipes.noPumpOption": "– keine –",
+  "recipes.pumpOption": "{name} · Dosierblock Port {n}",
+  "recipes.pairHint": "Gleiche Kennung = werden immer gemeinsam skaliert (A:B)",
+  "recipes.pairPlaceholder": "z. B. AB",
+  "recipes.bottleSize": "Kanistergröße",
+  "recipes.stockNow": "Inhalt jetzt",
+  "recipes.stockNowHint": "Leer lassen, wenn unbekannt",
+  "recipes.colour": "Farbe {c}",
+
+  // Rezepte
+  "recipes.recipes": "Rezepte",
+  "recipes.recipe": "Rezept",
+  "recipes.recipeTitle": "Rezept „{name}“",
+  "recipes.recipeSaved": "Rezept gespeichert",
+  "recipes.recipeNameHint": "z. B. Wachstum Woche 1–2",
+  "recipes.note": "Notiz",
+  "recipes.order": "Reihenfolge = Dosierreihenfolge",
+  "recipes.moveUp": "nach oben",
+  "recipes.moveDown": "nach unten",
+  "recipes.mixNote": "Konzentrate nie direkt zusammengeben: Der Hub dosiert jeden Teil einzeln ins Wasser und lässt dazwischen durchmischen. pH-Korrektur gehört nicht ins Rezept – sie kommt immer zuletzt.",
+  "recipes.pairsComplete": "Paare müssen vollständig im Rezept stehen.",
+} as const;
+
+export const en: Record<keyof typeof de, string> = {
+  "recipes.bottles": "Bottles",
+  "recipes.noBottles": "No bottles yet",
+  "recipes.noBottlesText": "For each pump, add the nutrient that stands under it.",
+  "recipes.type": "Type",
+  "recipes.stock": "Stock",
+  "recipes.pairOf": "Pair {p}",
+  "recipes.calibrate": "calibrate",
+  "recipes.noPump": "none",
+  "recipes.bottleChanged": "Bottle changed (full)",
+  "recipes.newBottle": "{name}: new bottle",
+  "recipes.remove": "Remove",
+  "recipes.bottleRemoved": "Bottle removed",
+
+  "recipes.bottleTitle": "Bottle \"{name}\"",
+  "recipes.addBottle": "Add bottle",
+  "recipes.bottleSaved": "Bottle saved",
+  "recipes.nameHint": "e.g. Part A",
+  "recipes.phDownAcid": "pH− (acid)",
+  "recipes.phUpBase": "pH+ (base)",
+  "recipes.pumpHint": "The pump sits on this bottle",
+  "recipes.noPumpOption": "– none –",
+  "recipes.pumpOption": "{name} · Dosing block port {n}",
+  "recipes.pairHint": "Same label = always scaled together (A:B)",
+  "recipes.pairPlaceholder": "e.g. AB",
+  "recipes.bottleSize": "Bottle size",
+  "recipes.stockNow": "Contents now",
+  "recipes.stockNowHint": "Leave empty if unknown",
+  "recipes.colour": "Colour {c}",
+
+  "recipes.recipes": "Recipes",
+  "recipes.recipe": "Recipe",
+  "recipes.recipeTitle": "Recipe \"{name}\"",
+  "recipes.recipeSaved": "Recipe saved",
+  "recipes.recipeNameHint": "e.g. Vegetative week 1–2",
+  "recipes.note": "Note",
+  "recipes.order": "Order = dosing order",
+  "recipes.moveUp": "Move up",
+  "recipes.moveDown": "Move down",
+  "recipes.mixNote": "Never mix concentrates directly: the hub doses each part into the water on its own and lets it mix in between. pH correction does not belong in the recipe – it always comes last.",
+  "recipes.pairsComplete": "Pairs must be complete in the recipe.",
+};

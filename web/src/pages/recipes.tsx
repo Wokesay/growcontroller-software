@@ -4,12 +4,14 @@
 import { useState } from "preact/hooks";
 import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, RefreshCw, ScrollText, Trash2 } from "lucide-preact";
 import { del, post, type Canister, type Recipe, type RecipeTemplate } from "../api";
-import { lang, t } from "../i18n";
+import { lang, t, type TextKey } from "../i18n";
 import { num } from "../format";
 import { canisters, catalog, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
 
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0", "#9a8a2c", "#6b7280"];
+
+const KIND: Record<Canister["kind"], TextKey> = { nutrient: "setup.nut.kindNutrient", ph_down: "setup.nut.kindPhDown", ph_up: "setup.nut.kindPhUp" };
 
 const tName = (x: { name: string; nameEn?: string }) => (lang.value === "en" && x.nameEn ? x.nameEn : x.name);
 const tNote = (x: RecipeTemplate) => (lang.value === "en" && x.noteEn ? x.noteEn : x.note);
@@ -104,12 +106,12 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
   return (
     <Modal
-      title={p.can ? `Kanister „${p.can.name}“` : "Kanister anlegen"}
+      title={p.can ? t("recipes.bottleTitle", { name: p.can.name }) : t("recipes.addBottle")}
       onClose={p.onClose}
       footer={
         <>
           <button class="btn" onClick={p.onClose}>
-            Abbrechen
+            {t("common.cancel")}
           </button>
           <Button
             variant="primary"
@@ -117,52 +119,52 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
               await post("/canisters", { id: p.can?.id, ...v, pair: v.kind === "nutrient" ? v.pair : "" });
               await refreshConfig();
               await refreshState();
-              toast("Kanister gespeichert");
+              toast(t("recipes.bottleSaved"));
               p.onClose();
             }}
           >
-            Speichern
+            {t("common.save")}
           </Button>
         </>
       }
     >
       <div class="form-grid">
-        <Field label="Name">
-          <input class="input" value={v.name} placeholder="z. B. Teil A" onInput={(e) => set("name", (e.target as HTMLInputElement).value)} name="canister-name" />
+        <Field label={t("setup.tank.name")}>
+          <input class="input" value={v.name} placeholder={t("recipes.nameHint")} onInput={(e) => set("name", (e.target as HTMLInputElement).value)} name="canister-name" />
         </Field>
-        <Field label="Typ">
+        <Field label={t("recipes.type")}>
           <select class="select" value={v.kind} onChange={(e) => set("kind", (e.target as HTMLSelectElement).value)}>
-            <option value="nutrient">Nährstoff</option>
-            <option value="ph_down">pH− (Säure)</option>
-            <option value="ph_up">pH+ (Lauge)</option>
+            <option value="nutrient">{t("setup.nut.kindNutrient")}</option>
+            <option value="ph_down">{t("recipes.phDownAcid")}</option>
+            <option value="ph_up">{t("recipes.phUpBase")}</option>
           </select>
         </Field>
-        <Field label="Pumpe" hint="Die Pumpe sitzt auf diesem Kanister">
+        <Field label={t("setup.nut.pump")} hint={t("recipes.pumpHint")}>
           <select class="select" value={v.pump} onChange={(e) => set("pump", (e.target as HTMLSelectElement).value)} name="canister-pump">
-            <option value="">– keine –</option>
+            <option value="">{t("recipes.noPumpOption")}</option>
             {caps.map((c) => (
               <option value={c.id} disabled={used.has(c.id)}>
-                {c.name || c.id} · Dosierblock Port {c.slot + 1}
+                {t("recipes.pumpOption", { name: c.name || c.id, n: c.slot + 1 })}
               </option>
             ))}
           </select>
         </Field>
         {v.kind === "nutrient" && (
-          <Field label="Paar" hint="Gleiche Kennung = werden immer gemeinsam skaliert (A:B)">
-            <input class="input" value={v.pair} placeholder="z. B. AB" onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} />
+          <Field label={t("setup.nut.pair")} hint={t("recipes.pairHint")}>
+            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} />
           </Field>
         )}
-        <Field label="Kanistergröße">
+        <Field label={t("recipes.bottleSize")}>
           <NumberInput value={v.capacityMl} onValue={(x) => set("capacityMl", x)} unit="ml" />
         </Field>
-        <Field label="Inhalt jetzt" hint="Leer lassen, wenn unbekannt">
+        <Field label={t("recipes.stockNow")} hint={t("recipes.stockNowHint")}>
           <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" />
         </Field>
       </div>
       <div class="row">
         {COLORS.map((c) => (
           <button
-            aria-label={`Farbe ${c}`}
+            aria-label={t("recipes.colour", { c })}
             onClick={() => set("color", c)}
             style={`width:28px;height:28px;border-radius:8px;border:${v.color === c ? "3px solid var(--text)" : "1px solid var(--border)"};background:${c};cursor:pointer`}
           />
@@ -186,36 +188,36 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
   return (
     <Modal
       wide
-      title={p.recipe ? `Rezept „${p.recipe.name}“` : "Rezept anlegen"}
+      title={p.recipe ? t("recipes.recipeTitle", { name: p.recipe.name }) : t("recipes.tpl.apply")}
       onClose={p.onClose}
       footer={
         <>
           <button class="btn" onClick={p.onClose}>
-            Abbrechen
+            {t("common.cancel")}
           </button>
           <Button
             variant="primary"
             onClick={async () => {
               await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter((s) => s.mlPerL) });
               await refreshConfig();
-              toast("Rezept gespeichert");
+              toast(t("recipes.recipeSaved"));
               p.onClose();
             }}
           >
-            Speichern
+            {t("common.save")}
           </Button>
         </>
       }
     >
       <div class="form-grid">
-        <Field label="Name">
-          <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} placeholder="z. B. Wachstum Woche 1–2" />
+        <Field label={t("setup.tank.name")}>
+          <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} placeholder={t("recipes.recipeNameHint")} />
         </Field>
-        <Field label="Notiz">
+        <Field label={t("recipes.note")}>
           <input class="input" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
         </Field>
       </div>
-      <div class="section-title">Reihenfolge = Dosierreihenfolge</div>
+      <div class="section-title">{t("recipes.order")}</div>
       <div class="steps">
         {steps.map((s, i) => {
           const k = cans.find((c) => c.id === s.canister);
@@ -225,16 +227,16 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
               <div class="row">
                 <span class="swatch" style={`background:${k?.color}`} />
                 <strong>{k?.name ?? s.canister}</strong>
-                {k?.pair && <span class="faint small">Paar {k.pair}</span>}
+                {k?.pair && <span class="faint small">{t("recipes.pairOf", { p: k.pair })}</span>}
               </div>
               <div class="row">
                 <div style="width:130px">
                   <NumberInput value={s.mlPerL} onValue={(v) => setSteps(steps.map((x, j) => (j === i ? { ...x, mlPerL: v } : x)))} unit="ml/L" />
                 </div>
-                <button class="btn ghost sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label="nach oben">
+                <button class="btn ghost sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("recipes.moveUp")}>
                   <ArrowUp size={15} />
                 </button>
-                <button class="btn ghost sm" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label="nach unten">
+                <button class="btn ghost sm" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={t("recipes.moveDown")}>
                   <ArrowDown size={15} />
                 </button>
               </div>
@@ -243,8 +245,8 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
         })}
       </div>
       <p class="muted small">
-        Konzentrate nie direkt zusammengeben: Der Hub dosiert jeden Teil einzeln ins Wasser und lässt dazwischen durchmischen. pH-Korrektur gehört nicht ins Rezept – sie kommt immer zuletzt.
-        {pairs.size > 0 && " Paare müssen vollständig im Rezept stehen."}
+        {t("recipes.mixNote")}
+        {pairs.size > 0 && ` ${t("recipes.pairsComplete")}`}
       </p>
     </Modal>
   );
@@ -262,24 +264,24 @@ export function RecipesPage() {
   return (
     <div class="stack">
       <Card
-        title="Kanister"
+        title={t("recipes.bottles")}
         icon={<FlaskConical size={18} />}
         actions={
           <Button size="sm" variant="primary" onClick={() => setEditCan(null)}>
-            <Plus size={15} /> Kanister
+            <Plus size={15} /> {t("term.bottle")}
           </Button>
         }
       >
         {!cans.length ? (
-          <Empty icon={<FlaskConical size={34} />} title="Noch keine Kanister" text="Lege für jede Pumpe den Nährstoff an, der darunter steht." />
+          <Empty icon={<FlaskConical size={34} />} title={t("recipes.noBottles")} text={t("recipes.noBottlesText")} />
         ) : (
           <table class="table">
             <thead>
               <tr>
-                <th>Kanister</th>
-                <th class="hide-sm">Typ</th>
-                <th>Pumpe</th>
-                <th>Vorrat</th>
+                <th>{t("term.bottle")}</th>
+                <th class="hide-sm">{t("recipes.type")}</th>
+                <th>{t("setup.nut.pump")}</th>
+                <th>{t("recipes.stock")}</th>
                 <th />
               </tr>
             </thead>
@@ -293,12 +295,12 @@ export function RecipesPage() {
                       <span class="row" style="gap:8px">
                         <span class="swatch" style={`background:${k.color}`} />
                         <strong>{k.name}</strong>
-                        {k.pair && <span class="faint small">Paar {k.pair}</span>}
+                        {k.pair && <span class="faint small">{t("recipes.pairOf", { p: k.pair })}</span>}
                       </span>
                     </td>
-                    <td class="hide-sm muted">{{ nutrient: "Nährstoff", ph_down: "pH−", ph_up: "pH+" }[k.kind]}</td>
+                    <td class="hide-sm muted">{t(KIND[k.kind])}</td>
                     <td class="small">
-                      {k.pump ? (flow ? <span class="muted">{num(flow, 1)} ml/min</span> : <a href={`#/geraete?pump=${k.pump}`}>einmessen</a>) : <span class="faint">keine</span>}
+                      {k.pump ? (flow ? <span class="muted">{num(flow, 1)} ml/min</span> : <a href={`#/geraete?pump=${k.pump}`}>{t("recipes.calibrate")}</a>) : <span class="faint">{t("recipes.noPump")}</span>}
                     </td>
                     <td>
                       <div class="row" style="gap:8px;flex-wrap:nowrap">
@@ -312,27 +314,27 @@ export function RecipesPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        title="Kanister gewechselt (voll)"
+                        title={t("recipes.bottleChanged")}
                         disabled={!k.capacityMl}
                         onClick={async () => {
                           await post(`/canisters/${k.id}/stock`, { ml: k.capacityMl });
                           await refreshState();
-                          toast(`${k.name}: neuer Kanister`);
+                          toast(t("recipes.newBottle", { name: k.name }));
                         }}
                       >
                         <RefreshCw size={15} />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title="Bearbeiten">
+                      <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title={t("common.edit")}>
                         <Pencil size={15} />
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        title="Entfernen"
+                        title={t("recipes.remove")}
                         onClick={async () => {
                           await del(`/canisters/${k.id}`);
                           await refreshConfig();
-                          toast("Kanister entfernt");
+                          toast(t("recipes.bottleRemoved"));
                         }}
                       >
                         <Trash2 size={15} />
@@ -346,29 +348,29 @@ export function RecipesPage() {
         )}
       </Card>
       <Card
-        title="Rezepte"
+        title={t("recipes.recipes")}
         icon={<ScrollText size={18} />}
         actions={
           <Button size="sm" variant="primary" onClick={() => setEditRec(null)} disabled={!cans.some((k) => k.kind === "nutrient")}>
-            <Plus size={15} /> Rezept
+            <Plus size={15} /> {t("recipes.recipe")}
           </Button>
         }
       >
         <div class="stack">
-          {rs.length === 0 && <p class="muted">Noch kein Rezept.</p>}
+          {rs.length === 0 && <p class="muted">{t("setup.nut.none")}</p>}
           <div class="grid">
             {rs.map((r) => (
               <div class="card flat">
                 <div class="row-between">
                   <h3>{r.name}</h3>
                   <div class="row" style="gap:2px">
-                    <Button size="sm" variant="ghost" onClick={() => setEditRec(r)} title="Bearbeiten">
+                    <Button size="sm" variant="ghost" onClick={() => setEditRec(r)} title={t("common.edit")}>
                       <Pencil size={15} />
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      title="Entfernen"
+                      title={t("recipes.remove")}
                       onClick={async () => {
                         await del(`/recipes/${r.id}`);
                         await refreshConfig();
