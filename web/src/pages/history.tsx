@@ -5,29 +5,30 @@ import { Download, History, LineChart } from "lucide-preact";
 import { get, type HubEvent, type SeriesData } from "../api";
 import { TimeChart, type Marker } from "../chart";
 import { hasRole, state } from "../store";
+import { t, type TextKey } from "../i18n";
 import { Card, Seg } from "../ui";
 import { EventList } from "../widgets";
 
-const RANGES: [string, string, number][] = [
-  ["6h", "6 h", 6 * 3600],
-  ["24h", "24 h", 24 * 3600],
-  ["7d", "7 T", 7 * 86400],
-  ["30d", "30 T", 30 * 86400],
-  ["1y", "1 J", 365 * 86400],
+const RANGES: [string, TextKey, number][] = [
+  ["6h", "history.range6h", 6 * 3600],
+  ["24h", "history.range24h", 24 * 3600],
+  ["7d", "history.range7d", 7 * 86400],
+  ["30d", "history.range30d", 30 * 86400],
+  ["1y", "history.range1y", 365 * 86400],
 ];
 
-const FILTERS: [string, string][] = [
-  ["", "Alle"],
-  ["dose", "Dosierung"],
-  ["mix", "Mischläufe"],
-  ["control", "Regelung"],
-  ["alarm", "Alarme"],
-  ["block", "Sperren"],
-  ["tank", "Tank"],
-  ["calibration", "Kalibrierung"],
-  ["device", "Geräte"],
-  ["config", "Einstellungen"],
-  ["auth", "Anmeldung"],
+const FILTERS: [string, TextKey][] = [
+  ["", "common.all"],
+  ["dose", "history.filterDose"],
+  ["mix", "history.filterMix"],
+  ["control", "overview.control"],
+  ["alarm", "history.filterAlarm"],
+  ["block", "tank.locks"],
+  ["tank", "setup.tank.h"],
+  ["calibration", "history.filterCalibration"],
+  ["device", "nav.devices"],
+  ["config", "nav.settings"],
+  ["auth", "history.filterAuth"],
 ];
 
 export function HistoryPage() {
@@ -82,10 +83,10 @@ export function HistoryPage() {
     <div class="stack">
       <div class="page-head">
         <div>
-          <p class="muted">Gestrichelte Linien zeigen Dosierungen. Der grüne Streifen ist das Zielband. Lücken sind fehlende Werte, nicht 0.</p>
+          <p class="muted">{t("history.intro")}</p>
         </div>
         <div class="row">
-          <Seg value={range} onChange={setRange} options={RANGES.map(([v, l]) => [v, l] as [string, string])} />
+          <Seg value={range} onChange={setRange} options={RANGES.map(([v, l]) => [v, t(l)] as [string, string])} />
           <a class="btn sm" href={csv} download>
             <Download size={15} /> CSV
           </a>
@@ -103,25 +104,25 @@ export function HistoryPage() {
           </Card>
         )}
         {hasRole("tank.water_temp") && (
-          <Card title="Wassertemperatur" icon={<LineChart size={18} />}>
-            <TimeChart data={data["tank.water_temp"] ?? null} color="--temp" label="Wasser" unit="°C" decimals={1} />
+          <Card title={t("history.waterTemp")} icon={<LineChart size={18} />}>
+            <TimeChart data={data["tank.water_temp"] ?? null} color="--temp" label={t("setup.tank.water")} unit="°C" decimals={1} />
           </Card>
         )}
-        <Card title={hasRole("tank.level") ? "Füllstand" : "Volumen (aus Mischläufen)"} icon={<LineChart size={18} />}>
-          <TimeChart data={data[hasRole("tank.level") ? "tank.level" : "tank.volume"] ?? null} color="--level" label="Volumen" unit="L" decimals={1} />
+        <Card title={hasRole("tank.level") ? t("area.tankLevel") : t("history.volumeFromMixes")} icon={<LineChart size={18} />}>
+          <TimeChart data={data[hasRole("tank.level") ? "tank.level" : "tank.volume"] ?? null} color="--level" label={t("history.volume")} unit="L" decimals={1} />
         </Card>
         {climate.includes("zone.air_temp") && (
-          <Card title="Lufttemperatur" icon={<LineChart size={18} />}>
-            <TimeChart data={data["zone.air_temp"] ?? null} color="--air" label="Luft" unit="°C" decimals={1} />
+          <Card title={t("history.airTemp")} icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.air_temp"] ?? null} color="--air" label={t("area.airTemp")} unit="°C" decimals={1} />
           </Card>
         )}
         {climate.includes("zone.humidity") && (
-          <Card title="Luftfeuchte" icon={<LineChart size={18} />}>
-            <TimeChart data={data["zone.humidity"] ?? null} color="--rh" label="Feuchte" unit="%" decimals={0} />
+          <Card title={t("history.humidity")} icon={<LineChart size={18} />}>
+            <TimeChart data={data["zone.humidity"] ?? null} color="--rh" label={t("area.humidity")} unit="%" decimals={0} />
           </Card>
         )}
         {climate.includes("zone.vpd") && (
-          <Card title="VPD (Luft)" icon={<LineChart size={18} />}>
+          <Card title={t("history.vpd")} icon={<LineChart size={18} />}>
             <TimeChart data={data["zone.vpd"] ?? null} color="--vpd" label="VPD" unit="kPa" decimals={2} />
           </Card>
         )}
@@ -131,11 +132,11 @@ export function HistoryPage() {
           </Card>
         )}
       </div>
-      <Card title="Ereignisse" icon={<History size={18} />}>
+      <Card title={t("history.events")} icon={<History size={18} />}>
         <div class="chips" style="margin-bottom:8px">
           {FILTERS.map(([v, l]) => (
             <button class={`chip ${filter === v ? "on" : ""}`} onClick={() => setFilter(v)}>
-              {l}
+              {t(l)}
             </button>
           ))}
         </div>
