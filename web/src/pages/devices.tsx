@@ -6,6 +6,7 @@ import { Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
 import { del, patch, post, probeKinds, put, type Device } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
+import { t } from "../i18n";
 import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
@@ -23,20 +24,20 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
         <div class="row" style="gap:8px">
           <strong>{d.name || d.classLabel}</strong>
           <Pill tone={d.online ? "ok" : "bad"} dot>
-            {d.online ? "verbunden" : "antwortet nicht"}
+            {d.online ? t("devices.online") : t("devices.offline")}
           </Pill>
-          {!d.configured && <Pill tone="info">neu erkannt</Pill>}
+          {!d.configured && <Pill tone="info">{t("devices.newFound")}</Pill>}
         </div>
         <div class="muted small">
           {d.classLabel} · {where} · <span class="mono">{d.id}</span>
           {d.class === "pump_cap" && (
             <>
               {" · "}
-              {flow ? `${num(flow, 1)} ml/min eingemessen` : <span style="color:var(--bad)">nicht eingemessen</span>}
-              {can ? ` · auf „${can.name}“` : " · keinem Kanister zugeordnet"}
+              {flow ? t("devices.flowCalibrated", { flow: num(flow, 1) }) : <span style="color:var(--bad)">{t("devices.notCalibrated")}</span>}
+              {can ? ` · ${t("devices.onBottle", { name: can.name })}` : ` · ${t("devices.noBottle")}`}
             </>
           )}
-          {Object.entries(d.calibrations ?? {}).map(([k, at]) => ` · ${k === "tank_curve" ? "Kennlinie" : k} kalibriert ${at ? dateTime(at) : ""}`)}
+          {Object.entries(d.calibrations ?? {}).map(([k, at]) => ` · ${k === "tank_curve" ? t("devices.curveCalibrated", { at: at ? dateTime(at) : "" }) : t("devices.kindCalibrated", { kind: k, at: at ? dateTime(at) : "" })}`)}
         </div>
         {d.class.startsWith("shelly_") && <OutletRoles d={d} />}
       </div>
@@ -49,25 +50,25 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
               await post(`/devices/${d.id}/accept`, { name: "" });
               await refreshConfig();
               await refreshState();
-              toast(`${d.classLabel} übernommen`);
+              toast(t("devices.accepted", { name: d.classLabel }));
             }}
           >
-            Übernehmen
+            {t("devices.accept")}
           </Button>
         ) : (
           <>
             {d.class === "pump_cap" && d.online && (
               <Button size="sm" onClick={() => p.onCal(d, "pump")}>
-                Einmessen
+                {t("setup.cal.calibrate")}
               </Button>
             )}
             {d.online &&
               probeKinds(catalog.value, d.class).map((k) => (
                 <Button size="sm" onClick={() => p.onCal(d, k)}>
-                  {k === "ph" ? "pH kalibrieren" : k === "ec" ? "EC kalibrieren" : "Kennlinie"}
+                  {k === "ph" ? t("devices.calPh") : k === "ec" ? t("devices.calEc") : t("devices.curve")}
                 </Button>
               ))}
-            <Button size="sm" variant="ghost" onClick={() => setEdit(true)} title="Umbenennen">
+            <Button size="sm" variant="ghost" onClick={() => setEdit(true)} title={t("devices.rename")}>
               <Pencil size={15} />
             </Button>
           </>
@@ -75,7 +76,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
       </div>
       {edit && (
         <Modal
-          title="Gerät umbenennen"
+          title={t("devices.renameTitle")}
           onClose={() => setEdit(false)}
           footer={
             <>
@@ -88,7 +89,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
                   await refreshState();
                 }}
               >
-                <Trash2 size={15} /> Aus der Einrichtung entfernen
+                <Trash2 size={15} /> {t("devices.remove")}
               </Button>
               <Button
                 variant="primary"
@@ -99,12 +100,12 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
                   await refreshState();
                 }}
               >
-                Speichern
+                {t("common.save")}
               </Button>
             </>
           }
         >
-          <Field label="Name" hint="Zum Beispiel die Farbe des Clips oder der Ort">
+          <Field label={t("setup.tank.name")} hint={t("devices.nameHint")}>
             <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
         </Modal>
@@ -120,13 +121,13 @@ function Roles() {
   const rolesUsed = Object.entries(cat.roles).filter(([, r]) => devs.some((d) => cat.deviceClasses[d.class]?.provides.includes(r.capability)));
   return (
     <div class="stack">
-      <p class="muted">Messstellen und Ausgänge hängen an der Geräte-ID, nicht am Port. Umstecken ändert nichts.</p>
+      <p class="muted">{t("devices.rolesIntro")}</p>
       <table class="table">
         <thead>
           <tr>
-            <th>Rolle</th>
-            <th>Gerät</th>
-            <th class="hide-sm">Zustand</th>
+            <th>{t("devices.colRole")}</th>
+            <th>{t("devices.colDevice")}</th>
+            <th class="hide-sm">{t("devices.colState")}</th>
           </tr>
         </thead>
         <tbody>
@@ -134,11 +135,11 @@ function Roles() {
             const b = binding(id);
             const cands = devs.filter((d) => cat.deviceClasses[d.class]?.provides.includes(r.capability));
             const channels = (cls: string) => cat.deviceClasses[cls]?.channels ?? 1;
-            const opts: [string, string][] = [["", "– nicht zugeordnet –"]];
+            const opts: [string, string][] = [["", t("devices.unassigned")]];
             for (const d of cands) {
               const n = channels(d.class);
-              const what = d.class.startsWith("shelly_") ? "Dose" : "Ausgang";
-              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${d.name || d.id} · ${what} ${c + 1}`]);
+              const what = (c: number) => (d.class.startsWith("shelly_") ? t("port.outlet", { n: c + 1 }) : t("devices.output", { n: c + 1 }));
+              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${d.name || d.id} · ${what(c)}`]);
               else opts.push([`${d.id}|0`, d.name || d.id]);
             }
             const reading = st.readings[id];
@@ -161,7 +162,7 @@ function Roles() {
                         }
                         await refreshConfig();
                         await refreshState();
-                        toast("Zuordnung gespeichert");
+                        toast(t("devices.saved"));
                       } catch (x: any) {
                         toast(x.message, "error");
                       }
@@ -172,7 +173,7 @@ function Roles() {
                     ))}
                   </select>
                 </td>
-                <td class="hide-sm small muted">{reading ? reading.reason.text : b ? (st.outputs[id] ? "an" : "aus") : ""}</td>
+                <td class="hide-sm small muted">{reading ? reading.reason.text : b ? (st.outputs[id] ? t("common.on") : t("common.off")) : ""}</td>
               </tr>
             );
           })}
@@ -190,8 +191,8 @@ function Expand() {
   for (const f of unavailable) for (const c of f.checks) for (const s of c.shop ?? []) byShop.set(s, [...(byShop.get(s) ?? []), f.label]);
   return (
     <div class="stack">
-      <p class="muted">Was du mit weiteren Geräten zusätzlich könntest. Einstecken, übernehmen – die Funktionen erscheinen dann unter „Funktionen“.</p>
-      {byShop.size === 0 && <Banner tone="ok">Alle Funktionen dieses Katalogs sind mit deiner Hardware möglich.</Banner>}
+      <p class="muted">{t("devices.expandIntro")}</p>
+      {byShop.size === 0 && <Banner tone="ok">{t("devices.allPossible")}</Banner>}
       <div class="grid">
         {[...byShop.entries()].map(([cls, fns]) => {
           const d = cat.deviceClasses[cls];
@@ -199,7 +200,7 @@ function Expand() {
             <div class="card flat">
               <div class="row-between">
                 <h3>{d?.label ?? cls}</h3>
-                <Pill tone="neutral">Stufe {d?.stage}</Pill>
+                <Pill tone="neutral">{t("devices.stage", { n: d?.stage ?? "" })}</Pill>
               </div>
               <p class="muted small">{d?.text}</p>
               <div class="chips" style="margin-top:8px">
@@ -211,7 +212,7 @@ function Expand() {
           );
         })}
       </div>
-      <div class="section-title">Alle Funktionen</div>
+      <div class="section-title">{t("devices.allFunctions")}</div>
       <div class="list">
         {st.functions.map((f) => (
           <div class="item">
@@ -245,7 +246,7 @@ export function DevicesPage() {
   const blocks = st.devices.filter((d) => d.class !== "pump_cap");
   return (
     <div class="stack">
-      <Card title="Anschlüsse am Hub" icon={<Plug size={18} />} actions={<span class="faint small">RJ45, jeder Anschluss mit eigener Prüfmessung</span>}>
+      <Card title={t("setup.dev.hubPorts")} icon={<Plug size={18} />} actions={<span class="faint small">{t("devices.portsNote")}</span>}>
         <PortGrid />
       </Card>
       <Seg
@@ -255,9 +256,9 @@ export function DevicesPage() {
           navigate(`/geraete?tab=${v}`);
         }}
         options={[
-          ["geraete", "Geräte"],
-          ["zuordnung", "Zuordnung"],
-          ["erweitern", "Erweitern"],
+          ["geraete", t("nav.devices")],
+          ["zuordnung", t("devices.tabAssign")],
+          ["erweitern", t("devices.tabExpand")],
         ]}
       />
       {tab === "geraete" && (
@@ -266,7 +267,7 @@ export function DevicesPage() {
             <Banner>
               <div class="row-between">
                 <span>
-                  {newOnes.length === 1 ? "Ein neues Gerät wurde erkannt." : `${newOnes.length} neue Geräte wurden erkannt.`} Übernehmen, damit der Hub sie nutzt.
+                  {newOnes.length === 1 ? t("devices.newOne") : t("devices.newMany", { n: newOnes.length })} {t("devices.acceptHint")}
                 </span>
                 <Button
                   size="sm"
@@ -275,10 +276,10 @@ export function DevicesPage() {
                     for (const d of newOnes) await post(`/devices/${d.id}/accept`, { name: "" });
                     await refreshConfig();
                     await refreshState();
-                    toast("Geräte übernommen");
+                    toast(t("devices.acceptedAll"));
                   }}
                 >
-                  <PackagePlus size={15} /> Alle übernehmen
+                  <PackagePlus size={15} /> {t("devices.acceptAll")}
                 </Button>
               </div>
             </Banner>
@@ -292,7 +293,7 @@ export function DevicesPage() {
                   {caps.map((c) => (
                     <DeviceCard d={c} onCal={(d, kind) => setCal({ d, kind })} />
                   ))}
-                  {b.class === "dosing_block" && caps.length === 0 && <p class="muted">Keine Pumpe gesteckt.</p>}
+                  {b.class === "dosing_block" && caps.length === 0 && <p class="muted">{t("devices.noPump")}</p>}
                 </div>
               </Card>
             );
@@ -300,12 +301,12 @@ export function DevicesPage() {
         </>
       )}
       {tab === "zuordnung" && (
-        <Card title="Zuordnung" icon={<Link2 size={18} />}>
+        <Card title={t("devices.tabAssign")} icon={<Link2 size={18} />}>
           <Roles />
         </Card>
       )}
       {tab === "erweitern" && (
-        <Card title="Erweitern" icon={<PackagePlus size={18} />}>
+        <Card title={t("devices.tabExpand")} icon={<PackagePlus size={18} />}>
           <Expand />
         </Card>
       )}

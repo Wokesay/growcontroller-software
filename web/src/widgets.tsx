@@ -6,20 +6,20 @@ import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot
 import { Sparkline } from "./chart";
 import { del, get, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
 import { ago, day, num, time } from "./format";
-import { msg, t } from "./i18n";
+import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
 import { Button, CheckRow, Pill, ctlLabel, ctlTone } from "./ui";
 
-const qualityText: Record<string, string> = {
-  not_bound: "nicht zugeordnet",
-  offline: "Sensor liefert nicht",
-  no_data: "noch kein Wert",
-  stale: "veraltet",
-  frozen: "steht still",
-  implausible: "unplausibel",
-  jump: "Sprungsperre",
-  uncalibrated: "nicht kalibriert",
-  ok: "gültig",
+const qualityText: Record<string, TextKey> = {
+  not_bound: "widgets.quality.notBound",
+  offline: "widgets.quality.offline",
+  no_data: "widgets.quality.noData",
+  stale: "widgets.quality.stale",
+  frozen: "widgets.quality.frozen",
+  implausible: "widgets.quality.implausible",
+  jump: "term.jumpLock",
+  uncalibrated: "setup.cal.notCalibrated",
+  ok: "widgets.quality.ok",
 };
 
 export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string }) {
@@ -35,20 +35,20 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
         </span>
         {bad ? (
           <Pill tone={r!.quality === "uncalibrated" ? "warn" : "bad"} title={r!.reason.text}>
-            {qualityText[r!.quality]}
+            {qualityText[r!.quality] && t(qualityText[r!.quality])}
           </Pill>
         ) : outOfBand ? (
-          <Pill tone="warn">außerhalb Ziel</Pill>
+          <Pill tone="warn">{t("widgets.outOfBand")}</Pill>
         ) : null}
       </div>
       <div class="metric-value">
-        {p.notApplicable ? <span class="faint" style="font-size:1.1rem">nicht anwendbar</span> : num(r?.value ?? null, r?.decimals ?? 2)}
+        {p.notApplicable ? <span class="faint" style="font-size:1.1rem">{t("widgets.notApplicable")}</span> : num(r?.value ?? null, r?.decimals ?? 2)}
         {!p.notApplicable && r?.unit && <span class="unit">{r.unit}</span>}
       </div>
       {p.spark && !bad && <Sparkline values={p.spark} color={p.color} band={p.band} />}
       {bad && r?.reason.text && <div class="metric-reason">{msg(r.reason)}</div>}
       <div class="metric-foot">
-        <span>{p.band ? `Ziel ${num(p.band[0], 2)}–${num(p.band[1], 2)}` : p.notApplicable ?? ""}</span>
+        <span>{p.band ? t("widgets.target", { lo: num(p.band[0], 2), hi: num(p.band[1], 2) }) : p.notApplicable ?? ""}</span>
         {!bad && <span>{r?.ageS !== null && r?.ageS !== undefined ? ago(r.ageS) : ""}</span>}
       </div>
     </div>
@@ -94,30 +94,32 @@ function LatchActions() {
           onClick={async () => {
             await post(`/latches/${k}/ack`);
             await refreshState();
-            toast("Quittiert");
+            toast(t("widgets.acked"));
           }}
         >
-          <RotateCcw size={14} /> „{latchLabel(k)}“ quittieren
+          <RotateCcw size={14} /> {t("widgets.ack", { name: latchLabel(k) })}
         </Button>
       ))}
     </div>
   );
 }
 
-export const latchLabel = (k: string) =>
-  ({ "circulation.dry": "Trockenlauf", "inlet.fault": "Zulauf-Notabschaltung", "ph.no_effect": "pH ohne Wirkung", "ec.no_effect": "EC ohne Wirkung" } as Record<string, string>)[k] ?? k;
+const latchText: Record<string, TextKey> = { "circulation.dry": "widgets.latch.dry", "inlet.fault": "widgets.latch.inletFault", "ph.no_effect": "widgets.latch.phNoEffect", "ec.no_effect": "widgets.latch.ecNoEffect" };
+export const latchLabel = (k: string) => (latchText[k] ? t(latchText[k]) : k);
+
+const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
 
 export function JobView(p: { job: Job; compact?: boolean }) {
   const j = p.job;
   const dosing = state.value?.dosing;
   const total = j.steps.length;
-  const title = j.type === "mix" ? `Mischlauf „${j.info.recipeName ?? ""}“ · ${num(j.info.waterL, 1)} L` : j.type === "calibration" ? "Pumpe einmessen" : j.type === "prime" ? "Schlauch füllen" : "Handgabe";
+  const title = j.type === "mix" ? t("widgets.jobMix", { name: j.info.recipeName ?? "", l: num(j.info.waterL, 1) }) : j.type === "calibration" ? t("widgets.jobCalibration") : j.type === "prime" ? t("term.prime") : t("widgets.jobManual");
   return (
     <div class="stack-sm" data-testid="job">
       <div class="row-between">
         <h3>{title}</h3>
         <Pill tone={j.state === "failed" ? "bad" : j.state === "done" ? "ok" : j.state === "aborted" ? "neutral" : j.state === "waiting_user" ? "warn" : "info"} dot pulse={j.state === "running" || j.state === "mixing"}>
-          {{ running: "läuft", waiting_user: "wartet auf dich", mixing: "durchmischen", done: "fertig", failed: "unterbrochen", aborted: "abgebrochen" }[j.state]}
+          {jobStateText[j.state] && t(jobStateText[j.state])}
         </Pill>
       </div>
       {!p.compact && (
@@ -132,7 +134,7 @@ export function JobView(p: { job: Job; compact?: boolean }) {
                   <div class="row" style="gap:8px">
                     {s.color && <span class="swatch" style={`background:${s.color}`} />}
                     <strong>{s.name}</strong>
-                    {s.pair && <span class="faint small">Paar {s.pair}</span>}
+                    {s.pair && <span class="faint small">{t("widgets.pair", { p: s.pair })}</span>}
                   </div>
                   {running && (
                     <div class="progress">
@@ -155,17 +157,17 @@ export function JobView(p: { job: Job; compact?: boolean }) {
       <div class="row">
         {(j.state === "waiting_user" || j.state === "mixing") && j.type === "mix" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/continue`).then(refreshState)}>
-            <Play size={16} /> {j.state === "mixing" ? "Weiter ohne Warten" : `Weiter (Schritt ${Math.min(j.index + 1, total)} von ${total})`}
+            <Play size={16} /> {j.state === "mixing" ? t("widgets.continueNow") : t("widgets.continueStep", { n: Math.min(j.index + 1, total), total })}
           </Button>
         )}
         {j.state === "failed" && j.type === "mix" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/resume`).then(refreshState)}>
-            <RotateCcw size={16} /> {j.steps[j.index]?.name} nachholen
+            <RotateCcw size={16} /> {t("widgets.redo", { name: j.steps[j.index]?.name ?? "" })}
           </Button>
         )}
         {(j.state === "running" || j.state === "waiting_user" || j.state === "mixing" || j.state === "failed") && (
           <Button variant="danger-soft" onClick={() => post(`/jobs/${j.id}/abort`).then(refreshState)}>
-            <Square size={14} /> Abbrechen
+            <Square size={14} /> {t("common.cancel")}
           </Button>
         )}
       </div>
@@ -177,7 +179,7 @@ const sevIcon = (s: string) =>
   s === "alarm" ? <AlertTriangle size={15} /> : s === "warn" ? <AlertTriangle size={15} /> : s === "notice" ? <Info size={15} /> : s === "info" ? <CircleDot size={15} /> : <CircleCheck size={15} />;
 
 export function EventList(p: { events: HubEvent[]; groupByDay?: boolean }) {
-  if (!p.events.length) return <p class="muted">Noch keine Ereignisse.</p>;
+  if (!p.events.length) return <p class="muted">{t("widgets.noEvents")}</p>;
   let lastDay = "";
   return (
     <div>
@@ -206,7 +208,7 @@ export function EventList(p: { events: HubEvent[]; groupByDay?: boolean }) {
 export function StockList(p: { compact?: boolean }) {
   const st = state.value;
   const cans = canisters.value;
-  if (!cans.length) return <p class="muted">Noch keine Kanister angelegt.</p>;
+  if (!cans.length) return <p class="muted">{t("widgets.noCanisters")}</p>;
   const rows = cans.map((k) => {
     const ml = st?.stock[k.id] ?? null;
     const cap = k.capacityMl ?? null;
@@ -218,8 +220,8 @@ export function StockList(p: { compact?: boolean }) {
   if (p.compact && !lows.length)
     return (
       <p class="row">
-        <Pill tone="ok">{rows.length} ok</Pill>
-        <span class="muted small">Vorrat in allen Kanistern ausreichend</span>
+        <Pill tone="ok">{t("widgets.stockOk", { n: rows.length })}</Pill>
+        <span class="muted small">{t("widgets.stockAllOk")}</span>
       </p>
     );
   return (
@@ -233,7 +235,7 @@ export function StockList(p: { compact?: boolean }) {
               <span style={`width:${cap && ml !== null ? Math.max(2, Math.min(100, (ml / cap) * 100)) : 0}%`} />
             </div>
           </div>
-          <span class="num small nowrap">{ml === null ? "unbekannt" : `${num(ml, 0)} ml`}</span>
+          <span class="num small nowrap">{ml === null ? t("area.unknown") : `${num(ml, 0)} ml`}</span>
         </div>
       ))}
     </div>
@@ -260,7 +262,7 @@ export function devicePlace(d: Device): string {
   if (d.slot >= 0) return t("port.pump", { n: d.slot + 1 });
   if (d.port > 0) return t("port.hub", { n: d.port });
   if (d.info?.ip) return t("port.wifi", { ip: d.info.ip });
-  return "Hub";
+  return t("widgets.hub");
 }
 
 /** Anschlüsse des Hubs als Kacheln; ein belegter Anschluss zeigt das Symbol des Geräts. */

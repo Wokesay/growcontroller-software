@@ -236,7 +236,7 @@ function StepTank(p: { step: number; next: () => void }) {
   const tk = cfg.tanks[0];
   const hubOut = cfg.devices.find((d) => d.class === "hub_outputs");
   const hasLevel = cfg.devices.some((d) => d.class === "head_level");
-  const [name, setName] = useState(tk?.name ?? "Tank 1");
+  const [name, setName] = useState(tk?.name ?? t("setupx.tankName"));
   const [cap, setCap] = useState<number | null>(tk?.capacityL ?? null);
   const [water, setWater] = useState(tk?.water ?? "ro");
   const [circ, setCirc] = useState(!!tk?.roles?.["tank.circulation"]);
@@ -309,7 +309,7 @@ function rowsFromTemplate(pumps: { id: string; slot: number }[], tpl: RecipeTemp
     if (!tpl) return { ...base, name: old?.name ?? "", kind: old?.kind ?? "nutrient", pair: old?.pair ?? "", mlPerL: old?.mlPerL ?? null };
     const s = tpl.steps[i];
     if (s) return { ...base, name: tplName(s), kind: "nutrient", pair: s.pair ?? "", mlPerL: s.mlPerL };
-    if (i === tpl.steps.length) return { ...base, name: "pH−", kind: "ph_down", pair: "", mlPerL: null };
+    if (i === tpl.steps.length) return { ...base, name: t("setup.nut.kindPhDown"), kind: "ph_down", pair: "", mlPerL: null };
     return { ...base, name: t("setup.nut.extra", { n: ++extra }), kind: "nutrient", pair: "", mlPerL: null };
   });
 }
