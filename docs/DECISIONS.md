@@ -455,6 +455,25 @@ Recorded on 2026-10-08.
 - The catalog attaches the climate and CO2 heads to a hub port; the issue
   form for devices no longer offers the collection box (issue #46).
 
+
+## SD-032: The hub speaks English with keys; the web app translates
+
+Recorded on 2026-10-08 (#18).
+
+- Every text the core produces (controller lines, checks, monitoring,
+  errors, events) carries a stable key, its values as arguments and an
+  English text. The English text is what other API clients and logs see.
+- The web app shows a hub text in German through its own table
+  (`web/src/lang/msg.ts`, by the same key, filled with the arguments) and
+  in English as the hub sends it. The German texts move from the core
+  into the web app.
+- Events store key and arguments, so the history follows the page
+  language too. Events written before keep their stored text.
+- Numbers in arguments are numbers, not formatted text, so the web app
+  writes them in the page language (PD-035).
+- A test fails when the core can send a key that has no German text in
+  the web app.
+
 ---
 
 ## Drafts (waiting for "entschieden")

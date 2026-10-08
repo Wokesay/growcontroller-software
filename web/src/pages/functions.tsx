@@ -6,7 +6,7 @@ import { useEffect, useState } from "preact/hooks";
 import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-preact";
 import { patch, type FunctionState, type ParamDef } from "../api";
 import { catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
-import { t, type TextKey } from "../i18n";
+import { msg, t, type TextKey } from "../i18n";
 import { figure } from "../format";
 import { Button, Card, CheckRow, Field, NumberInput, Pill, Toggle, ctlLabel, ctlTone, route, setupLabel } from "../ui";
 
@@ -129,7 +129,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
               {runtime.map((c) => (
                 <CheckRow ok={c.ok} text={c.text} />
               ))}
-              {ctl && p.f.enabled && <p class="muted small">{ctl.line.text}</p>}
+              {ctl && p.f.enabled && <p class="muted small">{msg(ctl.line)}</p>}
             </div>
           )}
           {defs.length > 0 && (p.f.setup === "unavailable" ? (

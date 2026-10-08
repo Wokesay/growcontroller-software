@@ -160,7 +160,7 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
     return d;
   }
   if (!isNum(gapEc) || gapEc <= 0) {
-    d.reason = {"ec.above", "EC liegt nicht unter dem Ziel", json::object()};
+    d.reason = {"mix.ec_reached", "EC liegt nicht unter dem Ziel", json::object()};
     return d;
   }
   if (!isNum(maxEcStep) || maxEcStep <= 0) maxEcStep = 1.0;  // Katalog-Vorgabe, nie ohne Deckel
@@ -219,7 +219,7 @@ PhDose planPhDose(double ph, double target, double effectPerMlL, double volumeL,
   if (!isNum(effectPerMlL) || effectPerMlL <= 0) effectPerMlL = 5.0;  // kleinste Dosis (RAT-050)
   double gap = ph - target;
   if (gap <= 0) {
-    d.reason = {"ph.below", "pH liegt nicht über dem Ziel", json::object()};
+    d.reason = {"mix.ph_reached", "pH liegt nicht über dem Ziel", json::object()};
     return d;
   }
   d.rawMl = 0.8 * gap / effectPerMlL * volumeL;

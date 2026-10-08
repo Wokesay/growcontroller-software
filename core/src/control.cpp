@@ -4,11 +4,17 @@
 #include <algorithm>
 #include <cmath>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 void to_json(json& j, const CtlStatus& s) {
   json checks = json::array();
-  for (const auto& c : s.checks) checks.push_back({{"ok", c.ok}, {"text", c.text}});
+  for (const auto& c : s.checks) {
+    json one = c.msg;
+    one["ok"] = c.ok;
+    checks.push_back(std::move(one));
+  }
   j = {{"state", s.state}, {"line", s.line}, {"checks", checks}, {"info", s.info}};
 }
 
@@ -33,10 +39,6 @@ constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
 constexpr Ms kMaxPhAge = 10 * kMinute;    // älter → keine Korrektur (RAT-043)
 
-Msg line(const std::string& key, const std::string& text, json args = json::object()) {
-  return {key, text, std::move(args)};
-}
-
 std::string mmss(Ms ms) {
   Ms s = std::max<Ms>(0, ms / 1000);
   std::string sec = std::to_string(s % 60);
@@ -46,12 +48,12 @@ std::string mmss(Ms ms) {
 bool automation(const Ctx& c, CtlStatus& st) {
   if (c.stopped) {
     st.state = "blocked";
-    st.line = line("ctl.stopped", "Gesperrt: Not-Halt aktiv");
+    st.line = say("ctl.stopped");
     return false;
   }
   if (c.epoch < c.maintenanceUntil) {
     st.state = "waiting";
-    st.line = line("ctl.maintenance", "Ruht: Pflegemodus", {{"until", c.maintenanceUntil}});
+    st.line = say("ctl.maintenance", {{"until", c.maintenanceUntil}});
     return false;
   }
   return true;
@@ -90,7 +92,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.info = json::object();
   if (!enabled(c, "ec_control")) {
     st_.state = "off";
-    st_.line = line("ec.off", "Aus");
+    st_.line = say("ec.off");
     reset();
     return;
   }
@@ -111,12 +113,12 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.info = {{"target", numOrNull(p.num("ec_target"))}, {"targetEffective", numOrNull(target)},
               {"tolerance", numOrNull(tol)}, {"round", round_}};
 
-  st_.checks.push_back({ec.usable(), ec.usable() ? "EC-Sonde liefert gültige Werte" : "EC: " + ec.reason.text});
-  st_.checks.push_back({recipe != nullptr, recipe ? "Rezept: " + recipe->name : "Kein Rezept"});
+  st_.checks.push_back({ec.usable(), ec.usable() ? say("check.ec_ok") : say("check.ec_bad", {{"reason", ec.reason}})});
+  st_.checks.push_back({recipe != nullptr, recipe ? say("check.recipe", {{"name", recipe->name}}) : say("check.no_recipe")});
   bool circOk = !env.act.inhibit(c, "tank.circulation").has_value();
-  st_.checks.push_back({circOk, circOk ? "Umwälzpumpe frei" : "Umwälzpumpe gesperrt"});
-  st_.checks.push_back({!c.rt.latches.count("ec.no_effect"), "Keine Rastung"});
-  st_.checks.push_back({!env.userJob, env.userJob ? "Ein Auftrag läuft" : "Kein anderer Auftrag"});
+  st_.checks.push_back({circOk, say(circOk ? "check.circ_free" : "check.circ_blocked")});
+  st_.checks.push_back({!c.rt.latches.count("ec.no_effect"), say("check.no_latch")});
+  st_.checks.push_back({!env.userJob, say(env.userJob ? "check.job_running" : "check.no_job")});
 
   if (!automation(c, st_)) {
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
@@ -125,14 +127,14 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   }
   if (env.calibrating) {
     st_.state = "waiting";
-    st_.line = line("ctl.calibrating", "Wartet: Sonde wird kalibriert");
+    st_.line = say("ctl.calibrating");
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
     reset();
     return;
   }
   if (c.rt.latches.count("ec.no_effect")) {
     st_.state = "latched";
-    st_.line = line("ec.latched", "Gerastet: EC stieg nach zwei Runden nicht – Pumpen und Kanister prüfen, dann quittieren");
+    st_.line = say("ec.latched");
     reset();
     return;
   }
@@ -142,14 +144,13 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = "working";
-      st_.line = line("ec.settling", "Regelt: EC " + fmt(ecBefore_, 2) + " → " + fmt(target, 2) + " · Runde " +
-                                         std::to_string(round_) + " · wartet " + mmss(settleUntil_ - c.now) +
-                                         " auf Durchmischung");
+      st_.line = say("ec.settling", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
+                                     {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     if (!ec.usable()) {
       st_.state = "blocked";
-      st_.line = line("ec.invalid", "Gesperrt: EC – " + ec.reason.text);
+      st_.line = say("ec.invalid", {{"reason", ec.reason}});
       reset();
       return;
     }
@@ -184,8 +185,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
 
   if (phase_ == Phase::Dosing) {
     st_.state = "working";
-    st_.line = line("ec.dosing", "Regelt: EC " + fmt(ecBefore_, 2) + " → " + fmt(target, 2) + " · Runde " +
-                                     std::to_string(round_) + " · dosiert");
+    st_.line = say("ec.dosing", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_}});
     if (!env.doser.busy() && !queue_.empty() && env.circulationOn) {
       DoseOrder o;
       o.id = "ec-" + std::to_string(++seq_);
@@ -196,7 +196,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
         queue_.erase(queue_.begin());
       } else {
         st_.state = "blocked";
-        st_.line = line("ec.dose_failed", "Gesperrt: " + err.text);
+        st_.line = say("ec.dose_failed", {{"reason", err}});
         reset();
       }
     } else if (!env.circulationOn && !env.doser.busy() && !queue_.empty()) {
@@ -206,12 +206,12 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       if (!c.cfg.binding("tank.circulation") || c.now - circWaitSince_ > 2 * kMinute) {
         c.log.add(c.epoch, "control", "warn", "EC-Runde abgebrochen", "Die Umwälzpumpe lief nicht an. Ohne Durchmischung keine Dosierung.");
         st_.state = "blocked";
-        st_.line = line("ec.circ_failed", "Gesperrt: Umwälzpumpe lief nicht an – Runde abgebrochen");
+        st_.line = say("ec.circ_failed");
         cooldownUntil_ = c.epoch + 10 * 60;
         reset();
         return;
       }
-      st_.line = line("ec.wait_circ", "Regelt: Umwälzpumpe startet");
+      st_.line = say("ec.wait_circ");
     }
     if (env.circulationOn) circWaitSince_ = 0;
     return;
@@ -220,55 +220,55 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   // Idle
   if (!ec.usable()) {
     st_.state = "blocked";
-    st_.line = line("ec.invalid", "Gesperrt: EC – " + ec.reason.text);
+    st_.line = say("ec.invalid", {{"reason", ec.reason}});
     return;
   }
   if (!recipe) {
     st_.state = "blocked";
-    st_.line = line("ec.no_recipe", "Gesperrt: kein Rezept gewählt");
+    st_.line = say("ec.no_recipe");
     return;
   }
   if (*ec.value > target + tol) {
     st_.state = "idle";
-    st_.line = line("ec.above", "Ruht: EC " + fmt(*ec.value, 2) + " über Ziel – senken geht nur mit frischem Wasser");
+    st_.line = say("ec.above", {{"ec", *ec.value}});
     return;
   }
   if (*ec.value >= target - tol) {
     st_.state = "idle";
-    st_.line = line("ec.ok", "Ruht: EC im Ziel (" + fmt(*ec.value, 2) + " mS/cm)");
+    st_.line = say("ec.ok", {{"ec", *ec.value}});
     round_ = 0;
     return;
   }
   if (c.epoch < cooldownUntil_) {
     st_.state = "waiting";
-    st_.line = line("ec.cooldown", "Wartet: nächster Versuch nach Pause");
+    st_.line = say("ec.cooldown");
     return;
   }
   if (env.userJob) {
     st_.state = "waiting";
-    st_.line = line("ec.wait_job", "Wartet: ein Auftrag läuft");
+    st_.line = say("ec.wait_job");
     return;
   }
   if (env.refilling) {
     st_.state = "waiting";
-    st_.line = line("ec.wait_refill", "Wartet: Nachfüllen läuft");
+    st_.line = say("ec.wait_refill");
     return;
   }
   if (env.phBusy) {
     st_.state = "waiting";
-    st_.line = line("ec.wait_ph", "Wartet: pH-Korrektur läuft noch");
+    st_.line = say("ec.wait_ph");
     return;
   }
   if (!circOk) {
     st_.state = "blocked";
-    st_.line = line("ec.no_circ", "Gesperrt: Umwälzpumpe gesperrt – ohne Durchmischung keine Dosierung");
+    st_.line = say("ec.no_circ");
     return;
   }
   auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value,
                          clampEffect(c.rt.ecEffect, kEcStartEffect), kEcStartEffect, p.num("max_ec_step"));
   if (!plan.ok) {
     st_.state = "blocked";
-    st_.line = line("ec.plan", "Gesperrt: " + plan.reason.text);
+    st_.line = say("ec.plan", {{"reason", plan.reason}});
     return;
   }
   if (round_ == 0) startEc_ = *ec.value;
@@ -279,8 +279,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   queue_ = plan.steps;
   phase_ = Phase::Dosing;
   st_.state = "working";
-  st_.line = line("ec.start", "Regelt: EC " + fmt(*ec.value, 2) + " → " + fmt(target, 2) + " · Runde " +
-                                  std::to_string(round_));
+  st_.line = say("ec.start", {{"from", *ec.value}, {"target", numOrNull(target)}, {"round", round_}});
 }
 
 void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p) {
@@ -309,7 +308,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   st_.info = json::object();
   if (!enabled(c, "ph_control")) {
     st_.state = "off";
-    st_.line = line("ph.off", "Aus");
+    st_.line = say("ph.off");
     reset();
     return;
   }
@@ -328,16 +327,14 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   const CanisterCfg* down = phDownCanister(c, flow);
   bool circOk = !env.act.inhibit(c, "tank.circulation").has_value();
 
-  st_.checks.push_back({phOk, phOk ? "pH-Sonde liefert gültige Werte" : "pH: " + ph.reason.text});
-  st_.checks.push_back({gateOk, ecOk ? (gateOk ? "EC " + fmt(*ec.value, 2) + " über " + fmt(floor, 2) + ": pH messbar"
-                                               : "EC " + fmt(*ec.value, 2) + " unter " + fmt(floor, 2) +
-                                                     ": pH so nicht messbar, erst Nährstoffe")
-                                         : "EC: " + ec.reason.text});
-  st_.checks.push_back({restOk, restOk ? "Ruhezeit nach EC-Gabe vorbei"
-                                       : "Ruhezeit nach EC-Gabe: noch " + mmss((kEcRestS - sinceEc) * 1000)});
-  st_.checks.push_back({!env.ecBusy, env.ecBusy ? "EC-Nachdosierung zuerst" : "EC-Nachdosierung fertig"});
-  st_.checks.push_back({down != nullptr, down ? "pH− eingemessen: " + down->name : "Kein eingemessenes pH−"});
-  st_.checks.push_back({circOk, circOk ? "Umwälzpumpe frei" : "Umwälzpumpe gesperrt"});
+  st_.checks.push_back({phOk, phOk ? say("check.ph_ok") : say("check.ph_bad", {{"reason", ph.reason}})});
+  st_.checks.push_back({gateOk, ecOk ? say(gateOk ? "check.gate_ok" : "check.gate_low", {{"ec", *ec.value}, {"floor", numOrNull(floor)}})
+                                     : say("check.ec_bad", {{"reason", ec.reason}})});
+  st_.checks.push_back({restOk, restOk ? say("check.rest_over")
+                                       : say("check.rest_left", {{"left", mmss((kEcRestS - sinceEc) * 1000)}})});
+  st_.checks.push_back({!env.ecBusy, say(env.ecBusy ? "check.ec_first" : "check.ec_done")});
+  st_.checks.push_back({down != nullptr, down ? say("check.ph_down", {{"name", down->name}}) : say("check.no_ph_down")});
+  st_.checks.push_back({circOk, say(circOk ? "check.circ_free" : "check.circ_blocked")});
 
   if (!automation(c, st_)) {
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
@@ -346,14 +343,14 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   }
   if (env.calibrating) {
     st_.state = "waiting";
-    st_.line = line("ctl.calibrating", "Wartet: Sonde wird kalibriert");
+    st_.line = say("ctl.calibrating");
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
     reset();
     return;
   }
   if (c.rt.latches.count("ph.no_effect")) {
     st_.state = "latched";
-    st_.line = line("ph.latched", "Gerastet: pH bewegte sich nach zwei Gaben nicht – Kanister und Sonde prüfen, dann quittieren");
+    st_.line = say("ph.latched");
     reset();
     return;
   }
@@ -362,14 +359,13 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = "working";
-      st_.line = line("ph.settling", "Regelt: pH " + fmt(phBefore_, 2) + " → " + fmt(target, 2) + " · Teilgabe " +
-                                         std::to_string(doses_) + " von " + fmt(p.num("max_doses"), 0) + " · wartet " +
-                                         mmss(settleUntil_ - c.now) + " auf Durchmischung");
+      st_.line = say("ph.settling", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_},
+                                     {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     if (!phOk) {
       st_.state = "blocked";
-      st_.line = line("ph.invalid", "Gesperrt: pH – " + ph.reason.text);
+      st_.line = say("ph.invalid", {{"reason", ph.reason}});
       reset();
       return;
     }
@@ -399,63 +395,62 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
 
   if (phase_ == Phase::Dosing) {
     st_.state = "working";
-    st_.line = line("ph.dosing", "Regelt: pH " + fmt(phBefore_, 2) + " → " + fmt(target, 2) + " · Teilgabe " +
-                                     std::to_string(doses_ + 1) + " · dosiert");
+    st_.line = say("ph.dosing", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_ + 1}});
     return;
   }
 
   // Idle: Reihenfolge der Sperren wie in der Checkliste.
-  auto block = [&](const std::string& key, const std::string& text) {
+  auto block = [&](Msg m) {
     st_.state = "blocked";
-    st_.line = line(key, "Gesperrt: " + text);
+    st_.line = std::move(m);
   };
-  if (!phOk) return block("ph.invalid", "pH – " + ph.reason.text);
-  if (!ecOk) return block("ph.ec_invalid", "EC ungültig – pH-Regelung gesperrt");
-  if (!gateOk) return block("ph.gate", "EC " + fmt(*ec.value, 2) + " unter " + fmt(floor, 2) + ": pH so nicht messbar, erst Nährstoffe");
+  if (!phOk) return block(say("ph.invalid", {{"reason", ph.reason}}));
+  if (!ecOk) return block(say("ph.ec_invalid"));
+  if (!gateOk) return block(say("ph.gate", {{"ec", *ec.value}, {"floor", numOrNull(floor)}}));
   if (*ph.value <= target + tol) {
     st_.state = "idle";
     doses_ = 0;
     if (*ph.value < target - tol)
-      st_.line = line("ph.below", "Ruht: pH " + fmt(*ph.value, 2) + " unter Ziel – pH+ ist nicht vorgesehen, nur absenken");
+      st_.line = say("ph.below", {{"ph", *ph.value}});
     else
-      st_.line = line("ph.ok", "Ruht: pH im Ziel (" + fmt(*ph.value, 2) + ")");
+      st_.line = say("ph.ok", {{"ph", *ph.value}});
     return;
   }
   if (c.epoch < cooldownUntil_) {
     st_.state = "waiting";
-    st_.line = line("ph.cooldown", "Wartet: nächster Versuch nach Pause");
+    st_.line = say("ph.cooldown");
     return;
   }
   if (env.ecBusy) {
     st_.state = "waiting";
-    st_.line = line("ph.wait_ec", "Wartet: EC zuerst, pH ist immer der letzte Schritt");
+    st_.line = say("ph.wait_ec");
     return;
   }
   if (!restOk) {
     st_.state = "waiting";
-    st_.line = line("ph.wait_rest", "Wartet: Ruhezeit nach EC-Gabe, noch " + mmss((kEcRestS - sinceEc) * 1000));
+    st_.line = say("ph.wait_rest", {{"left", mmss((kEcRestS - sinceEc) * 1000)}});
     return;
   }
   if (env.userJob) {
     st_.state = "waiting";
-    st_.line = line("ph.wait_job", "Wartet: ein Auftrag läuft");
+    st_.line = say("ph.wait_job");
     return;
   }
   if (env.refilling) {
     st_.state = "waiting";
-    st_.line = line("ph.wait_refill", "Wartet: Nachfüllen läuft");
+    st_.line = say("ph.wait_refill");
     return;
   }
-  if (!down) return block("ph.no_down", "kein eingemessenes pH− zugeordnet");
-  if (!circOk) return block("ph.no_circ", "Umwälzpumpe gesperrt – ohne Durchmischung keine Dosierung");
+  if (!down) return block(say("ph.no_down"));
+  if (!circOk) return block(say("ph.no_circ"));
   if (!env.circulationOn) {
     st_.state = "working";
-    st_.line = line("ph.wait_circ", "Regelt: Umwälzpumpe startet");
+    st_.line = say("ph.wait_circ");
     pendingCirc_ = true;
     return;
   }
   auto plan = planPhDose(*ph.value, target, clampEffect(c.rt.phEffect, kPhStartEffect), env.volumeL, p.num("max_ml_per_dose"));
-  if (!plan.ok) return block("ph.plan", plan.reason.text);
+  if (!plan.ok) return block(say("ph.plan", {{"reason", plan.reason}}));
   DoseStep s;
   s.canister = down->id;
   s.name = down->name;
@@ -468,21 +463,20 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   if (!err.key.empty()) {
     // Gabe unter 1 s: nicht dosieren, sichtbar ruhen (RAT-050)
     st_.state = "idle";
-    st_.line = line("ph.too_small", "Ruht: Korrektur wäre kleiner als ein genauer Pumpenlauf (" + fmt(plan.ml, 2) + " ml)");
+    st_.line = say("ph.too_small", {{"ml", numOrNull(plan.ml)}});
     return;
   }
   DoseOrder o;
   o.id = "ph-" + std::to_string(++seq_);
   o.purpose = "ph";
   o.step = s;
-  if (!env.doser.start(c, env.act, o, err)) return block("ph.dose_failed", err.text);
+  if (!env.doser.start(c, env.act, o, err)) return block(say("ph.dose_failed", {{"reason", err}}));
   if (doses_ == 0) startPh_ = *ph.value;
   phBefore_ = *ph.value;
   clean_ = true;
   phase_ = Phase::Dosing;
   st_.state = "working";
-  st_.line = line("ph.dosing", "Regelt: pH " + fmt(*ph.value, 2) + " → " + fmt(target, 2) + " · Teilgabe " +
-                                   std::to_string(doses_ + 1) + " · " + fmt(plan.ml, 1) + " ml");
+  st_.line = say("ph.start", {{"from", *ph.value}, {"target", numOrNull(target)}, {"n", doses_ + 1}, {"ml", numOrNull(plan.ml)}});
 }
 
 void PhController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p) {
@@ -506,7 +500,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
   if (!enabled(c, "refill")) {
     st_.state = "off";
-    st_.line = line("refill.off", "Aus");
+    st_.line = say("refill.off");
     if (filling_) {
       Msg e;
       env.act.setRole(c, "tank.inlet", false, "Nachfüllen ausgeschaltet", e);
@@ -516,9 +510,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   }
   auto p = effectiveParams(c.cat, c.cfg, "refill");
   const auto& level = c.truth.get("tank.level");
-  st_.checks.push_back({level.usable(), level.usable() ? "Füllstand gültig" : "Füllstand: " + level.reason.text});
+  st_.checks.push_back({level.usable(), level.usable() ? say("check.level_ok") : say("check.level_bad", {{"reason", level.reason}})});
   auto inh = env.act.inhibit(c, "tank.inlet");
-  st_.checks.push_back({!inh, inh ? inh->text : "Zulauf frei"});
+  st_.checks.push_back({!inh, inh ? *inh : say("check.inlet_free")});
   auto open = env.act.roleState(c.cfg, "tank.inlet");
 
   if (filling_) {
@@ -528,7 +522,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     if (!open || !*open) {
       filling_ = false;  // vom Gateway abgeschaltet (Notgrenze, Zeitlimit, Not-Halt)
       st_.state = "latched";
-      st_.line = line("refill.stopped", "Gerastet: Zulauf wurde abgeschaltet – Ereignisse prüfen");
+      st_.line = say("refill.stopped");
       return;
     }
     if (done || sensorStop || !automation(c, st_)) {
@@ -541,71 +535,71 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                 "+" + fmt(added, 1) + " L gemessen, " + fmt(plannedL_, 1) + " L berechnet",
                 {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}});
       st_.state = "idle";
-      st_.line = line("refill.done", "Ruht: nachgefüllt");
+      st_.line = say("refill.done");
       return;
     }
     st_.state = "working";
-    st_.line = line("refill.filling", "Füllt: " + fmt(startL_, 1) + " → " + fmt(p.num("target_l"), 1) + " L · noch " +
-                                          mmss(plannedMs_ - (c.now - startedMs_)));
+    st_.line = say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(p.num("target_l"))},
+                                      {"left", mmss(plannedMs_ - (c.now - startedMs_))}});
     return;
   }
   if (!automation(c, st_)) return;
   if (c.rt.latches.count("inlet.fault")) {
     st_.state = "latched";
-    st_.line = line("refill.latched", "Gerastet: Zulauf nach einem Fehler gesperrt – prüfen, dann quittieren");
+    st_.line = say("refill.latched");
     return;
   }
   if (!level.usable()) {
     st_.state = "blocked";
-    st_.line = line("refill.level", "Gesperrt: Füllstand – " + level.reason.text);
+    st_.line = say("refill.level", {{"reason", level.reason}});
     return;
   }
   double start = p.num("start_below_l"), target = p.num("target_l"), flow = p.num("flow_l_per_min");
   if (isNum(c.cfg.tank().capacityL)) target = std::min(target, c.cfg.tank().capacityL - 1.0);
   if (*level.value >= start) {
     st_.state = "idle";
-    st_.line = line("refill.ok", "Ruht: Füllstand " + fmt(*level.value, 1) + " L");
+    st_.line = say("refill.ok", {{"level", *level.value}});
     return;
   }
   if (c.epoch < cooldownUntil_) {
     st_.state = "waiting";
-    st_.line = line("refill.cooldown", "Wartet: Pause nach dem letzten Nachfüllen");
+    st_.line = say("refill.cooldown");
     return;
   }
   if (inh) {
     st_.state = "blocked";
-    st_.line = line("refill.inhibit", "Gesperrt: " + inh->text);
+    st_.line = say("refill.inhibit", {{"reason", *inh}});
     return;
   }
   if (!isNum(flow) || flow <= 0) {
     st_.state = "blocked";
-    st_.line = line("refill.flow", "Gesperrt: Zulaufrate fehlt");  // kein Ersatzwert (RAT-038)
+    st_.line = say("refill.flow");  // kein Ersatzwert (RAT-038)
     return;
   }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
     // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055)
     st_.state = "waiting";
-    st_.line = line("refill.dosing", "Wartet: Dosierung läuft – Nachfüllen danach");
+    st_.line = say("refill.dosing");
     return;
   }
   plannedL_ = target - *level.value;
   if (plannedL_ < 0.5) {
     st_.state = "idle";
-    st_.line = line("refill.near", "Ruht: Ziel fast erreicht");
+    st_.line = say("refill.near");
     return;
   }
   plannedMs_ = static_cast<Ms>(plannedL_ / flow * kMinute);
   Msg e;
   if (!env.act.setRole(c, "tank.inlet", true, "Nachfüllen", e)) {
     st_.state = "blocked";
-    st_.line = line("refill.open", "Gesperrt: " + e.text);
+    st_.line = say("refill.open", {{"reason", e}});
     return;
   }
   filling_ = true;
   startedMs_ = c.now;
   startL_ = *level.value;
   st_.state = "working";
-  st_.line = line("refill.start", "Füllt: " + fmt(plannedL_, 1) + " L");
+  st_.line = say("refill.start", {{"litres", numOrNull(plannedL_)}});
 }
 
 // ---------------------------------------------------------------- Umwälzen
@@ -614,28 +608,28 @@ void CirculationController::tick(const Ctx& c, ControlEnv& env, bool demand) {
   st_.checks.clear();
   if (!c.cfg.binding("tank.circulation")) {
     st_.state = "off";
-    st_.line = line("circ.unbound", "Keine Umwälzpumpe zugeordnet");
+    st_.line = say("circ.unbound");
     env.circulationOn = false;
     return;
   }
   bool on = enabled(c, "circulation");
   bool desired = demand;
-  std::string why = demand ? "für Dosierung" : "";
+  Msg why = say("circ.on_dosing");
   if (on && !c.stopped) {
     auto p = effectiveParams(c.cat, c.cfg, "circulation");
     if (p.str("mode") == "always") {
       desired = true;
-      why = "immer an";
+      why = say("circ.on_always");
     } else {
       Epoch period = static_cast<Epoch>(p.num("period_min") * 60), onS = static_cast<Epoch>(p.num("on_min") * 60);
       if (period > 0 && c.epoch % period < onS) {
         desired = true;
-        if (!demand) why = "Intervall";
+        if (!demand) why = say("circ.on_interval");
       }
     }
   }
   auto inh = env.act.inhibit(c, "tank.circulation");
-  st_.checks.push_back({!inh, inh ? inh->text : "Trockenlaufschutz ok"});
+  st_.checks.push_back({!inh, inh ? *inh : say("check.dry_ok")});
   auto state = env.act.roleState(c.cfg, "tank.circulation");
   bool isOn = state && *state;
   Msg e;
@@ -648,13 +642,14 @@ void CirculationController::tick(const Ctx& c, ControlEnv& env, bool demand) {
   env.circulationOn = isOn;
   if (inh && desired) {
     st_.state = c.rt.latches.count("circulation.dry") ? "latched" : "blocked";
-    st_.line = line("circ.blocked", (st_.state == "latched" ? "" : "Gesperrt: ") + inh->text);
+    const bool latched = st_.state == "latched";
+    st_.line = say(latched ? "circ.latched" : "circ.blocked", {{"reason", *inh}});
   } else if (isOn) {
     st_.state = "working";
-    st_.line = line("circ.on", "Läuft (" + why + ")");
+    st_.line = why;
   } else {
     st_.state = on ? "idle" : "off";
-    st_.line = line("circ.idle", on ? "Ruht bis zum nächsten Intervall" : "Aus – läuft nur bei Dosierungen");
+    st_.line = say(on ? "circ.idle" : "circ.off");
   }
 }
 

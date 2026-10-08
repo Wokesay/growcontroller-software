@@ -29,7 +29,7 @@ export type Device = {
 export type CtlStatus = {
   state: "off" | "idle" | "working" | "waiting" | "blocked" | "latched";
   line: Msg;
-  checks: { ok: boolean; text: string }[];
+  checks: (Msg & { ok: boolean })[];
   info: Record<string, unknown>;
 };
 
@@ -48,10 +48,10 @@ export type FunctionState = {
   checks: Check[]; summary: Msg;
 };
 
-export type Assessment = { id: string; label: string; status: "ok" | "problem" | "neutral"; text: string };
+export type Assessment = { id: string; label: Msg; status: "ok" | "problem" | "neutral"; text: Msg };
 export type Watchdog = {
   evaluatedAt: number; overall: "ok" | "problem" | "neutral"; ok: number; problems: number; neutral: number;
-  headline: string; items: Assessment[]; stale: boolean;
+  headline: Msg; items: Assessment[]; stale: boolean;
 };
 
 export type Grow = {

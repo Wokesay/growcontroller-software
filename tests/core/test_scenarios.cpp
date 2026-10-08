@@ -193,7 +193,7 @@ TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
   s.step(20 * 60 * 1000);
   auto st = c.state();
   CHECK(st["controllers"]["ph"]["state"] == "blocked");
-  CHECK(st["controllers"]["ph"]["line"]["text"].get<std::string>().find("nicht messbar") != std::string::npos);
+  CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.gate");
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
