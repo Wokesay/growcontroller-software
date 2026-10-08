@@ -36,14 +36,14 @@ export const de = {
 } as const;
 
 export const en: Record<keyof typeof de, string> = {
-  "mix.previewEmpty": "Choose a recipe and amount of water – the preview shows the amounts.",
+  "mix.previewEmpty": "Enter the amount of water to see how many ml of each bottle go in.",
   "mix.amount": "Amount",
   "mix.duration": "Duration",
   "mix.pair": "Pair {pair}",
   "mix.total": "Total {ml} ml · approx. {time} pumping",
   "mix.noPumpBottles": "Add a bottle with a pump first.",
   "mix.manualMax": "At most {ml} ml per manual dose",
-  "mix.pairWarn": "{name} is part of a pair. Add its partner in the same ratio, or the mix will be off.",
+  "mix.pairWarn": "{name} is part of a pair. Dose its partner in the same ratio too, or the mix will be off.",
   "mix.dosing": "{name}: dosing {ml} ml",
   "mix.dose": "Dose",
   "mix.started": "Mixing started",
@@ -65,6 +65,6 @@ export const en: Record<keyof typeof de, string> = {
   "mix.start": "Start mixing",
   "mix.noCirc": "Without a circulation pump, mixing pauses after each dose until you have stirred.",
   "mix.manualTitle": "Dose by hand",
-  "mix.repeatTitle": "Really mix again?",
+  "mix.repeatTitle": "Mix this tank again?",
   "mix.repeatConfirm": "Mix anyway",
 };

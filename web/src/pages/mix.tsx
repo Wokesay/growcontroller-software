@@ -115,14 +115,14 @@ export function MixPage() {
       return;
     }
     setLoading(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         setPlan(await post<MixPlan>("/mix/plan", { recipe, waterL: water, mode, confirmRepeat: true }));
       } finally {
         setLoading(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [recipe, water, mode]);
 
   async function start(confirmRepeat = false) {

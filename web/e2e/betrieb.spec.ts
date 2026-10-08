@@ -81,16 +81,23 @@ test("English page: sign-in, recipes and settings speak English (#18)", async ({
   await expect(page.getByTestId("watchdog")).toBeVisible();
   await page.goto("/#/rezepte");
   await expect(page.getByRole("heading", { name: "Bottles", exact: true })).toBeVisible();
+  // Numbers use a decimal point on an English page (PD-035): CalMag 0.6 ml/L
+  await page.locator(".card.flat", { has: page.getByRole("heading", { name: "Wachstum", exact: true }) }).getByTitle("Edit").click();
+  const values = await page.getByRole("dialog").locator("input").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(values).toContain("0.6");
+  expect(values).not.toContain("0,6");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   await page.goto("/#/einstellungen");
   await page.getByRole("button", { name: "Create diagnostic package" }).click();
   await expect(page.getByText(/Report no\. GC-/)).toBeVisible();
 });
 
-test("English page: mixing, tank, functions and history speak English (#18)", async ({ page }) => {
+test("English page: overview, mixing, tank, functions and history speak English (#18)", async ({ page }) => {
   await login(page);
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
-  await page.goto("/#/mischen");
   await page.reload();
+  await expect(page.getByRole("heading", { name: "Control", exact: true })).toBeVisible();
+  await page.goto("/#/mischen");
   await expect(page.getByRole("heading", { name: "Mix nutrient solution" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Dose by hand" })).toBeVisible();
   await page.goto("/#/tank");

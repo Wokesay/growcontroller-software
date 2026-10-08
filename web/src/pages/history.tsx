@@ -59,10 +59,10 @@ export function HistoryPage() {
       setDoses(d.events);
     };
     load().catch(() => {});
-    const t = setInterval(() => load().catch(() => {}), 30000);
+    const timer = setInterval(() => load().catch(() => {}), 30000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [range]);
 
@@ -105,7 +105,7 @@ export function HistoryPage() {
         )}
         {hasRole("tank.water_temp") && (
           <Card title={t("history.waterTemp")} icon={<LineChart size={18} />}>
-            <TimeChart data={data["tank.water_temp"] ?? null} color="--temp" label={t("setup.tank.water")} unit="°C" decimals={1} />
+            <TimeChart data={data["tank.water_temp"] ?? null} color="--temp" label={t("common.water")} unit="°C" decimals={1} />
           </Card>
         )}
         <Card title={hasRole("tank.level") ? t("area.tankLevel") : t("history.volumeFromMixes")} icon={<LineChart size={18} />}>

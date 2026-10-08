@@ -23,6 +23,7 @@ export const deBase = {
   "common.back": "Zurück",
   "common.next": "Weiter",
   "common.name": "Name",
+  "common.water": "Wasser",
   "common.save": "Speichern",
   "common.cancel": "Abbrechen",
   "common.skip": "Überspringen",

@@ -143,7 +143,7 @@ function GrowCard() {
             </>
           }
         >
-          <Field label={tr("setup.tank.name")}>
+          <Field label={tr("common.name")}>
             <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
           {phases.map((p, i) => (
@@ -152,7 +152,7 @@ function GrowCard() {
                 <Field label={tr("tank.phaseN", { n: i + 1 })}>
                   <input class="input" value={p.name} onInput={(e) => upd(i, "name", (e.target as HTMLInputElement).value)} />
                 </Field>
-                <Field label={tr("mix.duration")}>
+                <Field label={tr("tank.phaseLength")}>
                   <NumberInput value={p.days} onValue={(v) => upd(i, "days", v ?? 0)} unit={tr("tank.daysUnit")} />
                 </Field>
                 <Field label={tr("tank.targetPh")}>

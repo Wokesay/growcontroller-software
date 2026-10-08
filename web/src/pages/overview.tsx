@@ -145,7 +145,7 @@ export function Overview() {
                 {hasRole("tank.ec") && <MetricTile label="EC" reading={st.readings["tank.ec"]} color="--ec" band={ecBand} spark={sparks["tank.ec"]} />}
                 {hasRole("tank.water_temp") && (
                   <MetricTile
-                    label={tr("setup.tank.water")}
+                    label={tr("common.water")}
                     reading={st.readings["tank.water_temp"]}
                     color="--temp"
                     band={tempFn?.enabled ? [Number(tempFn.params.min_c ?? 18), Number(tempFn.params.max_c ?? 23)] : null}

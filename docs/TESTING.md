@@ -16,7 +16,7 @@ test. Every visible function runs end to end in the browser at least once.
 | Licenses | reuse, Node | `tools/ci.sh` | REUSE 3.3, npm, 3 parser tests | SPDX information for every file, allowed licenses of all npm packages, runtime packages listed in `THIRD_PARTY_NOTICES.md` (`tools/check_licenses.test.mjs`) |
 | Memory errors | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | all C++ tests | overflows, use-after-free, undefined behaviour |
 | Web | TypeScript strict, size budget | `npm run build` | – | types, ≤ 250 KB gzip |
-| End to end | Playwright + Chromium | `web/e2e/*.spec.ts` | 18 cases | first-time setup up to the first mix run, English switch, English pages (sign-in, recipes, settings, mixing, tank, functions, history), emergency stop, jump lock visible, functions and history, mis-plug, diagnostic bundle with an English issue link, recipe template (also from an English page on a German hub), tiles on sensor failure, climate areas with VPD, socket adoption and test, access protection, security headers, source code link (AGPL §13) |
+| End to end | Playwright + Chromium | `web/e2e/*.spec.ts` | 18 cases | first-time setup up to the first mix run, English switch, English pages (sign-in, recipes with a decimal point, settings, overview, mixing, tank, functions, history), emergency stop, jump lock visible, functions and history, mis-plug, diagnostic bundle with an English issue link, recipe template (also from an English page on a German hub), tiles on sensor failure, climate areas with VPD, socket adoption and test, access protection, security headers, source code link (AGPL §13) |
 
 The test cases for the control logic follow the list by `firmware`
 (M1-1 … M15-3). `INVARIANTS.md` shows which test covers which rule and

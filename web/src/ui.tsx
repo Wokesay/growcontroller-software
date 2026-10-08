@@ -4,7 +4,7 @@ import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
-import { t, type TextKey } from "./i18n";
+import { lang, t, type TextKey } from "./i18n";
 import { toastError, toasts } from "./store";
 
 // ---------- Router (Hash, damit die App aus dem Flash ohne Server-Routing läuft)
@@ -166,11 +166,14 @@ export function Field(p: { label: ComponentChildren; hint?: ComponentChildren; e
   );
 }
 
+// Decimal comma in German, decimal point in English (PD-035); typing accepts both.
+const shown = (v: number) => (lang.value === "de" ? String(v).replace(".", ",") : String(v));
+
 export function NumberInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; min?: number; max?: number; step?: number; placeholder?: string; id?: string; name?: string }) {
-  const [text, setText] = useState(p.value === null || p.value === undefined ? "" : String(p.value).replace(".", ","));
+  const [text, setText] = useState(p.value === null || p.value === undefined ? "" : shown(p.value));
   useEffect(() => {
     const cur = parseFloat(text.replace(",", "."));
-    if (p.value !== null && p.value !== undefined && cur !== p.value) setText(String(p.value).replace(".", ","));
+    if (p.value !== null && p.value !== undefined && cur !== p.value) setText(shown(p.value));
     if ((p.value === null || p.value === undefined) && text !== "" && Number.isNaN(cur)) setText("");
   }, [p.value]);
   const input = (
