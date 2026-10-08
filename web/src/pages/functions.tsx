@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-preact";
 import { patch, type FunctionState, type ParamDef } from "../api";
 import { catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { t, type TextKey } from "../i18n";
+import { figure } from "../format";
 import { Button, Card, CheckRow, Field, NumberInput, Pill, Toggle, ctlLabel, ctlTone, route, setupLabel } from "../ui";
 
 const CTL: Record<string, "ec" | "ph" | "refill" | "circulation"> = { ec_control: "ec", ph_control: "ph", refill: "refill", circulation: "circulation" };
@@ -21,7 +22,7 @@ function Params(p: { f: FunctionState; defs: ParamDef[] }) {
     <div class="stack">
       <div class="form-grid">
         {p.defs.map((d) => (
-          <Field label={d.label} hint={d.phase && phaseActive ? t("functions.phaseOverride") : d.min !== undefined ? `${d.min}–${d.max}` : undefined}>
+          <Field label={d.label} hint={d.phase && phaseActive ? t("functions.phaseOverride") : d.min !== undefined ? `${figure(d.min)}–${d.max !== undefined ? figure(d.max) : ""}` : undefined}>
             {d.type === "number" ? (
               <NumberInput value={(vals[d.key] as number) ?? null} onValue={(v) => setVals({ ...vals, [d.key]: v })} unit={d.unit || undefined} />
             ) : d.type === "enum" ? (

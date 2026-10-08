@@ -4,7 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { SeriesData } from "./api";
-import { locale } from "./i18n";
+import { locale, t } from "./i18n";
 
 function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
@@ -57,7 +57,7 @@ export function TimeChart(p: {
         },
       ],
       series: [
-        { value: (_u, v) => (v ? new Date(v * 1000).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
+        { label: t("widgets.chartTime"), value: (_u, v) => (v ? new Date(v * 1000).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–") },
         {
           label: p.label,
           stroke: color,
@@ -67,8 +67,8 @@ export function TimeChart(p: {
         },
         ...(showMinMax
           ? [
-              { label: "min", stroke: color, width: 0, show: true, points: { show: false }, value: () => "" },
-              { label: "max", stroke: color, width: 0, show: true, points: { show: false }, value: () => "" },
+              { label: t("widgets.chartMin"), stroke: color, width: 0, show: true, points: { show: false }, value: () => "" },
+              { label: t("widgets.chartMax"), stroke: color, width: 0, show: true, points: { show: false }, value: () => "" },
             ]
           : []),
       ],
@@ -119,7 +119,7 @@ export function TimeChart(p: {
   }, [p.data, p.band?.[0], p.band?.[1], p.markers?.length]);
 
   if (!p.data || p.data.t.length === 0 || p.data.avg.every((v) => v === null))
-    return <div class="chart-empty">Noch keine Messwerte in diesem Zeitraum</div>;
+    return <div class="chart-empty">{t("widgets.chartEmpty")}</div>;
   return <div class="chart" ref={ref} />;
 }
 

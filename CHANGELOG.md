@@ -202,14 +202,16 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
-- **The app's texts move into the language tables** (#18), area by area:
-  login, settings, recipes, the app shell, overview, mixing, tank,
-  functions and history now show their own texts in English when English
-  is chosen; the hub's messages and the shared widgets follow. Numbers in
-  input fields use a decimal point on an English page (PD-035). The issue that "Report a problem" prepares is
-  always in English, as the repository is (PD-034). German stays the
-  default until every area and the hub's messages are done. The buttons
-  that reorder a recipe now name the bottle for screen readers.
+- **The app's texts move into the language tables** (#18): every page,
+  the shared widgets and the simulator panel show their own texts in
+  English when English is chosen; the hub's messages follow later. Numbers use
+  a decimal point on an English page and a comma on a German one, also
+  in input fields and range hints, and a field shows its value again
+  when the language changes (PD-035). The issue that "Report a problem"
+  prepares is always in English, as the repository is (PD-034). German
+  stays the default until the hub's messages are done. The buttons that
+  reorder a recipe now name the bottle for screen readers, and in English
+  releasing a latch reads "Release" everywhere.
 - **No collection box** (PD-078, SD-031): every sensor head and the
   dosing block hang directly on a hub port. The device issue form no longer offers the
   collection box, the catalog attaches the climate and CO2 heads to a hub

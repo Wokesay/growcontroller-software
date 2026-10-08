@@ -29,6 +29,25 @@ export function keys(text, file = "text") {
   return out;
 }
 
+// Placeholders per key, e.g. "Pair {p}" → "p"; a value may span lines.
+export function placeholders(text) {
+  const out = new Map();
+  let key = null;
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*"([^"]+)"\s*:/);
+    if (m) {
+      key = m[1];
+      out.set(key, new Set());
+    } else if (/^\s*(\/\/|[}\]]|\.\.\.|export\b)/.test(line)) {
+      key = null;
+      continue;
+    }
+    if (key === null) continue;
+    for (const v of (m ? line.slice(m[0].length) : line).matchAll(/\{(\w+)\}/g)) out.get(key).add(v[1]);
+  }
+  return new Map([...out].map(([k, v]) => [k, [...v].sort().join(",")]));
+}
+
 // German and English part of each file
 function parts(file) {
   const text = readFileSync(join(dir, file), "utf8");
@@ -39,6 +58,23 @@ function parts(file) {
   return { de: keys(text.slice(0, m.index), file), en: keys(text.slice(m.index), file) };
 }
 
+const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+
+test("German and English use the same placeholders", () => {
+  const read = (file) => {
+    const text = readFileSync(join(dir, file), "utf8");
+    if (file === "de.ts" || file === "en.ts") return placeholders(text);
+    const m = text.match(/^export const en\b/m);
+    return { de: placeholders(text.slice(0, m.index)), en: placeholders(text.slice(m.index)) };
+  };
+  const pairs = files.filter((f) => f !== "de.ts" && f !== "en.ts").map((f) => [f, read(f)]);
+  pairs.push(["de.ts/en.ts", { de: read("de.ts"), en: read("en.ts") }]);
+  for (const [f, { de, en }] of pairs) {
+    for (const [k, v] of de) assert.equal(en.get(k), v, `${f}: ${k}: placeholders differ`);
+  }
+  assert.deepEqual(placeholders('  "a": "Pair {p} of {n}",\n  "b":\n    "x {y}",\n  // {z}\n'), new Map([["a", "n,p"], ["b", "y"]]));
+});
+
 test("the key reader refuses keys it cannot read", () => {
   assert.deepEqual(keys('  "a.b": "x",\n  "c":\n    "long value: with colon",\n  // note: y\n'), ["a.b", "c"]);
   assert.deepEqual(keys('  "a": "Bottle \\"{name}\\"",\n'), ["a"]);
@@ -47,8 +83,6 @@ test("the key reader refuses keys it cannot read", () => {
   assert.throws(() => keys('  "a": "x", "b": "y",\n'));
   assert.throws(() => keys('export const de = { "a": "x" };\n'));
 });
-
-const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
 
 test("no text key is defined in two files", () => {
   const seen = new Map();

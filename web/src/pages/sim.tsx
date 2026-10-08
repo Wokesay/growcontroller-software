@@ -5,6 +5,7 @@ import { useEffect, useState } from "preact/hooks";
 import { FlaskConical, Zap } from "lucide-preact";
 import { get, sim } from "../api";
 import { num } from "../format";
+import { t, type TextKey } from "../i18n";
 import { refreshConfig, refreshState, state, toast } from "../store";
 import { Button, Field, NumberInput, Seg } from "../ui";
 
@@ -20,8 +21,8 @@ export function SimPanel() {
   useEffect(() => {
     if (!open) return;
     load();
-    const t = setInterval(load, 2000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 2000);
+    return () => clearInterval(timer);
   }, [open]);
 
   const act = async (action: string, body: unknown = {}, msg?: string) => {
@@ -38,7 +39,7 @@ export function SimPanel() {
   if (!open)
     return (
       <button class="btn sim-fab" onClick={() => setOpen(true)} data-testid="sim-open">
-        <FlaskConical size={16} /> Simulator
+        <FlaskConical size={16} /> {t("common.simulator")}
       </button>
     );
   const w = world?.world;
@@ -60,70 +61,70 @@ export function SimPanel() {
   const lvl = w?.ports?.find((p: any) => p.class === "head_level");
   const block = w?.ports?.find((p: any) => p.class === "dosing_block");
   return (
-    <aside class="drawer" aria-label="Simulator">
+    <aside class="drawer" aria-label={t("common.simulator")}>
       <div class="row-between">
         <h2 class="row">
-          <FlaskConical size={18} /> Simulator
+          <FlaskConical size={18} /> {t("common.simulator")}
         </h2>
         <button class="btn sm ghost" onClick={() => setOpen(false)}>
-          Schließen
+          {t("common.close")}
         </button>
       </div>
-      <p class="muted small">Digitaler Zwilling des Hubs. Der Kern ist derselbe Code wie auf dem ESP32-S3; ersetzt sind nur Bus, Geräte und Tank.</p>
-      <Field label="Zeitraffer">
+      <p class="muted small">{t("sim.intro")}</p>
+      <Field label={t("sim.speed")}>
         <Seg value={speed} onChange={(v) => act("speed", { speed: Number(v) })} options={[["1", "1×"], ["10", "10×"], ["60", "60×"], ["300", "300×"]]} />
       </Field>
       {w && (
         <div class="card flat stack-sm">
-          <div class="section-title">Tank (wahr)</div>
+          <div class="section-title">{t("sim.tankTrue")}</div>
           <div class="row small">
             <span>{num(w.tank.volumeL, 1)} L</span>·<span>EC {num(w.tank.ec + w.tank.pendingEc, 2)}</span>·<span>pH {num(w.tank.ph + w.tank.pendingPh, 2)}</span>·
             <span>{num(w.tank.temp, 1)} °C</span>
           </div>
           <div class="row small muted">
-            Umwälzpumpe {w.outputs[0] ? "an" : "aus"} · Zulauf {w.outputs[1] ? "auf" : "zu"}
+            {t("sim.outputs", { circ: w.outputs[0] ? t("common.on") : t("common.off"), inlet: w.outputs[1] ? t("sim.inletOpen") : t("sim.inletClosed") })}
           </div>
         </div>
       )}
       <div class="stack-sm">
-        <div class="section-title">Tank befüllen</div>
+        <div class="section-title">{t("sim.fill")}</div>
         <div class="form-grid">
           <NumberInput value={vol} onValue={setVol} unit="L" />
           <NumberInput value={ec} onValue={setEc} unit="mS/cm" />
         </div>
-        <Button size="sm" onClick={() => act("water", { volumeL: vol, ec, ph: 7.0 }, "Tank neu befüllt")}>
-          Frisches Wasser einfüllen
+        <Button size="sm" onClick={() => act("water", { volumeL: vol, ec, ph: 7.0 }, t("sim.filled"))}>
+          {t("sim.freshWater")}
         </Button>
       </div>
       <div class="stack-sm">
-        <div class="section-title">Störungen</div>
+        <div class="section-title">{t("sim.faults")}</div>
         <div class="row">
           {head && (
             <>
               {phHead && (
-                <Button size="sm" onClick={() => act("fault", { device: phHead.id, fault: "jump" }, "pH-Sonde springt")}>
-                  <Zap size={14} /> pH-Sprung
+                <Button size="sm" onClick={() => act("fault", { device: phHead.id, fault: "jump" }, t("sim.phJumped"))}>
+                  <Zap size={14} /> {t("sim.phJump")}
                 </Button>
               )}
               {ecHead && (
-                <Button size="sm" onClick={() => act("fault", { device: ecHead.id, fault: "ec_zero" }, "EC-Sonde trocken")}>
+                <Button size="sm" onClick={() => act("fault", { device: ecHead.id, fault: "ec_zero" }, t("sim.ecDry"))}>
                   EC 0
                 </Button>
               )}
-              <Button size="sm" onClick={() => allHeads("frozen", "Werte eingefroren")}>
-                Wert friert
+              <Button size="sm" onClick={() => allHeads("frozen", t("sim.frozen"))}>
+                {t("sim.freeze")}
               </Button>
-              <Button size="sm" onClick={() => allHeads("offline", "Sensorkopf antwortet nicht")}>
-                Sensorkopf offline
+              <Button size="sm" onClick={() => allHeads("offline", t("sim.headNotResponding"))}>
+                {t("sim.headOffline")}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => allHeads("none", "Sensorkopf wieder normal")}>
-                Sensorkopf normal
+              <Button size="sm" variant="ghost" onClick={() => allHeads("none", t("sim.headBackNormal"))}>
+                {t("sim.headNormal")}
               </Button>
             </>
           )}
           {lvl && (
             <Button size="sm" onClick={() => act("fault", { device: lvl.id, fault: lvl.fault === "offline" ? "none" : "offline" })}>
-              Füllstand {lvl.fault === "offline" ? "wieder an" : "offline"}
+              {lvl.fault === "offline" ? t("sim.levelOn") : t("sim.levelOff")}
             </Button>
           )}
         </div>
@@ -133,20 +134,20 @@ export function SimPanel() {
               s ? (
                 <div class="item small">
                   <span class="grow">
-                    Pumpe {i + 1}: {w.liquids[s.liquid]} <span class="faint">({num(s.trueFlow, 1)} ml/min wahr)</span>
+                    {t("sim.pumpLiquid", { n: i + 1, liquid: w.liquids[s.liquid] ?? "" })} <span class="faint">{t("sim.trueFlow", { flow: num(s.trueFlow, 1) })}</span>
                   </span>
                   <Button size="sm" onClick={() => act("fault", { device: s.id, fault: s.blocked ? "none" : "blocked" })}>
-                    {s.blocked ? "frei" : "blockieren"}
+                    {s.blocked ? t("sim.unblock") : t("sim.block")}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => act("uncap", { block: block.id, slot: i }, "Pumpe abgezogen")}>
-                    abziehen
+                  <Button size="sm" variant="ghost" onClick={() => act("uncap", { block: block.id, slot: i }, t("sim.unplugged"))}>
+                    {t("sim.unplug")}
                   </Button>
                 </div>
               ) : (
                 <div class="item small">
-                  <span class="grow faint">Pumpe {i + 1}: frei</span>
-                  <Button size="sm" variant="ghost" onClick={() => act("cap", { block: block.id, slot: i, liquid: i === 3 ? "ph_down" : "grow_a" }, "Pumpe gesteckt")}>
-                    Pumpe stecken
+                  <span class="grow faint">{t("sim.slotFree", { n: i + 1 })}</span>
+                  <Button size="sm" variant="ghost" onClick={() => act("cap", { block: block.id, slot: i, liquid: i === 3 ? "ph_down" : "grow_a" }, t("sim.plugged"))}>
+                    {t("sim.plug")}
                   </Button>
                 </div>
               ),
@@ -154,40 +155,40 @@ export function SimPanel() {
           </div>
         )}
         <div class="row">
-          <Button size="sm" onClick={() => act("plug", { port: 2, class: "pump_cap" }, "Pumpe direkt an Anschluss 2")}>
-            Fehlsteckung: Pumpe an Anschluss 2
+          <Button size="sm" onClick={() => act("plug", { port: 2, class: "pump_cap" }, t("sim.wrongPlugged"))}>
+            {t("sim.wrongPlug")}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => act("unplug", { port: 2 })}>
-            Anschluss 2 frei
+            {t("sim.port2Free")}
           </Button>
         </div>
         <div class="row">
           {heads.length === 0 && (
             <>
-              <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, "pH/EC-Sensorkopf an Anschluss 3")}>
-                pH/EC-Sensorkopf an Anschluss 3
+              <Button size="sm" onClick={() => act("plug", { port: 3, class: "head_ph_ec" }, t("sim.phEcHead"))}>
+                {t("sim.phEcHead")}
               </Button>
               <Button
                 size="sm"
                 onClick={async () => {
                   await act("plug", { port: 3, class: "head_ph" });
-                  await act("plug", { port: 4, class: "head_ec" }, "pH-Kopf an Anschluss 3, EC-Kopf an Anschluss 4");
+                  await act("plug", { port: 4, class: "head_ec" }, t("sim.splitHeadsDone"));
                 }}
               >
-                pH und EC getrennt (Anschluss 3 und 4)
+                {t("sim.splitHeads")}
               </Button>
             </>
           )}
           {!lvl && (
-            <Button size="sm" onClick={() => act("plug", { port: 5, class: "head_level" }, "Füllstandssensor an Anschluss 5")}>
-              Füllstand an Anschluss 5
+            <Button size="sm" onClick={() => act("plug", { port: 5, class: "head_level" }, t("sim.levelPlugged"))}>
+              {t("sim.levelPlug")}
             </Button>
           )}
         </div>
-        <div class="section-title">Steckdosen im WLAN (Shelly)</div>
+        <div class="section-title">{t("sim.netPlugs")}</div>
         <div class="row wrap">
-          <Button size="sm" onClick={() => act("net_add", { class: "shelly_plug", loads: [{ load: "circulation", watts: 18 }] }, "Shelly Plug mit Umwälzpumpe im WLAN")}>
-            + Plug (Umwälzpumpe)
+          <Button size="sm" onClick={() => act("net_add", { class: "shelly_plug", loads: [{ load: "circulation", watts: 18 }] }, t("sim.plugAdded"))}>
+            {t("sim.plugAdd")}
           </Button>
           <Button
             size="sm"
@@ -195,40 +196,40 @@ export function SimPanel() {
               act(
                 "net_add",
                 { class: "shelly_strip4", loads: [{ load: "light", watts: 240 }, { load: "exhaust", watts: 35 }, { load: "circulation_fan", watts: 15 }, { load: "humidifier", watts: 30 }] },
-                "Shelly-Leiste im WLAN: Licht, Abluft, Umluft, Befeuchter",
+                t("sim.stripAdded"),
               )
             }
           >
-            + Leiste (Licht, Abluft, Umluft, Befeuchter)
+            {t("sim.stripAdd")}
           </Button>
         </div>
         {(w?.netPlugs ?? []).map((np: any) => (
           <div class="row wrap">
             <span class="grow small">
-              <span class="mono">{np.id}</span> · {np.outlets.map((o: any, i: number) => `${i + 1}: ${o.load || "–"} ${o.on ? "an" : "aus"}`).join(", ")}
+              <span class="mono">{np.id}</span> · {np.outlets.map((o: any, i: number) => `${i + 1}: ${o.load || "–"} ${o.on ? t("common.on") : t("common.off")}`).join(", ")}
             </span>
             <Button size="sm" variant="ghost" onClick={() => act("fault", { device: np.id, fault: np.fault === "offline" ? "none" : "offline" })}>
-              {np.fault === "offline" ? "wieder im WLAN" : "WLAN weg"}
+              {np.fault === "offline" ? t("sim.wifiBack") : t("sim.wifiGone")}
             </Button>
           </div>
         ))}
-        <Button size="sm" variant="danger-soft" onClick={() => act("reboot", {}, "Stromausfall: Hub startet neu")}>
-          Stromausfall / Neustart
+        <Button size="sm" variant="danger-soft" onClick={() => act("reboot", {}, t("sim.powerCut"))}>
+          {t("sim.reboot")}
         </Button>
       </div>
       <div class="stack-sm">
-        <div class="section-title">Szenario</div>
-        <p class="faint small">Löscht Einstellungen und Verlauf des Simulators.</p>
+        <div class="section-title">{t("sim.scenario")}</div>
+        <p class="faint small">{t("sim.scenarioNote")}</p>
         <div class="row">
-          {[["neu", "Leer (Stufe 0)"], ["stufe1", "Stufe 1 leer"], ["demo", "Demo eingerichtet"]].map(([n, l]) => (
+          {([["neu", "sim.scenarioEmpty"], ["stufe1", "sim.scenarioStage1"], ["demo", "sim.scenarioDemo"]] as [string, TextKey][]).map(([n, l]) => (
             <Button
               size="sm"
               onClick={async () => {
-                await act("scenario", { name: n }, `Szenario „${l}“ geladen – bitte neu anmelden`);
+                await act("scenario", { name: n }, t("sim.scenarioLoaded", { name: t(l) }));
                 await refreshConfig().catch(() => location.reload());
               }}
             >
-              {l}
+              {t(l)}
             </Button>
           ))}
         </div>
