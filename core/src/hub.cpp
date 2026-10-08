@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 #include "gc/sha256.hpp"
 
 namespace gc {
@@ -454,10 +455,10 @@ void Hub::tickImpl() {
       const DeviceCfg* dc = cfg_.device(d.id);
       in.devices.push_back({d.id, dc ? dc->name : d.id, d.online});
     }
-    in.controllers = {{"ec", "EC nachdosieren", ec_.status().state, ec_.status().line.text},
-                      {"ph", "pH regeln", ph_.status().state, ph_.status().line.text},
-                      {"refill", "Nachfüllen", refill_.status().state, refill_.status().line.text},
-                      {"circulation", "Umwälzen", circ_.status().state, circ_.status().line.text}};
+    in.controllers = {{"ec", say("watch.ctl.ec"), ec_.status().state, ec_.status().line},
+                      {"ph", say("watch.ctl.ph"), ph_.status().state, ph_.status().line},
+                      {"refill", say("watch.ctl.refill"), refill_.status().state, refill_.status().line},
+                      {"circulation", say("watch.ctl.circulation"), circ_.status().state, circ_.status().line}};
     for (const auto& [id, p] : pumps_) in.pumpFlow[id] = p.flowMlPerMin;
     watch_ = evaluate(in);  // Watchdog liest nur, er bekommt keine Aktoren
   }

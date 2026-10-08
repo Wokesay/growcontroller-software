@@ -202,6 +202,11 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **The hub speaks English with keys** (#18, SD-032): controller lines,
+  their checklists and the monitoring (headline and assessments) come
+  from the hub as a key, the values and an English text. A German page
+  shows them in German, with numbers in the page language. The other
+  hub texts follow.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use

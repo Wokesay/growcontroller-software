@@ -13,6 +13,18 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   await expect(page.getByTestId("metric-EC")).toBeVisible();
   await expect(page.locator(".ctl")).toHaveCount(4);
   await expect(page.locator(".sim-tag").first()).toBeVisible();
+  // The hub sends English with keys; a German page shows German (SD-032).
+  await expect(page.getByTestId("watchdog")).toContainText(/Alles in Ordnung|Problem/);
+  await expect(page.locator(".ctl").first()).toContainText(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus/);
+});
+
+test("English page: monitoring and control lines come in English from the hub (SD-032)", async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await expect(page.getByTestId("watchdog")).toContainText(/All fine|problem/);
+  await expect(page.locator(".ctl").first()).toContainText(/Controlling|Resting|Waiting|Blocked|Needs release|Off/);
+  await expect(page.getByTestId("watchdog")).not.toContainText(/Prüfungen|Probleme/);
 });
 
 test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {

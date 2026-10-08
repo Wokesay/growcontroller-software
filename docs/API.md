@@ -34,7 +34,7 @@ UI can do, an integration can do as well.
 
 | Method | Path | Content |
 |---|---|---|
-| GET | `/state` | live state: ports, devices, readings with quality and reason, tank, controllers with control line and checklist, outputs, job, dosing, watchdog (with `stale`), functions (resolver), latches, stock, cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
+| GET | `/state` | live state: ports, devices, readings with quality and reason, tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock, cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware |
@@ -62,8 +62,15 @@ UI can do, an integration can do as well.
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 
-Errors come as `{"error":{"key","text"},"errors":[…]}`. The `key` is
-meant for translations; `text` is plain German text.
+Errors come as `{"error":{"key","text"},"errors":[…]}`.
+
+Every text the hub sends is a message `{"key","text","args"}` (SD-032):
+`key` is stable, `args` holds the values (numbers as numbers, a nested
+message as an object) and `text` is English for every key in
+`core/src/messages.cpp`. The web app shows German from
+`web/src/lang/msg.ts`. Controller lines, checklist entries and the
+watchdog (`headline`, each item's `label` and `text`) are messages; the
+other texts follow under #18 and are still German until then.
 
 ## Operate
 

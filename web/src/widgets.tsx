@@ -73,7 +73,7 @@ export function ControllerRow(p: { name: string; st: CtlStatus; open?: boolean }
       {open && p.st.checks.length > 0 && (
         <div class="checks">
           {p.st.checks.map((c) => (
-            <CheckRow ok={c.ok} text={c.text} />
+            <CheckRow ok={c.ok} text={msg(c)} />
           ))}
           {(p.st.state === "latched" || latchedLine(p.st.line.key)) && <LatchActions />}
         </div>

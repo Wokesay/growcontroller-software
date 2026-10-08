@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Sprachen der App: Deutsch und Englisch. Texte stehen unter festen Schlüsseln
-// in lang/de.ts und lang/en.ts; die englische Tabelle muss jeden deutschen
-// Schlüssel haben (prüft der Compiler).
+// Languages of the app: German and English. Texts live under fixed keys in
+// lang/de.ts and lang/en.ts (base and one file per area); the English table
+// must have every German key (checked by the compiler).
 //
-// Meldungen des Kerns kommen als {key, text, args}: Deutsch zeigt den Text des
-// Kerns, Englisch übersetzt über den Schlüssel „msg.<key>“ und fällt sonst auf
-// den deutschen Text zurück.
+// Messages of the hub come as {key, text, args} with an English text
+// (SD-032): English shows that text, German fills the template from
+// lang/msg.ts with the arguments and falls back to the hub's text.
 import { signal } from "@preact/signals";
 import { de } from "./lang/de";
 import { en } from "./lang/en";
+import { msgDe } from "./lang/msg";
 
 export type Lang = "de" | "en";
 export type TextKey = keyof typeof de;
@@ -51,12 +52,25 @@ export function setLang(l: Lang, remember = true) {
   }
 }
 
+type Msg = { key?: string; text?: string; args?: Vars };
+
+// {name} or {name:N}: a number in the page language, with N decimals if
+// given, without a thousands separator; missing is "–", never 0 (R5); a
+// hub message inside is shown in the page language too.
 function fill(text: string, vars?: Vars) {
   if (!vars) return text;
-  return text.replace(/\{(\w+)\}/g, (_, k: string) => {
-    const v = vars[k];
-    return v === null || v === undefined ? "–" : String(v);
-  });
+  return text.replace(/\{(\w+)(?::(\d))?\}/g, (_, k: string, d?: string) => show(vars[k], d === undefined ? undefined : Number(d)));
+}
+
+function show(v: unknown, decimals?: number): string {
+  if (v === null || v === undefined) return "–";
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return "–";
+    const digits = decimals === undefined ? { maximumFractionDigits: 6 } : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+    return v.toLocaleString(locale(), { ...digits, useGrouping: false });
+  }
+  if (typeof v === "object") return msg(v as Msg);
+  return String(v);
 }
 
 /** Text zum Schlüssel in der aktuellen Sprache, mit {platzhaltern}. */
@@ -70,12 +84,12 @@ export function tIn(l: Lang, key: TextKey, vars?: Vars): string {
   return fill(text, vars);
 }
 
-/** Meldung des Kerns ({key, text, args}) in der aktuellen Sprache. */
-export function msg(m: { key?: string; text?: string; args?: Vars } | null | undefined): string {
+/** A hub message ({key, text, args}) in the current language (SD-032). */
+export function msg(m: Msg | null | undefined): string {
   if (!m) return "";
-  if (lang.value !== "de" && m.key) {
-    const text = tables[lang.value][`msg.${m.key}`];
-    if (text) return fill(text, m.args);
+  if (lang.value === "de" && m.key) {
+    const text = msgDe[m.key];
+    if (text) return fill(text, m.args ?? {});
   }
   return m.text ?? "";
 }

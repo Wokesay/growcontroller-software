@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include "gc/messages.hpp"
 #include "gc/watchdog.hpp"
 
 using namespace gc;
@@ -59,7 +60,7 @@ TEST_CASE("Watchdog: Alarmband weiter als Regelband (RAT-033)") {
 TEST_CASE("Watchdog: neutral mit Grund – Pflegemodus, Anlauf, kein Ziel") {
   Fix f;
   f.readings["tank.ph"].value = 7.5;
-  CHECK(f.item(f.eval(1790010000, 1790000000, 1790020000), "band.ph")->text.find("Pflegemodus") != std::string::npos);
+  CHECK(f.item(f.eval(1790010000, 1790000000, 1790020000), "band.ph")->text.key == "watch.maintenance");
   CHECK(f.item(f.eval(1790000060, 1790000000), "band.ph")->status == "neutral");
   f.cfg.functions["ph_control"].enabled = false;
   CHECK(f.item(f.eval(), "band.ph")->status == "neutral");
@@ -68,7 +69,7 @@ TEST_CASE("Watchdog: neutral mit Grund – Pflegemodus, Anlauf, kein Ziel") {
 TEST_CASE("Watchdog: gesperrter Regler und fehlender Einmesswert sind Probleme") {
   Fix f;
   f.cfg.canisters = {{"a", "A", "nutrient", "C1", "", "", kNaN}};
-  WatchInput in{f.cat, f.cfg, f.rt, f.readings, {}, {{"ph", "pH regeln", "blocked", "Gesperrt: EC zu niedrig"}}, {{"C1", kNaN}},
+  WatchInput in{f.cat, f.cfg, f.rt, f.readings, {}, {{"ph", say("watch.ctl.ph"), "blocked", say("ph.gate", {{"ec", 0.2}, {"floor", 0.5}})}}, {{"C1", kNaN}},
                 1790010000, 1790000000, 0, false};
   auto w = evaluate(in);
   CHECK(f.item(w, "ctl.ph")->status == "problem");

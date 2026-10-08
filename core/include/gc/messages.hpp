@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Texts the hub sends (SD-032): a stable key, its values as arguments and
+// an English text. The English templates live in one table
+// (core/src/messages.cpp); the web app holds the German ones
+// (web/src/lang/msg.ts). tools/i18n_keys.test.mjs checks that both tables
+// have the same keys and placeholders and that every say("…") key exists.
+#pragma once
+
+#include <string>
+#include <string_view>
+
+#include "gc/common.hpp"
+
+namespace gc {
+
+// A message from the table, its English text filled from the arguments.
+// An unknown key gives the key itself as text (and fails the key test).
+Msg say(std::string_view key, json args = json::object());
+
+// Fills {name} and {name:N} in a template. A number with N gets N
+// decimals, without N as many as it has (up to 6); a missing or null value
+// gives "–", never 0 (R5); a nested message gives its text.
+std::string render(std::string_view tmpl, const json& args);
+
+// Whether the table has a template for the key.
+bool knownMessage(std::string_view key);
+
+}  // namespace gc

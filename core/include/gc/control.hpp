@@ -17,7 +17,7 @@ namespace gc {
 
 struct Check {
   bool ok = false;
-  std::string text;
+  Msg msg;
 };
 
 struct CtlStatus {

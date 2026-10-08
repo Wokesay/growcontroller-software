@@ -5,7 +5,7 @@ import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, ShieldAlert, Shi
 import { get, post, type HubEvent } from "../api";
 import { ago, dateTime, num } from "../format";
 import { catalog, config, hasRole, refreshState, state, tank, toast } from "../store";
-import { t as tr } from "../i18n";
+import { msg, t as tr } from "../i18n";
 import { ClimateTiles, OutputsOverview } from "./areas";
 import { Banner, Button, Card, NumberInput, Pill } from "../ui";
 import { ControllerRow, EventList, JobView, MetricTile, StockList, useSparks } from "../widgets";
@@ -19,12 +19,12 @@ function WatchdogBar() {
     <div class={`statusbar ${tone}`} data-testid="watchdog">
       <div class="icon-wrap">{tone === "problem" ? <ShieldAlert size={22} /> : <ShieldCheck size={22} />}</div>
       <div class="grow" style="flex:1;min-width:0">
-        <div class="title">{wd.stale ? tr("overview.watchdogStale") : wd.headline}</div>
+        <div class="title">{wd.stale ? tr("overview.watchdogStale") : msg(wd.headline)}</div>
         <div class="muted small">
           {wd.stale
             ? tr("overview.watchdogStaleText")
             : problems.length
-              ? problems.slice(0, 3).map((p) => `${p.label}: ${p.text}`).join(" · ")
+              ? problems.slice(0, 3).map((p) => `${msg(p.label)}: ${msg(p.text)}`).join(" · ")
               : wd.neutral > 0
                 ? tr("overview.watchdogNeutral", { n: wd.neutral })
                 : tr("overview.watchdogIdle")}

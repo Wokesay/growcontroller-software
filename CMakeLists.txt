@@ -69,6 +69,7 @@ add_library(gc_core
   core/src/watchdog.cpp
   core/src/hub.cpp
   core/src/api.cpp
+  core/src/messages.cpp
   "${GC_GEN_DIR}/gc/embedded.cpp")
 target_include_directories(gc_core PUBLIC core/include "${GC_DEPS_DIR}" "${GC_GEN_DIR}")
 target_compile_options(gc_core PRIVATE ${GC_WARN})
@@ -116,7 +117,8 @@ if(GC_BUILD_TESTS)
     tests/core/test_api.cpp
     tests/core/test_scenarios.cpp
     tests/core/test_net.cpp
-    tests/core/test_climate.cpp)
+    tests/core/test_climate.cpp
+    tests/core/test_messages.cpp)
   target_link_libraries(gc_tests PRIVATE gc_sim)
   if(NOT MSVC)
     target_compile_options(gc_tests PRIVATE -Wall -Wextra)

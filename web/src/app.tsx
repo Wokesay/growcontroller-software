@@ -6,7 +6,7 @@ import {
   Beaker, Cpu, Droplets, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
 } from "lucide-preact";
 import { post } from "./api";
-import { t, type TextKey } from "./i18n";
+import { msg, t, type TextKey } from "./i18n";
 import { authed, config, info, live, refreshState, simulated, state, toast } from "./store";
 import { Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
@@ -125,7 +125,7 @@ function LiveBadge() {
       {wd && (
         <a href="#/tank" style="text-decoration:none">
           <Pill tone={wd.stale ? "bad" : wd.overall === "problem" ? "bad" : wd.overall === "ok" ? "ok" : "neutral"}>
-            {wd.stale ? t("shell.watchdogStale") : wd.headline}
+            {wd.stale ? t("shell.watchdogStale") : msg(wd.headline)}
           </Pill>
         </a>
       )}

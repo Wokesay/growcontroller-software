@@ -6,7 +6,7 @@ import { Droplets, ListChecks, Power, ShieldCheck, Sprout, Wrench } from "lucide
 import { post, put } from "../api";
 import { dateTime, num } from "../format";
 import { config, hasRole, recipes, refreshConfig, refreshState, state, tank, toast } from "../store";
-import { t as tr } from "../i18n";
+import { msg, t as tr } from "../i18n";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg } from "../ui";
 import { ControllerRow, latchLabel } from "../widgets";
 
@@ -228,7 +228,7 @@ export function TankPage() {
         >
           <div class="stack-sm">
             <div class="row">
-              <Pill tone={wd.stale || wd.overall === "problem" ? "bad" : wd.overall === "ok" ? "ok" : "neutral"}>{wd.stale ? tr("tank.noAssessment") : wd.headline}</Pill>
+              <Pill tone={wd.stale || wd.overall === "problem" ? "bad" : wd.overall === "ok" ? "ok" : "neutral"}>{wd.stale ? tr("tank.noAssessment") : msg(wd.headline)}</Pill>
               <span class="faint small">{tr("tank.evaluated", { at: dateTime(wd.evaluatedAt) })}</span>
             </div>
             <div class="list">
@@ -236,8 +236,8 @@ export function TankPage() {
                 <div class="item">
                   <Pill tone={a.status === "ok" ? "ok" : a.status === "problem" ? "bad" : "neutral"}>{a.status === "ok" ? tr("tank.statusOk") : a.status === "problem" ? tr("tank.statusProblem") : tr("tank.statusIdle")}</Pill>
                   <div class="grow">
-                    <div class="title">{a.label}</div>
-                    <div class="muted small">{a.text}</div>
+                    <div class="title">{msg(a.label)}</div>
+                    <div class="muted small">{msg(a.text)}</div>
                   </div>
                 </div>
               ))}

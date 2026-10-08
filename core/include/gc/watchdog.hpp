@@ -21,8 +21,10 @@ struct DeviceSeen {
 };
 
 struct ControllerView {
-  std::string id, label, state;  // state wie CtlStatus::state
-  std::string line;
+  std::string id;
+  Msg label;
+  std::string state;  // state wie CtlStatus::state
+  Msg line;
 };
 
 struct WatchInput {
@@ -40,16 +42,17 @@ struct WatchInput {
 };
 
 struct Assessment {
-  std::string id, label;
+  std::string id;
+  Msg label;
   std::string status;  // ok | problem | neutral
-  std::string text;
+  Msg text;
 };
 
 struct WatchResult {
   Epoch evaluatedAt = 0;
   std::string overall;  // ok | problem | neutral
   int ok = 0, problems = 0, neutral = 0;
-  std::string headline;
+  Msg headline;
   std::vector<Assessment> items;
 };
 void to_json(json& j, const WatchResult& w);

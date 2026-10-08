@@ -2,6 +2,9 @@
 // Text keys of the web app (#18): web/src/lang/de.ts and en.ts merge the
 // base texts and one file per area. A key used in two files would silently
 // overwrite the other; every file has the same keys in German and English.
+// The hub's messages (SD-032): core/src/messages.cpp (English) and
+// web/src/lang/msg.ts (German) have the same keys and placeholders, and
+// every say("…") in the core names a key of the table.
 //   node --test tools/i18n_keys.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -9,7 +12,9 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "lang");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const dir = join(root, "web", "src", "lang");
+const coreSrc = join(root, "core", "src");
 
 // Every key stands at the start of its own line as "key": – a key in any
 // other form (single quotes, no quotes, a second key on the line) would be
@@ -29,7 +34,8 @@ export function keys(text, file = "text") {
   return out;
 }
 
-// Placeholders per key, e.g. "Pair {p}" → "p"; a value may span lines.
+// Placeholders per key, e.g. "Pair {p}" → "p" and "{ph:2}" → "ph:2"; a
+// value may span lines.
 export function placeholders(text) {
   const out = new Map();
   let key = null;
@@ -43,7 +49,7 @@ export function placeholders(text) {
       continue;
     }
     if (key === null) continue;
-    for (const v of (m ? line.slice(m[0].length) : line).matchAll(/\{(\w+)\}/g)) out.get(key).add(v[1]);
+    for (const v of (m ? line.slice(m[0].length) : line).matchAll(/\{(\w+(?::\d)?)\}/g)) out.get(key).add(v[1]);
   }
   return new Map([...out].map(([k, v]) => [k, [...v].sort().join(",")]));
 }
@@ -58,7 +64,48 @@ function parts(file) {
   return { de: keys(text.slice(0, m.index), file), en: keys(text.slice(m.index), file) };
 }
 
-const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+// msg.ts holds only German (the hub sends English); it has its own tests.
+const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "msg.ts");
+
+// The core's table: one {"key", "template"} per line.
+export function coreMessages(text) {
+  const out = new Map();
+  for (const m of text.matchAll(/^\s*\{"([^"]+)",\s*"((?:[^"\\]|\\.)*)"\},?\s*$/gm)) {
+    assert.ok(!out.has(m[1]), `messages.cpp: ${m[1]} twice`);
+    out.set(m[1], m[2]);
+  }
+  return out;
+}
+
+const sorted = (text) => [...text.matchAll(/\{(\w+(?::\d)?)\}/g)].map((v) => v[1]).sort().join(",");
+
+test("the hub's messages have a German text with the same placeholders", () => {
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  assert.ok(core.size > 50, "messages.cpp read");
+  const text = readFileSync(join(dir, "msg.ts"), "utf8");
+  const german = keys(text, "msg.ts");
+  assert.equal(new Set(german).size, german.length, "msg.ts: duplicate key");
+  assert.deepEqual([...german].sort(), [...core.keys()].sort(), "same keys in messages.cpp and msg.ts");
+  const de = placeholders(text);
+  for (const [k, tmpl] of core) assert.equal(de.get(k), sorted(tmpl), `${k}: placeholders differ`);
+});
+
+test("every say() in the core names a key of the table", () => {
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  let n = 0;
+  for (const f of readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")) {
+    const text = readFileSync(join(coreSrc, f), "utf8");
+    for (const m of text.matchAll(/\bsay\(\s*("([^"]*)"|[^)\s][^,)]*)/g)) {
+      n++;
+      // A key chosen at run time must be one of several literals in a ternary.
+      const literals = m[2] !== undefined ? [m[2]] : [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+      assert.ok(literals.length > 0, `${f}: say(${m[1]}) without a literal key`);
+      for (const k of literals) assert.ok(core.has(k), `${f}: say("${k}") is not in messages.cpp`);
+    }
+  }
+  assert.ok(n > 50, "say() calls found");
+  assert.equal(sorted("{a:2} {b}"), "a:2,b");
+});
 
 test("German and English use the same placeholders", () => {
   const read = (file) => {
