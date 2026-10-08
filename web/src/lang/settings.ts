@@ -21,8 +21,9 @@ export const de = {
   "settings.install": "Installieren",
 
   // Problem melden
+  // Always sent in English: the repository is English (PD-034).
   "settings.issueTitle": "Problem",
-  "settings.issueBody": "**Beschreibung**\n{text}\n\n**Version:** {version}\n**Plattform:** {platform}\n**Vorgang:** {id}\n\n(Diagnosepaket bitte nur auf Nachfrage teilen – Issues sind öffentlich.)",
+  "settings.issueBody": "**Description**\n{text}\n\n**Version:** {version}\n**Platform:** {platform}\n**Report:** {id}\n\n(Please share the diagnostic package only when asked – issues are public.)",
   "settings.reportIntro": "Beschreibe kurz, was passiert ist. Der Hub erstellt ein Diagnosepaket mit Version, Einstellungen, Zuständen und den Ereignissen der letzten 72 Stunden – ohne Passwort, Sitzungen und WLAN-Zugang. Du siehst vorher, was drin ist.",
   "settings.whatHappened": "Was ist passiert?",
   "settings.whatHappenedHint": "z. B. Mischlauf hielt bei Teil B an",

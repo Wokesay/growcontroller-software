@@ -3,7 +3,7 @@
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
 import { Bug, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
-import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
+import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
 import { get, post, put } from "../api";
 import { dateTime, num } from "../format";
 import { config, info, logoutLocal, refreshConfig, simulated, toast } from "../store";
@@ -141,8 +141,8 @@ function Report() {
     a.click();
   };
   const issue = diag
-    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${text.slice(0, 60) || t("settings.issueTitle")}`)}&body=${encodeURIComponent(
-        t("settings.issueBody", { text, version: diag.info.version, platform: diag.info.platform.kind, id: diag.reportId }),
+    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${text.slice(0, 60) || tIn("en", "settings.issueTitle")}`)}&body=${encodeURIComponent(
+        tIn("en", "settings.issueBody", { text, version: diag.info.version, platform: diag.info.platform.kind, id: diag.reportId }),
       )}`
     : "";
   return (
