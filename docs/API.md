@@ -68,18 +68,30 @@ Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
 message as an object) and `text` is English for every key in
 `core/src/messages.cpp`. The web app shows German from
-`web/src/lang/msg.ts`. Controller lines, checklist entries and the
-watchdog (`headline`, each item's `label` and `text`) are messages; a
-reading's label is the catalog label without a key until the catalog
-follows. The other texts follow under #18 and are still German until
-then.
+`web/src/lang/msg.ts`. Controller lines, checklist entries, the
+watchdog (`headline`, each item's `label` and `text`), job messages,
+events (`title`, `text`) and errors are messages; a reading's label is
+the catalog label without a key until the catalog follows. An argument
+can be a list (joined with ", "). Events written before keep their
+plain text without a key. The other texts follow under #18 and are still
+German until then.
+
+When the dosing of a job step cannot start or go on (`/mix/start`,
+`/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
+`/pumps/{id}/calibrate`, `/pumps/{id}/prime`), the answer has the error
+key `job.start_failed` and the cause as the message in `args.reason`,
+for example `dose.too_small` or `act.stopped` in `args.reason.key`.
+Checks of the request itself keep their own keys (for example
+`job.busy`, `dose.hand_limit`, `job.state`). Job messages (`job.message`) use their own keys,
+for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
+`job.emergency_stop`.
 
 ## Operate
 
 | Method | Path | |
 |---|---|---|
 | POST | `/mix/plan`, `/mix/start` `{recipe, waterL, mode, guided, confirmRepeat}` | preview, start |
-| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result |
+| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
 | POST | `/dose {canister, ml}` | manual dose |
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
 | POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel |

@@ -148,6 +148,12 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **A damaged event cannot break the app** (SD-032): the web app reads
+  the hub's messages defensively (only its own table keys, only strings
+  as text, at most four nested levels). If a page or its event list
+  still fails to draw, it shows a notice with a reload button while
+  navigation and STOP stay usable. The hub caps the key and text of
+  events it loads.
 - **Release hardening** (#29): `release.yml` checks that a release tag
   points at a commit on `main`; every file is built in jobs without write
   access and without a cache; the publishing job only checks the files
@@ -206,11 +212,30 @@ listed in every release under "Security".
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page
   shows them in German, with numbers in the page language; a single
-  passing check now reads "1 Prüfung" instead of "1 Prüfungen". The other
-  hub texts follow. For API clients: `watchdog.headline` and each item's
-  `label` and `text` in `/state` are now `{key, text, args}` instead of a
-  string; a few line keys are new (`ph.start`, `circ.on_dosing`,
+  passing check now reads "1 Prüfung" instead of "1 Prüfungen". Events,
+  job messages and errors follow the same way: the history stores key
+  and values, so it switches language too; older events keep their text.
+  The remaining hub texts follow. For API clients: `watchdog.headline` and each item's
+  `label` and `text` in `/state`, and each event's `title` and `text`
+  in `/events`, are now `{key, text, args}` instead of a string; a few line keys are new (`ph.start`, `circ.on_dosing`,
   `circ.on_always`, `circ.on_interval`, `circ.latched`, `circ.off`).
+  When the dosing of a job step cannot start or go on, the answer now
+  has the error key `job.start_failed` and the cause in `args.reason`
+  (before: `mix.start`, `job.step`, `dose.start`, `cal.start`,
+  `prime.start`, and for `/dose` the cause's own key such as
+  `dose.too_small`); checks of the request itself keep their keys. The job message keys
+  `job.dosing` and `job.stopped` are now `job.dosing_step` and
+  `job.emergency_stop`, and a single failed dose reports
+  `job.dose_failed`. A pump calibration's result also returns `changed`
+  and `message`. Going back to an older version keeps the events but
+  shows them without titles, since it cannot read the new form.
+  Events name a released latch, the kind of a sensor calibration, the
+  removed role and the trigger of an emergency stop in words instead of
+  internal IDs; a cancelled mix reads "Mix cancelled". The calibration
+  window shows the hub's result, including the warning to check the
+  tubing when the rate changed clearly, and then offers to calibrate
+  again; after a failed run, closing the window cancels the run. A pump
+  that reports a stored rate of 0 no longer counts as a previous rate.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use

@@ -45,6 +45,8 @@ const base: Record<keyof typeof deBase, string> = {
   "common.offline": "disconnected",
   "common.connecting": "connecting …",
   "common.simulator": "Simulator",
+  "common.renderError": "This part can't be shown. The hub isn't affected, and STOP at the top still works. If reloading doesn't help, report it under Settings › Report a problem.",
+  "common.reload": "Reload page",
   "common.version": "Version {v}",
   "about.source": "Source code",
   "about.license": "Free software under AGPL-3.0-or-later. The link leads to the source code of exactly this version.",
@@ -247,7 +249,7 @@ const base: Record<keyof typeof deBase, string> = {
   "net.plugged": "What is plugged in?",
   "net.nothing": "– nothing / other –",
   "net.elsewhere": "already assigned",
-  "net.assigned": "Assigned; protection set in the device",
+  "net.assigned": "Assigned; safety setting saved in the plug",
   "net.countHint": "Outlets are numbered from 1 here, from 0 in the Shelly web interface.",
   "net.safety": "After a power cut the outlets stay off. Humidifier, watering pump and inlet also switch off in the device itself if the hub fails. Keep the Shelly and strip outside the growing area, behind an RCD (30 mA).",
 

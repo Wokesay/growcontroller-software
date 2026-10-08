@@ -57,13 +57,21 @@ type Msg = { key?: string; text?: string; args?: Vars };
 // {name} or {name:N}: a number in the page language, with N decimals if
 // given, without a thousands separator; missing is "–", never 0 (R5); a
 // hub message inside is shown in the page language too.
-function fill(text: string, vars?: Vars) {
+// Messages come from the hub's storage, so they are read defensively: only
+// own keys of the tables, only strings as text, and nested messages and
+// lists at most a few levels deep. A bad record shows "–", it never throws.
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+const maxDepth = 4;
+
+function fill(text: string, vars?: Vars, depth = 0) {
   if (!vars) return text;
-  return text.replace(/\{(\w+)(?::(\d))?\}/g, (_, k: string, d?: string) => show(vars[k], d === undefined ? undefined : Number(d)));
+  return text.replace(/\{(\w+)(?::(\d))?\}/g, (_, k: string, d?: string) =>
+    show(own(vars, k) ? vars[k] : undefined, d === undefined ? undefined : Number(d), depth),
+  );
 }
 
-function show(v: unknown, decimals?: number): string {
-  if (v === null || v === undefined) return "–";
+function show(v: unknown, decimals?: number, depth = 0): string {
+  if (v === null || v === undefined || depth > maxDepth) return "–";
   if (typeof v === "number") {
     if (!Number.isFinite(v)) return "–";
     if (decimals === undefined) return v.toLocaleString(locale(), { maximumFractionDigits: 6, useGrouping: false });
@@ -72,10 +80,8 @@ function show(v: unknown, decimals?: number): string {
     const s = v.toFixed(decimals).replace(/^-(0\.?0*)$/, "$1");
     return lang.value === "de" ? s.replace(".", ",") : s;
   }
-  if (typeof v === "object") {
-    const m = v as Msg;
-    return !Array.isArray(v) && (m.key || m.text) ? msg(m) : "–";
-  }
+  if (Array.isArray(v)) return v.length ? v.map((x) => show(x, decimals, depth + 1)).join(", ") : "–";
+  if (typeof v === "object") return msgAt(v, depth + 1) || "–";  // a nested message
   return typeof v === "string" ? v : "–";
 }
 
@@ -92,12 +98,17 @@ export function tIn(l: Lang, key: TextKey, vars?: Vars): string {
 
 /** A hub message ({key, text, args}) in the current language (SD-032). */
 export function msg(m: Msg | null | undefined): string {
-  if (!m) return "";
-  if (lang.value === "de" && m.key) {
-    const text = msgDe[m.key];
-    if (text) return fill(text, m.args ?? {});
+  return msgAt(m, 0);
+}
+
+function msgAt(m: unknown, depth: number): string {
+  if (!m || typeof m !== "object") return "";
+  const { key, text, args } = m as Msg;
+  if (lang.value === "de" && typeof key === "string" && own(msgDe, key)) {
+    const vars = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+    return fill(msgDe[key], vars, depth);
   }
-  return m.text ?? "";
+  return typeof text === "string" ? text : "";
 }
 
 /** Gebietsschema für Zahlen und Datum. */

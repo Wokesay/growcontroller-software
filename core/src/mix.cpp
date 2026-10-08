@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 void to_json(json& j, const DoseStep& s) {
@@ -135,9 +137,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     for (Ms m : d.runs) p.totalMs += m + 3 * kSecond;
     p.steps.push_back(d);
   }
-  p.after = phControlActive
-                ? Msg{"mix.after_auto", "pH zuletzt: Die pH-Regelung übernimmt nach dem Mischen.", json::object()}
-                : Msg{"mix.after_manual", "pH zuletzt: Jetzt pH von Hand messen und eintragen.", json::object()};
+  p.after = say(phControlActive ? "mix.after_auto" : "mix.after_manual");
   p.ok = p.errors.empty() && !p.steps.empty();
   return p;
 }

@@ -16,10 +16,18 @@ using test::Client;
 
 namespace {
 
+// An event by its key (SD-032) or its title text, optionally for one output.
+bool sameEvent(const json& e, const std::string& title, const std::string& label = "") {
+  const json& t = e["title"];
+  if (t.is_string()) return t == title;
+  const bool hit = t.value("key", std::string()) == title || t.value("text", std::string()) == title;
+  return hit && (label.empty() || (t.contains("args") && t["args"].value("label", std::string()) == label));
+}
+
 bool hasEvent(Client& c, const std::string& title) {
   const json events = c.ok("GET", "/api/v1/events?limit=2000")["events"];
   for (const auto& e : events)
-    if (e.value("title", std::string()) == title) return true;
+    if (sameEvent(e, title)) return true;
   return false;
 }
 
@@ -175,7 +183,7 @@ TEST_CASE("Restart without a secured time: the hub continues its clock and says 
   CHECK(st["time"]["operatingS"].get<std::int64_t>() >= op0);
   CHECK(st["time"]["operatingS"].get<std::int64_t>() < op0 + 3600);
   s.step(150000);
-  CHECK(hasEvent(c, "Uhrzeit nicht gesichert"));
+  CHECK(hasEvent(c, "ev.clock.unsecured"));
 
   // Network time arrives: the platform time counts again, the jump is reported.
   {
@@ -186,7 +194,7 @@ TEST_CASE("Restart without a secured time: the hub continues its clock and says 
   st = c.state();
   CHECK(st["time"]["secured"] == true);
   CHECK(st["now"] == s.clock().epoch());
-  CHECK(hasEvent(c, "Uhrzeit gesichert"));
+  CHECK(hasEvent(c, "ev.clock.secured"));
 }
 
 TEST_CASE("Restart with a secured time: no clock events, the outage shows in the wall time") {
@@ -203,8 +211,8 @@ TEST_CASE("Restart with a secured time: no clock events, the outage shows in the
   auto st = c.state();
   CHECK(st["time"]["secured"] == true);
   CHECK(st["now"] == s.clock().epoch());
-  CHECK_FALSE(hasEvent(c, "Uhrzeit nicht gesichert"));
-  CHECK_FALSE(hasEvent(c, "Uhrzeit gesichert"));
+  CHECK_FALSE(hasEvent(c, "ev.clock.unsecured"));
+  CHECK_FALSE(hasEvent(c, "ev.clock.secured"));
 }
 
 TEST_CASE("Clock jump: jump locks and maintenance keep their remaining time (RAT-044)") {
@@ -267,7 +275,7 @@ TEST_CASE("Clock: a secured time lost while running continues without a jump") {
   const gc::Epoch now = st["now"];
   CHECK(now >= s.clock().epoch() - 2);
   CHECK(now <= s.clock().epoch() + 2);
-  CHECK(hasEvent(c, "Uhrzeit nicht mehr gesichert"));
+  CHECK(hasEvent(c, "ev.clock.lost"));
   s.step(5 * 60 * 1000);
   st = c.state();
   CHECK(st["watchdog"]["evaluatedAt"].get<gc::Epoch>() >= st["now"].get<gc::Epoch>() - 70);
@@ -291,7 +299,7 @@ TEST_CASE("Clock: a network time step while secured keeps deadlines and is repor
   const gc::Epoch restAfter = st["maintenanceUntil"].get<gc::Epoch>() - st["now"].get<gc::Epoch>();
   CHECK(restAfter <= rest);
   CHECK(restAfter >= rest - 4);
-  CHECK(hasEvent(c, "Uhr gestellt"));
+  CHECK(hasEvent(c, "ev.clock.set"));
 }
 
 TEST_CASE("Clock: a platform time set before the secured flag follows keeps deadlines") {
@@ -339,10 +347,51 @@ TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is
   bool alarm = false;
   const json events = h.events(0, 9999999999, "", 2000)["events"];
   for (const auto& e : events)
-    if (e.value("title", std::string()) == "Laufzeitzustand unlesbar") alarm = true;
+    if (sameEvent(e, "ev.state_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "reason.not_json_object");  // both languages (SD-032)
+    }
   CHECK(alarm);
   REQUIRE(h.resume().status == 200);
   CHECK(h.state()["stopped"] == false);
+}
+
+TEST_CASE("Restart: unreadable settings start with factory settings and name the reason (SD-032)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("config.json", "{\"tanks\": [");
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(store.read("config.broken.json") == std::optional<std::string>("{\"tanks\": ["));
+  bool alarm = false;
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.config_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "reason.not_json");
+    }
+  CHECK(alarm);
+}
+
+TEST_CASE("Restart: settings with wrong types also start with factory settings and name the reason (SD-032)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("config.json", "{\"tanks\": 5}");
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(store.read("config.broken.json") == std::optional<std::string>("{\"tanks\": 5}"));
+  bool alarm = false;
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.config_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "ev.plain");  // the library's own text, as it is
+    }
+  CHECK(alarm);
 }
 
 TEST_CASE("Clock jump: a jump lock loaded before the time was known never holds longer than 15 min (RAT-044)") {

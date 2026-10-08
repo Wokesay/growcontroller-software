@@ -163,17 +163,14 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     if (noEffect_ >= 2) {
       c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
       noEffect_ = 0;  // nach dem Quittieren wieder zwei Runden
-      c.log.add(c.epoch, "alarm", "alarm", "EC-Nachdosierung ohne Wirkung",
-                "EC stieg nach zwei Runden nicht. Gerastet bis zur Quittierung.");
+      c.log.add(c.epoch, "alarm", "alarm", say("ev.ec.no_effect"), say("ev.ec.no_effect.text"));
       reset();
       return;
     }
     if (*ec.value >= target - tol || round_ >= countParam(p.num("max_doses"), 1)) {
       bool reached = *ec.value >= target - tol;
-      c.log.add(c.epoch, "control", reached ? "info" : "warn",
-                reached ? "EC nachdosiert" : "EC-Nachdosierung: Höchstzahl Runden",
-                "EC " + fmt(startEc_, 2) + " → " + fmt(*ec.value, 2) + " in " + std::to_string(round_) +
-                    (round_ == 1 ? " Runde" : " Runden"),
+      c.log.add(c.epoch, "control", reached ? "info" : "warn", say(reached ? "ev.ec.done" : "ev.ec.max"),
+                say(round_ == 1 ? "ev.ec.rounds_one" : "ev.ec.rounds", {{"from", numOrNull(startEc_)}, {"to", *ec.value}, {"n", round_}}),
                 {{"from", startEc_}, {"to", *ec.value}, {"rounds", round_}});
       if (!reached) cooldownUntil_ = c.epoch + 30 * 60;
       phase_ = Phase::Idle;
@@ -204,7 +201,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       // Runde ab, statt ewig „beschäftigt“ zu bleiben.
       if (circWaitSince_ == 0) circWaitSince_ = std::max<Ms>(c.now, 1);
       if (!c.cfg.binding("tank.circulation") || c.now - circWaitSince_ > 2 * kMinute) {
-        c.log.add(c.epoch, "control", "warn", "EC-Runde abgebrochen", "Die Umwälzpumpe lief nicht an. Ohne Durchmischung keine Dosierung.");
+        c.log.add(c.epoch, "control", "warn", say("ev.ec.round_cancelled"), say("ev.ec.round_cancelled.text"));
         st_.state = "blocked";
         st_.line = say("ec.circ_failed");
         cooldownUntil_ = c.epoch + 10 * 60;
@@ -286,7 +283,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
   mlRound_ += p.mlDone;
   lastDoseAt_ = c.epoch;
   if (p.state != DoseProgress::State::Done) {
-    c.log.add(c.epoch, "block", "warn", "EC-Nachdosierung abgebrochen", p.error.text);
+    c.log.add(c.epoch, "block", "warn", say("ev.ec.aborted"), p.error);
     reset();
     cooldownUntil_ = c.epoch + 15 * 60;
     return;
@@ -375,15 +372,14 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     if (noEffect_ >= 2) {
       c.rt.latches["ph.no_effect"] = {{"at", c.epoch}};
       noEffect_ = 0;
-      c.log.add(c.epoch, "alarm", "alarm", "pH-Regelung ohne Wirkung", "pH bewegte sich nach zwei Gaben nicht. Gerastet.");
+      c.log.add(c.epoch, "alarm", "alarm", say("ev.ph.no_effect"), say("ev.ph.no_effect.text"));
       reset();
       return;
     }
     if (*ph.value <= target + tol || doses_ >= countParam(p.num("max_doses"), 1)) {
       bool reached = *ph.value <= target + tol;
-      c.log.add(c.epoch, "control", reached ? "info" : "warn", reached ? "pH korrigiert" : "pH-Korrektur: Höchstzahl Gaben",
-                "pH " + fmt(startPh_, 2) + " → " + fmt(*ph.value, 2) + " mit " + std::to_string(doses_) +
-                    (doses_ == 1 ? " Gabe" : " Gaben"),
+      c.log.add(c.epoch, "control", reached ? "info" : "warn", say(reached ? "ev.ph.done" : "ev.ph.max"),
+                say(doses_ == 1 ? "ev.ph.doses_one" : "ev.ph.doses", {{"from", numOrNull(startPh_)}, {"to", *ph.value}, {"n", doses_}}),
                 {{"from", startPh_}, {"to", *ph.value}, {"doses", doses_}});
       if (!reached) cooldownUntil_ = c.epoch + 30 * 60;
       phase_ = Phase::Idle;
@@ -481,7 +477,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
 
 void PhController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p) {
   if (p.state != DoseProgress::State::Done) {
-    c.log.add(c.epoch, "block", "warn", "pH-Korrektur abgebrochen", p.error.text);
+    c.log.add(c.epoch, "block", "warn", say("ev.ph.aborted"), p.error);
     reset();
     cooldownUntil_ = c.epoch + 15 * 60;
     return;
@@ -531,8 +527,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       filling_ = false;
       cooldownUntil_ = c.epoch + 10 * 60;
       double added = level.usable() ? *level.value - startL_ : kNaN;
-      c.log.add(c.epoch, "tank", "info", "Nachgefüllt",
-                "+" + fmt(added, 1) + " L gemessen, " + fmt(plannedL_, 1) + " L berechnet",
+      c.log.add(c.epoch, "tank", "info", say("ev.refilled"),
+                say("ev.refilled.text", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)}}),
                 {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}});
       st_.state = "idle";
       st_.line = say("refill.done");

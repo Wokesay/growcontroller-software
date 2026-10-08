@@ -353,6 +353,7 @@ small, .small { font-size: 0.85rem; }
 .event .sev.alarm { color: var(--bad); }
 .event .et { font-weight: 600; font-size: 0.93rem; }
 .event .ex { font-size: 0.86rem; color: var(--muted); }
+.event > div { min-width: 0; overflow-wrap: anywhere; }
 .day-head { font-size: 0.8rem; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 0 4px; }
 
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(1200px 600px at 10% -10%, var(--accent-weak), transparent), var(--bg); }

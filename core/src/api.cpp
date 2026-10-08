@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 
 namespace gc {
 
@@ -133,7 +134,7 @@ ApiResponse Api::route(const ApiRequest& req) {
       return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
     if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
-    hub_.logEvent("auth", "info", "Passwort gesetzt", "Ersteinrichtung");
+    hub_.logEvent("auth", "info", say("ev.auth.password_set"), say("ev.auth.first_setup"));
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
     hub_.flush();            // auth.json zuerst schreiben …
@@ -147,10 +148,10 @@ ApiResponse Api::route(const ApiRequest& req) {
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
     if (!tok) {
-      hub_.logEvent("auth", "warn", "Anmeldung fehlgeschlagen", err.text);
+      hub_.logEvent("auth", "warn", say("ev.auth.failed"), err);
       return fail(err.key == "auth.locked" ? 429 : 401, err.key, err.text);
     }
-    hub_.logEvent("auth", "info", "Angemeldet", "");
+    hub_.logEvent("auth", "info", say("ev.auth.signed_in"));
     ApiResponse r = jsonResp(200, {{"ok", true}});
     r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
     return r;
@@ -170,7 +171,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"));
     if (!e.key.empty()) return fail(422, e.key, e.text);
-    hub_.logEvent("auth", "notice", "Passwort geändert", "Alle Sitzungen abgemeldet");
+    hub_.logEvent("auth", "notice", say("ev.auth.password_changed"), say("ev.auth.password_changed.text"));
     hub_.flush();
     return jsonResp(200, {{"ok", true}});
   }
@@ -260,7 +261,7 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("POST", {"jobs", "*", "result"})) return fromResult(hub_.calibrationResult(p[1], jnum(body, "ml")));
   if (is("POST", {"probe"})) return fromResult(hub_.probeCalibration(body));
   if (is("POST", {"latches", "*", "ack"})) return fromResult(hub_.ackLatch(p[1]));
-  if (is("POST", {"stop"})) return fromResult(hub_.stop("Web-UI"));
+  if (is("POST", {"stop"})) return fromResult(hub_.stop(say("stop.app")));
   if (is("POST", {"resume"})) return fromResult(hub_.resume());
   if (is("POST", {"maintenance"})) return fromResult(hub_.maintenance(jnum(body, "minutes")));
   if (is("POST", {"measure"})) return fromResult(hub_.manualMeasure(body));
@@ -284,12 +285,12 @@ ApiResponse Api::route(const ApiRequest& req) {
     };
     if (is("POST", {"update", "install"})) {
       if (busy()) return fail(409, "update.busy", "Update wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
-      hub_.logEvent("system", "notice", "Update angefordert", jstr(body, "version"));
+      hub_.logEvent("system", "notice", say("ev.update.requested"), say("ev.plain", {{"text", jstr(body, "version")}}));
       return jsonResp(200, u->install(jstr(body, "version")));
     }
     if (is("POST", {"update", "rollback"})) {
       if (busy()) return fail(409, "update.busy", "Rückkehr wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
-      hub_.logEvent("system", "notice", "Rückkehr zur Vorversion angefordert", "");
+      hub_.logEvent("system", "notice", say("ev.update.rollback"));
       return jsonResp(200, u->rollback());
     }
   }

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Geführte Kalibrierung: Pumpe einmessen (Messbecher), pH-Sonde (2 Puffer),
 // EC-Sonde (1 Referenz), Füllstand (Stützpunkte, stückweise linear).
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Beaker, Check, Timer } from "lucide-preact";
-import { get, post, sim } from "./api";
+import { get, post, sim, type Msg } from "./api";
 import { num } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { refreshConfig, refreshState, simulated, state, toast } from "./store";
+import { refreshConfig, refreshState, simulated, state, toast, toastError } from "./store";
 import { Banner, Button, Field, Modal, NumberInput } from "./ui";
 
 export function PumpCalibration(p: { pump: string; name: string; onClose: () => void }) {
@@ -14,10 +14,21 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   const [seconds, setSeconds] = useState<number | null>(30);
   const [jobId, setJobId] = useState<string | null>(null);
   const [ml, setMl] = useState<number | null>(null);
-  const [result, setResult] = useState<number | null>(null);
+  const [result, setResult] = useState<{ changed: boolean; message: Msg } | null>(null);
   const [simCup, setSimCup] = useState<number | null>(null);
-  const job = st.job && st.job.id === jobId ? st.job : null;
+  // The running job, or how it ended (e.g. stopped by STOP): the window follows the hub, not the request.
+  const job = [st.job, st.lastJob].find((j) => j && j.id === jobId) ?? null;
   const waiting = job?.state === "waiting_user";
+  const ended = job?.state === "failed" || job?.state === "aborted";
+  // A failed run stays the app's current job until it is cancelled: every way of closing cancels it,
+  // once, and only while it is still the hub's current job.
+  const closing = useRef(false);
+  const close = () => {
+    if (closing.current) return;
+    closing.current = true;
+    const abort = job?.state === "failed" && st.job?.id === jobId;
+    (abort ? post(`/jobs/${jobId}/abort`).then(refreshState).catch(toastError) : Promise.resolve()).finally(p.onClose);
+  };
 
   useEffect(() => {
     if (!waiting || !simulated.value) return;
@@ -27,10 +38,10 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   }, [waiting]);
 
   return (
-    <Modal title={t("calibration.pumpTitle", { name: p.name })} onClose={p.onClose}>
+    <Modal title={t("calibration.pumpTitle", { name: p.name })} onClose={close}>
       {result !== null ? (
-        <Banner tone="ok" icon={<Check size={18} />}>
-          {t("calibration.savedInPump")} <strong>{num(result, 1)} ml/min</strong>{t("calibration.savedKeep")}
+        <Banner tone={result.changed ? "warn" : "ok"} icon={result.changed ? undefined : <Check size={18} />}>
+          {msg(result.message)}
         </Banner>
       ) : !jobId ? (
         <div class="stack">
@@ -57,7 +68,9 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           </div>
         </div>
       ) : !waiting ? (
-        <Banner icon={<Beaker size={18} />}>{t("calibration.running")} {msg(job?.message)}</Banner>
+        <Banner tone={job?.state === "failed" ? "bad" : job?.state === "aborted" ? "warn" : "info"} icon={ended ? undefined : <Beaker size={18} />}>
+          {msg(job?.message) || t("calibration.running")}
+        </Banner>
       ) : (
         <div class="stack">
           <p>{t("calibration.howMuch")}</p>
@@ -75,9 +88,9 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
               disabled={!ml}
               onClick={async () => {
                 const r = await post(`/jobs/${jobId}/result`, { ml });
-                setResult(r.flowMlPerMin);
+                setResult({ changed: r.changed, message: r.message });
                 await refreshState();
-                toast(t("calibration.pumpDone"));
+                toast(t("calibration.pumpDone"), r.changed ? "info" : "ok");
               }}
             >
               {t("common.save")}
@@ -90,7 +103,27 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
       )}
       {result !== null && (
         <div class="modal-foot">
+          {result.changed && (
+            <button
+              class="btn"
+              onClick={() => {
+                setResult(null);
+                setJobId(null);
+                setMl(null);
+                setSimCup(null);
+              }}
+            >
+              {t("calibration.again")}
+            </button>
+          )}
           <button class="btn primary" onClick={p.onClose}>
+            {t("common.done")}
+          </button>
+        </div>
+      )}
+      {ended && (
+        <div class="modal-foot">
+          <button class="btn primary" onClick={close}>
             {t("common.done")}
           </button>
         </div>

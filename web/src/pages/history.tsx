@@ -5,7 +5,7 @@ import { Download, History, LineChart } from "lucide-preact";
 import { get, type HubEvent, type SeriesData } from "../api";
 import { TimeChart, type Marker } from "../chart";
 import { hasRole, state } from "../store";
-import { t, type TextKey } from "../i18n";
+import { msg, t, type TextKey } from "../i18n";
 import { Card, Seg } from "../ui";
 import { EventList } from "../widgets";
 
@@ -75,7 +75,7 @@ export function HistoryPage() {
   const phBand: [number, number] | null = ph?.target != null ? [ph.target - ph.tolerance, ph.target + ph.tolerance] : null;
   const ecBand: [number, number] | null = ec?.target != null ? [ec.target - ec.tolerance, ec.target + ec.tolerance] : null;
   const markers = (purposes: string[]): Marker[] =>
-    doses.filter((e) => purposes.includes(e.data?.purpose)).map((e) => ({ t: e.ts, label: e.title, color: e.data?.purpose === "ph" ? "--ph" : "--ec" }));
+    doses.filter((e) => purposes.includes(e.data?.purpose)).map((e) => ({ t: e.ts, label: msg(e.title), color: e.data?.purpose === "ph" ? "--ph" : "--ec" }));
   const now = st.now;
   const csv = `/api/v1/export.csv?series=${series.join(",")}&from=${now - span}&to=${now}`;
 

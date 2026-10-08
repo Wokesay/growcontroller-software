@@ -3,8 +3,6 @@
 // all areas; en must have every key of de (checked by the compiler).
 export const de = {
   "calibration.pumpTitle": "Pumpe einmessen – {name}",
-  "calibration.savedInPump": "Gespeichert in der Pumpe:",
-  "calibration.savedKeep": ". Der Wert bleibt beim Umstecken erhalten.",
   "calibration.stepCup": "Schlauchende in einen Messbecher halten (ab ca. 20 ml gut ablesbar).",
   "calibration.stepReal": "Mit dem echten Nährstoff messen, nicht mit Wasser – Konzentrat fließt anders. Danach zurück in den Kanister gießen.",
   "calibration.stepPrimed": "Der Schlauch muss gefüllt und blasenfrei sein.",
@@ -19,6 +17,7 @@ export const de = {
   "calibration.inCup": "Im Becher:",
   "calibration.takeMl": "{ml} ml übernehmen",
   "calibration.pumpDone": "Pumpe eingemessen",
+  "calibration.again": "Neu einmessen",
   "calibration.ph7": "Sonde abspülen und in Pufferlösung pH 7,00 stellen.",
   "calibration.ph4": "Sonde abspülen und in Pufferlösung pH 4,00 stellen.",
   "calibration.ec1413": "Sonde abspülen und in Kalibrierlösung 1,413 mS/cm stellen.",
@@ -44,8 +43,6 @@ export const de = {
 
 export const en: Record<keyof typeof de, string> = {
   "calibration.pumpTitle": "Calibrate pump – {name}",
-  "calibration.savedInPump": "Saved in the pump:",
-  "calibration.savedKeep": ". The value stays when you replug the pump.",
   "calibration.stepCup": "Hold the tube end in a measuring cup (easy to read from about 20 ml).",
   "calibration.stepReal": "Measure with the real nutrient, not water – concentrate flows differently. Pour it back into the bottle afterwards.",
   "calibration.stepPrimed": "Prime the tubing first so it is full and free of bubbles.",
@@ -60,6 +57,7 @@ export const en: Record<keyof typeof de, string> = {
   "calibration.inCup": "In the cup:",
   "calibration.takeMl": "Use {ml} ml",
   "calibration.pumpDone": "Pump calibrated",
+  "calibration.again": "Calibrate again",
   "calibration.ph7": "Rinse the probe and place it in pH 7.00 buffer solution.",
   "calibration.ph4": "Rinse the probe and place it in pH 4.00 buffer solution.",
   "calibration.ec1413": "Rinse the probe and place it in 1.413 mS/cm calibration solution.",

@@ -46,6 +46,8 @@ export const deBase = {
   "common.offline": "getrennt",
   "common.connecting": "verbinde …",
   "common.simulator": "Simulator",
+  "common.renderError": "Dieser Teil lässt sich nicht anzeigen. Der Hub ist davon nicht betroffen, STOPP oben funktioniert. Hilft Neuladen nicht, melde es unter Einstellungen › Problem melden.",
+  "common.reload": "Seite neu laden",
   "common.version": "Version {v}",
   "about.source": "Quellcode",
   "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",

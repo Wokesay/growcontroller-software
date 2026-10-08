@@ -50,12 +50,62 @@ TEST_CASE("Verlauf: Sichern und Laden") {
 
 TEST_CASE("Ereignislog: neueste zuerst, Filter, Obergrenze") {
   EventLog log(3);
-  for (int i = 0; i < 5; ++i) log.add(100 + i, i % 2 ? "dose" : "mix", "info", "E" + std::to_string(i), "");
+  for (int i = 0; i < 5; ++i) log.add(100 + i, i % 2 ? "dose" : "mix", "info", Msg{"", "E" + std::to_string(i)});
   auto all = log.query(0, 1000, "", 10);
   REQUIRE(all.size() == 3);
-  CHECK(all[0].title == "E4");
+  CHECK(all[0].title.text == "E4");
   CHECK(log.query(0, 1000, "dose", 10).size() == 1);
   EventLog k;
   k.load(log.toJson());
   CHECK(k.lastId() == 5);
+}
+
+TEST_CASE("Event log: key and values survive a restart, old plain texts stay readable (SD-032)") {
+  EventLog log;
+  log.add(100, "grow", "info", Msg{"ev.grow.phase", "Phase change", json::object()},
+          Msg{"ev.grow.phase.text", "Phase \"Bloom\"", {{"phase", "Bloom"}}});
+  EventLog k;
+  k.load(log.toJson());
+  auto e = k.query(0, 1000, "", 1).at(0);
+  CHECK(e.title.key == "ev.grow.phase");
+  CHECK(e.text.args["phase"] == "Bloom");
+  // An events.json from before SD-032: title and text are plain strings.
+  json old = {{"next", 2}, {"events", {{{"id", 1}, {"ts", 100}, {"type", "system"}, {"severity", "info"}, {"title", "Hub gestartet"}, {"text", "Version 0.1"}}}}};
+  EventLog o;
+  o.load(old);
+  auto oe = o.query(0, 1000, "", 1).at(0);
+  CHECK(oe.title.key.empty());
+  CHECK(oe.title.text == "Hub gestartet");
+  CHECK(oe.text.text == "Version 0.1");
+  json j = oe;
+  CHECK(j["title"]["text"] == "Hub gestartet");
+}
+
+TEST_CASE("Event log: a damaged events.json loads as empty messages, never throws (SD-032)") {
+  json events = json::array();
+  int id = 1;
+  for (const json& v : {json(5), json::array({"a"}), json(nullptr), json(true),
+                        json{{"key", 7}, {"text", {{"toString", 1}}}, {"args", "x"}},
+                        json{{"key", "ev.plain"}, {"text", "ok"}, {"args", json::array({1})}}})
+    events.push_back({{"id", id++}, {"ts", 100}, {"type", "system"}, {"severity", "info"}, {"title", v}, {"text", v}});
+  events.push_back({{"id", id++}, {"ts", 100}, {"type", "system"}, {"severity", "info"},
+                    {"title", std::string(5000, 'x')}, {"text", {{"key", std::string(500, 'k')}, {"text", "t"}}}});
+  EventLog log;
+  REQUIRE_NOTHROW(log.load({{"next", id}, {"events", events}}));
+  auto all = log.query(0, 1000, "", 100);
+  REQUIRE(all.size() == 7);
+  for (const auto& e : all) {
+    CHECK(e.title.args.is_object());
+    CHECK(e.text.args.is_object());
+  }
+  // newest first: the long one, then the one with array args, then the bad types
+  CHECK(all[0].title.text.size() == 2048);
+  CHECK(all[0].text.key.size() == 64);
+  CHECK(all[1].title.key == "ev.plain");
+  CHECK(all[1].title.text == "ok");
+  CHECK(all[1].title.args.empty());
+  for (size_t i = 2; i < all.size(); ++i) {
+    CHECK(all[i].title.key.empty());
+    CHECK(all[i].title.text.empty());
+  }
 }

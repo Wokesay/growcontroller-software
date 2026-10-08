@@ -5,6 +5,24 @@
 
 namespace gc {
 
+namespace {
+
+// A saved message; events written before SD-032 hold plain German text,
+// which stays as it is (no key). Anything else of the wrong type loads as an
+// empty message; key and text are capped (args and data are not yet).
+Msg msgFromJson(const json& e, const char* field) {
+  constexpr size_t kMaxKey = 64, kMaxText = 2048;
+  if (!e.contains(field)) return {};
+  const json& v = e[field];
+  if (v.is_string()) return {"", utf8Prefix(v.get<std::string>(), kMaxText), json::object()};
+  if (!v.is_object()) return {};
+  Msg m{utf8Prefix(jstr(v, "key"), kMaxKey), utf8Prefix(jstr(v, "text"), kMaxText), json::object()};
+  if (v.contains("args") && v["args"].is_object()) m.args = v["args"];
+  return m;
+}
+
+}  // namespace
+
 void to_json(json& j, const Event& e) {
   j = {{"id", e.id}, {"ts", e.ts}, {"type", e.type}, {"severity", e.severity},
        {"title", e.title}, {"text", e.text}, {"data", e.data}};
@@ -16,8 +34,7 @@ Epoch EventLog::newestTs() const {
   return t;
 }
 
-const Event& EventLog::add(Epoch ts, std::string type, std::string severity, std::string title, std::string text,
-                           json data) {
+const Event& EventLog::add(Epoch ts, std::string type, std::string severity, Msg title, Msg text, json data) {
   Event e;
   e.id = next_++;
   e.ts = ts;
@@ -63,8 +80,8 @@ void EventLog::load(const json& j) {
     ev.ts = isNum(ts) && ts >= 0 && ts <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(ts) : 0;
     ev.type = jstr(e, "type");
     ev.severity = jstr(e, "severity");
-    ev.title = jstr(e, "title");
-    ev.text = jstr(e, "text");
+    ev.title = msgFromJson(e, "title");
+    ev.text = msgFromJson(e, "text");
     ev.data = e.contains("data") && e["data"].is_object() ? e["data"] : json::object();
     events_.push_back(ev);
   }

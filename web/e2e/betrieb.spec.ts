@@ -20,6 +20,8 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
   await expect.poll(lines).toMatch(/\d,\d/);
   expect(await lines()).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
+  // Events too: the hub stores key and values, the page shows German.
+  await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" }).first()).toBeVisible();
 });
 
 test("English page: monitoring and control lines come in English from the hub (SD-032)", async ({ page }) => {
@@ -32,6 +34,8 @@ test("English page: monitoring and control lines come in English from the hub (S
   await expect.poll(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
   await expect.poll(lines).toMatch(/\d\.\d/);
   expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
+  await expect(page.getByTestId("event").filter({ hasText: "Signed in" }).first()).toBeVisible();
+  await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" })).toHaveCount(0);
 });
 
 test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {
@@ -243,4 +247,25 @@ test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich von Hand scha
   await expect(page.getByText("VPD (Luft)")).toBeVisible();
   await page.goto("/");
   await expect(page.getByText("Schaltausgänge")).toBeVisible();
+});
+
+test("Calibration: a failed run is cancelled however the window is closed, Escape included", async ({ page }) => {
+  const pump = "CAP-1F02C1";
+  const api = (path: string, body?: unknown) =>
+    page.evaluate(
+      async ([p, b]) => (await fetch(`/api/v1${p}`, b === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })).json(),
+      [path, body] as const,
+    );
+  await login(page);
+  await page.goto(`/#/geraete?pump=${pump}`);
+  await page.reload();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Pumpe starten" }).click();
+  await api("/sim/fault", { device: pump, fault: "blocked" });
+  for (let i = 0; i < 10; i++) await api("/sim/advance", { hours: 0.0013 });
+  await expect(dialog.locator(".banner.bad")).toBeVisible();  // the run failed
+  await api("/sim/fault", { device: pump, fault: "none" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await api("/state")).lastJob?.state).toBe("aborted");
 });

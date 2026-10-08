@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
-import type { ComponentChildren, JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { Component, type ComponentChildren, type JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
 import { lang, t, type TextKey } from "./i18n";
@@ -228,8 +228,11 @@ export function Seg<T extends string>(p: { value: T; options: [T, string][]; onC
 }
 
 export function Modal(p: { title: ComponentChildren; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren; wide?: boolean }) {
+  // Escape calls the current onClose, not the one from the first render.
+  const onClose = useRef(p.onClose);
+  onClose.current = p.onClose;
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && p.onClose();
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose.current();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, []);
@@ -270,6 +273,32 @@ export function Banner(p: { tone?: "info" | "warn" | "bad" | "ok"; children: Com
       <div>{p.children}</div>
     </div>
   );
+}
+
+/** Catches an error while drawing its part, so the rest of the page and the shell with STOP stay usable. */
+export class ErrorBoundary extends Component<{ children: ComponentChildren }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(e: unknown) {
+    console.error(e);  // still diagnosable in the browser console
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <Banner tone="bad">
+        <div class="stack-sm">
+          <p>{t("common.renderError")}</p>
+          <div>
+            <button class="btn" onClick={() => location.reload()}>
+              {t("common.reload")}
+            </button>
+          </div>
+        </div>
+      </Banner>
+    );
+  }
 }
 
 export function Empty(p: { icon?: ComponentChildren; title: string; text?: ComponentChildren; action?: ComponentChildren }) {

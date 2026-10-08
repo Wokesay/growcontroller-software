@@ -8,7 +8,7 @@ import { del, get, post, put, type CtlStatus, type Device, type HubEvent, type J
 import { ago, day, num, time } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
-import { Button, CheckRow, Pill, ctlLabel, ctlTone } from "./ui";
+import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
 
 const qualityText: Record<string, TextKey> = {
   not_bound: "widgets.quality.notBound",
@@ -182,6 +182,14 @@ const sevIcon = (s: string) =>
   s === "alarm" ? <AlertTriangle size={15} /> : s === "warn" ? <AlertTriangle size={15} /> : s === "notice" ? <Info size={15} /> : s === "info" ? <CircleDot size={15} /> : <CircleCheck size={15} />;
 
 export function EventList(p: { events: HubEvent[]; groupByDay?: boolean }) {
+  return (
+    <ErrorBoundary>
+      <Events {...p} />
+    </ErrorBoundary>
+  );
+}
+
+function Events(p: { events: HubEvent[]; groupByDay?: boolean }) {
   if (!p.events.length) return <p class="muted">{t("widgets.noEvents")}</p>;
   let lastDay = "";
   return (
@@ -197,8 +205,8 @@ export function EventList(p: { events: HubEvent[]; groupByDay?: boolean }) {
               <span class="t">{time(e.ts)}</span>
               <span class={`sev ${e.severity}`}>{sevIcon(e.severity)}</span>
               <div>
-                <div class="et">{e.title}</div>
-                {e.text && <div class="ex">{e.text}</div>}
+                <div class="et">{msg(e.title)}</div>
+                {msg(e.text) && <div class="ex">{msg(e.text)}</div>}
               </div>
             </div>
           </>
