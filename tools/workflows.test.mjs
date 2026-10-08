@@ -39,3 +39,49 @@ test("the same action uses the same commit everywhere", () => {
     }
   }
 });
+
+function job(text, id) {
+  const m = text.match(new RegExp(`^ {2}${id}:\\n((?: {4}.*\\n|\\s*\\n)*)`, "m"));
+  assert.ok(m, `job ${id}`);
+  return m[1];
+}
+
+test("every uses: is in a form the pin check reads", () => {
+  // A flow mapping like "- { uses: x@main }" would slip past the check above.
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    const tokens = text.match(/\buses\b["']?\s*:/g) ?? [];
+    const lines = text.split("\n").filter((l) => /^\s*(?:-\s+)?uses:\s*\S/.test(l));
+    assert.equal(tokens.length, lines.length, f);
+  }
+});
+
+test("only the publishing job of a release can write", () => {
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    assert.match(text, /^permissions:\n {2}contents: read\n/m, `${f}: read-only by default`);
+    const writes = text.split("\n").filter((l) => /:\s*write\b/.test(l));
+    if (f !== "release.yml") assert.deepEqual(writes, [], f);
+  }
+  const release = readFileSync(join(dir, "release.yml"), "utf8");
+  const publish = job(release, "publish");
+  const writesOutside = release.replace(publish, "").split("\n").filter((l) => /:\s*write\b/.test(l));
+  assert.deepEqual(writesOutside, []);
+  assert.match(publish, /if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+});
+
+test("the publishing job builds nothing and the release build uses no cache", () => {
+  const release = readFileSync(join(dir, "release.yml"), "utf8");
+  const publish = job(release, "publish");
+  assert.doesNotMatch(publish, /actions\/(checkout|setup-node|cache)@/);
+  assert.doesNotMatch(publish, /\b(npm|npx|cmake|pip|pipx)\b|\bnode\s/);
+  assert.doesNotMatch(release, /actions\/cache/);
+  for (const m of release.matchAll(/uses: actions\/setup-node@\S+.*\n((?: {8}.*\n)*)/g)) {
+    assert.match(m[1], /package-manager-cache: false/);
+    assert.doesNotMatch(m[1], /^\s*cache:/m);
+  }
+  assert.match(job(release, "packages"), /release: true/);
+  const packages = readFileSync(join(dir, "packages.yml"), "utf8");
+  assert.doesNotMatch(packages, /actions\/cache/);
+  assert.match(packages, /cache: \$\{\{ !inputs\.release && 'npm' \|\| '' \}\}/);
+});

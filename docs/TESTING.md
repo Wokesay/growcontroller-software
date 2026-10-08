@@ -11,7 +11,7 @@ test. Every visible function runs end to end in the browser at least once.
 | Unit | doctest (C++) | `tests/core/test_*.cpp` | 77 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, mix planning, resolver, watchdog, SHA-256/PBKDF2, login, sockets and gateway (`test_net`), room climate and VPD (`test_climate`) |
 | API contract | doctest against the core | `tests/core/test_api.cpp` | 17 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
 | Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 19 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart |
-| CI and release scripts | Node | `tools/ci_changes.test.mjs`, `tools/workflows.test.mjs`, `tools/sbom_cpp.test.mjs` | 11 tests | docs-only changes skip the heavy CI jobs, everything else runs them; `ci-ok` waits for every job (SD-030); actions are GitHub's own and pinned by commit SHA; the C++ SBOM matches `cmake/deps.cmake` (#29) |
+| CI and release scripts | Node | `tools/ci_changes.test.mjs`, `tools/workflows.test.mjs`, `tools/sbom_cpp.test.mjs` | 14 tests | docs-only changes skip the heavy CI jobs, everything else runs them; `ci-ok` waits for every job (SD-030); actions are GitHub's own and pinned by commit SHA; the C++ SBOM matches `cmake/deps.cmake` (#29) |
 | Licenses | reuse, Node | `tools/ci.sh` | REUSE 3.3, npm, 3 parser tests | SPDX information for every file, allowed licenses of all npm packages, runtime packages listed in `THIRD_PARTY_NOTICES.md` (`tools/check_licenses.test.mjs`) |
 | Memory errors | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | all C++ tests | overflows, use-after-free, undefined behaviour |
 | Web | TypeScript strict, size budget | `npm run build` | – | types, ≤ 250 KB gzip |
@@ -34,8 +34,9 @@ The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
 firmware build and the simulator packages for Windows, macOS and Linux.
 For a docs-only change its first job `changes` (`tools/ci_changes.mjs`)
 skips these heavy jobs, and only the quick checks run
-(`.github/workflows/checks.yml`: architecture rules, the change filter,
-`reuse lint`, dependency licenses; PD-059). The last job `ci-ok` fails if
+(`.github/workflows/checks.yml`: architecture rules, the CI and release
+script tests including action pins and the C++ SBOM, `reuse lint`,
+dependency licenses; PD-059). The last job `ci-ok` fails if
 any job failed, was cancelled or was skipped for a change to code. The
 ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
 
