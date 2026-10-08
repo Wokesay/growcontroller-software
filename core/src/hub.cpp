@@ -1056,8 +1056,18 @@ Result Hub::deleteRecipe(const std::string& id) {
   return Result::ok();
 }
 
-Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) {
+Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, const std::string& langIn) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  // Name, note and part names in the language of the page that asks (it can
+  // differ from the hub's), otherwise in the system language (#32).
+  if (!langIn.empty() && langIn != "de" && langIn != "en")
+    return Result::fail(422, "recipe.template.lang", "Sprache muss de oder en sein");
+  const std::string& sys = cfg_.system.language;
+  const std::string lang = !langIn.empty() ? langIn : (sys == "en" ? "en" : "de");
+  auto localized = [&](const json& o, const char* key) {
+    const std::string en = jstr(o, (std::string(key) + "En").c_str());
+    return lang == "en" && !en.empty() ? en : jstr(o, key);
+  };
   // Zuordnung je Teil der Vorlage: ausdrücklich (map: Rolle → Kanister),
   // sonst über den Namen (ohne Groß/Klein). Die Reihenfolge der Vorlage ist die
   // Mischreihenfolge der Herstellertabelle (Athena: B vor A, CalMag danach).
@@ -1074,13 +1084,16 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) 
     std::map<std::string, std::string> pairs;  // Kanister → Paar aus der Vorlage
     std::set<std::string> used;
     for (const auto& s : t.value("steps", json::array())) {
-      const std::string role = jstr(s, "role"), name = jstr(s, "name");
+      const std::string role = jstr(s, "role");
       const CanisterCfg* k = nullptr;
       if (map.is_object() && map.contains(role) && map[role].is_string()) k = cfg_.canister(map[role].get<std::string>());
-      for (const auto& x : cfg_.canisters)
-        if (!k && lower(x.name) == lower(name)) k = &x;
+      // By name: first in the language of the request, then in the other.
+      const std::string shown = localized(s, "name");
+      for (const std::string& name : {shown, jstr(s, "name"), jstr(s, "nameEn")})
+        for (const auto& x : cfg_.canisters)
+          if (!k && !name.empty() && lower(x.name) == lower(name)) k = &x;
       if (!k) {
-        missing.push_back(name);
+        missing.push_back(shown);
         continue;
       }
       if (!used.insert(k->id).second)
@@ -1093,7 +1106,7 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map) 
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
       return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
-    Result r = putRecipe({{"name", jstr(t, "name")}, {"note", jstr(t, "note")}, {"steps", steps}});
+    Result r = putRecipe({{"name", localized(t, "name")}, {"note", localized(t, "note")}, {"steps", steps}});
     if (r.status != 200) return r;
     // Ist der Paarname schon an anderen Kanistern vergeben, einen freien
     // wählen (AB2, AB3, …), sonst zählte das Paar vier Kanister.

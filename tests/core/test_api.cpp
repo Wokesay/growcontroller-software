@@ -208,6 +208,81 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}}).first == 404);
 }
 
+TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto recipe = [&](const gc::json& id) {
+    const auto cfg = c.ok("GET", "/api/v1/config");
+    for (const auto& r : cfg["recipes"])
+      if (r["id"] == id) return r;
+    return gc::json();
+  };
+  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  auto veg = recipe(c.ok("POST", "/api/v1/recipes/template",
+                         {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"]);
+  CHECK(veg["name"] == "Vegetative wk 1–4 (per Athena A01.004)");
+  CHECK(veg["note"].get<std::string>().find("Manufacturer data, not binding") != std::string::npos);
+  // The request names the language of the page, which may differ from the hub's
+  auto basic = recipe(c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "de"}})["id"]);
+  CHECK(basic["name"] == "Zweikomponenten-Dünger");
+  auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "fr"}});
+  CHECK(st == 422);
+  CHECK(err["error"]["key"] == "recipe.template.lang");
+}
+
+TEST_CASE("Templates: missing parts are named in the language of the request; English part names match too (#32)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "en"}});
+  CHECK(st == 422);
+  CHECK(err["missing"] == gc::json::array({"Part B", "Part A", "CalMag"}));
+  // English canister names match the template's English part names
+  for (const char* n : {"Part A", "Part B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
+  auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "en"}});
+  const auto cfg = c.ok("GET", "/api/v1/config");
+  REQUIRE(cfg["recipes"].size() == 1);
+  CHECK(cfg["recipes"][0]["id"] == j["id"]);
+  CHECK(cfg["recipes"][0]["steps"].size() == 3);
+}
+
+TEST_CASE("Templates: an unknown system language in an imported configuration falls back to German (#32)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (const char* n : {"Teil A", "Teil B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  if (cfg.contains("config")) cfg = cfg["config"];
+  cfg["system"]["language"] = "xx";
+  // The import does not check the language yet; if it does one day, this
+  // case has to expect its 422 instead.
+  c.ok("POST", "/api/v1/config/import", cfg);
+  auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}});
+  const auto after = c.ok("GET", "/api/v1/config");
+  REQUIRE(after["recipes"].size() == 1);
+  CHECK(after["recipes"][0]["id"] == j["id"]);
+  CHECK(after["recipes"][0]["name"] == "Zweikomponenten-Dünger");
+}
+
+TEST_CASE("Templates: with both names present, the one in the language of the request wins (#32)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (const char* n : {"Teil A", "Teil B", "Part A", "Part B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
+  auto steps = [&](const char* lang) {
+    auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", lang}});
+    const auto cfg = c.ok("GET", "/api/v1/config");
+    std::set<std::string> used;
+    for (const auto& r : cfg["recipes"])
+      if (r["id"] == j["id"])
+        for (const auto& st : r["steps"]) used.insert(st["canister"].get<std::string>());
+    return used;
+  };
+  CHECK(steps("en") == std::set<std::string>{"part-a", "part-b", "calmag"});
+  CHECK(steps("de") == std::set<std::string>{"teil-a", "teil-b", "calmag"});
+}
+
 TEST_CASE("System: Sprache nur de oder en") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

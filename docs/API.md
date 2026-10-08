@@ -58,7 +58,7 @@ UI can do, an integration can do as well.
 | PUT | `/tank` | name, usable volume, minimum level, water, volume without a level head |
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock |
-| POST / DELETE | `/recipes`, `/recipes/template` `{id, map}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`) |
+| POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 

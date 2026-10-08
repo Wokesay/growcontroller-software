@@ -81,6 +81,24 @@ test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ pag
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("Recipe template: an English page stores the English name, even on a German hub (#32)", async ({ page }) => {
+  await login(page);
+  // This browser chooses English; the hub stays German.
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.goto("/#/rezepte");
+  await page.reload();
+  await page.getByTestId("templates").getByRole("button", { name: /Vegetative wk 1–4 \(per Athena A01\.004\)/ }).click();
+  await page.locator("select[name=map-b]").selectOption({ label: "Teil B" });
+  await page.locator("select[name=map-a]").selectOption({ label: "Teil A" });
+  await page.locator("select[name=map-calmag]").selectOption({ label: "CalMag" });
+  await page.getByRole("button", { name: "Create recipe" }).click();
+  await expect(page.getByText('Recipe "Vegetative wk 1–4 (per Athena A01.004)" created')).toBeVisible();
+  const cfg = await (await page.request.get("/api/v1/config")).json();
+  expect(cfg.system.language).toBe("de");
+  const made = cfg.recipes.find((r: { name: string }) => r.name === "Vegetative wk 1–4 (per Athena A01.004)");
+  expect(made?.note).toContain("Manufacturer data, not binding");
+});
+
 test("Messwert-Kacheln bei Sensorausfall: nichts ragt aus der Kachel", async ({ page }) => {
   await login(page);
   for (const device of ["LVL-77B210", "PHEC-3F2A91"]) await page.request.post("/api/v1/sim/fault", { data: { device, fault: "offline" } });

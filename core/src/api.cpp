@@ -244,7 +244,8 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("DELETE", {"canisters", "*"})) return fromResult(hub_.deleteCanister(p[1]));
   if (is("POST", {"canisters", "*", "stock"})) return fromResult(hub_.setStock(p[1], jnum(body, "ml")));
   if (is("POST", {"recipes"})) return fromResult(hub_.putRecipe(body));
-  if (is("POST", {"recipes", "template"})) return fromResult(hub_.applyRecipeTemplate(jstr(body, "id"), body.contains("map") ? body["map"] : json::object()));
+  if (is("POST", {"recipes", "template"}))
+    return fromResult(hub_.applyRecipeTemplate(jstr(body, "id"), body.contains("map") ? body["map"] : json::object(), jstr(body, "lang")));
   if (is("DELETE", {"recipes", "*"})) return fromResult(hub_.deleteRecipe(p[1]));
   if (is("PATCH", {"functions", "*"})) return fromResult(hub_.putFunction(p[1], body));
 

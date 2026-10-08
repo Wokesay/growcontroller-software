@@ -19,7 +19,7 @@ const tNote = (x: RecipeTemplate) => (lang.value === "en" && x.noteEn ? x.noteEn
 function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
   const nutrients = canisters.value.filter((k) => k.kind === "nutrient");
   const guess = (name: string) => nutrients.find((k) => k.name.trim().toLowerCase() === name.trim().toLowerCase())?.id ?? "";
-  const [map, setMap] = useState<Record<string, string>>(() => Object.fromEntries(p.tpl.steps.map((s) => [s.role, guess(s.name) || guess(s.nameEn ?? "")])));
+  const [map, setMap] = useState<Record<string, string>>(() => Object.fromEntries(p.tpl.steps.map((s) => [s.role, guess(tName(s)) || guess(s.name) || guess(s.nameEn ?? "")])));
   const complete = p.tpl.steps.every((s) => map[s.role]);
   const twice = new Set(Object.values(map).filter(Boolean)).size < Object.values(map).filter(Boolean).length;
   return (
@@ -33,7 +33,7 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
             variant="primary"
             disabled={!complete || twice}
             onClick={async () => {
-              await post("/recipes/template", { id: p.tpl.id, map });
+              await post("/recipes/template", { id: p.tpl.id, map, lang: lang.value });
               await refreshConfig();
               toast(t("recipes.tpl.done", { name: tName(p.tpl) }));
               p.onClose();

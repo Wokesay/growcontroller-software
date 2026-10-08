@@ -251,6 +251,12 @@ listed in every release under "Security".
 - Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
 ### Fixed
+- **Recipes from a template keep the language of the page** (#32): a
+  recipe created from a template was always stored with the German name
+  and note, also in English. The recipes page now sends its language
+  (`lang`), the hub's system language is the default; the list of missing
+  canisters uses that language, and canisters named "Part A"/"Part B"
+  match the template's parts.
 - Reading tiles: when a sensor failed, the notice and the chart stuck out
   of the tile.
 - Demo: the phase "Blüte" (flowering) pointed to a missing recipe. IDs now

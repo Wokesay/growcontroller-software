@@ -91,7 +91,8 @@ class Hub {
   Result setStock(const std::string& id, double ml);
   Result putRecipe(const json& j);
   Result deleteRecipe(const std::string& id);
-  Result applyRecipeTemplate(const std::string& templateId, const json& map = json::object());
+  // lang: "de" or "en" for name, note and part names; empty = system language (#32)
+  Result applyRecipeTemplate(const std::string& templateId, const json& map = json::object(), const std::string& lang = "");
   Result putFunction(const std::string& id, const json& j);
   Result importConfig(const json& j);
 
