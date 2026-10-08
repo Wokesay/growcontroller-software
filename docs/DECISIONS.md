@@ -443,6 +443,15 @@ checks (issue #35).
   `.claude/` and `SECURITY.md` steer agents and process and are reviewed
   as configuration.
 
+
+## SD-031: Product requirement (from PD-078): no collection box
+
+- Every sensor head and every device hangs on a port of the hub directly;
+  there is no collection box in the tent. This replaces the sentence on
+  the collection box in SD-015.
+- The catalog attaches the climate and CO2 heads to a hub port; the issue
+  form for devices no longer offers the collection box (issue #46).
+
 ---
 
 ## Drafts (waiting for "entschieden")

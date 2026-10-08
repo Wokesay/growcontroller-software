@@ -50,12 +50,12 @@
       "text": "Misst den Füllstand. Dient als Notabschaltung beim Nachfüllen."
     },
     "head_climate": {
-      "label": "Sensorkopf Klima", "stage": 4, "attach": "box_port",
+      "label": "Sensorkopf Klima", "stage": 4, "attach": "hub_port",
       "provides": ["measure.air_temp", "measure.humidity"], "shop": "Klima-Kopf",
       "text": "Misst Lufttemperatur und Luftfeuchte im Anbaubereich."
     },
     "head_co2": {
-      "label": "Sensorkopf CO2", "stage": 4, "attach": "box_port",
+      "label": "Sensorkopf CO2", "stage": 4, "attach": "hub_port",
       "provides": ["measure.co2"], "shop": "CO2-Kopf",
       "text": "Misst CO2 im Anbaubereich."
     },

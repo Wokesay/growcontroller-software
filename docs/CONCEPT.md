@@ -24,7 +24,7 @@ Our own software on the hub, not built on a home-automation platform
 ```
 Browser ──Wi-Fi── ESP32-S3 hub [control · safety · API · web UI · 1 year history]
                      │
-                     ├── RS485/Modbus per port ── dosing block, heads, collection box
+                     ├── RS485/Modbus per port ── dosing block, sensor heads
                      └── optional: "companion" (Docker/NAS/HA add-on)
                                     for long-term archive, comparing cultivation runs, push relay
 ```

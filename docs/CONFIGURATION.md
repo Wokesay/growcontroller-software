@@ -26,7 +26,7 @@ firmware. Contents:
 - **capabilities**: unit, decimal places, plausibility band, freshness
   limit, jump threshold.
 - **deviceClasses**: stage, attachment (hub port, dosing block port,
-  collection box, inside the hub, `net` for mains sockets), channels,
+  inside the hub, `net` for mains sockets), channels,
   provided capabilities, calibration need, shop text.
 - **roles**: place → accepted capabilities (`accepts`, e.g. 12 V output
   or mains socket), whether it goes into the history as a series, and for

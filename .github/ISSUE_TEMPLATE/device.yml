@@ -13,7 +13,7 @@ body:
     id: connection
     attributes:
       label: Connection
-      options: ["Hub port (RJ45, Modbus)", "Collection box in the tent", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
+      options: ["Hub port (RJ45, Modbus)", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
   - type: textarea
     id: shown
     attributes:

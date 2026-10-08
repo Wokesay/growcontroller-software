@@ -249,7 +249,7 @@ cannot dilute.
   - hub port → "Port 1–8".
 - **Devices** show a diagram:
   - hub with ports and outputs;
-  - below it dosing block, collection box and heads;
+  - below it the dosing block and the sensor heads, each on a hub port;
   - network devices per channel;
   - "Expand" with what a device unlocks.
 
@@ -346,7 +346,7 @@ the product repository; their implementation is open.
    hub (affects PD-006).
 
    Decided otherwise in PD-028: the dimming output for LED drivers sits on
-   the hub, not on the collection box in the tent; it is switchable
+   the hub (there is no collection box in the tent any more, PD-078); it is switchable
    between 0–10 V and 1–10 V. Open: number of channels, galvanic
    isolation and protection of the output, cable path from the hub to the
    lamp driver, Shelly dimmers as an interim solution until our own
