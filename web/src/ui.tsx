@@ -176,6 +176,10 @@ export function NumberInput(p: { value: number | null | undefined; onValue: (v: 
     if (p.value !== null && p.value !== undefined && cur !== p.value) setText(shown(p.value));
     if ((p.value === null || p.value === undefined) && text !== "" && Number.isNaN(cur)) setText("");
   }, [p.value]);
+  // A language switch shows the value again with the page's separator.
+  useEffect(() => {
+    if (p.value !== null && p.value !== undefined) setText(shown(p.value));
+  }, [lang.value]);
   const input = (
     <input
       class="input"

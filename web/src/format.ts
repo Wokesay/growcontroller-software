@@ -15,6 +15,12 @@ export function num(v: number | null | undefined, decimals = 1): string {
   return f.format(v);
 }
 
+// A plain number in the language of the page (5,8 / 5.8), with as many
+// decimals as it has (PD-035).
+export function figure(v: number): string {
+  return v.toLocaleString(locale(), { maximumFractionDigits: 6 });
+}
+
 export function ago(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "";
   if (seconds < 5) return t("common.justNow");

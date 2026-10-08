@@ -46,6 +46,22 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await expect(page.getByTestId("event").first()).toBeVisible();
 });
 
+test("Zahlen in der Sprache der Seite: Bereich mit Komma, Feld folgt dem Sprachwechsel (PD-035)", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/funktionen");
+  await page.getByTestId("fn-ph_control").click();
+  await expect(page.getByTestId("fn-ph_control")).toContainText("0,3–3");
+  await page.goto("/#/einstellungen");
+  await page.getByLabel("Grenze je Handgabe").fill("2,5");
+  try {
+    await page.getByRole("tab", { name: "English" }).click();
+    await expect(page.getByLabel("Limit per manual dose")).toHaveValue("2.5");
+  } finally {
+    // The switch also sets the hub's language; later tests expect German.
+    await page.request.put("/api/v1/system", { data: { language: "de" } });
+  }
+});
+
 test("Fehlsteckung: Pumpe am Hub-Anschluss wird mit Klartext gemeldet", async ({ page }) => {
   await login(page);
   await page.request.post("/api/v1/sim/plug", { data: { port: 2, class: "pump_cap" } });
@@ -106,6 +122,17 @@ test("English page: overview, mixing, tank, functions and history speak English 
   await expect(page.getByText("Stage 0 – Mixing")).toBeVisible();
   await page.goto("/#/verlauf");
   await expect(page.getByText("Dashed lines show doses.", { exact: false })).toBeVisible();
+});
+
+test("English page: devices and the simulator panel speak English (#18)", async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.goto("/#/geraete");
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Expand" })).toBeVisible();
+  await page.getByRole("button", { name: "Simulator" }).click();
+  await expect(page.getByText("Time lapse")).toBeVisible();
+  await expect(page.getByText("Faults", { exact: true })).toBeVisible();
 });
 
 test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ page }) => {
