@@ -346,8 +346,8 @@ the product repository; their implementation is open.
    hub (affects PD-006).
 
    Decided otherwise in PD-028: the dimming output for LED drivers sits on
-   the hub (there is no collection box in the tent any more, PD-078); it is switchable
-   between 0–10 V and 1–10 V. Open: number of channels, galvanic
+   the hub (there is no collection box in the tent any more, PD-078); it
+   is switchable between 0–10 V and 1–10 V. Open: number of channels, galvanic
    isolation and protection of the output, cable path from the hub to the
    lamp driver, Shelly dimmers as an interim solution until our own
    hardware exists.

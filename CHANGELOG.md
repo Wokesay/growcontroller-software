@@ -202,10 +202,10 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
-- **No collection box** (PD-078, SD-031): every sensor head and device
-  hangs on a hub port. The device issue form no longer offers the
+- **No collection box** (PD-078, SD-031): every sensor head and the
+  dosing block hang directly on a hub port. The device issue form no longer offers the
   collection box, the catalog attaches the climate and CO2 heads to a hub
-  port, and the docs no longer mention it.
+  port, and the docs no longer list it as a connection.
 - **CI** (SD-030): the full CI runs on every pull request and push to
   `main`; for docs-only changes it skips its heavy jobs. A summary check
   `ci-ok` lets GitHub block a merge while the full CI is red or still
