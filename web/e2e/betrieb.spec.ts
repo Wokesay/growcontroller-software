@@ -248,3 +248,24 @@ test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich von Hand scha
   await page.goto("/");
   await expect(page.getByText("Schaltausgänge")).toBeVisible();
 });
+
+test("Calibration: a failed run is cancelled however the window is closed, Escape included", async ({ page }) => {
+  const pump = "CAP-1F02C1";
+  const api = (path: string, body?: unknown) =>
+    page.evaluate(
+      async ([p, b]) => (await fetch(`/api/v1${p}`, b === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })).json(),
+      [path, body] as const,
+    );
+  await login(page);
+  await page.goto(`/#/geraete?pump=${pump}`);
+  await page.reload();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Pumpe starten" }).click();
+  await api("/sim/fault", { device: pump, fault: "blocked" });
+  for (let i = 0; i < 10; i++) await api("/sim/advance", { hours: 0.0013 });
+  await expect(dialog.locator(".banner.bad")).toBeVisible();  // the run failed
+  await api("/sim/fault", { device: pump, fault: "none" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await api("/state")).lastJob?.state).toBe("aborted");
+});
