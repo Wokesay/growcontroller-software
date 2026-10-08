@@ -86,6 +86,21 @@ test("English page: sign-in, recipes and settings speak English (#18)", async ({
   await expect(page.getByText(/Report no\. GC-/)).toBeVisible();
 });
 
+test("English page: mixing, tank, functions and history speak English (#18)", async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.goto("/#/mischen");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Mix nutrient solution" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dose by hand" })).toBeVisible();
+  await page.goto("/#/tank");
+  await expect(page.getByRole("heading", { name: "Grow cycle and phases" })).toBeVisible();
+  await page.goto("/#/funktionen");
+  await expect(page.getByText("Stage 0 – Mixing")).toBeVisible();
+  await page.goto("/#/verlauf");
+  await expect(page.getByText("Dashed lines show doses.", { exact: false })).toBeVisible();
+});
+
 test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ page }) => {
   await login(page);
   await page.goto("/#/rezepte");

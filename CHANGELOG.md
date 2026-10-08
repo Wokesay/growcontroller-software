@@ -203,8 +203,9 @@ listed in every release under "Security".
 
 ### Changed
 - **The app's texts move into the language tables** (#18), area by area:
-  login, settings, recipes and the app shell now show English throughout
-  when English is chosen. The issue that "Report a problem" prepares is
+  login, settings, recipes, the app shell, overview, mixing, tank,
+  functions and history now show English throughout when English is
+  chosen. The issue that "Report a problem" prepares is
   always in English, as the repository is (PD-034). German stays the
   default until every area and the hub's messages are done. The buttons
   that reorder a recipe now name the bottle for screen readers.

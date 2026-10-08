@@ -90,7 +90,7 @@ export const en: Record<keyof typeof de, string> = {
   "tank.addPhase": "Add phase",
   "tank.controlHint": "Tap a row to see the conditions: why is it dosing (or not)?",
   "tank.locks": "Locks",
-  "tank.latched": "locked",
+  "tank.latched": "needs release",
   "tank.ack": "Release",
   "tank.monitoring": "Monitoring",
   "tank.problems": "Problems",
