@@ -50,10 +50,25 @@ entry under `[Unreleased]`.
    for security topics), CI green.
 2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
    repository admin can set `v*` tags, SD-027). The workflow
-   `release.yml` builds the simulator and the web app, creates the SBOM
-   (CycloneDX) and `SHA256SUMS`, and creates the GitHub release with the
-   changelog section. Pre-releases (`-beta`, `-proto`) are marked as
-   pre-release.
+   `release.yml` (#29):
+   - `verify`: the tag matches `VERSION` and points at a commit on
+     `main`.
+   - `packages` and `build`, without write access and without a cache:
+     the simulator for three platforms, the web app, the license notices,
+     two SBOMs (CycloneDX: web app from npm, C++ libraries from
+     `cmake/deps.cmake`), `SHA256SUMS` and the release notes from the
+     changelog section.
+   - `publish`, the only job that can write: checks the files against
+     `SHA256SUMS`, attests their build provenance and creates the GitHub
+     release. It runs no npm and builds nothing.
+   - Pre-releases (`-beta`, `-proto`) are marked as pre-release.
+   - A pull request that changes the release machinery runs everything
+     except `publish` as a dry run.
+   - All actions are GitHub's own, pinned by commit SHA
+     (`tools/workflows.test.mjs`); Dependabot proposes updates after a
+     cooldown of 7 days.
+   - Anyone can check a download: `gh attestation verify <file> --repo
+     Wokesay/growcontroller-software`.
    Simulator downloads belong only to Beta releases, not to Stable
    (PD-036); `release.yml` does not yet tell the channels apart.
 3. **Firmware** (once `firmware/` builds):

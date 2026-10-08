@@ -1,63 +1,145 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Release: a tag vX.Y.Z[-...] produces the downloads (simulator for Windows,
-# macOS and Linux, web app), SBOM and checksums as a GitHub release with the
-# matching CHANGELOG section. The firmware image goes into a release only
-# once it is signed offline (docs/RELEASE.md) – never from CI; CI still
-# builds it on every run. Channels (PD-036) are not told apart yet.
+# Release: a tag vX.Y.Z[-...] on main produces the downloads (simulator for
+# Windows, macOS and Linux, web app), SBOMs, checksums and a provenance
+# attestation as a GitHub release with the matching CHANGELOG section.
+# The firmware image goes into a release only once it is signed offline
+# (docs/RELEASE.md) – never from CI; CI still builds it on every run.
+# Channels (PD-036) are not told apart yet (#19).
+#
+# Jobs (#29): `verify` checks version and tag, `packages` and `build` make
+# every file without write access, `publish` only checks the checksums,
+# attests and creates the release; it runs no npm and no build.
+# A PR that changes the release machinery runs everything except
+# `publish` as a dry run.
 name: Release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/workflows/packages.yml
+      - tools/package.sh
+      - tools/third_party.mjs
+      - tools/sbom_cpp.mjs
+      - cmake/deps.cmake
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check the version
-        run: test "v$(tr -d '\r\n' < VERSION)" = "${GITHUB_REF_NAME}"
+          # main as well, to check that the tag points at a commit on it
+          fetch-depth: 0
+      - name: Version and tag
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          v="$(tr -d '\r\n' < VERSION)"
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::VERSION is not a version: $v"; exit 1
+          fi
+          if [ "$EVENT" = push ]; then
+            if [ "v$v" != "$REF_NAME" ]; then
+              echo "::error::Tag $REF_NAME does not match VERSION $v"; exit 1
+            fi
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "::error::Tag $REF_NAME is not on main"; exit 1
+            fi
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
   packages:
     needs: verify
     uses: ./.github/workflows/packages.yml
+    with:
+      release: true
 
-  publish:
-    needs: packages
+  build:
+    needs: [verify, packages]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+          # No cache in a release build.
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: dist
+          pattern: growcontroller-simulator-*
+          path: out/dist
           merge-multiple: true
-      - name: Web app, SBOM, checksums, release notes
+      - name: Web app, licenses, SBOMs, checksums, release notes
         env:
-          GC_SOURCE_REV: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="$VERSION"
+          n=$(find out/dist -maxdepth 1 -name 'growcontroller-simulator-*.zip' | wc -l)
+          if [ "$n" != 3 ]; then
+            echo "::error::Expected 3 simulator packages, found $n"; ls -la out/dist; exit 1
+          fi
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
           node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
           cp LICENSE web/dist/LICENSE.txt
-          tar -C web -czf "dist/growcontroller-web-$v.tar.gz" dist
-          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > dist/sbom-web.cdx.json
-          (cd dist && sha256sum * > SHA256SUMS)
-          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > NOTES.md
-          printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> NOTES.md
+          tar -C web -czf "out/dist/growcontroller-web-$v.tar.gz" dist
+          (cd web && npm sbom --sbom-format cyclonedx --omit dev) > out/dist/sbom-web.cdx.json
+          node tools/sbom_cpp.mjs "$v" > out/dist/sbom-simulator-cpp.cdx.json
+          (cd out/dist && sha256sum -- * > SHA256SUMS)
+          # A tag takes its CHANGELOG section, a dry run the unreleased one.
+          section="$v"; [ "$EVENT" = push ] || section="Unreleased"
+          awk -v s="$section" '$0 ~ "^## \\["s"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > out/NOTES.md
+          if ! grep -q '[^[:space:]]' out/NOTES.md; then
+            echo "::error::CHANGELOG.md has no section [$section]"; exit 1
+          fi
+          printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> out/NOTES.md
+          cat out/dist/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: out/
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: out
+      - name: Check the files against their checksums
+        run: cd out/dist && sha256sum -c SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: out/dist/SHA256SUMS
       - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease";; esac
-          gh release create "$GITHUB_REF_NAME" $pre --title "$GITHUB_REF_NAME" --notes-file NOTES.md dist/*
+          pre=""; case "$REF_NAME" in *-*) pre="--prerelease";; esac
+          gh release create "$REF_NAME" $pre --verify-tag --title "$REF_NAME" --notes-file out/NOTES.md out/dist/*
