@@ -205,7 +205,8 @@ listed in every release under "Security".
 - **The hub speaks English with keys** (#18, SD-032): controller lines,
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page
-  shows them in German, with numbers in the page language. The other
+  shows them in German, with numbers in the page language; a single
+  passing check now reads "1 Prüfung" instead of "1 Prüfungen". The other
   hub texts follow. For API clients: `watchdog.headline` and each item's
   `label` and `text` in `/state` are now `{key, text, args}` instead of a
   string; a few line keys are new (`ph.start`, `circ.on_dosing`,

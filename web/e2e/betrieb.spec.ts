@@ -16,10 +16,10 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   // The hub sends English with keys; a German page shows German (SD-032),
   // with numbers in the page language.
   await expect(page.getByTestId("watchdog")).toContainText(/Alles in Ordnung|Problem/);
-  const lines = (await page.locator(".ctl .line").allTextContents()).join(" ");
-  expect(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
-  expect(lines).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
-  expect(lines).toMatch(/\d,\d/);
+  const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
+  await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
+  await expect.poll(lines).toMatch(/\d,\d/);
+  expect(await lines()).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
 });
 
 test("English page: monitoring and control lines come in English from the hub (SD-032)", async ({ page }) => {
@@ -28,10 +28,10 @@ test("English page: monitoring and control lines come in English from the hub (S
   await page.reload();
   await expect(page.getByTestId("watchdog")).toContainText(/Everything OK|problem/);
   await expect(page.getByTestId("watchdog")).not.toContainText(/Prüfungen|Probleme/);
-  const lines = (await page.locator(".ctl .line").allTextContents()).join(" ");
-  expect(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
-  expect(lines).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
-  expect(lines).toMatch(/\d\.\d/);
+  const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
+  await expect.poll(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
+  await expect.poll(lines).toMatch(/\d\.\d/);
+  expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
 });
 
 test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {
