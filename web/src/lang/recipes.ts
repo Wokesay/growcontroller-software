@@ -2,7 +2,7 @@
 // Texts of one area of the app (#18), German first. de.ts and en.ts merge
 // all areas; en must have every key of de (checked by the compiler).
 export const de = {
-  // Kanister
+  // Bottles
   "recipes.bottles": "Kanister",
   "recipes.noBottles": "Noch keine Kanister",
   "recipes.noBottlesText": "Lege für jede Pumpe den Nährstoff an, der darunter steht.",
@@ -16,7 +16,7 @@ export const de = {
   "recipes.remove": "Entfernen",
   "recipes.bottleRemoved": "Kanister entfernt",
 
-  // Kanister bearbeiten
+  // Edit bottle
   "recipes.bottleTitle": "Kanister „{name}“",
   "recipes.addBottle": "Kanister anlegen",
   "recipes.bottleSaved": "Kanister gespeichert",
@@ -33,16 +33,17 @@ export const de = {
   "recipes.stockNowHint": "Leer lassen, wenn unbekannt",
   "recipes.colour": "Farbe {c}",
 
-  // Rezepte
+  // Recipes
   "recipes.recipes": "Rezepte",
   "recipes.recipe": "Rezept",
   "recipes.recipeTitle": "Rezept „{name}“",
+  "recipes.newRecipe": "Rezept anlegen",
   "recipes.recipeSaved": "Rezept gespeichert",
   "recipes.recipeNameHint": "z. B. Wachstum Woche 1–2",
   "recipes.note": "Notiz",
   "recipes.order": "Reihenfolge = Dosierreihenfolge",
-  "recipes.moveUp": "nach oben",
-  "recipes.moveDown": "nach unten",
+  "recipes.moveUp": "{name} nach oben",
+  "recipes.moveDown": "{name} nach unten",
   "recipes.mixNote": "Konzentrate nie direkt zusammengeben: Der Hub dosiert jeden Teil einzeln ins Wasser und lässt dazwischen durchmischen. pH-Korrektur gehört nicht ins Rezept – sie kommt immer zuletzt.",
   "recipes.pairsComplete": "Paare müssen vollständig im Rezept stehen.",
 } as const;
@@ -50,11 +51,11 @@ export const de = {
 export const en: Record<keyof typeof de, string> = {
   "recipes.bottles": "Bottles",
   "recipes.noBottles": "No bottles yet",
-  "recipes.noBottlesText": "For each pump, add the nutrient that stands under it.",
+  "recipes.noBottlesText": "Add a bottle for each pump and tell the hub which nutrient is in it.",
   "recipes.type": "Type",
   "recipes.stock": "Stock",
   "recipes.pairOf": "Pair {p}",
-  "recipes.calibrate": "calibrate",
+  "recipes.calibrate": "Calibrate",
   "recipes.noPump": "none",
   "recipes.bottleChanged": "Bottle changed (full)",
   "recipes.newBottle": "{name}: new bottle",
@@ -67,25 +68,26 @@ export const en: Record<keyof typeof de, string> = {
   "recipes.nameHint": "e.g. Part A",
   "recipes.phDownAcid": "pH− (acid)",
   "recipes.phUpBase": "pH+ (base)",
-  "recipes.pumpHint": "The pump sits on this bottle",
+  "recipes.pumpHint": "Choose the pump that sits on this bottle",
   "recipes.noPumpOption": "– none –",
   "recipes.pumpOption": "{name} · Dosing block port {n}",
-  "recipes.pairHint": "Same label = always scaled together (A:B)",
+  "recipes.pairHint": "Bottles with the same label are always dosed together in a fixed ratio (A:B).",
   "recipes.pairPlaceholder": "e.g. AB",
   "recipes.bottleSize": "Bottle size",
-  "recipes.stockNow": "Contents now",
-  "recipes.stockNowHint": "Leave empty if unknown",
+  "recipes.stockNow": "Amount left",
+  "recipes.stockNowHint": "Leave empty if you don't know",
   "recipes.colour": "Colour {c}",
 
   "recipes.recipes": "Recipes",
   "recipes.recipe": "Recipe",
   "recipes.recipeTitle": "Recipe \"{name}\"",
+  "recipes.newRecipe": "New recipe",
   "recipes.recipeSaved": "Recipe saved",
-  "recipes.recipeNameHint": "e.g. Vegetative week 1–2",
+  "recipes.recipeNameHint": "e.g. Growth week 1–2",
   "recipes.note": "Note",
-  "recipes.order": "Order = dosing order",
-  "recipes.moveUp": "Move up",
-  "recipes.moveDown": "Move down",
+  "recipes.order": "Dosing order (top first)",
+  "recipes.moveUp": "Move {name} up",
+  "recipes.moveDown": "Move {name} down",
   "recipes.mixNote": "Never mix concentrates directly: the hub doses each part into the water on its own and lets it mix in between. pH correction does not belong in the recipe – it always comes last.",
-  "recipes.pairsComplete": "Pairs must be complete in the recipe.",
+  "recipes.pairsComplete": "Both parts of a pair must be in the recipe.",
 };

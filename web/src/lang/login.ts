@@ -24,5 +24,5 @@ export const en: Record<keyof typeof de, string> = {
   "login.password": "Password",
   "login.setPassword": "Set password",
   "login.signIn": "Sign in",
-  "login.localNote": "The web app runs on the hub in your home network – no cloud, no account. Control keeps running even when this page is closed.",
+  "login.localNote": "The web app runs on the hub on your home network – no cloud, no account. Control keeps running even when this page is closed.",
 };

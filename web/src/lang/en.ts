@@ -21,6 +21,7 @@ const base: Record<keyof typeof deBase, string> = {
   "app.tagline": "Plant automation",
   "common.back": "Back",
   "common.next": "Next",
+  "common.name": "Name",
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.skip": "Skip",

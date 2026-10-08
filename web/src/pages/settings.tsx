@@ -98,7 +98,7 @@ function Updates() {
         <div class="card flat stack-sm">
           <div class="row-between">
             <strong>{t("settings.newVersion", { v: av.version })}</strong>
-            <Pill tone={av.channel === "beta" ? "warn" : "accent"}>{av.channel}</Pill>
+            <Pill tone={av.channel === "beta" ? "warn" : "accent"}>{av.channel === "beta" ? t("settings.beta") : t("settings.stable")}</Pill>
           </div>
           {(["neu", "behoben", "beachten", "sicherheit"] as const).map((k) =>
             av.summary?.[k]?.length ? (
@@ -141,7 +141,7 @@ function Report() {
     a.click();
   };
   const issue = diag
-    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${text.slice(0, 60) || tIn("en", "settings.issueTitle")}`)}&body=${encodeURIComponent(
+    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${Array.from(text).slice(0, 60).join("") || tIn("en", "settings.issueTitle")}`)}&body=${encodeURIComponent(
         tIn("en", "settings.issueBody", { text, version: diag.info.version, platform: diag.info.platform.kind, id: diag.reportId }),
       )}`
     : "";
@@ -189,15 +189,15 @@ export function SettingsPage() {
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [theme, setTheme] = useState<"system" | "light" | "dark">(((document.documentElement.dataset.theme as any) || "system"));
-  const setThemeAll = (t: "system" | "light" | "dark") => {
-    setTheme(t);
-    if (t === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
+  const setThemeAll = (v: "system" | "light" | "dark") => {
+    setTheme(v);
+    if (v === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = v;
     try {
-      if (t === "system") localStorage.removeItem("gc-theme");
-      else localStorage.setItem("gc-theme", t);
+      if (v === "system") localStorage.removeItem("gc-theme");
+      else localStorage.setItem("gc-theme", v);
     } catch {
-      /* ohne Speicher */
+      /* no storage */
     }
   };
   return (

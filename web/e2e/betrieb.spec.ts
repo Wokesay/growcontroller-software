@@ -62,6 +62,28 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
+  // The public issue is English even from a German page (PD-034) and carries
+  // only title, labels and the short body – no diagnostic data.
+  const href = await page.getByRole("link", { name: "Öffentlich auf GitHub melden" }).getAttribute("href");
+  const url = new URL(href!);
+  expect([...url.searchParams.keys()].sort()).toEqual(["body", "labels", "title"]);
+  expect(url.searchParams.get("body")).toContain("**Description**");
+  expect(url.searchParams.get("body")).not.toContain("Beschreibung");
+  expect(url.searchParams.get("body")).not.toContain("events");
+});
+
+test("English page: sign-in, recipes and settings speak English (#18)", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await page.locator("input[name=password]").fill("demo-passwort");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  await page.goto("/#/rezepte");
+  await expect(page.getByRole("heading", { name: "Bottles", exact: true })).toBeVisible();
+  await page.goto("/#/einstellungen");
+  await page.getByRole("button", { name: "Create diagnostic package" }).click();
+  await expect(page.getByText(/Report no\. GC-/)).toBeVisible();
 });
 
 test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ page }) => {

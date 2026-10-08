@@ -20,9 +20,9 @@ export const de = {
   "settings.installNote": "Installiert wird nur, wenn nichts dosiert. Rezepte, Einmesswerte und Einstellungen bleiben erhalten. Startet die neue Version nicht sauber, kehrt der Hub selbst zur alten zurück.",
   "settings.install": "Installieren",
 
-  // Problem melden
+  // Report a problem
   // Always sent in English: the repository is English (PD-034).
-  "settings.issueTitle": "Problem",
+  "settings.issueTitle": "Problem report",
   "settings.issueBody": "**Description**\n{text}\n\n**Version:** {version}\n**Platform:** {platform}\n**Report:** {id}\n\n(Please share the diagnostic package only when asked – issues are public.)",
   "settings.reportIntro": "Beschreibe kurz, was passiert ist. Der Hub erstellt ein Diagnosepaket mit Version, Einstellungen, Zuständen und den Ereignissen der letzten 72 Stunden – ohne Passwort, Sitzungen und WLAN-Zugang. Du siehst vorher, was drin ist.",
   "settings.whatHappened": "Was ist passiert?",
@@ -35,7 +35,7 @@ export const de = {
   "settings.reportPublic": "Öffentlich auf GitHub melden",
   "settings.publicWarn": "GitHub-Issues sind öffentlich. Das Diagnosepaket nicht dort anhängen, nur die Vorgangsnummer nennen.",
 
-  // System und Zugang
+  // System and access
   "settings.system": "System",
   "settings.handLimit": "Grenze je Handgabe",
   "settings.handLimitHint": "Schutz gegen Tippfehler (Quelle: RAT-039)",
@@ -49,7 +49,7 @@ export const de = {
   "settings.updates": "Updates",
   "settings.report": "Problem melden",
 
-  // Daten
+  // Data
   "settings.data": "Daten",
   "settings.dataText": "Sicherung der Einstellungen (Geräte, Rezepte, Kanister, Kalibrierungen) als Datei. Der Verlauf lässt sich als CSV exportieren.",
   "settings.backup": "Einstellungen sichern",
@@ -57,7 +57,7 @@ export const de = {
   "settings.restored": "Einstellungen geladen",
   "settings.historyCsv": "Verlauf (CSV, 7 Tage)",
 
-  // Darstellung und Info
+  // Display and info
   "settings.display": "Darstellung und Info",
   "settings.theme": "Farbschema",
   "settings.themeSystem": "System",
@@ -79,30 +79,30 @@ export const en: Record<keyof typeof de, string> = {
   "settings.beta": "Beta",
   "settings.autoCheck": "Check for updates automatically",
   "settings.check": "Check for updates",
-  "settings.checkNote": "(asks the release list on GitHub, sends no device ID)",
+  "settings.checkNote": "(looks up the release list on GitHub; sends no device ID)",
   "settings.checkNow": "Check now",
-  "settings.changelog": "Changelog",
+  "settings.changelog": "What's new",
   "settings.lastChecked": "last checked {when}",
-  "settings.newVersion": "New: version {v}",
+  "settings.newVersion": "Version {v} is available",
   "settings.summary.new": "New",
   "settings.summary.fixed": "Fixed",
   "settings.summary.notes": "Please note",
   "settings.summary.security": "Security",
-  "settings.installNote": "It only installs while nothing is dosing. Recipes, calibrations and settings are kept. If the new version does not start cleanly, the hub goes back to the old one by itself.",
+  "settings.installNote": "The update only installs while nothing is dosing. Recipes, calibrations and settings are kept. If the new version doesn't start cleanly, the hub goes back to the old one by itself.",
   "settings.install": "Install",
 
-  "settings.issueTitle": "Problem",
+  "settings.issueTitle": "Problem report",
   "settings.issueBody": "**Description**\n{text}\n\n**Version:** {version}\n**Platform:** {platform}\n**Report:** {id}\n\n(Please share the diagnostic package only when asked – issues are public.)",
-  "settings.reportIntro": "Briefly describe what happened. The hub creates a diagnostic package with version, settings, states and the events of the last 72 hours – without password, sessions or Wi-Fi access. You see what's inside first.",
+  "settings.reportIntro": "Briefly describe what happened. The hub creates a diagnostic package with version, settings, states and the last 72 hours of events – no passwords, sessions or Wi-Fi credentials. You can look inside before you share it.",
   "settings.whatHappened": "What happened?",
   "settings.whatHappenedHint": "e.g. the mix stopped at part B",
   "settings.createDiag": "Create diagnostic package",
-  "settings.reportId": "Report {id}",
+  "settings.reportId": "Report no. {id}",
   "settings.notIncluded": "Not included: {list}",
   "settings.viewContents": "View contents",
   "settings.download": "Download",
   "settings.reportPublic": "Report publicly on GitHub",
-  "settings.publicWarn": "GitHub issues are public. Don't attach the diagnostic package there, just give the report number.",
+  "settings.publicWarn": "GitHub issues are public. Don't attach the diagnostic package there – just give the report number.",
 
   "settings.system": "System",
   "settings.handLimit": "Limit per manual dose",
@@ -118,10 +118,10 @@ export const en: Record<keyof typeof de, string> = {
   "settings.report": "Report a problem",
 
   "settings.data": "Data",
-  "settings.dataText": "Back up your settings (devices, recipes, bottles, calibrations) as a file. The history can be exported as CSV.",
+  "settings.dataText": "Back up your settings (devices, recipes, bottles, calibrations) as a file. You can export the history as CSV.",
   "settings.backup": "Back up settings",
-  "settings.restore": "Load settings",
-  "settings.restored": "Settings loaded",
+  "settings.restore": "Restore settings",
+  "settings.restored": "Settings restored",
   "settings.historyCsv": "History (CSV, 7 days)",
 
   "settings.display": "Display and info",

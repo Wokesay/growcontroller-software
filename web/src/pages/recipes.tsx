@@ -129,7 +129,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
       }
     >
       <div class="form-grid">
-        <Field label={t("setup.tank.name")}>
+        <Field label={t("common.name")}>
           <input class="input" value={v.name} placeholder={t("recipes.nameHint")} onInput={(e) => set("name", (e.target as HTMLInputElement).value)} name="canister-name" />
         </Field>
         <Field label={t("recipes.type")}>
@@ -188,7 +188,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
   return (
     <Modal
       wide
-      title={p.recipe ? t("recipes.recipeTitle", { name: p.recipe.name }) : t("recipes.tpl.apply")}
+      title={p.recipe ? t("recipes.recipeTitle", { name: p.recipe.name }) : t("recipes.newRecipe")}
       onClose={p.onClose}
       footer={
         <>
@@ -210,7 +210,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
       }
     >
       <div class="form-grid">
-        <Field label={t("setup.tank.name")}>
+        <Field label={t("common.name")}>
           <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} placeholder={t("recipes.recipeNameHint")} />
         </Field>
         <Field label={t("recipes.note")}>
@@ -233,10 +233,10 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
                 <div style="width:130px">
                   <NumberInput value={s.mlPerL} onValue={(v) => setSteps(steps.map((x, j) => (j === i ? { ...x, mlPerL: v } : x)))} unit="ml/L" />
                 </div>
-                <button class="btn ghost sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("recipes.moveUp")}>
+                <button class="btn ghost sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("recipes.moveUp", { name: k?.name ?? s.canister })}>
                   <ArrowUp size={15} />
                 </button>
-                <button class="btn ghost sm" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={t("recipes.moveDown")}>
+                <button class="btn ghost sm" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={t("recipes.moveDown", { name: k?.name ?? s.canister })}>
                   <ArrowDown size={15} />
                 </button>
               </div>

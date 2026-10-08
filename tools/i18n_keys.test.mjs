@@ -10,17 +10,43 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "lang");
-const keys = (text) => [...text.matchAll(/^\s*"([A-Za-z0-9_.-]+)":/gm)].map((m) => m[1]);
+
+// Every key stands at the start of its own line as "key": – a key in any
+// other form (single quotes, no quotes, a second key on the line) would be
+// skipped and a collision missed, so it fails instead.
+export function keys(text, file = "text") {
+  const out = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*"([^"]+)"\s*:/);
+    if (!m) {
+      assert.doesNotMatch(line, /^\s*(?:'[^']*'|[A-Za-z_$][\w$.-]*)\s*:/, `${file}: key not written as "key": ${line.trim()}`);
+      assert.doesNotMatch(line, /[{,]\s*"[^"]+"\s*:/, `${file}: one key per line: ${line.trim()}`);
+      continue;
+    }
+    assert.doesNotMatch(line.slice(m[0].length), /^\s*"(?:[^"\\]|\\.)*"\s*,\s*"[^"]+"\s*:/, `${file}: one key per line: ${line.trim()}`);
+    out.push(m[1]);
+  }
+  return out;
+}
 
 // German and English part of each file
 function parts(file) {
   const text = readFileSync(join(dir, file), "utf8");
-  if (file === "de.ts") return { de: keys(text), en: null };
-  if (file === "en.ts") return { de: null, en: keys(text) };
-  const i = text.indexOf("export const en");
-  assert.ok(i > 0, `${file}: export const en`);
-  return { de: keys(text.slice(0, i)), en: keys(text.slice(i)) };
+  if (file === "de.ts") return { de: keys(text, file), en: null };
+  if (file === "en.ts") return { de: null, en: keys(text, file) };
+  const m = text.match(/^export const en\b/m);
+  assert.ok(m, `${file}: export const en`);
+  return { de: keys(text.slice(0, m.index), file), en: keys(text.slice(m.index), file) };
 }
+
+test("the key reader refuses keys it cannot read", () => {
+  assert.deepEqual(keys('  "a.b": "x",\n  "c":\n    "long value: with colon",\n  // note: y\n'), ["a.b", "c"]);
+  assert.deepEqual(keys('  "a": "Bottle \\"{name}\\"",\n'), ["a"]);
+  assert.throws(() => keys("  'a.b': \"x\",\n"));
+  assert.throws(() => keys("  ab: \"x\",\n"));
+  assert.throws(() => keys('  "a": "x", "b": "y",\n'));
+  assert.throws(() => keys('export const de = { "a": "x" };\n'));
+});
 
 const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
 

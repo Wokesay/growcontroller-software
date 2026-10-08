@@ -22,6 +22,7 @@ export const deBase = {
   "app.tagline": "Pflanzenautomatisierung",
   "common.back": "Zurück",
   "common.next": "Weiter",
+  "common.name": "Name",
   "common.save": "Speichern",
   "common.cancel": "Abbrechen",
   "common.skip": "Überspringen",
