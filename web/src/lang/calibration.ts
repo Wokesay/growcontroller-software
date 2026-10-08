@@ -3,8 +3,6 @@
 // all areas; en must have every key of de (checked by the compiler).
 export const de = {
   "calibration.pumpTitle": "Pumpe einmessen – {name}",
-  "calibration.savedInPump": "Gespeichert in der Pumpe:",
-  "calibration.savedKeep": ". Der Wert bleibt beim Umstecken erhalten.",
   "calibration.stepCup": "Schlauchende in einen Messbecher halten (ab ca. 20 ml gut ablesbar).",
   "calibration.stepReal": "Mit dem echten Nährstoff messen, nicht mit Wasser – Konzentrat fließt anders. Danach zurück in den Kanister gießen.",
   "calibration.stepPrimed": "Der Schlauch muss gefüllt und blasenfrei sein.",
@@ -44,8 +42,6 @@ export const de = {
 
 export const en: Record<keyof typeof de, string> = {
   "calibration.pumpTitle": "Calibrate pump – {name}",
-  "calibration.savedInPump": "Saved in the pump:",
-  "calibration.savedKeep": ". The value stays when you replug the pump.",
   "calibration.stepCup": "Hold the tube end in a measuring cup (easy to read from about 20 ml).",
   "calibration.stepReal": "Measure with the real nutrient, not water – concentrate flows differently. Pour it back into the bottle afterwards.",
   "calibration.stepPrimed": "Prime the tubing first so it is full and free of bubbles.",

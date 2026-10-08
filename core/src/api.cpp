@@ -261,7 +261,7 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("POST", {"jobs", "*", "result"})) return fromResult(hub_.calibrationResult(p[1], jnum(body, "ml")));
   if (is("POST", {"probe"})) return fromResult(hub_.probeCalibration(body));
   if (is("POST", {"latches", "*", "ack"})) return fromResult(hub_.ackLatch(p[1]));
-  if (is("POST", {"stop"})) return fromResult(hub_.stop("Web-UI"));
+  if (is("POST", {"stop"})) return fromResult(hub_.stop(say("stop.app")));
   if (is("POST", {"resume"})) return fromResult(hub_.resume());
   if (is("POST", {"maintenance"})) return fromResult(hub_.maintenance(jnum(body, "minutes")));
   if (is("POST", {"measure"})) return fromResult(hub_.manualMeasure(body));

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
-import type { ComponentChildren, JSX } from "preact";
+import { Component, type ComponentChildren, type JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
@@ -270,6 +270,17 @@ export function Banner(p: { tone?: "info" | "warn" | "bad" | "ok"; children: Com
       <div>{p.children}</div>
     </div>
   );
+}
+
+/** Catches an error while drawing its part, so the rest of the page and the shell with STOP stay usable. */
+export class ErrorBoundary extends Component<{ children: ComponentChildren }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? <Banner tone="bad">{t("common.renderError")}</Banner> : this.props.children;
+  }
 }
 
 export function Empty(p: { icon?: ComponentChildren; title: string; text?: ComponentChildren; action?: ComponentChildren }) {

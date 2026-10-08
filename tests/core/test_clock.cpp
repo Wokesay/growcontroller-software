@@ -347,10 +347,32 @@ TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is
   bool alarm = false;
   const json events = h.events(0, 9999999999, "", 2000)["events"];
   for (const auto& e : events)
-    if (sameEvent(e, "ev.state_unreadable")) alarm = true;
+    if (sameEvent(e, "ev.state_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "reason.not_json_object");  // both languages (SD-032)
+    }
   CHECK(alarm);
   REQUIRE(h.resume().status == 200);
   CHECK(h.state()["stopped"] == false);
+}
+
+TEST_CASE("Restart: unreadable settings start with factory settings and name the reason (SD-032)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("config.json", "{\"tanks\": [");
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(store.read("config.broken.json") == std::optional<std::string>("{\"tanks\": ["));
+  bool alarm = false;
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.config_unreadable")) {
+      alarm = true;
+      CHECK(e["text"]["args"]["reason"]["key"] == "reason.not_json");
+    }
+  CHECK(alarm);
 }
 
 TEST_CASE("Clock jump: a jump lock loaded before the time was known never holds longer than 15 min (RAT-044)") {

@@ -8,7 +8,7 @@ import {
 import { post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
 import { authed, config, info, live, refreshState, simulated, state, toast } from "./store";
-import { Modal, Pill, Toasts, navigate, route } from "./ui";
+import { ErrorBoundary, Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
 import { Overview } from "./pages/overview";
 import { MixPage } from "./pages/mix";
@@ -219,7 +219,9 @@ export function App() {
           <LiveBadge />
           <StopButton />
         </header>
-        <main class="content">{page.el()}</main>
+        <main class="content">
+          <ErrorBoundary key={r.path}>{page.el()}</ErrorBoundary>
+        </main>
       </div>
       <nav class="bottom-nav">
         {NAV.filter((n) => n.mobile).map((n) => (

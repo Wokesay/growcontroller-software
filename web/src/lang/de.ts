@@ -46,6 +46,7 @@ export const deBase = {
   "common.offline": "getrennt",
   "common.connecting": "verbinde …",
   "common.simulator": "Simulator",
+  "common.renderError": "Dieser Teil lässt sich nicht anzeigen. Lade die Seite neu – STOPP oben bleibt bedienbar.",
   "common.version": "Version {v}",
   "about.source": "Quellcode",
   "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",

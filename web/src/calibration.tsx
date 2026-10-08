@@ -3,7 +3,7 @@
 // EC-Sonde (1 Referenz), Füllstand (Stützpunkte, stückweise linear).
 import { useEffect, useState } from "preact/hooks";
 import { Beaker, Check, Timer } from "lucide-preact";
-import { get, post, sim } from "./api";
+import { get, post, sim, type Msg } from "./api";
 import { num } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { refreshConfig, refreshState, simulated, state, toast } from "./store";
@@ -14,7 +14,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   const [seconds, setSeconds] = useState<number | null>(30);
   const [jobId, setJobId] = useState<string | null>(null);
   const [ml, setMl] = useState<number | null>(null);
-  const [result, setResult] = useState<number | null>(null);
+  const [result, setResult] = useState<{ changed: boolean; message: Msg } | null>(null);
   const [simCup, setSimCup] = useState<number | null>(null);
   const job = st.job && st.job.id === jobId ? st.job : null;
   const waiting = job?.state === "waiting_user";
@@ -29,8 +29,8 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   return (
     <Modal title={t("calibration.pumpTitle", { name: p.name })} onClose={p.onClose}>
       {result !== null ? (
-        <Banner tone="ok" icon={<Check size={18} />}>
-          {t("calibration.savedInPump")} <strong>{num(result, 1)} ml/min</strong>{t("calibration.savedKeep")}
+        <Banner tone={result.changed ? "warn" : "ok"} icon={result.changed ? undefined : <Check size={18} />}>
+          {msg(result.message)}
         </Banner>
       ) : !jobId ? (
         <div class="stack">
@@ -57,7 +57,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           </div>
         </div>
       ) : !waiting ? (
-        <Banner icon={<Beaker size={18} />}>{t("calibration.running")} {msg(job?.message)}</Banner>
+        <Banner icon={<Beaker size={18} />}>{msg(job?.message) || t("calibration.running")}</Banner>
       ) : (
         <div class="stack">
           <p>{t("calibration.howMuch")}</p>
@@ -75,7 +75,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
               disabled={!ml}
               onClick={async () => {
                 const r = await post(`/jobs/${jobId}/result`, { ml });
-                setResult(r.flowMlPerMin);
+                setResult({ changed: r.changed, message: r.message });
                 await refreshState();
                 toast(t("calibration.pumpDone"));
               }}

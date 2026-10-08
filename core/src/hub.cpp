@@ -46,6 +46,23 @@ json amounts(const std::vector<JobStep>& steps) {
   return out;
 }
 
+// A released latch by name, as the web app's Release button shows it.
+Msg latchName(const std::string& id) {
+  if (id == "ec.no_effect") return say("latch.ec.no_effect");
+  if (id == "ph.no_effect") return say("latch.ph.no_effect");
+  if (id == "circulation.dry") return say("latch.circulation.dry");
+  if (id == "inlet.fault") return say("latch.inlet.fault");
+  return plain(id);
+}
+
+// What a sensor calibration was for (pH, EC or level).
+Msg kindName(const std::string& kind) {
+  if (kind == "ph") return say("kind.ph");
+  if (kind == "ec") return say("kind.ec");
+  if (kind == "tank_curve") return say("kind.tank_curve");
+  return plain(kind);
+}
+
 // Kurzname für IDs: Kleinbuchstaben, Ziffern, Bindestrich; deutsche Umlaute
 // umschrieben („Blüte“ → „bluete“), damit IDs lesbar bleiben.
 std::string slug(const std::string& s) {
@@ -120,29 +137,43 @@ void Hub::boot() {
   lastTickMs_ = bootMs_;
   if (auto s = store_.read(kConfigFile)) {
     auto j = json::parse(*s, nullptr, false);
-    try {
-      if (j.is_discarded()) throw std::runtime_error("not valid JSON");
-      cfg_ = configFromJson(j);
-    } catch (const std::exception& e) {
+    std::optional<Msg> broken;
+    if (j.is_discarded()) {
+      broken = say("reason.not_json");
+    } else {
+      try {
+        cfg_ = configFromJson(j);
+      } catch (const std::exception& e) {
+        broken = plain(e.what());
+      }
+    }
+    if (broken) {
       // Mit der letzten guten Konfiguration ist hier nichts mehr zu retten:
       // Werkseinstellung, alle Aktoren aus, laut melden (Vorschlag architekt).
       store_.write("config.broken.json", *s);
       cfg_ = Config{};
-      log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", e.what()}}));
+      log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", *broken}}));
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
   if (stateRaw) {
-    try {
-      if (!stateObj) throw std::runtime_error("not a valid JSON object");
-      rt_ = runtimeFromJson(stateJson);
-    } catch (const std::exception& e) {
+    std::optional<Msg> broken;
+    if (!stateObj) {
+      broken = say("reason.not_json_object");
+    } else {
+      try {
+        rt_ = runtimeFromJson(stateJson);
+      } catch (const std::exception& e) {
+        broken = plain(e.what());
+      }
+    }
+    if (broken) {
       // Whether an emergency stop was active is unknown: keep everything
       // stopped until someone resumes (fail-safe, PD-076).
       store_.write("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
       rt_.stopped = true;
-      log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", e.what()}}));
+      log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", *broken}}));
     }
   }
   if (auto s = store_.read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
@@ -196,11 +227,11 @@ void Hub::flush() {
   store_.write(kHistoryFile, history_.dump());
 }
 
-void Hub::saveConfig(const Msg& what) {
+void Hub::saveConfig(const std::optional<Msg>& what) {
   cfg_.revision++;
   store_.write(kConfigFile, json(cfg_).dump(1));
-  if (!what.key.empty())
-    log_.add(clock_.epoch(), "config", "info", what, say("ev.config.text", {{"rev", cfg_.revision}}), {{"revision", cfg_.revision}});
+  if (what)
+    log_.add(clock_.epoch(), "config", "info", *what, say("ev.config.text", {{"rev", cfg_.revision}}), {{"revision", cfg_.revision}});
 }
 
 void Hub::saveState() {
@@ -932,7 +963,8 @@ Result Hub::unbindRole(const std::string& role) {
     if (old) releaseSocket(*rd, *old);
   }
   cfg_.rolesFor(role).erase(role);
-  saveConfig(say("ev.cfg.role_removed", {{"role", role}}));
+  const RoleDef* removed = cat_.role(role);
+  saveConfig(say("ev.cfg.role_removed", {{"role", removed ? removed->label : role}}));
   return Result::ok();
 }
 
@@ -1434,7 +1466,8 @@ Result Hub::jobAbort(const std::string& id) {
   if (auto fin = doser_.takeFinished()) onJobDose(c, *fin);
   const json done = amounts(job_->steps);
   const bool none = done.empty();
-  log_.add(clock_.epoch(), "mix", "warn", say("ev.job.aborted"), say(none ? "ev.contents_none" : "ev.contents", {{"done", done}}), {{"job", id}});
+  const bool mix = job_->type == "mix";
+  log_.add(clock_.epoch(), "mix", "warn", say(mix ? "ev.mix.aborted" : "ev.job.aborted"), say(none ? "ev.contents_none" : "ev.contents", {{"done", done}}), {{"job", id}});
   finishJob("aborted", say(none ? "job.aborted_none" : "job.aborted", {{"done", done}}));
   return Result::ok();
 }
@@ -1529,8 +1562,9 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
            say(changed ? "ev.pump_calibrated.text_changed" : "ev.pump_calibrated.text", calArgs),
            {{"pump", pump}, {"flowMlPerMin", flow}, {"ml", ml}, {"ms", actual}});
   job_->info["flowMlPerMin"] = flow;
-  finishJob("done", say(changed ? "cal.done_changed" : "cal.done", calArgs));
-  return Result::ok({{"flowMlPerMin", flow}});
+  const Msg done = say(changed ? "cal.done_changed" : "cal.done", calArgs);
+  finishJob("done", done);
+  return Result::ok({{"flowMlPerMin", flow}, {"changed", changed}, {"message", done}});
 }
 
 Result Hub::prime(const std::string& pump, double seconds) {
@@ -1611,9 +1645,10 @@ Result Hub::probeCalibration(const json& j) {
       return Result::fail(422, "probe.invalid", "Kalibrierung unplausibel (Steigung oder Faktor außerhalb) – Sonde oder Puffer prüfen");
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
-    saveConfig(say("ev.cfg.calibration", {{"kind", kind}, {"name", cfg_.device(dev)->name}}));
+    const Msg what = kindName(kind);
+    saveConfig(say("ev.cfg.calibration", {{"kind", what}, {"name", cfg_.device(dev)->name}}));
     log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
-             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", kind}}));
+             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", what}}));
     return Result::ok({{"calibration", data}});
   }
   return Result::fail(422, "probe.action", "Unbekannter Schritt");
@@ -1626,11 +1661,11 @@ Result Hub::ackLatch(const std::string& id) {
   if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
   rt_.latches.erase(it);
   stateDirty_ = true;
-  log_.add(clock_.epoch(), "block", "info", say("ev.latch_released"), plain(id));
+  log_.add(clock_.epoch(), "block", "info", say("ev.latch_released"), latchName(id));
   return Result::ok();
 }
 
-Result Hub::stop(const std::string& who) {
+Result Hub::stop(const Msg& who) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // Not-Halt: aktive Abschaltkaskade, idempotent (RAT-036)
   Ctx c = ctx();

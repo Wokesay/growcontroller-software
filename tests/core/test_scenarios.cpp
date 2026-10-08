@@ -46,13 +46,14 @@ void setupStage0(sim::Simulation& s, Client& c) {
   c.ok("PUT", "/api/v1/tank", {{"capacityL", 60}});
 }
 
-void calibrate(sim::Simulation& s, Client& c, const std::string& pump) {
+// Measures a pump; `share` of what is in the cup is entered (1 = exact).
+json calibrate(sim::Simulation& s, Client& c, const std::string& pump, double share = 1.0) {
   auto j = c.ok("POST", "/api/v1/pumps/" + pump + "/calibrate", {{"seconds", 30}})["job"];
   std::string id = j["id"];
   REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 60000));
   sim::Cap* cap = s.world().cap(pump);
   double cup = cap->trueFlow * static_cast<double>(cap->elapsed) / 60000.0;  // was im Messbecher ist
-  c.ok("POST", "/api/v1/jobs/" + id + "/result", {{"ml", cup}});
+  return c.ok("POST", "/api/v1/jobs/" + id + "/result", {{"ml", cup * share}});
 }
 
 }  // namespace
@@ -237,6 +238,9 @@ TEST_CASE("Szenario: Trockenlauf – Umwälzpumpe aus, Rastung, Quittierung (M11
   CHECK(st["outputs"]["tank.circulation"] == false);
   CHECK(st["latches"].contains("circulation.dry"));
   c.ok("POST", "/api/v1/latches/circulation.dry/ack");
+  const json released = findEvents(c, "block").at(0);  // named as on the Release button (SD-032)
+  CHECK(released["title"]["key"] == "ev.latch_released");
+  CHECK(released["text"]["key"] == "latch.circulation.dry");
   s.step(5000);
   st = c.state();
   CHECK(st["outputs"]["tank.circulation"] == false);  // Einschaltsperre bleibt, solange der Pegel fehlt
@@ -272,7 +276,10 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(st["stopped"] == true);
   CHECK(st["outputs"]["tank.circulation"] == false);
   CHECK(st["job"].is_null());
-  CHECK(c.call("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}}).first != 200);
+  auto [code, refused] = c.call("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}});
+  CHECK(code != 200);
+  CHECK(refused["error"]["key"] == "job.start_failed");
+  CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
 }
@@ -294,6 +301,7 @@ TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   json m = st["lastJob"]["message"];
   CHECK(m["key"] == "job.aborted");
   CHECK(m["args"]["done"][0]["args"]["name"] == "Teil A");
+  CHECK(findEvents(c, "mix").at(0)["title"]["key"] == "ev.mix.aborted");
   bool logged = false;
   for (const auto& e : findEvents(c, "dose"))
     logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() > 5);
@@ -334,7 +342,8 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   CHECK(s.world().cap(kA)->state != 1);
   auto st = c.state();
   CHECK(st["lastJob"]["state"] == "failed");
-  CHECK(st["lastJob"]["message"]["text"].get<std::string>().find("keine Rückmeldung") != std::string::npos);
+  CHECK(st["lastJob"]["message"]["key"] == "job.dose_failed");
+  CHECK(st["lastJob"]["message"]["args"]["reason"]["key"] == "dose.no_response");
   CHECK(st["stock"]["teil-a"].get<double>() <= before - 3.9);  // sichere Richtung: als gelaufen gebucht
   // Nachholen: kein Rest mehr → als erledigt werten; der Auftrag endet dabei
   s.control("fault", {{"device", kDB}, {"fault", "none"}});
@@ -410,6 +419,16 @@ TEST_CASE("Sonden: pH und EC als getrennte Köpfe, Wassertemperatur vom EC-Kopf"
     auto r = c.state()["readings"];
     return r["tank.ph"]["value"].is_number() && r["tank.ec"]["value"].is_number();
   }, 60000));
+  // A probe calibration names its kind as a message, not as an ID (SD-032)
+  s.world().fill(20, 1.2, 6.0);
+  s.step(30000);
+  const double now = c.state()["readings"]["tank.ec"]["value"];
+  c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "start"}});
+  c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "point"}, {"reference", now}});
+  c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "commit"}});
+  const json cal = findEvents(c, "calibration").at(0);
+  CHECK(cal["title"]["key"] == "ev.probe_calibrated");
+  CHECK(cal["text"]["args"]["kind"]["key"] == "kind.ec");
   // Fehler am pH-Kopf trifft nur pH
   {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
@@ -454,4 +473,32 @@ TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
   s.step(10000);
   auto r = c.state()["readings"]["tank.ph"];
   CHECK(r["value"].is_number());
+}
+
+TEST_CASE("Messages: pump calibration and emergency stop name their result and cause (SD-032)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  json r = calibrate(s, c, kA);
+  CHECK(r["message"]["key"] == (r["changed"] == true ? "cal.done_changed" : "cal.done"));
+  CHECK(r["message"]["args"]["flow"].get<double>() == doctest::Approx(r["flowMlPerMin"].get<double>()));
+  r = calibrate(s, c, kA, 0.5);  // half the amount: clearly different, check the tubing
+  CHECK(r["changed"] == true);
+  CHECK(r["message"]["key"] == "cal.done_changed");
+  CHECK(r["message"]["args"]["prev"].is_number());
+  for (const char* id : {kB, kC}) calibrate(s, c, id);
+  calibrate(s, c, kA);
+  // Too small for one exact run: the start fails, the cause travels as the reason
+  auto [code, tiny] = c.call("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 0.05}});
+  CHECK(code == 422);
+  CHECK(tiny["error"]["key"] == "job.start_failed");
+  CHECK(tiny["error"]["args"]["reason"]["key"] == "dose.too_small");
+  s.world().fill(20, 0.02, 7.0);
+  c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}});
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1; }, 30000, 200));
+  c.ok("POST", "/api/v1/stop");
+  CHECK(c.state()["lastJob"]["message"]["key"] == "job.emergency_stop");
+  const json stop = findEvents(c, "system").at(0);
+  CHECK(stop["title"]["key"] == "ev.stop");
+  CHECK(stop["text"]["args"]["who"]["key"] == "stop.app");
 }

@@ -76,12 +76,20 @@ can be a list (joined with ", "). Events written before keep their
 plain text without a key. The other texts follow under #18 and are still
 German until then.
 
+A job that cannot start or go on (`/mix/start`, `/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
+`/pumps/{id}/calibrate`, `/pumps/{id}/prime`) answers with the error key
+`job.start_failed`; the cause is the message in `args.reason`, for
+example `dose.too_small` or `act.stopped` in `args.reason.key`. Clients
+read the cause there. Job messages (`job.message`) use their own keys,
+for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
+`job.emergency_stop`.
+
 ## Operate
 
 | Method | Path | |
 |---|---|---|
 | POST | `/mix/plan`, `/mix/start` `{recipe, waterL, mode, guided, confirmRepeat}` | preview, start |
-| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result |
+| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
 | POST | `/dose {canister, ml}` | manual dose |
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
 | POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel |

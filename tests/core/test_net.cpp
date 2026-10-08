@@ -136,6 +136,10 @@ TEST_CASE("Sockets: a socket that loses its fan role goes back to off after a po
   CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::Off);
   c.ok("DELETE", "/api/v1/roles/zone.exhaust");
   CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::Off);
+  // The event names the role by its label, not by its ID (SD-032).
+  const json removed = c.ok("GET", "/api/v1/events?limit=1&type=config")["events"].at(0);
+  CHECK(removed["title"]["key"] == "ev.cfg.role_removed");
+  CHECK(removed["title"]["args"]["role"] == "Abluft");
 }
 
 TEST_CASE("Catalog: only the fans may come back on after a power loss") {

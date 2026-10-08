@@ -43,6 +43,10 @@ TEST_CASE("Messages: a message inside an argument gives its text") {
   CHECK(m.args["reason"]["key"] == "ph.no_down");
 }
 
+TEST_CASE("Messages: an empty message inside an argument counts as missing, as in the web app (R5)") {
+  CHECK(render("Reason: {reason}", {{"reason", Msg{}}}) == "Reason: –");
+}
+
 TEST_CASE("Messages: key and arguments travel with the English text") {
   Msg m = say("ec.ok", {{"ec", 1.4}});
   CHECK(m.text == "Resting: EC on target (1.40 mS/cm)");

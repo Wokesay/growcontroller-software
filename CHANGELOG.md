@@ -148,6 +148,11 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **A damaged event cannot break the app** (SD-032): the web app reads
+  the hub's messages defensively (only its own table keys, only strings
+  as text, at most four nested levels), and a part of a page that still
+  fails to draw shows a notice while the rest of the page and STOP stay
+  usable. The hub caps the key and text of events it loads.
 - **Release hardening** (#29): `release.yml` checks that a release tag
   points at a commit on `main`; every file is built in jobs without write
   access and without a cache; the publishing job only checks the files
@@ -213,6 +218,20 @@ listed in every release under "Security".
   `label` and `text` in `/state`, and each event's `title` and `text`
   in `/events`, are now `{key, text, args}` instead of a string; a few line keys are new (`ph.start`, `circ.on_dosing`,
   `circ.on_always`, `circ.on_interval`, `circ.latched`, `circ.off`).
+  A job that cannot start or go on now answers with the error key
+  `job.start_failed` and the cause in `args.reason` (before: `mix.start`,
+  `job.step`, `dose.start`, `cal.start`, `prime.start`, and for `/dose`
+  the cause's own key such as `dose.too_small`). The job message keys
+  `job.dosing` and `job.stopped` are now `job.dosing_step` and
+  `job.emergency_stop`, and a single failed dose reports
+  `job.dose_failed`. A pump calibration's result also returns `changed`
+  and `message`. Going back to an older version keeps the events but
+  shows them without titles, since it cannot read the new form.
+  Events name a released latch, the kind of a sensor calibration, the
+  removed role and the trigger of an emergency stop in words instead of
+  internal IDs; a cancelled mix reads "Mix cancelled". The calibration
+  window shows the hub's result, including the warning to check the
+  tubing when the rate changed clearly.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use

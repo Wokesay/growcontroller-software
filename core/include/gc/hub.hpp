@@ -110,7 +110,7 @@ class Hub {
   Result jobResume(const std::string& id);
   Result probeCalibration(const json& j);
   Result ackLatch(const std::string& id);
-  Result stop(const std::string& who);
+  Result stop(const Msg& who);
   Result resume();
   Result maintenance(double minutes);
   Result manualMeasure(const json& j);
@@ -124,7 +124,8 @@ class Hub {
 
  private:
   Ctx ctx();
-  void saveConfig(const Msg& what);
+  // Saves the configuration; with a message it also logs what changed.
+  void saveConfig(const std::optional<Msg>& what);
   void autoBindMeasures();
   void releaseSocket(const RoleDef& rd, const Binding& b);
   void setFanSockets(bool comeBackOn);

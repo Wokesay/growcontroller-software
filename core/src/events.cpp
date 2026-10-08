@@ -8,13 +8,15 @@ namespace gc {
 namespace {
 
 // A saved message; events written before SD-032 hold plain German text,
-// which stays as it is (no key).
+// which stays as it is (no key). Anything else of the wrong type loads as an
+// empty message; key and text are capped, so a damaged file stays small.
 Msg msgFromJson(const json& e, const char* field) {
+  constexpr size_t kMaxKey = 64, kMaxText = 2048;
   if (!e.contains(field)) return {};
   const json& v = e[field];
-  if (v.is_string()) return {"", v.get<std::string>(), json::object()};
+  if (v.is_string()) return {"", utf8Prefix(v.get<std::string>(), kMaxText), json::object()};
   if (!v.is_object()) return {};
-  Msg m{jstr(v, "key"), jstr(v, "text"), json::object()};
+  Msg m{utf8Prefix(jstr(v, "key"), kMaxKey), utf8Prefix(jstr(v, "text"), kMaxText), json::object()};
   if (v.contains("args") && v["args"].is_object()) m.args = v["args"];
   return m;
 }
