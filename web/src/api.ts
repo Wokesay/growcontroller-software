@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // REST-Client und Typen der Hub-API (/api/v1). Die Web-App nutzt nur diese API.
+import { t } from "./i18n";
 
 export type Msg = { key: string; text: string; args?: Record<string, unknown> };
 
@@ -141,7 +142,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized();
     const err = data?.error ?? {};
-    throw new ApiError(res.status, err.key ?? "http", err.text ?? `Fehler ${res.status}`, data);
+    throw new ApiError(res.status, err.key ?? "http", err.text ?? t("shell.httpError", { status: res.status }), data);
   }
   return data as T;
 }

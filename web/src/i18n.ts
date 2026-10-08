@@ -61,7 +61,12 @@ function fill(text: string, vars?: Vars) {
 
 /** Text zum Schlüssel in der aktuellen Sprache, mit {platzhaltern}. */
 export function t(key: TextKey, vars?: Vars): string {
-  const text = tables[lang.value][key] ?? de[key] ?? key;
+  return tIn(lang.value, key, vars);
+}
+
+/** Text in a given language, e.g. for an issue in the English repository (PD-034). */
+export function tIn(l: Lang, key: TextKey, vars?: Vars): string {
+  const text = tables[l][key] ?? de[key] ?? key;
   return fill(text, vars);
 }
 

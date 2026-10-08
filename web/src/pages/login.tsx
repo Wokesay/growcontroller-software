@@ -19,7 +19,7 @@ export function Login() {
   async function submit(e: Event) {
     e.preventDefault();
     setErr(null);
-    if (first && pw !== pw2) return setErr("Die Passwörter stimmen nicht überein.");
+    if (first && pw !== pw2) return setErr(t("login.mismatch"));
     setBusy(true);
     try {
       await post(first ? "/auth/setup" : "/auth/login", { password: pw });
@@ -40,33 +40,33 @@ export function Login() {
           </div>
           <div>
             <h1 style="font-size:1.3rem">growcontroller</h1>
-            <p class="muted small">{info.value?.name && info.value.name !== "growcontroller" ? info.value.name : "Fertigations-Hub"}</p>
+            <p class="muted small">{info.value?.name && info.value.name !== "growcontroller" ? info.value.name : t("login.tagline")}</p>
           </div>
         </div>
         {first ? (
           <>
             <div>
-              <h2>Willkommen</h2>
-              <p class="muted">Lege zuerst ein eigenes Passwort fest. Es schützt Pumpen und Einstellungen in deinem Netz.</p>
+              <h2>{t("setup.start.h")}</h2>
+              <p class="muted">{t("login.firstText")}</p>
             </div>
-            <Field label="Neues Passwort" hint="Mindestens 8 Zeichen">
+            <Field label={t("login.newPassword")} hint={t("login.minLength")}>
               <input class="input" type="password" autoComplete="new-password" value={pw} onInput={(e) => setPw((e.target as HTMLInputElement).value)} required minLength={8} name="password" />
             </Field>
-            <Field label="Passwort wiederholen">
+            <Field label={t("login.repeatPassword")}>
               <input class="input" type="password" autoComplete="new-password" value={pw2} onInput={(e) => setPw2((e.target as HTMLInputElement).value)} required name="password2" />
             </Field>
           </>
         ) : (
-          <Field label="Passwort">
+          <Field label={t("login.password")}>
             <input class="input" type="password" autoComplete="current-password" value={pw} onInput={(e) => setPw((e.target as HTMLInputElement).value)} autoFocus required name="password" />
           </Field>
         )}
         {err && <Banner tone="bad">{err}</Banner>}
         <button class="btn primary lg block" type="submit" disabled={busy}>
-          <KeyRound size={18} /> {first ? "Passwort festlegen" : "Anmelden"}
+          <KeyRound size={18} /> {first ? t("login.setPassword") : t("login.signIn")}
         </button>
         <p class="faint small">
-          Die Web-App läuft auf dem Hub in deinem Heimnetz – ohne Cloud und ohne Konto. Die Steuerung läuft weiter, auch wenn diese Seite zu ist.
+          {t("login.localNote")}
         </p>
         <p class="faint small">
           <a href={sourceUrl} target="_blank" rel="noopener noreferrer" data-testid="source-link">

@@ -202,6 +202,12 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **The app's texts move into the language tables** (#18), area by area:
+  login, settings, recipes and the app shell now show English throughout
+  when English is chosen. The issue that "Report a problem" prepares is
+  always in English, as the repository is (PD-034). German stays the
+  default until every area and the hub's messages are done. The buttons
+  that reorder a recipe now name the bottle for screen readers.
 - **No collection box** (PD-078, SD-031): every sensor head and the
   dosing block hang directly on a hub port. The device issue form no longer offers the
   collection box, the catalog attaches the climate and CO2 heads to a hub
@@ -259,8 +265,8 @@ listed in every release under "Security".
   recipe created from a template was always stored with the German name
   and note, also in English. The recipes page now sends its language
   (`lang`), the hub's system language is the default; the list of missing
-  canisters uses that language, and canisters named "Part A"/"Part B"
-  match the template's parts.
+  bottles uses that language, and bottles named "Part A"/"Part B" match
+  the template's parts.
 - Reading tiles: when a sensor failed, the notice and the chart stuck out
   of the tile.
 - Demo: the phase "Blüte" (flowering) pointed to a missing recipe. IDs now

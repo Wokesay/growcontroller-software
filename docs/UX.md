@@ -22,6 +22,10 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
 - **No jargon up front:** no Modbus, no RS485. Ports are called "Port 3"
   with a picture; wrong connections are explained in a sentence. A
   hobbyist look puts buyers off (`kunde`).
+- **Names the app fills in follow the page language:** names and notes
+  taken from a template or the setup use the language of the page at that
+  moment. After that they are your data: they don't change when you switch
+  the language, and you can edit them.
 - **Honest about the state:** "just now / 20 s ago" for each reading;
   "disconnected" when the app cannot reach the hub. "Control keeps running
   even when the app is closed."

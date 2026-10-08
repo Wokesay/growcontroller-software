@@ -3,16 +3,20 @@ import { render } from "preact";
 import "./styles.css";
 import { App } from "./app";
 import { boot } from "./store";
+import { t } from "./i18n";
 
 try {
-  const t = localStorage.getItem("gc-theme");
-  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  const theme = localStorage.getItem("gc-theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
 } catch {
-  /* ohne Speicher: Systemeinstellung */
+  /* no storage: follow the system setting */
 }
 
 render(<App />, document.getElementById("app")!);
 boot().catch(() => {
-  document.getElementById("app")!.innerHTML =
-    '<div class="login"><p>Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?</p></div>';
+  // As text, not markup: no translation can ever become HTML.
+  const box = document.createElement("div");
+  box.className = "login";
+  box.appendChild(document.createElement("p")).textContent = t("shell.noAnswer");
+  document.getElementById("app")!.replaceChildren(box);
 });
