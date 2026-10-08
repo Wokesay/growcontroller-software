@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // REST-Client und Typen der Hub-API (/api/v1). Die Web-App nutzt nur diese API.
-import { t } from "./i18n";
+import { msg, t } from "./i18n";
 
 export type Msg = { key: string; text: string; args?: Record<string, unknown> };
 
@@ -104,7 +104,7 @@ export type Info = {
   platform: { kind: string; simulated?: boolean; scenario?: string }; setupDone: boolean; hasPassword: boolean; name: string;
 };
 
-export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: string; text: string; data: Record<string, any> };
+export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: Msg; text: Msg; data: Record<string, any> };
 
 export type MixPlan = {
   ok: boolean; recipe: string; recipeName: string; mode: string; waterL: number | null;
@@ -114,6 +114,7 @@ export type MixPlan = {
 
 export type SeriesData = { series: string; stepS: number; t: number[]; avg: (number | null)[]; min: (number | null)[]; max: (number | null)[] };
 
+// The message is shown in the page language (SD-032).
 export class ApiError extends Error {
   constructor(public status: number, public key: string, text: string, public body: any) {
     super(text);
@@ -142,7 +143,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized();
     const err = data?.error ?? {};
-    throw new ApiError(res.status, err.key ?? "http", err.text ?? t("shell.httpError", { status: res.status }), data);
+    throw new ApiError(res.status, err.key ?? "http", err.text ? msg(err) : t("shell.httpError", { status: res.status }), data);
   }
   return data as T;
 }

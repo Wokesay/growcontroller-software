@@ -35,6 +35,8 @@ struct Result {
   json body = json::object();
   static Result ok(json b = json::object()) { return {200, std::move(b)}; }
   static Result fail(int st, const std::string& key, const std::string& text, json extra = json::object());
+  // An error that is a message with key and values (SD-032).
+  static Result fail(int st, const Msg& m, json extra = json::object());
 };
 
 class Hub {
@@ -118,11 +120,11 @@ class Hub {
   Result growComplete();
 
   // Ereignis aus der API (z. B. Anmeldung), sicherheitsrelevant protokolliert
-  void logEvent(const std::string& type, const std::string& sev, const std::string& title, const std::string& text);
+  void logEvent(const std::string& type, const std::string& sev, Msg title, Msg text = {});
 
  private:
   Ctx ctx();
-  void saveConfig(const std::string& what);
+  void saveConfig(const Msg& what);
   void autoBindMeasures();
   void releaseSocket(const RoleDef& rd, const Binding& b);
   void setFanSockets(bool comeBackOn);

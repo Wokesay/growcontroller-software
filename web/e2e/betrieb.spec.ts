@@ -20,6 +20,8 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
   await expect.poll(lines).toMatch(/\d,\d/);
   expect(await lines()).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
+  // Events too: the hub stores key and values, the page shows German.
+  await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" }).first()).toBeVisible();
 });
 
 test("English page: monitoring and control lines come in English from the hub (SD-032)", async ({ page }) => {
@@ -32,6 +34,8 @@ test("English page: monitoring and control lines come in English from the hub (S
   await expect.poll(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
   await expect.poll(lines).toMatch(/\d\.\d/);
   expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
+  await expect(page.getByTestId("event").filter({ hasText: "Signed in" }).first()).toBeVisible();
+  await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" })).toHaveCount(0);
 });
 
 test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {

@@ -68,11 +68,13 @@ Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
 message as an object) and `text` is English for every key in
 `core/src/messages.cpp`. The web app shows German from
-`web/src/lang/msg.ts`. Controller lines, checklist entries and the
-watchdog (`headline`, each item's `label` and `text`) are messages; a
-reading's label is the catalog label without a key until the catalog
-follows. The other texts follow under #18 and are still German until
-then.
+`web/src/lang/msg.ts`. Controller lines, checklist entries, the
+watchdog (`headline`, each item's `label` and `text`), job messages,
+events (`title`, `text`) and errors are messages; a reading's label is
+the catalog label without a key until the catalog follows. An argument
+can be a list (joined with ", "). Events written before keep their
+plain text without a key. The other texts follow under #18 and are still
+German until then.
 
 ## Operate
 

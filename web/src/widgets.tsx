@@ -197,8 +197,8 @@ export function EventList(p: { events: HubEvent[]; groupByDay?: boolean }) {
               <span class="t">{time(e.ts)}</span>
               <span class={`sev ${e.severity}`}>{sevIcon(e.severity)}</span>
               <div>
-                <div class="et">{e.title}</div>
-                {e.text && <div class="ex">{e.text}</div>}
+                <div class="et">{msg(e.title)}</div>
+                {msg(e.text) && <div class="ex">{msg(e.text)}</div>}
               </div>
             </div>
           </>

@@ -206,10 +206,12 @@ listed in every release under "Security".
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page
   shows them in German, with numbers in the page language; a single
-  passing check now reads "1 Prüfung" instead of "1 Prüfungen". The other
-  hub texts follow. For API clients: `watchdog.headline` and each item's
-  `label` and `text` in `/state` are now `{key, text, args}` instead of a
-  string; a few line keys are new (`ph.start`, `circ.on_dosing`,
+  passing check now reads "1 Prüfung" instead of "1 Prüfungen". Events,
+  job messages and errors follow the same way: the history stores key
+  and values, so it switches language too; older events keep their text.
+  The remaining hub texts follow. For API clients: `watchdog.headline` and each item's
+  `label` and `text` in `/state`, and each event's `title` and `text`
+  in `/events`, are now `{key, text, args}` instead of a string; a few line keys are new (`ph.start`, `circ.on_dosing`,
   `circ.on_always`, `circ.on_interval`, `circ.latched`, `circ.off`).
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in

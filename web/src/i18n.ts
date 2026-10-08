@@ -72,9 +72,10 @@ function show(v: unknown, decimals?: number): string {
     const s = v.toFixed(decimals).replace(/^-(0\.?0*)$/, "$1");
     return lang.value === "de" ? s.replace(".", ",") : s;
   }
+  if (Array.isArray(v)) return v.length ? v.map((x) => show(x, decimals)).join(", ") : "–";
   if (typeof v === "object") {
     const m = v as Msg;
-    return !Array.isArray(v) && (m.key || m.text) ? msg(m) : "–";
+    return m.key || m.text ? msg(m) : "–";
   }
   return typeof v === "string" ? v : "–";
 }

@@ -15,13 +15,19 @@ TEST_CASE("Messages: numbers with and without decimals, a missing value is never
   // Ties round away from zero, as in the web app: water temperature comes in 0.0625 steps.
   CHECK(render("{t:1} {u:2} {z:1} {s:1} {h:0}", {{"t", 20.25}, {"u", -0.125}, {"z", -0.04}, {"s", 20.65}, {"h", 12.5}}) ==
         "20.3 -0.13 0.0 20.6 13");
-  CHECK(render("{v} {w} {x}", {{"v", 1e20}, {"w", true}, {"x", json::array({1})}}) == "100000000000000000000 – –");
+  CHECK(render("{v} {w} {x}", {{"v", 1e20}, {"w", true}, {"x", json::array({1})}}) == "100000000000000000000 – 1");
 }
 
 TEST_CASE("Messages: a controller line with a missing value shows a dash (R5)") {
   Msg m = say("ec.settling", {{"from", numOrNull(kNaN)}, {"target", 1.4}, {"round", 1}, {"left", "2:10"}});
   CHECK(m.args["from"].is_null());
   CHECK(m.text == "Controlling: EC – → 1.40 · round 1 · waiting 2:10 for mixing");
+}
+
+TEST_CASE("Messages: a list gives its items, each with its own numbers") {
+  json done = json::array({say("amount", {{"name", "Part A"}, {"ml", 12.0}}), say("amount", {{"name", "Part B"}, {"ml", 8.25}})});
+  CHECK(say("job.aborted", {{"done", done}}).text == "Cancelled. In the tank: Part A 12.0 ml, Part B 8.3 ml");
+  CHECK(render("{list}", {{"list", json::array()}}) == "–");
 }
 
 TEST_CASE("Messages: braces that are no placeholder stay as they are") {

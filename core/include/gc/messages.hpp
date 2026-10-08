@@ -19,7 +19,8 @@ Msg say(std::string_view key, json args = json::object());
 
 // Fills {name} and {name:N} in a template. A number with N gets N
 // decimals, without N as many as it has (up to 6); a missing or null value
-// gives "–", never 0 (R5); a nested message gives its text.
+// gives "–", never 0 (R5); a nested message gives its text; a list gives
+// its items joined by ", ".
 std::string render(std::string_view tmpl, const json& args);
 
 // Whether the table has a template for the key.

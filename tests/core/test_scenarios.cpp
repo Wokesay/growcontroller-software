@@ -121,8 +121,9 @@ TEST_CASE("Szenario: Pumpe blockiert im Mischlauf → Paar-Fehler, nachholen nac
   auto job = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}})["job"];
   std::string id = job["id"];
   REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
-  std::string msg = c.state()["job"]["message"]["text"];
-  CHECK(msg.find("Teil A ist schon drin") != std::string::npos);
+  json msg = c.state()["job"]["message"];
+  CHECK(msg["key"] == "job.pair_failed");
+  CHECK(msg["args"]["partner"] == "Teil A");
   s.world().cap(kB)->blocked = false;
   c.ok("POST", "/api/v1/jobs/" + id + "/resume");
   REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 240000));
@@ -145,7 +146,7 @@ TEST_CASE("Szenario: Stromausfall im Lauf → alles aus, nicht fortgesetzt, geme
   for (const char* id : {kA, kB, kC}) CHECK(s.world().cap(id)->state != 1);
   CHECK(again.state()["job"].is_null());
   bool reported = false;
-  for (const auto& e : findEvents(again, "mix")) reported = reported || e["title"].get<std::string>().find("Neustart") != std::string::npos;
+  for (const auto& e : findEvents(again, "mix")) reported = reported || e["title"]["key"] == "ev.mix_reboot";
   CHECK(reported);
 }
 
@@ -215,7 +216,7 @@ TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereigni
   CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
   CHECK(st["controllers"]["ph"]["state"] == "blocked");
   bool ev = false;
-  for (const auto& e : findEvents(c, "block")) ev = ev || e["title"].get<std::string>().find("Sprungsperre") != std::string::npos;
+  for (const auto& e : findEvents(c, "block")) ev = ev || e["title"]["key"] == "ev.jump";
   CHECK(ev);
   s.step(10 * 60 * 1000);
   for (const auto& e : findEvents(c, "dose"))
@@ -290,8 +291,9 @@ TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   auto st = c.state();
   double after = st["stock"]["teil-a"];
   CHECK(after < before - 5);  // > 10 s bei 38–53 ml/min
-  std::string text = st["lastJob"]["message"]["text"];
-  CHECK(text.find("Drin: Teil A") != std::string::npos);
+  json m = st["lastJob"]["message"];
+  CHECK(m["key"] == "job.aborted");
+  CHECK(m["args"]["done"][0]["args"]["name"] == "Teil A");
   bool logged = false;
   for (const auto& e : findEvents(c, "dose"))
     logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() > 5);

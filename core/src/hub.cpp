@@ -14,7 +14,11 @@
 namespace gc {
 
 Result Result::fail(int st, const std::string& key, const std::string& text, json extra) {
-  json b = {{"error", {{"key", key}, {"text", text}}}};
+  return fail(st, Msg{key, text, json::object()}, std::move(extra));
+}
+
+Result Result::fail(int st, const Msg& m, json extra) {
+  json b = {{"error", m}};
   for (auto& [k, v] : extra.items()) b[k] = v;
   return {st, b};
 }
@@ -28,6 +32,19 @@ constexpr const char* kEventsFile = "events.json";
 constexpr const char* kHistoryFile = "history.bin";
 constexpr const char* kJobFile = "job.json";
 constexpr Epoch kMaxMaintenanceS = 240 * 60;  // longest maintenance window
+
+// A raw text in an event (a name, a version, an error from a device): the
+// same in both languages.
+Msg plain(const std::string& text) { return say("ev.plain", {{"text", text}}); }
+
+// What is in the tank: "Part A 12.0 ml, Part B 8.0 ml" as a list of
+// messages, so each language writes the numbers its own way.
+json amounts(const std::vector<JobStep>& steps) {
+  json out = json::array();
+  for (const auto& s : steps)
+    if (s.mlDone > 0) out.push_back(say("amount", {{"name", s.dose.name}, {"ml", s.mlDone}}));
+  return out;
+}
 
 // Kurzname für IDs: Kleinbuchstaben, Ziffern, Bindestrich; deutsche Umlaute
 // umschrieben („Blüte“ → „bluete“), damit IDs lesbar bleiben.
@@ -72,9 +89,9 @@ Ctx Hub::ctx() {
   return Ctx{cat_, cfg_, rt_, truth_, log_, pumps_, clock_.nowMs(), clock_.epoch(), stopped_, maintenanceUntil_};
 }
 
-void Hub::logEvent(const std::string& type, const std::string& sev, const std::string& title, const std::string& text) {
+void Hub::logEvent(const std::string& type, const std::string& sev, Msg title, Msg text) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  log_.add(clock_.epoch(), type, sev, title, text);
+  log_.add(clock_.epoch(), type, sev, std::move(title), std::move(text));
 }
 
 // ------------------------------------------------------------------ Start
@@ -104,21 +121,20 @@ void Hub::boot() {
   if (auto s = store_.read(kConfigFile)) {
     auto j = json::parse(*s, nullptr, false);
     try {
-      if (j.is_discarded()) throw std::runtime_error("kein gültiges JSON");
+      if (j.is_discarded()) throw std::runtime_error("not valid JSON");
       cfg_ = configFromJson(j);
     } catch (const std::exception& e) {
       // Mit der letzten guten Konfiguration ist hier nichts mehr zu retten:
       // Werkseinstellung, alle Aktoren aus, laut melden (Vorschlag architekt).
       store_.write("config.broken.json", *s);
       cfg_ = Config{};
-      log_.add(bootEpoch_, "system", "alarm", "Konfiguration unlesbar",
-               std::string("Start mit Werkseinstellung. Kopie in config.broken.json. Grund: ") + e.what());
+      log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", e.what()}}));
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
   if (stateRaw) {
     try {
-      if (!stateObj) throw std::runtime_error("kein gültiges JSON-Objekt");
+      if (!stateObj) throw std::runtime_error("not a valid JSON object");
       rt_ = runtimeFromJson(stateJson);
     } catch (const std::exception& e) {
       // Whether an emergency stop was active is unknown: keep everything
@@ -126,20 +142,16 @@ void Hub::boot() {
       store_.write("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
       rt_.stopped = true;
-      log_.add(bootEpoch_, "system", "alarm", "Laufzeitzustand unlesbar",
-               std::string("Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Alles bleibt "
-                           "aus, bis jemand fortsetzt. Kopie in state.broken.json. Grund: ") +
-                   e.what());
+      log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", e.what()}}));
     }
   }
   if (auto s = store_.read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
   if (auth_.hasPassword() && !cfg_.system.passwordSet) {
     cfg_.system.passwordSet = true;  // Geräte von vor dieser Kennzeichnung nachziehen
-    saveConfig("");
+    saveConfig({});
   }
   if (credentialsLost())
-    log_.add(bootEpoch_, "system", "alarm", "Zugangsdaten fehlen",
-             "Das Passwort ist nicht mehr lesbar. Einrichtung über das Netz ist gesperrt – Werksreset am Gerät nötig.");
+    log_.add(bootEpoch_, "system", "alarm", say("ev.credentials_lost"), say("ev.credentials_lost.text"));
   if (auto s = store_.read(kHistoryFile)) history_.load(*s);
   rt_.bootCount = boot;
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
@@ -149,31 +161,30 @@ void Hub::boot() {
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
   if (stopped_)
-    log_.add(bootEpoch_, "system", "alarm", "Not-Halt besteht weiter",
-             "Nach dem Neustart bleibt alles aus, auch die Lüfter, bis jemand fortsetzt.");
+    log_.add(bootEpoch_, "system", "alarm", say("ev.stop_kept"), say("ev.stop_kept.text"));
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
     if (state == "running" || state == "waiting_user" || state == "mixing") {
-      std::string what = jstr(j, "type") == "mix" ? "Mischlauf" : "Auftrag";
+      const bool mix = jstr(j, "type") == "mix";
       double idxNum = jnum(j, "index", 0);
       size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
       const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
       size_t total = steps.size();
-      std::string done;
+      json done = json::array();
       for (const auto& st : steps) {
         double ml = jnum(st, "mlDone", 0);
-        if (isNum(ml) && ml > 0) done += (done.empty() ? "" : ", ") + jstr(st, "name") + " " + fmt(ml, 1) + " ml";
+        if (isNum(ml) && ml > 0) done.push_back(say("amount", {{"name", jstr(st, "name")}, {"ml", ml}}));
       }
-      log_.add(bootEpoch_, "mix", "warn", what + " durch Neustart unterbrochen",
-               "Bei Schritt " + std::to_string(idx + 1) + "/" + std::to_string(total) + ". Drin: " +
-                   (done.empty() ? "nichts" : done) + ". Nicht automatisch fortgesetzt.");
+      json at{{"step", idx + 1}, {"total", total}, {"done", done}};
+      const bool none = done.empty();
+      log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"), say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
       j["state"] = "aborted";
-      j["message"] = {{"key", "job.reboot"}, {"text", "Durch Neustart unterbrochen – nicht fortgesetzt"}};
+      j["message"] = say("job.reboot");
       store_.write(kJobFile, j.dump());
     }
   }
-  log_.add(bootEpoch_, "system", "info", "Hub gestartet", std::string("Version ") + embedded::kVersion);
+  log_.add(bootEpoch_, "system", "info", say("ev.started"), say("ev.started.text", {{"version", embedded::kVersion}}));
   saveState();  // the boot count and the stop are durable from the start
 }
 
@@ -185,12 +196,11 @@ void Hub::flush() {
   store_.write(kHistoryFile, history_.dump());
 }
 
-void Hub::saveConfig(const std::string& what) {
+void Hub::saveConfig(const Msg& what) {
   cfg_.revision++;
   store_.write(kConfigFile, json(cfg_).dump(1));
-  if (!what.empty())
-    log_.add(clock_.epoch(), "config", "info", what, "Einstellung geändert (Revision " + std::to_string(cfg_.revision) + ")",
-             {{"revision", cfg_.revision}});
+  if (!what.key.empty())
+    log_.add(clock_.epoch(), "config", "info", what, say("ev.config.text", {{"rev", cfg_.revision}}), {{"revision", cfg_.revision}});
 }
 
 void Hub::saveState() {
@@ -217,21 +227,22 @@ void Hub::detectDevices() {
         if (x.id == id) d = &x;
       const DeviceClassDef* dc = d ? cat_.deviceClass(d->cls) : nullptr;
       const DeviceCfg* known = cfg_.device(id);
-      std::string where = d && d->slot >= 0 ? "Pumpe " + std::to_string(d->slot + 1) + " am Dosierblock"
-                          : d && d->port > 0 ? "Anschluss " + std::to_string(d->port)
-                          : dc && dc->attach == "net" ? "im Netzwerk" : "im Hub";
-      std::string title = (dc ? dc->label : "Unbekanntes Gerät") + (known ? " wieder da" : " erkannt");
-      std::string text = where;
+      Msg where = d && d->slot >= 0 ? say("where.slot", {{"n", d->slot + 1}})
+                  : d && d->port > 0 ? say("where.port", {{"n", d->port}})
+                  : dc && dc->attach == "net" ? say("where.net") : say("where.hub");
+      json label = dc ? json(dc->label) : json(say("device.unnamed"));
+      Msg title = say(known ? "ev.device.back" : "ev.device.found", {{"label", label}});
+      Msg text = say("ev.device.where", {{"where", where}});
       // Pumpe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
       if (known && d && d->cls == "pump_cap")
-        if (const CanisterCfg* k = cfg_.canisterByPump(id)) text += ". Sitzt sie noch auf " + k->name + "?";
+        if (const CanisterCfg* k = cfg_.canisterByPump(id)) text = say("ev.device.where_pump", {{"where", where}, {"name", k->name}});
       if (!seenOnline_.empty() || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
     }
   for (const auto& id : seenOnline_)
     if (!online.count(id)) {
       const DeviceCfg* known = cfg_.device(id);
-      log_.add(e, "device", known ? "warn" : "info", (known && !known->name.empty() ? known->name : id) + " getrennt",
-               "Gerät antwortet nicht mehr", {{"device", id}});
+      log_.add(e, "device", known ? "warn" : "info", say("ev.device.lost", {{"name", known && !known->name.empty() ? known->name : id}}),
+               say("ev.device.lost.text"), {{"device", id}});
     }
   seenOnline_ = online;
 }
@@ -248,7 +259,7 @@ void Hub::tick() {
     tickImpl();
     if (tickFault_) {
       tickFault_ = false;
-      log_.add(clock_.epoch(), "system", "info", "Steuerung läuft wieder", "Der Takt läuft wieder ohne Fehler.");
+      log_.add(clock_.epoch(), "system", "info", say("ev.tick_ok"), say("ev.tick_ok.text"));
     }
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
@@ -266,31 +277,26 @@ void Hub::tick() {
       ph_.reset();
       // Nutzerauftrag nicht hängen lassen: beenden und sagen, was drin ist
       if (userJobActive()) {
-        std::string done;
-        for (const auto& s : job_->steps)
-          if (s.mlDone > 0) done += (done.empty() ? "" : ", ") + s.dose.name + " " + fmt(s.mlDone, 1) + " ml";
-        finishJob("aborted", {"job.internal", "Durch einen internen Fehler abgebrochen. Drin: " + (done.empty() ? "nichts" : done),
-                              json::object()});
+        const json done = amounts(job_->steps);
+        const bool none = done.empty();
+        finishJob("aborted", say(none ? "job.internal_none" : "job.internal", {{"done", done}}));
       }
     } catch (...) {
       // Aufräumen darf den sicheren Zustand nicht verhindern: Aktoren sind schon aus.
     }
     if (!tickFault_) {
       tickFault_ = true;
-      log_.add(clock_.epoch(), "system", "alarm", "Interner Fehler – alles aus außer den Lüftern",
-               std::string("Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet; "
-                           "die Lüfter laufen weiter: ") +
-                   e.what());
+      log_.add(clock_.epoch(), "system", "alarm", say("ev.tick_fault"), say("ev.tick_fault.text", {{"reason", e.what()}}));
     }
   }
 }
 
 namespace {
-std::string spanText(Epoch s) {
+Msg span(Epoch s) {
   s = s < 0 ? -s : s;
-  if (s < 120) return std::to_string(s) + " s";
-  if (s < 2 * 3600) return std::to_string(s / 60) + " min";
-  return fmt(static_cast<double>(s) / 3600.0, 1) + " h";
+  if (s < 120) return say("span.s", {{"n", s}});
+  if (s < 2 * 3600) return say("span.min", {{"n", s / 60}});
+  return say("span.h", {{"h", static_cast<double>(s) / 3600.0}});
 }
 }  // namespace
 
@@ -305,19 +311,18 @@ void Hub::watchClock(Ms now) {
     // Lost while running: continue from the last secured time, no jump.
     clock_.lose(expected);
     unsecuredReported_ = true;
-    log_.add(expected, "system", "warn", "Uhrzeit nicht mehr gesichert",
-             "Der Hub zählt ab der letzten gesicherten Uhrzeit weiter.", {{"source", clock_.source()}});
+    log_.add(expected, "system", "warn", say("ev.clock.lost"), say("ev.clock.lost.text"), {{"source", clock_.source()}});
   }
   const Epoch epoch = clock_.epoch();
   const Epoch jump = epoch - expected;
   if (!was && secured) {
     shiftDeadlines(jump, epoch);
     if (unsecuredReported_ || jump > 120 || jump < -120)
-      log_.add(epoch, "system", "info", "Uhrzeit gesichert",
-               before == "unset" ? "Netzwerkzeit empfangen. Uhrzeiten davor im Verlauf stimmen nicht."
-               : jump > 0        ? "Die Uhr springt um " + spanText(jump) + " vor; so lange fehlte die Uhrzeit."
-               : jump < 0        ? "Die Uhr springt um " + spanText(jump) + " zurück."
-                                 : "Netzwerkzeit empfangen.",
+      log_.add(epoch, "system", "info", say("ev.clock.secured"),
+               before == "unset" ? say("ev.clock.first")
+               : jump > 0        ? say("ev.clock.forward", {{"span", span(jump)}})
+               : jump < 0        ? say("ev.clock.back", {{"span", span(jump)}})
+                                 : say("ev.clock.received"),
                {{"jumpS", jump}, {"before", before}});
     unsecuredReported_ = false;
     stateDirty_ = true;
@@ -326,15 +331,13 @@ void Hub::watchClock(Ms now) {
     // the secured flag follows (on the device the time is set first).
     shiftDeadlines(jump, epoch);
     if (secured && (jump > 120 || jump < -120))
-      log_.add(epoch, "system", "info", "Uhr gestellt",
-               std::string("Die Uhr springt um ") + spanText(jump) + (jump > 0 ? " vor." : " zurück."), {{"jumpS", jump}});
+      log_.add(epoch, "system", "info", say("ev.clock.set"), say(jump > 0 ? "ev.clock.set_forward" : "ev.clock.back", {{"span", span(jump)}}),
+               {{"jumpS", jump}});
     stateDirty_ = true;
   } else if (!secured && !unsecuredReported_ && now - bootMs_ >= 2 * kMinute) {
     unsecuredReported_ = true;
-    log_.add(epoch, "system", "warn", "Uhrzeit nicht gesichert",
-             std::string(clock_.source()) == "continued"
-                 ? "Keine Netzwerkzeit. Der Hub zählt ab dem zuletzt gespeicherten Stand weiter; die Dauer des Ausfalls fehlt in der Uhrzeit."
-                 : "Keine Netzwerkzeit und keine gespeicherte Uhrzeit. Uhrzeiten im Verlauf stimmen erst, wenn die Uhrzeit gesichert ist.",
+    const bool continued = std::string(clock_.source()) == "continued";
+    log_.add(epoch, "system", "warn", say("ev.clock.unsecured"), say(continued ? "ev.clock.continued" : "ev.clock.unset"),
              {{"source", clock_.source()}});
   }
   lastTickEpoch_ = epoch;
@@ -391,14 +394,14 @@ void Hub::tickImpl() {
   for (const auto& [role, until] : rt_.jumpLocks)
     if (!locksBefore.count(role)) {
       const auto& r = truth_.get(role);
-      log_.add(epoch, "block", "alarm", "Sprungsperre: " + (cat_.role(role) ? cat_.role(role)->label : role), r.reason.text,
+      log_.add(epoch, "block", "alarm", say("ev.jump", {{"label", cat_.role(role) ? cat_.role(role)->label : role}}), r.reason,
                {{"role", role}, {"until", until}});
       stateDirty_ = true;
     }
   for (const auto& [role, until] : locksBefore)
     if (!rt_.jumpLocks.count(role)) {
-      log_.add(epoch, "unblock", "info", "Sprungsperre aufgehoben: " + (cat_.role(role) ? cat_.role(role)->label : role),
-               "15 min Ruhe, Wert wieder gültig", {{"role", role}});
+      log_.add(epoch, "unblock", "info", say("ev.jump_cleared", {{"label", cat_.role(role) ? cat_.role(role)->label : role}}),
+               say("ev.jump_cleared.text"), {{"role", role}});
       stateDirty_ = true;
     }
 
@@ -687,13 +690,13 @@ void Hub::markPasswordSet() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (cfg_.system.passwordSet) return;
   cfg_.system.passwordSet = true;
-  saveConfig("");
+  saveConfig({});
 }
 
 Result Hub::completeSetup() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   cfg_.system.setupDone = true;
-  saveConfig("Einrichtung abgeschlossen");
+  saveConfig(say("ev.cfg.setup_done"));
   return Result::ok();
 }
 
@@ -722,7 +725,7 @@ Result Hub::setSystem(const json& j) {
   }
   cfg_.system = sys;
   cfg_.limits = lim;
-  saveConfig("System");
+  saveConfig(say("ev.cfg.system"));
   return Result::ok();
 }
 
@@ -741,12 +744,12 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
     for (int ch = 0; ch < std::max(1, dc->channels); ++ch) {
       std::string e;
       if (!net_->configure(id, ch, SwitchSafety{}, e))
-        log_.add(clock_.epoch(), "device", "warn", cfg_.devices.back().name + ": Schutz nicht gesetzt", e, {{"device", id}});
+        log_.add(clock_.epoch(), "device", "warn", say("ev.net.unprotected", {{"name", cfg_.devices.back().name}}), plain(e), {{"device", id}});
     }
   // Messrollen automatisch zuordnen, wenn genau ein Gerät passt (nie bei
   // Dosier- oder Schaltrollen). Sonst wählt der Nutzer unter Zuordnung.
   autoBindMeasures();
-  saveConfig("Gerät übernommen: " + cfg_.devices.back().name);
+  saveConfig(say("ev.cfg.device_added", {{"name", cfg_.devices.back().name}}));
   return Result::ok();
 }
 
@@ -776,7 +779,7 @@ Result Hub::renameDevice(const std::string& id, const std::string& name) {
   for (auto& d : cfg_.devices)
     if (d.id == id) {
       d.name = utf8Prefix(name, 40);
-      saveConfig("Gerät umbenannt: " + d.name);
+      saveConfig(say("ev.cfg.device_renamed", {{"name", d.name}}));
       return Result::ok();
     }
   return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
@@ -797,7 +800,8 @@ Result Hub::removeDevice(const std::string& id) {
       Msg e;
       Ctx c = ctx();
       if (!act_.setRole(c, role, false, "Gerät entfernt", e))
-        log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Gerät entfernt: " + e.text, {{"role", role}, {"device", id}});
+        log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+                 say("ev.off_unconfirmed.device_removed", {{"reason", e}}), {{"role", role}, {"device", id}});
       if (const Binding* b = cfg_.binding(role)) releaseSocket(*rd, *b);
     }
   it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
@@ -810,7 +814,7 @@ Result Hub::removeDevice(const std::string& id) {
   for (auto& k : cfg_.canisters)
     if (k.pump == id) k.pump.clear();
   cfg_.calibrations.erase(id);
-  saveConfig("Gerät entfernt: " + name);
+  saveConfig(say("ev.cfg.device_removed", {{"name", name}}));
   return Result::ok();
 }
 
@@ -831,10 +835,10 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     auto got = net_->readConfig(device, channel);
     if (!got || !sameSafety(*got, want))
       return Result::fail(502, "role.net.verify", "Schutzeinstellung im Gerät nicht bestätigt – nicht zugeordnet");
-    const std::string afterLoss = want.powerOn == PowerOn::On ? "Nach Stromausfall an" : "Nach Stromausfall aus";
-    log_.add(clock_.epoch(), "device", "info", rd->label + ": Schutz im Gerät gesetzt",
-             isNum(want.autoOffS) ? afterLoss + ", Abschaltung im Gerät nach " + fmt(want.autoOffS / 60, 0) + " min" : afterLoss,
-             {{"device", device}, {"channel", channel}});
+    const bool on = want.powerOn == PowerOn::On;
+    Msg text = isNum(want.autoOffS) ? say(on ? "ev.net.power_on_auto" : "ev.net.power_off_auto", {{"min", want.autoOffS / 60}})
+                                    : say(on ? "ev.net.power_on" : "ev.net.power_off");
+    log_.add(clock_.epoch(), "device", "info", say("ev.net.protected", {{"label", rd->label}}), text, {{"device", device}, {"channel", channel}});
   }
   // War die Rolle schon anderswo zugeordnet: dort erst ausschalten, sonst
   // verliert der Hub einen laufenden Ausgang aus dem Blick.
@@ -842,11 +846,12 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     Msg e;
     Ctx c = ctx();
     if (!act_.setRole(c, role, false, "Zuordnung geändert", e))
-      log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Alter Ausgang: " + e.text, {{"role", role}, {"device", old->device}});
+      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+               say("ev.off_unconfirmed.old_output", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     releaseSocket(*rd, *old);
   }
   cfg_ = next;
-  saveConfig("Zuordnung: " + (rd ? rd->label : role));
+  saveConfig(say("ev.cfg.role", {{"label", rd ? rd->label : role}}));
   return Result::ok();
 }
 
@@ -856,9 +861,10 @@ Result Hub::switchRole(const std::string& role, bool on) {
   if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
   Ctx c = ctx();
   Msg e;
-  if (!act_.setRole(c, role, on, "Hand", e)) return Result::fail(409, e.key, e.text);
+  if (!act_.setRole(c, role, on, "Hand", e)) return Result::fail(409, e);
   testOff_.erase(role);
-  log_.add(clock_.epoch(), "manual", "info", rd->label + (on ? " an" : " aus"), "von Hand", {{"role", role}, {"on", on}});
+  log_.add(clock_.epoch(), "manual", "info", say(on ? "ev.manual_on" : "ev.manual_off", {{"label", rd->label}}), say("ev.manual.text"),
+           {{"role", role}, {"on", on}});
   return Result::ok();
 }
 
@@ -869,7 +875,7 @@ Result Hub::testRole(const std::string& role) {
   if (act_.roleState(cfg_, role).value_or(false)) return Result::ok();  // läuft schon: nicht nach 3 s abschalten
   Ctx c = ctx();
   Msg e;
-  if (!act_.setRole(c, role, true, "Testen", e)) return Result::fail(409, e.key, e.text);
+  if (!act_.setRole(c, role, true, "Testen", e)) return Result::fail(409, e);
   testOff_[role] = c.now + 3 * kSecond;
   return Result::ok();
 }
@@ -880,14 +886,14 @@ void Hub::releaseSocket(const RoleDef& rd, const Binding& b) {
   if (!rd.onAfterPowerLoss || !net_ || !net_->owns(b.device)) return;
   std::string e;
   bool ok = net_->configure(b.device, b.channel, SwitchSafety{}, e);
+  json reason = e;
   if (ok) {
     auto got = net_->readConfig(b.device, b.channel);
     ok = got && sameSafety(*got, SwitchSafety{});
-    if (!ok) e = "im Gerät nicht bestätigt";
+    if (!ok) reason = say("net.not_confirmed");
   }
   if (!ok)
-    log_.add(clock_.epoch(), "device", "warn", rd.label + ": Dose bleibt „nach Stromausfall an“",
-             "Zurücksetzen auf „nach Stromausfall aus“ gescheitert: " + e + ". Bitte in der Dose selbst einstellen.",
+    log_.add(clock_.epoch(), "device", "warn", say("ev.net.stays_on", {{"label", rd.label}}), say("ev.net.stays_on.text", {{"reason", reason}}),
              {{"device", b.device}, {"channel", b.channel}});
 }
 
@@ -901,15 +907,15 @@ void Hub::setFanSockets(bool comeBackOn) {
     const SwitchSafety want = comeBackOn ? safetyForRole(*rd) : SwitchSafety{};
     std::string e;
     bool ok = net_->configure(b.device, b.channel, want, e);
+    json reason = e;
     if (ok) {
       auto got = net_->readConfig(b.device, b.channel);
       ok = got && sameSafety(*got, want);
-      if (!ok) e = "im Gerät nicht bestätigt";
+      if (!ok) reason = say("net.not_confirmed");
     }
     if (!ok)
-      log_.add(clock_.epoch(), "device", "warn",
-               rd->label + (comeBackOn ? ": „nach Stromausfall an“ nicht gesetzt" : ": „nach Stromausfall aus“ nicht gesetzt"),
-               e + (comeBackOn ? ". Dose neu zuordnen." : ". Läuft nach einem Stromausfall womöglich wieder an."),
+      log_.add(clock_.epoch(), "device", "warn", say(comeBackOn ? "ev.net.on_not_set" : "ev.net.off_not_set", {{"label", rd->label}}),
+               say(comeBackOn ? "ev.net.on_not_set.text" : "ev.net.off_not_set.text", {{"reason", reason}}),
                {{"role", role}, {"device", b.device}});
   });
 }
@@ -921,11 +927,12 @@ Result Hub::unbindRole(const std::string& role) {
     Ctx c = ctx();
     const Binding* old = cfg_.binding(role);
     if (old && !act_.setRole(c, role, false, "Zuordnung entfernt", e))
-      log_.add(clock_.epoch(), "block", "warn", rd->label + ": Aus nicht bestätigt", "Zuordnung entfernt: " + e.text, {{"role", role}, {"device", old->device}});
+      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+               say("ev.off_unconfirmed.unassigned", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     if (old) releaseSocket(*rd, *old);
   }
   cfg_.rolesFor(role).erase(role);
-  saveConfig("Zuordnung entfernt: " + role);
+  saveConfig(say("ev.cfg.role_removed", {{"role", role}}));
   return Result::ok();
 }
 
@@ -941,7 +948,7 @@ Result Hub::putTank(const json& j) {
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
-  saveConfig("Tank: " + t.name);
+  saveConfig(say("ev.cfg.tank", {{"name", t.name}}));
   return Result::ok();
 }
 
@@ -954,7 +961,7 @@ Result Hub::putZone(const json& j) {
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
-  saveConfig("Bereich: " + z.name);
+  saveConfig(say("ev.cfg.zone", {{"name", z.name}}));
   return Result::ok();
 }
 
@@ -989,7 +996,7 @@ Result Hub::putCanister(const json& j) {
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
   else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
   stateDirty_ = true;
-  saveConfig("Kanister: " + k->name);
+  saveConfig(say("ev.cfg.canister", {{"name", k->name}}));
   return Result::ok({{"id", id}});
 }
 
@@ -1003,7 +1010,7 @@ Result Hub::deleteCanister(const std::string& id) {
   std::string name = it->name;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
-  saveConfig("Kanister entfernt: " + name);
+  saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
   return Result::ok();
 }
 
@@ -1014,7 +1021,7 @@ Result Hub::setStock(const std::string& id, double ml) {
   if (!isNum(ml) || ml < 0) return Result::fail(422, "canister.stock", "Vorrat ungültig");
   rt_.stockMl[id] = ml;
   stateDirty_ = true;
-  log_.add(clock_.epoch(), "config", "info", "Kanister gewechselt", k->name + ": " + fmt(ml, 0) + " ml");
+  log_.add(clock_.epoch(), "config", "info", say("ev.bottle_changed"), say("ev.bottle_changed.text", {{"name", k->name}, {"ml", ml}}));
   return Result::ok();
 }
 
@@ -1043,7 +1050,7 @@ Result Hub::putRecipe(const json& j) {
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
-  saveConfig("Rezept: " + r->name);
+  saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
   return Result::ok({{"id", id}});
 }
 
@@ -1053,7 +1060,7 @@ Result Hub::deleteRecipe(const std::string& id) {
   if (it == cfg_.recipes.end()) return Result::fail(404, "recipe.unknown", "Rezept nicht gefunden");
   std::string name = it->name;
   cfg_.recipes.erase(it);
-  saveConfig("Rezept entfernt: " + name);
+  saveConfig(say("ev.cfg.recipe_removed", {{"name", name}}));
   return Result::ok();
 }
 
@@ -1132,7 +1139,7 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
       }
     if (changed && validateConfig(next, cat_).empty()) {
       cfg_ = next;
-      saveConfig("Paar aus der Vorlage übernommen");
+      saveConfig(say("ev.cfg.pair_template"));
     }
     return r;
   }
@@ -1161,7 +1168,8 @@ Result Hub::putFunction(const std::string& id, const json& j) {
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
   functions_ = resolveFunctions(cat_, cfg_, devices_, pumps_, truth_);
-  saveConfig(fd->label + (j.contains("enabled") ? (f.enabled ? " eingeschaltet" : " ausgeschaltet") : ": Parameter"));
+  const bool params = !j.contains("enabled");
+  saveConfig(say(params ? "ev.cfg.function_params" : f.enabled ? "ev.cfg.function_on" : "ev.cfg.function_off", {{"label", fd->label}}));
   return Result::ok();
 }
 
@@ -1205,12 +1213,11 @@ Result Hub::importConfig(const json& j) {
         ok = got && sameSafety(*got, want);
       }
       if (!ok)
-        log_.add(clock_.epoch(), "device", "warn", rd->label + ": Schutz im Gerät nicht gesetzt",
-                 "Nach dem Import nicht bestätigt" + (e.empty() ? std::string() : " (" + e + ")") +
-                     ". Solange die Einstellung in der Dose nicht stimmt, schaltet der Hub sie nicht ein.",
+        log_.add(clock_.epoch(), "device", "warn", say("ev.net.import_unconfirmed", {{"label", rd->label}}),
+                 e.empty() ? say("ev.net.import_unconfirmed.text") : say("ev.net.import_unconfirmed.text_reason", {{"reason", e}}),
                  {{"role", role}, {"device", b.device}});
     });
-  saveConfig("Konfiguration importiert");
+  saveConfig(say("ev.cfg.imported"));
   return Result::ok();
 }
 
@@ -1252,12 +1259,13 @@ Result Hub::mixStart(const json& req) {
   rt_.tankVolumeL = plan.mode == "topup" && isNum(rt_.tankVolumeL) ? rt_.tankVolumeL + plan.waterL : plan.waterL;
   rt_.lastMixAt = clock_.epoch();
   stateDirty_ = true;
-  log_.add(clock_.epoch(), "mix", "info", "Mischlauf gestartet",
-           plan.recipeName + " · " + fmt(plan.waterL, 1) + " L " + (plan.mode == "topup" ? "nachgefüllt" : "neu"),
+  const bool topup = plan.mode == "topup";
+  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.started"),
+           say(topup ? "ev.mix.started.topup" : "ev.mix.started.new", {{"recipe", plan.recipeName}, {"water", plan.waterL}}),
            {{"job", j.id}, {"recipe", plan.recipe}, {"waterL", plan.waterL}});
   job_ = j;
   Ctx c = ctx();
-  if (!startJobStep(c)) return Result::fail(422, "mix.start", job_->message.text, {{"job", *job_}});
+  if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
   saveJob();
   return Result::ok({{"job", *job_}});
 }
@@ -1288,7 +1296,7 @@ bool Hub::startJobStep(Ctx& c) {
     if (!err.key.empty()) {
       st.state = "failed";
       j.state = "failed";
-      j.message = {"job.start_failed", st.dose.name + ": " + err.text, json::object()};
+      j.message = say("job.start_failed", {{"name", st.dose.name}, {"reason", err}});
       return false;
     }
   }
@@ -1296,14 +1304,12 @@ bool Hub::startJobStep(Ctx& c) {
   if (!doser_.start(c, act_, o, err)) {
     st.state = "failed";
     j.state = "failed";
-    j.message = {"job.start_failed", st.dose.name + ": " + err.text, json::object()};
+    j.message = say("job.start_failed", {{"name", st.dose.name}, {"reason", err}});
     return false;
   }
   st.state = "running";
   j.state = "running";
-  j.message = {"job.dosing", "Schritt " + std::to_string(j.index + 1) + " von " + std::to_string(j.steps.size()) + ": " +
-                                 st.dose.name + " · " + fmt(o.step.ml, 1) + " ml",
-               json::object()};
+  j.message = say("job.dosing_step", {{"n", j.index + 1}, {"total", j.steps.size()}, {"name", st.dose.name}, {"ml", numOrNull(o.step.ml)}});
   return true;
 }
 
@@ -1335,13 +1341,11 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
     if (!st.dose.pair.empty())
       for (const auto& o : j.steps)
         if (&o != &st && o.dose.pair == st.dose.pair && o.mlDone > 0) partner = o.dose.name;
-    std::string text = st.dose.name + " nicht vollständig dosiert (" + p.error.text + ").";
-    if (!partner.empty())
-      text += " " + partner + " ist schon drin. Ursache beheben, dann „" + st.dose.name +
-              " nachholen“ – sonst stimmt das Verhältnis nicht.";
-    j.message = {"job.pair_failed", text, {{"step", j.index}, {"partner", partner}}};
-    log_.add(c.epoch, "mix", "alarm", j.type == "mix" ? "Mischlauf unterbrochen" : "Auftrag fehlgeschlagen", text,
-             {{"job", j.id}});
+    const bool alone = partner.empty();
+    j.message = say(alone ? "job.dose_failed" : "job.pair_failed",
+                    {{"name", st.dose.name}, {"reason", p.error}, {"partner", partner}, {"step", j.index}});
+    const bool mix = j.type == "mix";
+    log_.add(c.epoch, "mix", "alarm", say(mix ? "ev.mix.interrupted" : "ev.job.failed"), j.message, {{"job", j.id}});
     if (j.type != "mix") finishJob("failed", j.message);
     saveJob();
     return;
@@ -1350,39 +1354,37 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
   if (j.type == "calibration") {
     j.state = "waiting_user";
     j.info["actualMs"] = p.msDone;
-    j.message = {"cal.measure", "Wie viel ist im Messbecher? Menge in ml eintragen.", json::object()};
+    j.message = say("cal.measure");
     saveJob();
     return;
   }
   if (j.type == "prime" || j.type == "manual") {
-    finishJob("done", {"job.done", st.dose.name + ": " + fmt(st.mlDone, 1) + " ml", json::object()});
+    finishJob("done", say("job.done", {{"name", st.dose.name}, {"ml", st.mlDone}}));
     return;
   }
   j.index++;
   if (j.index >= j.steps.size()) {
-    std::string summary;
+    json summary = json::array();
     double total = 0;
     for (const auto& s : j.steps) {
-      summary += (summary.empty() ? "" : ", ") + s.dose.name + " " + fmt(s.mlDone, 1) + " ml";
+      summary.push_back(say("amount", {{"name", s.dose.name}, {"ml", s.mlDone}}));
       total += s.mlDone;
     }
-    Msg after = j.info.contains("after") ? Msg{jstr(j.info["after"], "key"), jstr(j.info["after"], "text"), json::object()} : Msg{};
-    log_.add(c.epoch, "mix", "info", "Mischlauf fertig",
-             fmt(jnum(j.info, "waterL"), 1) + " L „" + jstr(j.info, "recipeName") + "“: " + summary + ". " + after.text,
-             {{"job", j.id}, {"totalMl", total}});
-    finishJob("done", {"mix.done", "Fertig: " + fmt(jnum(j.info, "waterL"), 1) + " L „" + jstr(j.info, "recipeName") + "“. " + after.text,
-                       json::object()});
+    const json after = j.info.contains("after") && j.info["after"].is_object() ? j.info["after"] : json(nullptr);
+    json args{{"water", numOrNull(jnum(j.info, "waterL"))}, {"recipe", jstr(j.info, "recipeName")}, {"after", after}};
+    args["summary"] = summary;
+    log_.add(c.epoch, "mix", "info", say("ev.mix.done"), say("ev.mix.done.text", args), {{"job", j.id}, {"totalMl", total}});
+    finishJob("done", say("mix.done", args));
     return;
   }
   // Zwischen den Gaben durchmischen: mit Umwälzpumpe Countdown, sonst von Hand rühren.
   if (j.circulation) {
     j.state = "mixing";
     j.waitUntil = c.now + 60 * kSecond;
-    j.message = {"mix.circulate", "Durchmischen mit der Umwälzpumpe (1 min)", json::object()};
+    j.message = say("mix.circulate");
   } else if (j.guided) {
     j.state = "waiting_user";
-    j.message = {"mix.stir", "Fertig: " + st.dose.name + " " + fmt(st.mlDone, 1) + " ml. Jetzt 1 Minute umrühren, dann „Weiter“.",
-                 json::object()};
+    j.message = say("mix.stir", {{"name", st.dose.name}, {"ml", st.mlDone}});
   } else {
     startJobStep(c);
   }
@@ -1404,7 +1406,7 @@ Result Hub::jobContinue(const std::string& id) {
     return Result::fail(409, "job.state", "Auftrag wartet nicht");
   if (job_->type == "calibration") return Result::fail(409, "job.state", "Bitte die gemessene Menge eintragen");
   Ctx c = ctx();
-  if (!startJobStep(c)) return Result::fail(422, "job.step", job_->message.text, {{"job", *job_}});
+  if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
   saveJob();
   return Result::ok(jobJson());
 }
@@ -1418,8 +1420,8 @@ Result Hub::jobResume(const std::string& id) {
   if (auto it = pumps_.find(st.dose.pump); it != pumps_.end()) st.dose.flowMlPerMin = it->second.flowMlPerMin;
   const std::string name = st.dose.name;  // st gilt nach startJobStep nicht mehr sicher
   Ctx c = ctx();
-  if (!startJobStep(c)) return Result::fail(422, "job.step", job_->message.text, {{"job", *job_}});
-  log_.add(clock_.epoch(), "mix", "info", "Mischlauf fortgesetzt", name + " wird nachgeholt");
+  if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
+  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.resumed"), say("ev.mix.resumed.text", {{"name", name}}));
   saveJob();
   return Result::ok(jobJson());
 }
@@ -1430,11 +1432,10 @@ Result Hub::jobAbort(const std::string& id) {
   Ctx c = ctx();
   if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(c, act_, "Auftrag abgebrochen");
   if (auto fin = doser_.takeFinished()) onJobDose(c, *fin);
-  std::string done;
-  for (const auto& s : job_->steps)
-    if (s.mlDone > 0) done += (done.empty() ? "" : ", ") + s.dose.name + " " + fmt(s.mlDone, 1) + " ml";
-  log_.add(clock_.epoch(), "mix", "warn", "Auftrag abgebrochen", "Drin: " + (done.empty() ? "nichts" : done), {{"job", id}});
-  finishJob("aborted", {"job.aborted", "Abgebrochen. Drin: " + (done.empty() ? "nichts" : done), json::object()});
+  const json done = amounts(job_->steps);
+  const bool none = done.empty();
+  log_.add(clock_.epoch(), "mix", "warn", say("ev.job.aborted"), say(none ? "ev.contents_none" : "ev.contents", {{"done", done}}), {{"job", id}});
+  finishJob("aborted", say(none ? "job.aborted_none" : "job.aborted", {{"done", done}}));
   return Result::ok();
 }
 
@@ -1460,7 +1461,7 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   s.flowMlPerMin = pit->second.flowMlPerMin;
   Msg err;
   s.runs = splitRuns(ml, s.flowMlPerMin, cfg_.limits, lim.maxPartialRuns, err);
-  if (!err.key.empty()) return Result::fail(422, err.key, k->name + ": " + err.text);
+  if (!err.key.empty()) return Result::fail(422, say("job.start_failed", {{"name", k->name}, {"reason", err}}));
   Job j;
   j.id = newId("dose");
   j.type = "manual";
@@ -1471,11 +1472,10 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   if (!startJobStep(c)) {
     Msg m = job_->message;
     job_.reset();
-    return Result::fail(422, "dose.start", m.text);
+    return Result::fail(422, m);
   }
   if (!k->pair.empty())
-    log_.add(clock_.epoch(), "dose", "notice", "Handgabe aus einem Paar",
-             k->name + " gehört zum Paar " + k->pair + ". Den Partner im gleichen Verhältnis geben.");
+    log_.add(clock_.epoch(), "dose", "notice", say("ev.manual_pair"), say("ev.manual_pair.text", {{"name", k->name}, {"pair", k->pair}}));
   return Result::ok({{"job", *job_}});
 }
 
@@ -1503,9 +1503,9 @@ Result Hub::startCalibration(const std::string& pump, double seconds) {
   if (!startJobStep(c)) {
     Msg m = job_->message;
     job_.reset();
-    return Result::fail(422, "cal.start", m.text);
+    return Result::fail(422, m);
   }
-  job_->message = {"cal.running", "Pumpe läuft " + fmt(seconds, 0) + " s in den Messbecher …", json::object()};
+  job_->message = say("cal.running", {{"s", seconds}});
   return Result::ok({{"job", *job_}});
 }
 
@@ -1523,13 +1523,13 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
   if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, "cal.write", "Schreiben in die Pumpe fehlgeschlagen: " + e);
   if (auto it = pumps_.find(pump); it != pumps_.end()) it->second.flowMlPerMin = flow;  // sofort gültig, nicht erst im nächsten Takt
   double prev = jnum(job_->info, "previous");
-  std::string note = isNum(prev) && std::fabs(flow - prev) / prev > 0.3 ? " Deutlich anders als vorher (" + fmt(prev, 1) + ") – Schlauch prüfen." : "";
-  log_.add(clock_.epoch(), "calibration", "info", "Pumpe eingemessen",
-           job_->steps[0].dose.name + ": " + fmt(flow, 1) + " ml/min, gespeichert in der Pumpe." + note,
+  const bool changed = isNum(prev) && std::fabs(flow - prev) / prev > 0.3;
+  const json calArgs{{"name", job_->steps[0].dose.name}, {"flow", flow}, {"prev", numOrNull(prev)}};
+  log_.add(clock_.epoch(), "calibration", "info", say("ev.pump_calibrated"),
+           say(changed ? "ev.pump_calibrated.text_changed" : "ev.pump_calibrated.text", calArgs),
            {{"pump", pump}, {"flowMlPerMin", flow}, {"ml", ml}, {"ms", actual}});
   job_->info["flowMlPerMin"] = flow;
-  finishJob("done", {"cal.done", "Gespeichert in der Pumpe: " + fmt(flow, 1) + " ml/min. Bleibt beim Umstecken erhalten." + note,
-                     json::object()});
+  finishJob("done", say(changed ? "cal.done_changed" : "cal.done", calArgs));
   return Result::ok({{"flowMlPerMin", flow}});
 }
 
@@ -1555,7 +1555,7 @@ Result Hub::prime(const std::string& pump, double seconds) {
   if (!startJobStep(c)) {
     Msg m = job_->message;
     job_.reset();
-    return Result::fail(422, "prime.start", m.text);
+    return Result::fail(422, m);
   }
   return Result::ok({{"job", *job_}});
 }
@@ -1611,8 +1611,9 @@ Result Hub::probeCalibration(const json& j) {
       return Result::fail(422, "probe.invalid", "Kalibrierung unplausibel (Steigung oder Faktor außerhalb) – Sonde oder Puffer prüfen");
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
-    saveConfig("Kalibrierung " + kind + ": " + cfg_.device(dev)->name);
-    log_.add(clock_.epoch(), "calibration", "info", "Sonde kalibriert", cfg_.device(dev)->name + " (" + kind + ")");
+    saveConfig(say("ev.cfg.calibration", {{"kind", kind}, {"name", cfg_.device(dev)->name}}));
+    log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
+             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", kind}}));
     return Result::ok({{"calibration", data}});
   }
   return Result::fail(422, "probe.action", "Unbekannter Schritt");
@@ -1625,7 +1626,7 @@ Result Hub::ackLatch(const std::string& id) {
   if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
   rt_.latches.erase(it);
   stateDirty_ = true;
-  log_.add(clock_.epoch(), "block", "info", "Rastung quittiert", id);
+  log_.add(clock_.epoch(), "block", "info", say("ev.latch_released"), plain(id));
   return Result::ok();
 }
 
@@ -1642,13 +1643,13 @@ Result Hub::stop(const std::string& who) {
   act_.stopAll(cat_, cfg_, clock_.nowMs());
   ec_.reset();
   ph_.reset();
-  if (job_) finishJob("aborted", {"job.stopped", "Durch Not-Halt abgebrochen", json::object()});
+  if (job_) finishJob("aborted", say("job.emergency_stop"));
   const bool first = !stopped_;
   // Saved before the slow socket writes, so a power loss meanwhile keeps the stop.
   stopped_ = true;
   rt_.stopped = true;
   saveState();
-  if (first) log_.add(clock_.epoch(), "system", "alarm", "Not-Halt", "Alle Pumpen und Ausgänge aus. Ausgelöst: " + who);
+  if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
   // A manual emergency stop stops everything, also after a power loss
   // (PD-076). Written on every stop, so pressing it again retries a socket
   // that did not take the setting.
@@ -1659,7 +1660,7 @@ Result Hub::stop(const std::string& who) {
 Result Hub::resume() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (stopped_) {
-    log_.add(clock_.epoch(), "system", "info", "Automatik fortgesetzt", "Not-Halt aufgehoben");
+    log_.add(clock_.epoch(), "system", "info", say("ev.resumed"), say("ev.resumed.text"));
     setFanSockets(true);
   }
   stopped_ = false;
@@ -1672,25 +1673,26 @@ Result Hub::maintenance(double minutes) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (!isNum(minutes) || minutes < 0 || minutes * 60 > kMaxMaintenanceS) return Result::fail(422, "maint.minutes", "0–240 min");
   maintenanceUntil_ = minutes > 0 ? clock_.epoch() + static_cast<Epoch>(minutes * 60) : 0;
-  log_.add(clock_.epoch(), "system", "info", minutes > 0 ? "Pflegemodus" : "Pflegemodus beendet",
-           minutes > 0 ? "Automatik ruht " + fmt(minutes, 0) + " min. Sperren und Sensorwahrheit bleiben aktiv." : "");
+  log_.add(clock_.epoch(), "system", "info", say(minutes > 0 ? "ev.maintenance" : "ev.maintenance_end"),
+           minutes > 0 ? say("ev.maintenance.text", {{"min", minutes}}) : Msg{});
   return Result::ok();
 }
 
 Result Hub::manualMeasure(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  std::string text;
+  json values = json::array();
   for (const char* k : {"ph", "ec"}) {
     double v = jnum(j, k);
     if (isNum(v)) {
       rt_.manual[k] = v;
-      text += std::string(text.empty() ? "" : ", ") + (std::string(k) == "ph" ? "pH " : "EC ") + fmt(v, 2);
+      const bool ph = std::string(k) == "ph";
+      values.push_back(say(ph ? "reading.ph" : "reading.ec", {{"value", v}}));
     }
   }
-  if (text.empty()) return Result::fail(422, "manual.empty", "Kein Wert eingetragen");
+  if (values.empty()) return Result::fail(422, "manual.empty", "Kein Wert eingetragen");
   rt_.manualAt = clock_.epoch();
   stateDirty_ = true;
-  log_.add(clock_.epoch(), "measure", "info", "Handmessung", text);
+  log_.add(clock_.epoch(), "measure", "info", say("ev.manual_reading"), say("ev.manual_reading.text", {{"values", values}}));
   return Result::ok();
 }
 
@@ -1714,8 +1716,8 @@ Result Hub::growStart(const json& j) {
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
   cfg_.grow = g;
-  saveConfig("");
-  log_.add(clock_.epoch(), "grow", "info", "Durchgang gestartet", g.name + " · Phase „" + g.phases[0].name + "“ (Tag 1)");
+  saveConfig({});
+  log_.add(clock_.epoch(), "grow", "info", say("ev.grow.started"), say("ev.grow.started.text", {{"name", g.name}, {"phase", g.phases[0].name}}));
   return Result::ok();
 }
 
@@ -1726,8 +1728,8 @@ Result Hub::growNextPhase() {
   if (g.phase + 1 >= static_cast<int>(g.phases.size())) return Result::fail(409, "grow.last", "Letzte Phase erreicht");
   g.phase++;
   g.phaseStartedAt = clock_.epoch();
-  saveConfig("");
-  log_.add(clock_.epoch(), "grow", "info", "Phasenwechsel", "Phase „" + g.phases[static_cast<size_t>(g.phase)].name + "“");
+  saveConfig({});
+  log_.add(clock_.epoch(), "grow", "info", say("ev.grow.phase"), say("ev.grow.phase.text", {{"phase", g.phases[static_cast<size_t>(g.phase)].name}}));
   return Result::ok();
 }
 
@@ -1736,8 +1738,8 @@ Result Hub::growHarvest() {
   auto& g = cfg_.grow;
   if (g.state != "running") return Result::fail(409, "grow.state", "Kein laufender Durchgang");
   g.harvestedAt = clock_.epoch();  // Ernte ist ein Ereignis, kein Dauerzustand (RAT-077)
-  saveConfig("");
-  log_.add(clock_.epoch(), "grow", "info", "Ernte erfasst", g.name);
+  saveConfig({});
+  log_.add(clock_.epoch(), "grow", "info", say("ev.grow.harvest"), plain(g.name));
   return Result::ok();
 }
 
@@ -1746,8 +1748,8 @@ Result Hub::growComplete() {
   auto& g = cfg_.grow;
   if (g.state != "running") return Result::fail(409, "grow.state", "Kein laufender Durchgang");
   g.state = "completed";
-  saveConfig("");
-  log_.add(clock_.epoch(), "grow", "info", "Durchgang abgeschlossen", g.name);
+  saveConfig({});
+  log_.add(clock_.epoch(), "grow", "info", say("ev.grow.finished"), plain(g.name));
   return Result::ok();
 }
 

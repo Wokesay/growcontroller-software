@@ -201,7 +201,7 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
     offSince_[role] = c.now;
   }
   if (role == "tank.inlet")
-    c.log.add(c.epoch, "tank", "info", on ? "Zulauf auf" : "Zulauf zu", who, {{"role", role}, {"on", on}});
+    c.log.add(c.epoch, "tank", "info", Msg{"", on ? "Zulauf auf" : "Zulauf zu"}, Msg{"", who}, {{"role", role}, {"on", on}});
   return true;
 }
 
@@ -230,11 +230,11 @@ bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& ke
   if (it == cuts_.end()) it = cuts_.emplace(role, Cut{{}, b->device, b->channel, false}).first;
   if (it->second.keys.insert(key).second) {
     if (ok) {
-      c.log.add(c.epoch, type, severity, title, text, {{"role", role}});
+      c.log.add(c.epoch, type, severity, Msg{"", title}, Msg{"", text}, {{"role", role}});
     } else {
       const RoleDef* rd = c.cat.role(role);
-      c.log.add(c.epoch, "block", "alarm", (rd ? rd->label : role) + ": Aus nicht bestätigt",
-                text + " Ausschalten gescheitert: " + e + ".", {{"role", role}, {"device", b->device}});
+      c.log.add(c.epoch, "block", "alarm", Msg{"", (rd ? rd->label : role) + ": Aus nicht bestätigt"},
+                Msg{"", text + " Ausschalten gescheitert: " + e + "."}, {{"role", role}, {"device", b->device}});
     }
   }
   if (!ok) it->second.failed = true;
@@ -272,7 +272,7 @@ void Actuators::enforce(const Ctx& c) {
     }
     if (it->second.failed) {
       const RoleDef* rd = c.cat.role(role);
-      c.log.add(c.epoch, "block", "info", (rd ? rd->label : role) + ": Aus bestätigt", "Der Ausgang ist jetzt aus.", {{"role", role}});
+      c.log.add(c.epoch, "block", "info", Msg{"", (rd ? rd->label : role) + ": Aus bestätigt"}, Msg{"", "Der Ausgang ist jetzt aus."}, {{"role", role}});
       offSince_[role] = c.now;
     }
     onSince_.erase(role);
@@ -454,7 +454,7 @@ void Doser::logOrder(const Ctx& c) {
   if (progress_.state == DoseProgress::State::Aborted && progress_.msDone <= 0) return;  // nichts gelaufen
   bool ok = progress_.state == DoseProgress::State::Done;
   c.log.add(c.epoch, "dose", ok ? "info" : "warn",
-            o.step.name + " · " + fmt(progress_.mlDone, 1) + " ml" + (ok ? "" : " (unvollständig)"), purposeLabel(o.purpose),
+            Msg{"", o.step.name + " · " + fmt(progress_.mlDone, 1) + " ml" + (ok ? "" : " (unvollständig)")}, Msg{"", purposeLabel(o.purpose)},
             {{"canister", o.step.canister},
              {"pump", o.step.pump},
              {"ml", progress_.mlDone},

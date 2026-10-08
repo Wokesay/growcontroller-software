@@ -54,10 +54,18 @@ void reboot(sim::Simulation& s, const json& b) {
   s.control("reboot", b);
 }
 
-bool hasEvent(Client& c, const std::string& title) {
+// An event by its key (SD-032) or its title text, optionally for one output.
+bool sameEvent(const json& e, const std::string& title, const std::string& label = "") {
+  const json& t = e["title"];
+  if (t.is_string()) return t == title;
+  const bool hit = t.value("key", std::string()) == title || t.value("text", std::string()) == title;
+  return hit && (label.empty() || (t.contains("args") && t["args"].value("label", std::string()) == label));
+}
+
+bool hasEvent(Client& c, const std::string& title, const std::string& label = "") {
   const json events = c.ok("GET", "/api/v1/events?limit=2000")["events"];
   for (const auto& e : events)
-    if (e.value("title", std::string()) == title) return true;
+    if (sameEvent(e, title, label)) return true;
   return false;
 }
 
@@ -182,12 +190,12 @@ TEST_CASE("Sockets: a fan socket that keeps \"on after power loss\" is reported"
   fault(s, id, "ignore");  // reports success, stores nothing
   c.ok("DELETE", "/api/v1/roles/zone.exhaust");
   CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);
-  CHECK(hasEvent(c, "Abluft: Dose bleibt „nach Stromausfall an“"));
+  CHECK(hasEvent(c, "ev.net.stays_on", "Abluft"));
   fault(s, id, "offline");
   s.step(2000);
   c.ok("DELETE", "/api/v1/roles/zone.circulation_fan");
   CHECK(outlet(s, id, 2).powerOn == gc::PowerOn::On);
-  CHECK(hasEvent(c, "Umluft: Dose bleibt „nach Stromausfall an“"));
+  CHECK(hasEvent(c, "ev.net.stays_on", "Umluft"));
 }
 
 TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)") {
@@ -207,7 +215,7 @@ TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)"
   CHECK_FALSE(outlet(s, id, 1).on);
   c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
   CHECK(c.state()["stopped"] == true);
-  CHECK(hasEvent(c, "Not-Halt besteht weiter"));
+  CHECK(hasEvent(c, "ev.stop_kept"));
   s.step(60000);
   CHECK_FALSE(outlet(s, id, 1).on);  // the hub does not switch it on either
   c.ok("POST", "/api/v1/resume");
@@ -250,10 +258,10 @@ TEST_CASE("Internal error: everything goes off except the fans (PD-077)") {
   CHECK(outlet(s, id, 1).on);        // exhaust keeps running
   CHECK(outlet(s, id, 2).on);        // circulation fan keeps running
   CHECK_FALSE(outlet(s, id, 3).on);  // circulation pump off
-  CHECK(hasEvent(c, "Interner Fehler – alles aus außer den Lüftern"));
+  CHECK(hasEvent(c, "ev.tick_fault"));
   fault(s, id, "none");
   s.step(2000);
-  CHECK(hasEvent(c, "Steuerung läuft wieder"));
+  CHECK(hasEvent(c, "ev.tick_ok"));
 }
 
 TEST_CASE("Restart without a power loss: fans keep their state, everything else goes off (R6, PD-050)") {
@@ -518,16 +526,16 @@ TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemelde
   s.step(30000);
   auto ev = c.ok("GET", "/api/v1/events?limit=200");
   int n = 0;
-  for (const auto& e : ev["events"]) n += e["title"] == "Gießpumpe aus: Trockenlaufschutz";
+  for (const auto& e : ev["events"]) n += sameEvent(e, "Gießpumpe aus: Trockenlaufschutz");
   CHECK(n == 1);
 }
 
 namespace {
 
-int countEvents(Client& c, const std::string& title) {
+int countEvents(Client& c, const std::string& title, const std::string& label = "") {
   auto ev = c.ok("GET", "/api/v1/events?limit=200");
   int n = 0;
-  for (const auto& e : ev["events"]) n += e["title"] == title;
+  for (const auto& e : ev["events"]) n += sameEvent(e, title, label);
   return n;
 }
 
@@ -686,7 +694,7 @@ TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätig
   c.ok("PUT", "/api/v1/roles/zone.light", {{"device", b}, {"channel", 0}});
   auto ev = c.ok("GET", "/api/v1/events?limit=50");
   bool seen = false;
-  for (const auto& e : ev["events"]) seen = seen || e["title"] == "Licht: Aus nicht bestätigt";
+  for (const auto& e : ev["events"]) seen = seen || sameEvent(e, "ev.off_unconfirmed", "Licht");
   CHECK(seen);
 }
 
@@ -729,7 +737,7 @@ TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
   auto ev = c.ok("GET", "/api/v1/events?limit=50");
   bool capacity = false;
   for (const auto& e : ev["events"])
-    capacity = capacity || (e["title"] == "Zulaufventil: Aus nicht bestätigt" && e["text"].get<std::string>().find("Notgrenze") != std::string::npos);
+    capacity = capacity || (sameEvent(e, "Zulaufventil: Aus nicht bestätigt") && e["text"].value("text", std::string()).find("Notgrenze") != std::string::npos);
   CHECK(capacity);
   // Rastungsgrund bleibt eingefroren (RAT-062)
   CHECK(c.state()["latches"]["inlet.fault"]["why"] == "Füllstand ungültig");
@@ -777,6 +785,7 @@ TEST_CASE("Lösen während „Aus nicht bestätigt“ → Meldung, nicht still")
   REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") == 1; }, 400000));
   c.ok("DELETE", "/api/v1/roles/zone.humidifier");
   s.step(5000);
-  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") == 2);
+  // The second report comes from releasing the assignment (hub, with key).
+  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") + countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 2);
   CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 0);
 }
