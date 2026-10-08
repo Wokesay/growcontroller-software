@@ -234,7 +234,7 @@ listed in every release under "Security".
   internal IDs; a cancelled mix reads "Mix cancelled". The calibration
   window shows the hub's result, including the warning to check the
   tubing when the rate changed clearly, and then offers to calibrate
-  again; a pump chip that reports a rate of 0 no longer counts as a
+  again; a pump that reports a stored rate of 0 no longer counts as a
   previous rate.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in

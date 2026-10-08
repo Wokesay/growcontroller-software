@@ -285,10 +285,14 @@ export class ErrorBoundary extends Component<{ children: ComponentChildren }, { 
     if (!this.state.failed) return this.props.children;
     return (
       <Banner tone="bad">
-        <p>{t("common.renderError")}</p>
-        <button class="btn sm" onClick={() => location.reload()}>
-          {t("common.reload")}
-        </button>
+        <div class="stack-sm">
+          <p>{t("common.renderError")}</p>
+          <div>
+            <button class="btn" onClick={() => location.reload()}>
+              {t("common.reload")}
+            </button>
+          </div>
+        </div>
       </Banner>
     );
   }

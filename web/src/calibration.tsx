@@ -19,6 +19,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   // The running job, or how it ended (e.g. stopped by STOP): the window follows the hub, not the request.
   const job = [st.job, st.lastJob].find((j) => j && j.id === jobId) ?? null;
   const waiting = job?.state === "waiting_user";
+  const ended = job?.state === "failed" || job?.state === "aborted";
 
   useEffect(() => {
     if (!waiting || !simulated.value) return;
@@ -58,7 +59,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           </div>
         </div>
       ) : !waiting ? (
-        <Banner tone={job?.state === "failed" ? "bad" : job?.state === "aborted" ? "warn" : "info"} icon={job?.state === "failed" || job?.state === "aborted" ? undefined : <Beaker size={18} />}>
+        <Banner tone={job?.state === "failed" ? "bad" : job?.state === "aborted" ? "warn" : "info"} icon={ended ? undefined : <Beaker size={18} />}>
           {msg(job?.message) || t("calibration.running")}
         </Banner>
       ) : (
@@ -100,6 +101,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
                 setResult(null);
                 setJobId(null);
                 setMl(null);
+                setSimCup(null);
               }}
             >
               {t("calibration.again")}
@@ -107,6 +109,14 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
           )}
           <button class="btn primary" onClick={p.onClose}>
             {t("common.done")}
+          </button>
+        </div>
+      )}
+      {ended && (
+        <div class="modal-foot">
+          {/* a failed run still holds the job: cancel it, so other jobs can start */}
+          <button class="btn primary" onClick={() => (job?.state === "failed" ? post(`/jobs/${jobId}/abort`).then(refreshState) : Promise.resolve()).then(p.onClose)}>
+            {job?.state === "failed" ? t("common.cancel") : t("common.done")}
           </button>
         </div>
       )}
