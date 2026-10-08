@@ -121,14 +121,14 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.push_back({!env.userJob, say(env.userJob ? "check.job_running" : "check.no_job")});
 
   if (!automation(c, st_)) {
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.auto_off"));
     reset();
     return;
   }
   if (env.calibrating) {
     st_.state = "waiting";
     st_.line = say("ctl.calibrating");
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.calibrating"));
     reset();
     return;
   }
@@ -334,14 +334,14 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.push_back({circOk, say(circOk ? "check.circ_free" : "check.circ_blocked")});
 
   if (!automation(c, st_)) {
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Automatik aus");
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.auto_off"));
     reset();
     return;
   }
   if (env.calibrating) {
     st_.state = "waiting";
     st_.line = say("ctl.calibrating");
-    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, "Sonde wird kalibriert");
+    if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.calibrating"));
     reset();
     return;
   }
@@ -499,7 +499,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("refill.off");
     if (filling_) {
       Msg e;
-      env.act.setRole(c, "tank.inlet", false, "Nachfüllen ausgeschaltet", e);
+      env.act.setRole(c, "tank.inlet", false, say("who.refill_off"), e);
       filling_ = false;
     }
     return;
@@ -523,7 +523,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     }
     if (done || sensorStop || !automation(c, st_)) {
       Msg e;
-      env.act.setRole(c, "tank.inlet", false, "Nachfüllen fertig", e);
+      env.act.setRole(c, "tank.inlet", false, say("who.refill_done"), e);
       filling_ = false;
       cooldownUntil_ = c.epoch + 10 * 60;
       double added = level.usable() ? *level.value - startL_ : kNaN;
@@ -586,7 +586,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   }
   plannedMs_ = static_cast<Ms>(plannedL_ / flow * kMinute);
   Msg e;
-  if (!env.act.setRole(c, "tank.inlet", true, "Nachfüllen", e)) {
+  if (!env.act.setRole(c, "tank.inlet", true, say("who.refill"), e)) {
     st_.state = "blocked";
     st_.line = say("refill.open", {{"reason", e}});
     return;
@@ -630,9 +630,9 @@ void CirculationController::tick(const Ctx& c, ControlEnv& env, bool demand) {
   bool isOn = state && *state;
   Msg e;
   if (desired && !isOn && !inh && !c.stopped) {
-    if (env.act.setRole(c, "tank.circulation", true, "Umwälzen", e)) isOn = true;
+    if (env.act.setRole(c, "tank.circulation", true, say("who.circulation"), e)) isOn = true;
   } else if (!desired && isOn) {
-    env.act.setRole(c, "tank.circulation", false, "Umwälzen", e);
+    env.act.setRole(c, "tank.circulation", false, say("who.circulation"), e);
     isOn = false;
   }
   env.circulationOn = isOn;

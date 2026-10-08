@@ -236,6 +236,11 @@ listed in every release under "Security".
   tubing when the rate changed clearly, and then offers to calibrate
   again; after a failed run, closing the window cancels the run. A pump
   that reports a stored rate of 0 no longer counts as a previous rate.
+  The actuator gateway and the doser follow: why an output or pump may
+  not run (`act.*`), how a dose ended (`dose.*`), switch-off reports and
+  protective cut-offs carry keys, so dose events, "may still be on" and
+  dry-run or inlet cut-offs read in the page language. A latch's `why`
+  is now a message; a state saved before keeps its text.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use

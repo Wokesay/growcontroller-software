@@ -299,7 +299,7 @@ void Hub::tick() {
     act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
     try {
       Ctx c = ctx();
-      doser_.abort(c, act_, "Interner Fehler");
+      doser_.abort(c, act_, say("abort.internal"));
       if (auto fin = doser_.takeFinished()) {
         const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
         if (!controllerDose) onJobDose(c, *fin);
@@ -444,7 +444,7 @@ void Hub::tickImpl() {
       continue;
     }
     Msg e;
-    act_.setRole(c, it->first, false, "Testen", e);
+    act_.setRole(c, it->first, false, say("who.test"), e);
     it = testOff_.erase(it);
   }
   doser_.tick(c, act_);
@@ -830,7 +830,7 @@ Result Hub::removeDevice(const std::string& id) {
     if (const RoleDef* rd = cat_.role(role); rd && !rd->profile.empty()) {
       Msg e;
       Ctx c = ctx();
-      if (!act_.setRole(c, role, false, "Gerät entfernt", e))
+      if (!act_.setRole(c, role, false, say("who.device_removed"), e))
         log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
                  say("ev.off_unconfirmed.device_removed", {{"reason", e}}), {{"role", role}, {"device", id}});
       if (const Binding* b = cfg_.binding(role)) releaseSocket(*rd, *b);
@@ -876,7 +876,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   if (const Binding* old = cfg_.binding(role); old && rd && !rd->profile.empty() && (old->device != device || old->channel != channel)) {
     Msg e;
     Ctx c = ctx();
-    if (!act_.setRole(c, role, false, "Zuordnung geändert", e))
+    if (!act_.setRole(c, role, false, say("who.role_changed"), e))
       log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
                say("ev.off_unconfirmed.old_output", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     releaseSocket(*rd, *old);
@@ -892,7 +892,7 @@ Result Hub::switchRole(const std::string& role, bool on) {
   if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
   Ctx c = ctx();
   Msg e;
-  if (!act_.setRole(c, role, on, "Hand", e)) return Result::fail(409, e);
+  if (!act_.setRole(c, role, on, say("who.manual"), e)) return Result::fail(409, e);
   testOff_.erase(role);
   log_.add(clock_.epoch(), "manual", "info", say(on ? "ev.manual_on" : "ev.manual_off", {{"label", rd->label}}), say("ev.manual.text"),
            {{"role", role}, {"on", on}});
@@ -906,7 +906,7 @@ Result Hub::testRole(const std::string& role) {
   if (act_.roleState(cfg_, role).value_or(false)) return Result::ok();  // läuft schon: nicht nach 3 s abschalten
   Ctx c = ctx();
   Msg e;
-  if (!act_.setRole(c, role, true, "Testen", e)) return Result::fail(409, e);
+  if (!act_.setRole(c, role, true, say("who.test"), e)) return Result::fail(409, e);
   testOff_[role] = c.now + 3 * kSecond;
   return Result::ok();
 }
@@ -958,7 +958,7 @@ Result Hub::unbindRole(const std::string& role) {
     Msg e;
     Ctx c = ctx();
     const Binding* old = cfg_.binding(role);
-    if (old && !act_.setRole(c, role, false, "Zuordnung entfernt", e))
+    if (old && !act_.setRole(c, role, false, say("who.role_removed"), e))
       log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
                say("ev.off_unconfirmed.unassigned", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     if (old) releaseSocket(*rd, *old);
@@ -1462,7 +1462,7 @@ Result Hub::jobAbort(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (!job_ || job_->id != id) return Result::fail(404, "job.unknown", "Auftrag nicht aktiv");
   Ctx c = ctx();
-  if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(c, act_, "Auftrag abgebrochen");
+  if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(c, act_, say("abort.job"));
   if (auto fin = doser_.takeFinished()) onJobDose(c, *fin);
   const json done = amounts(job_->steps);
   const bool none = done.empty();
@@ -1672,7 +1672,7 @@ Result Hub::stop(const Msg& who) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // Not-Halt: aktive Abschaltkaskade, idempotent (RAT-036)
   Ctx c = ctx();
-  if (doser_.busy()) doser_.abort(c, act_, "Not-Halt");
+  if (doser_.busy()) doser_.abort(c, act_, say("abort.stop"));
   if (auto fin = doser_.takeFinished()) {
     // Regler-Gaben gehören nicht zum Nutzerauftrag; die Regler werden unten zurückgesetzt.
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
