@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Geführte Kalibrierung: Pumpe einmessen (Messbecher), pH-Sonde (2 Puffer),
 // EC-Sonde (1 Referenz), Füllstand (Stützpunkte, stückweise linear).
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Beaker, Check, Timer } from "lucide-preact";
 import { get, post, sim, type Msg } from "./api";
 import { num } from "./format";
@@ -20,9 +20,15 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   const job = [st.job, st.lastJob].find((j) => j && j.id === jobId) ?? null;
   const waiting = job?.state === "waiting_user";
   const ended = job?.state === "failed" || job?.state === "aborted";
-  // A failed run stays the app's current job until it is cancelled: every way of closing cancels it.
-  const close = () =>
-    (job?.state === "failed" ? post(`/jobs/${jobId}/abort`).then(refreshState).catch(toastError) : Promise.resolve()).finally(p.onClose);
+  // A failed run stays the app's current job until it is cancelled: every way of closing cancels it,
+  // once, and only while it is still the hub's current job.
+  const closing = useRef(false);
+  const close = () => {
+    if (closing.current) return;
+    closing.current = true;
+    const abort = job?.state === "failed" && st.job?.id === jobId;
+    (abort ? post(`/jobs/${jobId}/abort`).then(refreshState).catch(toastError) : Promise.resolve()).finally(p.onClose);
+  };
 
   useEffect(() => {
     if (!waiting || !simulated.value) return;
