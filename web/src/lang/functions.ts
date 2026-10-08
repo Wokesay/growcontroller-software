@@ -1,6 +1,50 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Texts of one area of the app (#18), German first. de.ts and en.ts merge
 // all areas; en must have every key of de (checked by the compiler).
-export const de = {} as const;
+export const de = {
+  "functions.stage0": "Stufe 0 – Mischen",
+  "functions.stage1": "Stufe 1 – pH/EC",
+  "functions.stage2": "Stufe 2 – Füllstand, Zulauf",
+  "functions.stage3": "Stufe 3 – Gießen",
+  "functions.stage4": "Stufe 4 – Klima",
+  "functions.stage": "Stufe {n}",
+  "functions.phaseOverride": "Wird von der aktiven Phase überschrieben",
+  "functions.firstRecipe": "erstes Rezept",
+  "functions.saved": "Einstellungen gespeichert",
+  "functions.alwaysOn": "Immer verfügbar",
+  "functions.active": "Aktiv",
+  "functions.switchedOn": "{name} eingeschaltet",
+  "functions.switchedOff": "{name} ausgeschaltet",
+  "functions.hardware": "Hardware",
+  "functions.now": "Gerade jetzt",
+  "functions.settingsLater": "Einstellungen erscheinen, sobald die Hardware da ist.",
+  "functions.title": "Was dein System kann",
+  "functions.usable": "{n} nutzbar",
+  "functions.toSetUp": "{n} einzurichten",
+  "functions.needHardware": "{n} brauchen mehr Hardware",
+  "functions.intro": "Der Hub prüft für jede Funktion, ob die nötigen Geräte da, zugeordnet und kalibriert sind. Fehlt etwas, steht hier, was – mit einem Link dorthin.",
+} as const;
 
-export const en: Record<keyof typeof de, string> = {};
+export const en: Record<keyof typeof de, string> = {
+  "functions.stage0": "Stage 0 – Mixing",
+  "functions.stage1": "Stage 1 – pH/EC",
+  "functions.stage2": "Stage 2 – Level and refill",
+  "functions.stage3": "Stage 3 – Watering",
+  "functions.stage4": "Stage 4 – Climate",
+  "functions.stage": "Stage {n}",
+  "functions.phaseOverride": "Set by the active phase",
+  "functions.firstRecipe": "First recipe in the list",
+  "functions.saved": "Settings saved",
+  "functions.alwaysOn": "Always on",
+  "functions.active": "Active",
+  "functions.switchedOn": "{name} switched on",
+  "functions.switchedOff": "{name} switched off",
+  "functions.hardware": "Hardware",
+  "functions.now": "Right now",
+  "functions.settingsLater": "Settings appear once the hardware is there.",
+  "functions.title": "What your system can do",
+  "functions.usable": "{n} usable",
+  "functions.toSetUp": "{n} to set up",
+  "functions.needHardware": "{n} missing hardware",
+  "functions.intro": "For each function the hub checks that the devices it needs are there, assigned and calibrated. If something is missing, it says what here – with a link to it.",
+};

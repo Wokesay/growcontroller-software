@@ -6,10 +6,11 @@ import { useEffect, useState } from "preact/hooks";
 import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-preact";
 import { patch, type FunctionState, type ParamDef } from "../api";
 import { catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
+import { t, type TextKey } from "../i18n";
 import { Button, Card, CheckRow, Field, NumberInput, Pill, Toggle, ctlLabel, ctlTone, route, setupLabel } from "../ui";
 
 const CTL: Record<string, "ec" | "ph" | "refill" | "circulation"> = { ec_control: "ec", ph_control: "ph", refill: "refill", circulation: "circulation" };
-const STAGES = ["Stufe 0 – Mischen", "Stufe 1 – pH/EC", "Stufe 2 – Füllstand, Zulauf", "Stufe 3 – Gießen", "Stufe 4 – Klima"];
+const STAGES: TextKey[] = ["functions.stage0", "functions.stage1", "functions.stage2", "functions.stage3", "functions.stage4"];
 
 function Params(p: { f: FunctionState; defs: ParamDef[] }) {
   const cfg = config.value!;
@@ -20,7 +21,7 @@ function Params(p: { f: FunctionState; defs: ParamDef[] }) {
     <div class="stack">
       <div class="form-grid">
         {p.defs.map((d) => (
-          <Field label={d.label} hint={d.phase && phaseActive ? "Wird von der aktiven Phase überschrieben" : d.min !== undefined ? `${d.min}–${d.max}` : undefined}>
+          <Field label={d.label} hint={d.phase && phaseActive ? t("functions.phaseOverride") : d.min !== undefined ? `${d.min}–${d.max}` : undefined}>
             {d.type === "number" ? (
               <NumberInput value={(vals[d.key] as number) ?? null} onValue={(v) => setVals({ ...vals, [d.key]: v })} unit={d.unit || undefined} />
             ) : d.type === "enum" ? (
@@ -31,7 +32,7 @@ function Params(p: { f: FunctionState; defs: ParamDef[] }) {
               </select>
             ) : (
               <select class="select" value={String(vals[d.key] ?? "")} onChange={(e) => setVals({ ...vals, [d.key]: (e.target as HTMLSelectElement).value })}>
-                <option value="">erstes Rezept</option>
+                <option value="">{t("functions.firstRecipe")}</option>
                 {recipes.value.map((r) => (
                   <option value={r.id}>{r.name}</option>
                 ))}
@@ -48,10 +49,10 @@ function Params(p: { f: FunctionState; defs: ParamDef[] }) {
             const params = Object.fromEntries(Object.entries(vals).filter(([, v]) => v !== null && v !== ""));
             await patch(`/functions/${p.f.id}`, { params });
             await refreshConfig();
-            toast("Einstellungen gespeichert");
+            toast(t("functions.saved"));
           }}
         >
-          Speichern
+          {t("common.save")}
         </Button>
       </div>
     </div>
@@ -83,18 +84,18 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
         </div>
         <div class="row" onClick={(e) => e.stopPropagation()}>
           {p.f.enabled && ctl && <Pill tone={ctlTone(ctl.state)} dot>{ctlLabel[ctl.state]}</Pill>}
-          <Pill tone={p.f.enabled && p.f.setup !== "unavailable" ? "accent" : tone}>{p.f.alwaysOn && p.f.setup !== "unavailable" && p.f.setup !== "needs_setup" ? "Immer verfügbar" : p.f.enabled && !p.f.alwaysOn ? "Aktiv" : label}</Pill>
+          <Pill tone={p.f.enabled && p.f.setup !== "unavailable" ? "accent" : tone}>{p.f.alwaysOn && p.f.setup !== "unavailable" && p.f.setup !== "needs_setup" ? t("functions.alwaysOn") : p.f.enabled && !p.f.alwaysOn ? t("functions.active") : label}</Pill>
           {!p.f.alwaysOn && (
             <Toggle
               checked={p.f.enabled}
               disabled={!canToggle}
-              label={p.f.enabled ? "Ausschalten" : "Einschalten"}
+              label={p.f.enabled ? t("area.turnOff") : t("area.turnOn")}
               onChange={async (v) => {
                 try {
                   await patch(`/functions/${p.f.id}`, { enabled: v });
                   await refreshConfig();
                   await refreshState();
-                  toast(`${p.f.label} ${v ? "eingeschaltet" : "ausgeschaltet"}`);
+                  toast(t(v ? "functions.switchedOn" : "functions.switchedOff", { name: p.f.label }));
                 } catch (e: any) {
                   toast(e.message, "error");
                 }
@@ -107,7 +108,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
         <div class="stack" style="margin-top:12px">
           {hw.length > 0 && (
             <div class="stack-sm">
-              <div class="section-title">Hardware</div>
+              <div class="section-title">{t("functions.hardware")}</div>
               {hw.map((c) => (
                 <CheckRow ok={c.ok} text={c.text} fix={c.fix} />
               ))}
@@ -115,7 +116,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
           )}
           {setup.length > 0 && (
             <div class="stack-sm">
-              <div class="section-title">Einrichtung</div>
+              <div class="section-title">{t("nav.setup")}</div>
               {setup.map((c) => (
                 <CheckRow ok={c.ok} soft={c.soft} text={c.text} fix={c.fix} />
               ))}
@@ -123,7 +124,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
           )}
           {runtime.length > 0 && p.f.setup !== "unavailable" && (
             <div class="stack-sm">
-              <div class="section-title">Gerade jetzt</div>
+              <div class="section-title">{t("functions.now")}</div>
               {runtime.map((c) => (
                 <CheckRow ok={c.ok} text={c.text} />
               ))}
@@ -131,10 +132,10 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             </div>
           )}
           {defs.length > 0 && (p.f.setup === "unavailable" ? (
-            <p class="faint small">Einstellungen erscheinen, sobald die Hardware da ist.</p>
+            <p class="faint small">{t("functions.settingsLater")}</p>
           ) : (
             <div class="stack-sm">
-              <div class="section-title">Einstellungen</div>
+              <div class="section-title">{t("nav.settings")}</div>
               <Params f={p.f} defs={defs} />
             </div>
           ))}
@@ -155,19 +156,19 @@ export function FunctionsPage() {
   const counts = st.functions.reduce((a, f) => ({ ...a, [f.setup]: (a[f.setup] ?? 0) + 1 }), {} as Record<string, number>);
   return (
     <div class="stack">
-      <Card title="Was dein System kann" icon={<SlidersHorizontal size={18} />}>
+      <Card title={t("functions.title")} icon={<SlidersHorizontal size={18} />}>
         <div class="row">
-          <Pill tone="ok">{(counts.ready ?? 0) + (counts.limited ?? 0)} nutzbar</Pill>
-          <Pill tone="warn">{counts.needs_setup ?? 0} einzurichten</Pill>
-          <Pill tone="neutral">{counts.unavailable ?? 0} brauchen mehr Hardware</Pill>
+          <Pill tone="ok">{t("functions.usable", { n: (counts.ready ?? 0) + (counts.limited ?? 0) })}</Pill>
+          <Pill tone="warn">{t("functions.toSetUp", { n: counts.needs_setup ?? 0 })}</Pill>
+          <Pill tone="neutral">{t("functions.needHardware", { n: counts.unavailable ?? 0 })}</Pill>
         </div>
         <p class="muted small" style="margin-top:10px">
-          Der Hub prüft für jede Funktion, ob die nötigen Geräte da, zugeordnet und kalibriert sind. Fehlt etwas, steht hier, was – mit einem Link dorthin.
+          {t("functions.intro")}
         </p>
       </Card>
       {[...byStage.entries()].sort((a, b) => a[0] - b[0]).map(([stage, fns]) => (
         <div class="stack-sm">
-          <div class="section-title">{STAGES[stage] ?? `Stufe ${stage}`}</div>
+          <div class="section-title">{STAGES[stage] ? t(STAGES[stage]) : t("functions.stage", { n: stage })}</div>
           {fns.map((f) => (
             <FunctionRow f={f} open={focus === f.id} />
           ))}

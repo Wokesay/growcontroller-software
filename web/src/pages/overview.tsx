@@ -19,19 +19,19 @@ function WatchdogBar() {
     <div class={`statusbar ${tone}`} data-testid="watchdog">
       <div class="icon-wrap">{tone === "problem" ? <ShieldAlert size={22} /> : <ShieldCheck size={22} />}</div>
       <div class="grow" style="flex:1;min-width:0">
-        <div class="title">{wd.stale ? "Überwachung liefert keine Bewertung" : wd.headline}</div>
+        <div class="title">{wd.stale ? tr("overview.watchdogStale") : wd.headline}</div>
         <div class="muted small">
           {wd.stale
-            ? "Die letzte Bewertung ist älter als 3 Minuten."
+            ? tr("overview.watchdogStaleText")
             : problems.length
               ? problems.slice(0, 3).map((p) => `${p.label}: ${p.text}`).join(" · ")
               : wd.neutral > 0
-                ? `${wd.neutral} Prüfungen ruhen mit Grund. Sperren bleiben aktiv.`
-                : "Sperren und Sensorwahrheit laufen immer, auch ohne laufenden Durchgang."}
+                ? tr("overview.watchdogNeutral", { n: wd.neutral })
+                : tr("overview.watchdogIdle")}
         </div>
       </div>
       <a class="btn sm ghost" href="#/tank">
-        Details
+        {tr("common.details")}
       </a>
     </div>
   );
@@ -44,7 +44,7 @@ function ManualPh() {
     <div class="stack-sm">
       <div class="row">
         <div style="width:120px">
-          <NumberInput value={v} onValue={setV} placeholder="z. B. 6,1" />
+          <NumberInput value={v} onValue={setV} placeholder={tr("overview.phPlaceholder")} />
         </div>
         <Button
           size="sm"
@@ -53,15 +53,15 @@ function ManualPh() {
             await post("/measure", { ph: v });
             setV(null);
             await refreshState();
-            toast("Handmessung gespeichert");
+            toast(tr("overview.manualSaved"));
           }}
         >
-          pH eintragen
+          {tr("overview.enterPh")}
         </Button>
       </div>
       {m?.values?.ph !== undefined && (
         <span class="muted small">
-          Zuletzt von Hand: pH {num(m.values.ph, 2)} · {dateTime(m.at)}
+          {tr("overview.lastManual", { ph: num(m.values.ph, 2), at: dateTime(m.at) })}
         </span>
       )}
     </div>
@@ -99,36 +99,36 @@ export function Overview() {
     <div class="stack">
       {st.stopped && (
         <Banner tone="bad" icon={<OctagonX size={18} />}>
-          <strong>Not-Halt aktiv.</strong> Alle Pumpen und Ausgänge sind aus, die Automatik ruht. Oben rechts „Fortsetzen“, wenn alles geprüft ist.
+          <strong>{tr("overview.stoppedTitle")}</strong> {tr("overview.stoppedText")}
         </Banner>
       )}
       {st.maintenanceUntil > st.now && (
         <Banner tone="warn" icon={<Wrench size={18} />}>
-          Pflegemodus bis {dateTime(st.maintenanceUntil)}: Die Automatik ruht, Sperren und Messungen laufen weiter.
+          {tr("overview.maintenance", { until: dateTime(st.maintenanceUntil) })}
         </Banner>
       )}
       <WatchdogBar />
 
       {job && (
-        <Card title="Gerade läuft" icon={<Beaker size={18} />}>
+        <Card title={tr("overview.running")} icon={<Beaker size={18} />}>
           <JobView job={job} />
         </Card>
       )}
 
       <div class="grid-2">
         <Card
-          title={t?.name ?? "Tank"}
+          title={t?.name ?? tr("setup.tank.h")}
           icon={<Droplets size={18} />}
           actions={
             <a class="btn sm" href="#/mischen">
-              <Beaker size={15} /> Mischen
+              <Beaker size={15} /> {tr("nav.mix")}
             </a>
           }
         >
           <div class="stack">
             <div class="stack-sm">
               <div class="row-between">
-                <span class="muted small">Volumen {st.tank.source === "level" ? "(gemessen)" : "(aus dem letzten Mischlauf)"}</span>
+                <span class="muted small">{st.tank.source === "level" ? tr("overview.volumeMeasured") : tr("overview.volumeFromMix")}</span>
                 <strong>
                   {num(vol, 1)} L{cap ? <span class="faint"> / {num(cap, 0)} L</span> : null}
                 </strong>
@@ -145,19 +145,19 @@ export function Overview() {
                 {hasRole("tank.ec") && <MetricTile label="EC" reading={st.readings["tank.ec"]} color="--ec" band={ecBand} spark={sparks["tank.ec"]} />}
                 {hasRole("tank.water_temp") && (
                   <MetricTile
-                    label="Wasser"
+                    label={tr("common.water")}
                     reading={st.readings["tank.water_temp"]}
                     color="--temp"
                     band={tempFn?.enabled ? [Number(tempFn.params.min_c ?? 18), Number(tempFn.params.max_c ?? 23)] : null}
                     spark={sparks["tank.water_temp"]}
-                    notApplicable={empty ? "Tank leer" : undefined}
+                    notApplicable={empty ? tr("overview.tankEmpty") : undefined}
                   />
                 )}
               </div>
             ) : (
               <div class="stack-sm">
                 <p class="muted">
-                  {st.lastMixAt ? `Zuletzt gemischt ${ago(st.now - st.lastMixAt)}.` : "Noch nicht gemischt."} pH misst du in Stufe 0 von Hand – trag den Wert ein, dann steht er im Verlauf.
+                  {st.lastMixAt ? tr("overview.lastMixed", { ago: ago(st.now - st.lastMixAt) }) : tr("overview.notMixed")} {tr("overview.manualPhHint")}
                 </p>
                 <ManualPh />
               </div>
@@ -165,16 +165,16 @@ export function Overview() {
           </div>
         </Card>
 
-        <Card title="Regelung" icon={<Sprout size={18} />} actions={<a class="btn sm ghost" href="#/tank">Alle Details</a>}>
+        <Card title={tr("overview.control")} icon={<Sprout size={18} />} actions={<a class="btn sm ghost" href="#/tank">{tr("overview.allDetails")}</a>}>
           <div class="stack-sm">
             {hasRole("tank.ec") && <ControllerRow name="EC" st={st.controllers.ec} />}
             {hasRole("tank.ph") && <ControllerRow name="pH" st={st.controllers.ph} />}
-            {hasRole("tank.inlet") && <ControllerRow name="Nachfüllen" st={st.controllers.refill} />}
-            {hasRole("tank.circulation") && <ControllerRow name="Umwälzen" st={st.controllers.circulation} />}
+            {hasRole("tank.inlet") && <ControllerRow name={tr("overview.refill")} st={st.controllers.refill} />}
+            {hasRole("tank.circulation") && <ControllerRow name={tr("overview.circulate")} st={st.controllers.circulation} />}
             {!hasHead && !hasRole("tank.circulation") && (
               <div class="stack-sm">
-                <p class="muted">In Stufe 0 regelt der Hub nichts selbst. Mit dem pH/EC-Sensorkopf misst er dauerhaft und regelt nach.</p>
-                <a href="#/geraete?tab=erweitern">Was kann ich erweitern? →</a>
+                <p class="muted">{tr("overview.stage0Control")}</p>
+                <a href="#/geraete?tab=erweitern">{tr("overview.expandLink")}</a>
               </div>
             )}
           </div>
@@ -193,26 +193,30 @@ export function Overview() {
       )}
 
       <div class="grid">
-        <Card title="Kanister" icon={<FlaskConical size={18} />} actions={<a class="btn sm ghost" href="#/rezepte">Verwalten</a>}>
+        <Card title={tr("overview.bottles")} icon={<FlaskConical size={18} />} actions={<a class="btn sm ghost" href="#/rezepte">{tr("overview.manage")}</a>}>
           <StockList compact />
         </Card>
-        <Card title="Durchgang" icon={<Sprout size={18} />} actions={<a class="btn sm ghost" href="#/tank">Phasen</a>}>
+        <Card title={tr("overview.grow")} icon={<Sprout size={18} />} actions={<a class="btn sm ghost" href="#/tank">{tr("nav.phases")}</a>}>
           {grow.state === "running" ? (
             <div class="stack-sm">
               <div class="row-between">
                 <strong>{grow.name}</strong>
-                <Pill tone="accent">Tag {Math.floor((st.now - grow.startedAt) / 86400) + 1}</Pill>
+                <Pill tone="accent">{tr("overview.day", { n: Math.floor((st.now - grow.startedAt) / 86400) + 1 })}</Pill>
               </div>
               <span class="muted">
-                Phase „{grow.phases[grow.phase]?.name}“ · Tag {Math.floor((st.now - grow.phaseStartedAt) / 86400) + 1} von {grow.phases[grow.phase]?.days || "–"}
+                {tr("overview.phaseLine", {
+                  name: grow.phases[grow.phase]?.name ?? "",
+                  day: Math.floor((st.now - grow.phaseStartedAt) / 86400) + 1,
+                  days: grow.phases[grow.phase]?.days || "–",
+                })}
               </span>
-              <span class="faint small">Phasen liefern nur Zielwerte (pH, EC, Rezept). Ihr Name steuert nichts.</span>
+              <span class="faint small">{tr("overview.phaseNote")}</span>
             </div>
           ) : (
-            <p class="muted">Kein Durchgang aktiv. Für Stufe 0 nicht nötig – Mischen geht immer.</p>
+            <p class="muted">{tr("overview.noGrow")}</p>
           )}
         </Card>
-        <Card title="Letzte Ereignisse" icon={<CircleCheck size={18} />} actions={<a class="btn sm ghost" href="#/verlauf">Alle</a>}>
+        <Card title={tr("overview.recentEvents")} icon={<CircleCheck size={18} />} actions={<a class="btn sm ghost" href="#/verlauf">{tr("common.all")}</a>}>
           <EventList events={events} />
         </Card>
       </div>
