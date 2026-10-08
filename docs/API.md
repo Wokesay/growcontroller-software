@@ -74,7 +74,7 @@ events (`title`, `text`) and errors are messages; a reading's label is
 the catalog label without a key until the catalog follows. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a
-state saved before keeps its plain text; jump locks still give text). The other texts follow under #18 and are still
+state saved before keeps its plain text; jump locks have no `why`). The other texts follow under #18 and are still
 German until then.
 
 When the dosing of a job step cannot start or go on (`/mix/start`,

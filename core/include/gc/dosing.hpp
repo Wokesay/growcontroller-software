@@ -65,7 +65,7 @@ class Actuators {
 
   // Schaltausgänge nur über Rollen (tank.circulation, zone.light …), je nach
   // Gerät am Hub-Ausgang oder an einer Netzsteckdose.
-  // `who` names the cause for the event log (e.g. say("who.refill")).
+  // `who` names the cause; logged for the inlet (e.g. say("who.refill")).
   bool setRole(const Ctx& c, const std::string& role, bool on, const Msg& who, Msg& err);
   std::optional<bool> roleState(const Config& cfg, const std::string& role) const;
   // Warum eine Rolle gerade nicht eingeschaltet werden darf (Einschaltsperre).

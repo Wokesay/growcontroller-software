@@ -474,6 +474,26 @@ Recorded on 2026-10-08 (#18).
 - A test fails when the core can send a key that has no German text in
   the web app.
 
+## SD-033: Gateway and cut-off changes without a logic change merge after the subagents accept them
+
+Decided by the project owner on 2026-10-08. It refines SD-023 for this
+repository until the product session adapts PD-045.
+
+- A technical change to the actuator gateway or to protective cut-offs
+  that changes no logic is merged by Claude under SD-023's other
+  conditions (green CI, no open review threads), once `reviewer`, `qa`
+  and `security` have accepted it with no blocking findings. Examples:
+  messages and texts, signatures, refactoring with unchanged behaviour,
+  tests.
+- `security` confirms in its review that switching behaviour, cut-offs,
+  latches and the emergency stop are unchanged; the PR says so and names
+  the tests.
+- A decision about the logic (what is switched and when, limits, latches,
+  cut-off conditions) is put to the project owner with its reasons, and
+  the PR waits for "mergen".
+- Releases, license and security rules still wait for "mergen" (SD-023).
+
+
 ---
 
 ## Drafts (waiting for "entschieden")

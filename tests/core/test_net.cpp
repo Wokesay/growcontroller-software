@@ -5,9 +5,12 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 #include "client.hpp"
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 
 using gc::json;
 using test::Client;
@@ -741,7 +744,8 @@ TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
   auto ev = c.ok("GET", "/api/v1/events?limit=50");
   bool capacity = false;
   for (const auto& e : ev["events"])
-    capacity = capacity || (sameEvent(e, "ev.off_unconfirmed", "Zulaufventil") && e["text"]["args"]["reason"]["args"]["why"]["key"] == "why.capacity");
+    capacity = capacity || (sameEvent(e, "ev.off_unconfirmed", "Zulaufventil") &&
+                            e.value(json::json_pointer("/text/args/reason/args/why/key"), std::string()) == "why.capacity");
   CHECK(capacity);
   // Rastungsgrund bleibt eingefroren (RAT-062)
   CHECK(c.state()["latches"]["inlet.fault"]["why"]["key"] == "why.level_invalid");
@@ -792,4 +796,90 @@ TEST_CASE("Lösen während „Aus nicht bestätigt“ → Meldung, nicht still")
   // The second report comes from releasing the assignment (hub, with key).
   CHECK(countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 2);
   CHECK(countEvents(c, "ev.off_confirmed", "Befeuchter") == 0);
+}
+
+TEST_CASE("Gateway: refusals name their cause by key (SD-032)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  auto refused = [&](const std::string& role) {
+    auto [st, e] = c.call("POST", "/api/v1/roles/" + role + "/switch", {{"on", true}});
+    CHECK(st == 409);
+    return e["error"];
+  };
+  // Watering pump: level below the minimum (demo: 3 L), then no minimum set
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  s.step(15000);
+  json e = refused("zone.irrigation_pump");
+  CHECK(e["key"] == "act.irrigation.low");
+  CHECK(e["args"]["level"].get<double>() == doctest::Approx(2.0).epsilon(0.1));
+  c.ok("PUT", "/api/v1/tank", {{"minL", nullptr}});
+  CHECK(refused("zone.irrigation_pump")["key"] == "act.irrigation.min_missing");
+  // Humidifier: humidity at the upper limit
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 1}});
+  for (double rh = 56; rh <= 90; rh += 1) {  // slowly, so no jump lock holds the reading
+    s.world().room.rh = rh;
+    s.step(20000);
+  }
+  e = refused("zone.humidifier");
+  CHECK(e["key"] == "act.humidifier.rh_high");
+  CHECK(e["args"]["max"] == 85);
+  // A plug that refuses switching commands
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 2}});
+  fault(s, id, "stuck");
+  e = refused("zone.light");
+  CHECK(e["key"] == "act.output_refused");
+  CHECK_FALSE(e["args"]["error"].get<std::string>().empty());
+}
+
+TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged still cuts and stays latched") {
+  const auto dir = std::filesystem::temp_directory_path() / "gc-test-latch-why";
+  int n = 0;
+  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42)}) {
+    CAPTURE(why.dump());
+    std::filesystem::remove_all(dir);
+    auto o = test::opts("demo");
+    o.dataDir = (dir / std::to_string(n++)).string();
+    std::string id;
+    {
+      sim::Simulation s(o);  // latch the inlet, then save everything
+      Client c{s};
+      c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+      id = addPlug(s, c, "shelly_plug", json::array());
+      c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+      c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+      fault(s, "LVL-77B210", "offline");
+      REQUIRE(until(s, [&] { return c.state()["latches"].contains("inlet.fault"); }, 300000));
+      fault(s, "LVL-77B210", "none");
+      s.step(10000);
+    }
+    {
+      const auto file = std::filesystem::path(o.dataDir) / "state.json";
+      json st = json::parse(std::ifstream(file));
+      st["latches"]["inlet.fault"]["why"] = why;  // as an older version or a damaged file left it
+      std::ofstream(file) << st.dump();
+    }
+    sim::Simulation s(o);  // restart from the saved files
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    CHECK(c.state()["latches"]["inlet.fault"]["why"] == why);
+    outlet(s, id, 0).on = true;  // opened at the plug itself
+    s.step(5000);
+    CHECK_FALSE(outlet(s, id, 0).on);
+    json cut;
+    const json alarms = c.ok("GET", "/api/v1/events?limit=50&type=alarm")["events"];
+    for (const auto& ev : alarms)
+      if (cut.is_null() && sameEvent(ev, "ev.inlet.cutoff")) cut = ev;
+    REQUIRE(cut.is_object());
+    CHECK(cut["text"]["key"] == "ev.inlet.cutoff.latched");
+    CHECK(cut["text"]["args"]["why"] == (why.is_number() ? json(gc::say("ev.inlet.cutoff")) : why));
+    c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+    CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
+  }
+  std::filesystem::remove_all(dir);
 }
