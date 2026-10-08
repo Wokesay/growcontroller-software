@@ -206,7 +206,10 @@ listed in every release under "Security".
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page
   shows them in German, with numbers in the page language. The other
-  hub texts follow.
+  hub texts follow. For API clients: `watchdog.headline` and each item's
+  `label` and `text` in `/state` are now `{key, text, args}` instead of a
+  string; a few line keys are new (`ph.start`, `circ.on_dosing`,
+  `circ.on_always`, `circ.on_interval`, `circ.latched`, `circ.off`).
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use

@@ -463,9 +463,10 @@ Recorded on 2026-10-08 (#18).
 - Every text the core produces (controller lines, checks, monitoring,
   errors, events) carries a stable key, its values as arguments and an
   English text. The English text is what other API clients and logs see.
-- The web app shows a hub text in German through its language table
-  (`msg.<key>` with the arguments) and in English as the hub sends it.
-  The German texts move from the core into the web app.
+- The web app shows a hub text in German through its own table
+  (`web/src/lang/msg.ts`, by the same key, filled with the arguments) and
+  in English as the hub sends it. The German texts move from the core
+  into the web app.
 - Events store key and arguments, so the history follows the page
   language too. Events written before keep their stored text.
 - Numbers in arguments are numbers, not formatted text, so the web app

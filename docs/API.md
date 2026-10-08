@@ -69,8 +69,10 @@ Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 message as an object) and `text` is English for every key in
 `core/src/messages.cpp`. The web app shows German from
 `web/src/lang/msg.ts`. Controller lines, checklist entries and the
-watchdog (`headline`, each item's `label` and `text`) are messages; the
-other texts follow under #18 and are still German until then.
+watchdog (`headline`, each item's `label` and `text`) are messages; a
+reading's label is the catalog label without a key until the catalog
+follows. The other texts follow under #18 and are still German until
+then.
 
 ## Operate
 

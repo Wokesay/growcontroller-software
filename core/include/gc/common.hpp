@@ -69,8 +69,8 @@ std::optional<Stamp> stampFromJson(const json& j);
 // it was (PD-069).
 std::int64_t elapsedS(const Stamp& from, const Stamp& to);
 
-// Klartext mit Schlüssel für spätere Übersetzung (Texte über Schlüssel mit
-// Argumenten, Vorschlag architekt). Der Kern liefert vorerst Deutsch.
+// A text the hub sends: a stable key, its values and the text (SD-032).
+// Texts from core/src/messages.cpp are English; the rest follows (#18).
 struct Msg {
   std::string key;
   std::string text;

@@ -107,6 +107,7 @@ export const msgDe: Record<string, string> = {
   "watch.headline.problem": "1 Problem",
   "watch.headline.problems": "{n} Probleme",
   "watch.headline.ok": "Alles in Ordnung ({n} Prüfungen)",
+  "watch.headline.ok_one": "Alles in Ordnung (1 Prüfung)",
   "watch.headline.none": "Noch nichts zu bewerten",
   "watch.maintenance": "Pflegemodus – Werte werden nicht bewertet",
   "watch.startup": "Anlauf nach Neustart",

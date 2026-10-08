@@ -67,17 +67,26 @@ function parts(file) {
 // msg.ts holds only German (the hub sends English); it has its own tests.
 const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "msg.ts");
 
-// The core's table: one {"key", "template"} per line.
+// The core's table: one {"key", "template"} per line; any other line in
+// the table must be blank or a comment, so no entry is skipped unseen.
 export function coreMessages(text) {
   const out = new Map();
-  for (const m of text.matchAll(/^\s*\{"([^"]+)",\s*"((?:[^"\\]|\\.)*)"\},?\s*$/gm)) {
+  const start = text.indexOf("kMessages[] = {");
+  assert.ok(start > 0, "messages.cpp: kMessages");
+  const body = text.slice(text.indexOf("\n", start) + 1, text.indexOf("\n};", start));
+  for (const line of body.split("\n")) {
+    const m = line.match(/^\s*\{"([^"]+)",\s*"((?:[^"\\]|\\.)*)"\},?\s*$/);
+    if (!m) {
+      assert.match(line, /^\s*(\/\/.*)?$/, `messages.cpp: line not read: ${line.trim()}`);
+      continue;
+    }
     assert.ok(!out.has(m[1]), `messages.cpp: ${m[1]} twice`);
     out.set(m[1], m[2]);
   }
   return out;
 }
 
-const sorted = (text) => [...text.matchAll(/\{(\w+(?::\d)?)\}/g)].map((v) => v[1]).sort().join(",");
+const sorted = (text) => [...new Set([...text.matchAll(/\{(\w+(?::\d)?)\}/g)].map((v) => v[1]))].sort().join(",");
 
 test("the hub's messages have a German text with the same placeholders", () => {
   const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
@@ -93,18 +102,36 @@ test("the hub's messages have a German text with the same placeholders", () => {
 test("every say() in the core names a key of the table", () => {
   const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
   let n = 0;
-  for (const f of readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")) {
-    const text = readFileSync(join(coreSrc, f), "utf8");
+  const sources = [
+    ...readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp").map((f) => join(coreSrc, f)),
+    ...readdirSync(join(root, "core", "include", "gc")).map((f) => join(root, "core", "include", "gc", f)),
+  ];
+  for (const path of sources) {
+    const f = path.slice(root.length + 1);
+    const text = readFileSync(path, "utf8").replace(/^\s*\/\/.*$/gm, "");
     for (const m of text.matchAll(/\bsay\(\s*("([^"]*)"|[^)\s][^,)]*)/g)) {
+      if (f.endsWith("messages.hpp")) continue;
       n++;
-      // A key chosen at run time must be one of several literals in a ternary.
+      // A key chosen at run time: only literals in a ternary, one per branch.
       const literals = m[2] !== undefined ? [m[2]] : [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
-      assert.ok(literals.length > 0, `${f}: say(${m[1]}) without a literal key`);
+      const branches = m[2] !== undefined ? 1 : (m[1].match(/\?/g) ?? []).length + 1;
+      assert.ok(literals.length > 0 && literals.length === branches, `${f}: say(${m[1]}) without a literal key per branch`);
       for (const k of literals) assert.ok(core.has(k), `${f}: say("${k}") is not in messages.cpp`);
     }
   }
   assert.ok(n > 50, "say() calls found");
   assert.equal(sorted("{a:2} {b}"), "a:2,b");
+});
+
+test("no other core text uses a key of the table", () => {
+  // The web app fills a known key with the table's template; a different
+  // text under the same key would show that template with missing values.
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  for (const f of readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")) {
+    const text = readFileSync(join(coreSrc, f), "utf8");
+    const outside = text.replace(/\bsay\(\s*(?:"[^"]*"|[^,)]*)/g, "say(");
+    for (const k of core.keys()) assert.ok(!outside.includes(`"${k}"`), `${f}: "${k}" used outside say()`);
+  }
 });
 
 test("German and English use the same placeholders", () => {

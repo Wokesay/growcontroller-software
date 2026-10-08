@@ -66,11 +66,17 @@ function show(v: unknown, decimals?: number): string {
   if (v === null || v === undefined) return "–";
   if (typeof v === "number") {
     if (!Number.isFinite(v)) return "–";
-    const digits = decimals === undefined ? { maximumFractionDigits: 6 } : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
-    return v.toLocaleString(locale(), { ...digits, useGrouping: false });
+    if (decimals === undefined) return v.toLocaleString(locale(), { maximumFractionDigits: 6, useGrouping: false });
+    // toFixed rounds the exact value like the hub does, so both languages
+    // show the same digits (20.65 → 20.6 / 20,6).
+    const s = v.toFixed(decimals).replace(/^-(0\.?0*)$/, "$1");
+    return lang.value === "de" ? s.replace(".", ",") : s;
   }
-  if (typeof v === "object") return msg(v as Msg);
-  return String(v);
+  if (typeof v === "object") {
+    const m = v as Msg;
+    return !Array.isArray(v) && (m.key || m.text) ? msg(m) : "–";
+  }
+  return typeof v === "string" ? v : "–";
 }
 
 /** Text zum Schlüssel in der aktuellen Sprache, mit {platzhaltern}. */

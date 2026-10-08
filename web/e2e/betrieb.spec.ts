@@ -13,18 +13,25 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   await expect(page.getByTestId("metric-EC")).toBeVisible();
   await expect(page.locator(".ctl")).toHaveCount(4);
   await expect(page.locator(".sim-tag").first()).toBeVisible();
-  // The hub sends English with keys; a German page shows German (SD-032).
+  // The hub sends English with keys; a German page shows German (SD-032),
+  // with numbers in the page language.
   await expect(page.getByTestId("watchdog")).toContainText(/Alles in Ordnung|Problem/);
-  await expect(page.locator(".ctl").first()).toContainText(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus/);
+  const lines = (await page.locator(".ctl .line").allTextContents()).join(" ");
+  expect(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
+  expect(lines).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
+  expect(lines).toMatch(/\d,\d/);
 });
 
 test("English page: monitoring and control lines come in English from the hub (SD-032)", async ({ page }) => {
   await login(page);
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
   await page.reload();
-  await expect(page.getByTestId("watchdog")).toContainText(/All fine|problem/);
-  await expect(page.locator(".ctl").first()).toContainText(/Controlling|Resting|Waiting|Blocked|Needs release|Off/);
+  await expect(page.getByTestId("watchdog")).toContainText(/Everything OK|problem/);
   await expect(page.getByTestId("watchdog")).not.toContainText(/Prüfungen|Probleme/);
+  const lines = (await page.locator(".ctl .line").allTextContents()).join(" ");
+  expect(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
+  expect(lines).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
+  expect(lines).toMatch(/\d\.\d/);
 });
 
 test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {

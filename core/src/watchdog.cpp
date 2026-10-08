@@ -156,7 +156,7 @@ WatchResult evaluate(const WatchInput& in) {
     w.headline = w.problems == 1 ? say("watch.headline.problem") : say("watch.headline.problems", {{"n", w.problems}});
   } else if (w.ok > 0) {
     w.overall = "ok";
-    w.headline = say("watch.headline.ok", {{"n", w.ok}});
+    w.headline = w.ok == 1 ? say("watch.headline.ok_one") : say("watch.headline.ok", {{"n", w.ok}});
   } else {
     w.overall = "neutral";
     w.headline = say("watch.headline.none");
