@@ -6,7 +6,7 @@ import { Beaker, Check, Timer } from "lucide-preact";
 import { get, post, sim, type Msg } from "./api";
 import { num } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { refreshConfig, refreshState, simulated, state, toast } from "./store";
+import { refreshConfig, refreshState, simulated, state, toast, toastError } from "./store";
 import { Banner, Button, Field, Modal, NumberInput } from "./ui";
 
 export function PumpCalibration(p: { pump: string; name: string; onClose: () => void }) {
@@ -20,6 +20,9 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   const job = [st.job, st.lastJob].find((j) => j && j.id === jobId) ?? null;
   const waiting = job?.state === "waiting_user";
   const ended = job?.state === "failed" || job?.state === "aborted";
+  // A failed run stays the app's current job until it is cancelled: every way of closing cancels it.
+  const close = () =>
+    (job?.state === "failed" ? post(`/jobs/${jobId}/abort`).then(refreshState).catch(toastError) : Promise.resolve()).finally(p.onClose);
 
   useEffect(() => {
     if (!waiting || !simulated.value) return;
@@ -29,7 +32,7 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
   }, [waiting]);
 
   return (
-    <Modal title={t("calibration.pumpTitle", { name: p.name })} onClose={p.onClose}>
+    <Modal title={t("calibration.pumpTitle", { name: p.name })} onClose={close}>
       {result !== null ? (
         <Banner tone={result.changed ? "warn" : "ok"} icon={result.changed ? undefined : <Check size={18} />}>
           {msg(result.message)}
@@ -114,9 +117,8 @@ export function PumpCalibration(p: { pump: string; name: string; onClose: () => 
       )}
       {ended && (
         <div class="modal-foot">
-          {/* a failed run still holds the job: cancel it, so other jobs can start */}
-          <button class="btn primary" onClick={() => (job?.state === "failed" ? post(`/jobs/${jobId}/abort`).then(refreshState) : Promise.resolve()).then(p.onClose)}>
-            {job?.state === "failed" ? t("common.cancel") : t("common.done")}
+          <button class="btn primary" onClick={close}>
+            {t("common.done")}
           </button>
         </div>
       )}
