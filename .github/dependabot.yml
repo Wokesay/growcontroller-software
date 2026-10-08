@@ -2,8 +2,7 @@
 # Dependency updates (#29). Actions stay pinned by commit SHA; Dependabot
 # updates the SHA and the version comment (tools/workflows.test.mjs).
 # cooldown: a new release waits a week before it is proposed, so a hijacked
-# release is more likely noticed first. Pull requests that change
-# workflows get the review for CI files.
+# release is more likely noticed first.
 version: 2
 updates:
   - package-ecosystem: github-actions

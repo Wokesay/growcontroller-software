@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Quick checks on every PR and push to main, also for docs-only changes
 # (PD-059): architecture rules, change filter, action pins, C++ SBOM,
-# licenses (reuse lint), dependency licenses. The full CI (ci.yml) skips its heavy jobs for
-# docs-only changes (SD-030).
+# licenses (reuse lint), dependency licenses. The full CI (ci.yml) skips
+# its heavy jobs for docs-only changes (SD-030).
 name: Quick checks
 on:
   push:

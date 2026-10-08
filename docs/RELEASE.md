@@ -1,6 +1,6 @@
 # Versions, changelog, releases, updates
 
-As of 2026-10-07. Basis: `produkt`, `regulatorik`, `software`, `kunde`
+As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 (agents of the product repository). An assessment, not legal advice.
 
 ## Versions
@@ -69,8 +69,15 @@ entry under `[Unreleased]`.
      cooldown of 7 days.
    - Anyone can check a download: `gh attestation verify <file> --repo
      Wokesay/growcontroller-software`.
-   Simulator downloads belong only to Beta releases, not to Stable
-   (PD-036); `release.yml` does not yet tell the channels apart.
+   - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
+     the statically linked compiler runtimes; the web app embedded in the
+     simulator is in the web SBOM. Dependabot does not cover
+     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
+     are updated by hand.
+   - If `publish` fails after the release was created, delete the
+     unfinished release (not the tag) and run the job again.
+   - Simulator downloads belong only to Beta releases, not to Stable
+     (PD-036); `release.yml` does not yet tell the channels apart (#19).
 3. **Firmware** (once `firmware/` builds):
    - CI builds the ESP-IDF image and the SBOM (`idf.py sbom-create`).
      The Stable image is built without simulation code (PD-036).

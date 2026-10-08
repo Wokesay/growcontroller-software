@@ -19,8 +19,15 @@ test("every pinned header of cmake/deps.cmake is found with version and hash", (
   for (const d of found) {
     assert.match(d.version, /^\d+\.\d+\.\d+$/, d.name);
     assert.match(d.sha256, /^[0-9a-f]{64}$/, d.name);
-    assert.ok(deps.includes(d.sha256), d.name);
   }
+  assert.equal(found[0].sha256, "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6");
+});
+
+test("a call that cannot be read stops the SBOM instead of dropping out", () => {
+  const upper = deps.replace("9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6", "9BEA4C8066EF4A1C206B2BE5A36302F8926F7FDC6087AF5D20B417D0CF103EA6");
+  assert.throws(() => parseDeps(upper), /3 gc_fetch_header calls, 2 understood/);
+  const noVersion = deps.replace("nlohmann/json/v3.11.3/", "nlohmann/json/develop/");
+  assert.throws(() => parseDeps(noVersion), /nlohmann_json: no GitHub release URL/);
 });
 
 test("the SBOM lists the shipped libraries, not the test framework", () => {
@@ -33,8 +40,10 @@ test("the SBOM lists the shipped libraries, not the test framework", () => {
   assert.equal(json.version, "3.11.3");
   assert.equal(json.purl, "pkg:github/nlohmann/json@v3.11.3");
   assert.equal(json.hashes[0].alg, "SHA-256");
-  assert.ok(deps.includes(json.hashes[0].content));
-  assert.equal(json.licenses[0].license.id, "MIT");
+  assert.equal(json.hashes[0].content, "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6");
+  // As in THIRD_PARTY_NOTICES.md: MIT with parts under CC0 and Apache-2.0
+  assert.deepEqual(json.licenses, [{ expression: "MIT AND CC0-1.0 AND Apache-2.0" }]);
+  assert.deepEqual(byName["cpp-httplib"].licenses, [{ license: { id: "MIT" } }]);
 });
 
 test("an unknown dependency stops the build instead of an incomplete SBOM", () => {

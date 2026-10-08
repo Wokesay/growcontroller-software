@@ -57,7 +57,12 @@ only the sync workflow may write there.
    `anthropics/claude-code-action` on the Actions allow list, pinned by
    commit SHA, because only actions created by GitHub are allowed
    (SD-027).
-3. **Before the first public release tag:** release hardening (#29).
+3. **Before the first public release tag:** the rest of the release
+   hardening (#29): immutable releases after a test pre-release, the
+   `espressif/idf` container by digest, `reuse` from a hashed
+   requirements file, the triage template. Done: read-only build jobs,
+   tag on `main`, actions pinned by SHA with Dependabot, provenance,
+   C++ SBOM.
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 
