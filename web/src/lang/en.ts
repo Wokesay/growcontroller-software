@@ -1,8 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // English texts. Every key of de.ts must exist here (checked by the compiler).
-import type { de } from "./de";
+import type { de, deBase } from "./de";
+import { en as login } from "./login";
+import { en as settings } from "./settings";
+import { en as recipes } from "./recipes";
+import { en as shell } from "./shell";
+import { en as overview } from "./overview";
+import { en as mix } from "./mix";
+import { en as tank } from "./tank";
+import { en as functions } from "./functions";
+import { en as history } from "./history";
+import { en as devices } from "./devices";
+import { en as calibration } from "./calibration";
+import { en as widgets } from "./widgets";
+import { en as sim } from "./sim";
+import { en as areas } from "./areas";
+import { en as setup } from "./setup";
 
-export const en: Record<keyof typeof de, string> = {
+const base: Record<keyof typeof deBase, string> = {
   "app.tagline": "Plant automation",
   "common.back": "Back",
   "common.next": "Next",
@@ -252,3 +267,6 @@ export const en: Record<keyof typeof de, string> = {
   "area.tankLevel": "Level",
   "area.irrigationNeedsLevel": "The watering pump only runs with a valid level above the minimum level – otherwise it runs dry. This needs the level sensor.",
 };
+
+// The base texts plus the texts of each area (#18).
+export const en: Record<keyof typeof de, string> = { ...base, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup };

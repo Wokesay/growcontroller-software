@@ -1,7 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { de as login } from "./login";
+import { de as settings } from "./settings";
+import { de as recipes } from "./recipes";
+import { de as shell } from "./shell";
+import { de as overview } from "./overview";
+import { de as mix } from "./mix";
+import { de as tank } from "./tank";
+import { de as functions } from "./functions";
+import { de as history } from "./history";
+import { de as devices } from "./devices";
+import { de as calibration } from "./calibration";
+import { de as widgets } from "./widgets";
+import { de as sim } from "./sim";
+import { de as areas } from "./areas";
+import { de as setup } from "./setup";
+
 // Deutsche Texte der App. Schlüssel sind stabil; die englische Tabelle
 // (en.ts) muss jeden Schlüssel haben. Platzhalter in {geschweiften Klammern}.
-export const de = {
+export const deBase = {
   // Allgemein
   "app.tagline": "Pflanzenautomatisierung",
   "common.back": "Zurück",
@@ -261,3 +277,6 @@ export const de = {
   "area.tankLevel": "Füllstand",
   "area.irrigationNeedsLevel": "Die Gießpumpe läuft nur mit gültigem Füllstand über dem Mindestfüllstand – sonst läuft sie trocken. Dafür braucht es den Füllstandssensor.",
 } as const;
+
+// The base texts plus the texts of each area (#18).
+export const de = { ...deBase, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup };
