@@ -33,7 +33,7 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
             variant="primary"
             disabled={!complete || twice}
             onClick={async () => {
-              await post("/recipes/template", { id: p.tpl.id, map });
+              await post("/recipes/template", { id: p.tpl.id, map, lang: lang.value });
               await refreshConfig();
               toast(t("recipes.tpl.done", { name: tName(p.tpl) }));
               p.onClose();

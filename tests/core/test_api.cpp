@@ -208,6 +208,43 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}}).first == 404);
 }
 
+TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto recipe = [&](const gc::json& id) {
+    const auto cfg = c.ok("GET", "/api/v1/config");
+    for (const auto& r : cfg["recipes"])
+      if (r["id"] == id) return r;
+    return gc::json();
+  };
+  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  auto veg = recipe(c.ok("POST", "/api/v1/recipes/template",
+                         {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"]);
+  CHECK(veg["name"] == "Vegetative wk 1–4 (per Athena A01.004)");
+  CHECK(veg["note"].get<std::string>().find("Manufacturer data, not binding") != std::string::npos);
+  // The request names the language of the page, which may differ from the hub's
+  auto basic = recipe(c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "de"}})["id"]);
+  CHECK(basic["name"] == "Zweikomponenten-Dünger");
+  CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "fr"}}).first == 422);
+}
+
+TEST_CASE("Templates: missing canisters are named and matched in the language of the request (#32)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "en"}});
+  CHECK(st == 422);
+  CHECK(err["missing"] == gc::json::array({"Part B", "Part A", "CalMag"}));
+  // English canister names match the template's English part names
+  for (const char* n : {"Part A", "Part B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
+  auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "en"}});
+  const auto cfg = c.ok("GET", "/api/v1/config");
+  REQUIRE(cfg["recipes"].size() == 1);
+  CHECK(cfg["recipes"][0]["id"] == j["id"]);
+  CHECK(cfg["recipes"][0]["steps"].size() == 3);
+}
+
 TEST_CASE("System: Sprache nur de oder en") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
