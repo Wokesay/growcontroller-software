@@ -105,7 +105,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
             </>
           }
         >
-          <Field label={t("setup.tank.name")} hint={t("devices.nameHint")}>
+          <Field label={t("common.name")} hint={t("devices.nameHint")}>
             <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
         </Modal>
