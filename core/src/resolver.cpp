@@ -93,7 +93,12 @@ struct Eval {
       return;
     }
     out.push_back({"setup", true, false, rd->label + " zugeordnet", "roles", {}});
-    if (r.calibrated && cap->kind == "measure") {
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat.deviceClass(dev->cls) : nullptr;
+    if (r.calibrated && cap->kind == "measure" && dc && dc->externalCalibration) {
+      // Calibrated elsewhere; the hub cannot calibrate it and has not checked it (RAT-025).
+      out.push_back({"setup", false, false, rd->label + ": außerhalb des Hubs kalibriert – vom Hub nicht geprüft", "", {}});
+    } else if (r.calibrated && cap->kind == "measure") {
       std::string kind = rd->capability == "measure.ph" ? "ph" : rd->capability == "measure.ec" ? "ec" : "tank_curve";
       const json* cal = cfg.calibration(b->device, kind);
       double probe = kind == "tank_curve" ? 1.0 : 7.0;
@@ -104,8 +109,16 @@ struct Eval {
     }
     if (cap->kind == "measure") {
       const Reading& rd2 = truth.get(r.role);
-      out.push_back({"runtime", rd2.usable(), false,
-                     rd2.usable() ? cap->label + " gültig" : cap->label + ": " + rd2.reason.text, "", {}});
+      // Calibrated elsewhere: where the role needs a calibration, the setup line
+      // above says so already (one cause, one line); elsewhere this line does,
+      // in the resolver's wording
+      const bool elsewhere = rd2.reason.key == kCalibratedElsewhere;
+      if (!(elsewhere && r.calibrated))
+        out.push_back({"runtime", rd2.usable(), false,
+                       rd2.usable()  ? cap->label + " gültig"
+                       : elsewhere   ? cap->label + ": außerhalb des Hubs kalibriert – vom Hub nicht geprüft"
+                                     : cap->label + ": " + rd2.reason.text,
+                       "", {}});
     } else {
       bool on = deviceOnline(b->device);
       out.push_back({"runtime", on, false, on ? rd->label + " erreichbar" : rd->label + ": Gerät antwortet nicht", "", {}});

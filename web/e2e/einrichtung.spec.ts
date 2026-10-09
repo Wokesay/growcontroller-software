@@ -97,3 +97,47 @@ test("Einrichtung zeigt vorhandene Rezepte und schaltet auf Englisch", async ({ 
   await page.getByRole("tab", { name: "Deutsch" }).click();
   await expect(page.getByRole("heading", { name: "Willkommen" })).toBeVisible();
 });
+
+test("Setup: a pH calibrated outside the hub needs nothing here and is no missing probe", async ({ page, request }) => {
+  await scenario(request, "demo");
+  // The Home Assistant trial: a pH device the hub cannot calibrate, and no probe head of the hub's own
+  await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const cat = await res.json();
+    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"] };
+    await route.fulfill({ response: res, json: cat });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")), { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" }];
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await login(page);
+  await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
+  await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
+});
+
+test("Read-only trial (Home Assistant): after the password the app opens, not the setup for dosing hardware", async ({ page, request }) => {
+  await scenario(request, "neu");
+  // gc_ha_server announces itself as read-only; the setup asks for a dosing block it cannot have
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
+    await route.fulfill({ response: res, json: info });
+  });
+  await page.goto("/");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way back into it
+  // The overview points to the devices waiting to be accepted
+  await page.getByTestId("new-devices-link").click();
+  await expect(page).toHaveURL(/#\/geraete/);
+  await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
+  await page.unroute(/\/api\/v1\/info(\?|$)/);
+});

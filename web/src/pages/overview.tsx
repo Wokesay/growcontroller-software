@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Übersicht: auf einen Blick, ob alles läuft, was gerade passiert und was zu tun ist.
 import { useEffect, useState } from "preact/hooks";
-import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";
+import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, PackagePlus, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";
 import { get, post, type HubEvent } from "../api";
 import { ago, dateTime, num } from "../format";
 import { catalog, config, hasRole, refreshState, state, tank, toast } from "../store";
@@ -94,6 +94,7 @@ export function Overview() {
   const vol = st.tank.volumeL;
   const cap = st.tank.capacityL;
   const grow = st.grow;
+  const newDevices = st.devices.filter((d) => !d.configured && d.online).length;
 
   return (
     <div class="stack">
@@ -105,6 +106,14 @@ export function Overview() {
       {st.maintenanceUntil > st.now && (
         <Banner tone="warn" icon={<Wrench size={18} />}>
           {tr("overview.maintenance", { until: dateTime(st.maintenanceUntil) })}
+        </Banner>
+      )}
+      {newDevices > 0 && (
+        <Banner tone="info" icon={<PackagePlus size={18} />}>
+          {newDevices === 1 ? tr("devices.newOne") : tr("devices.newMany", { n: newDevices })} {tr("devices.acceptHint")}{" "}
+          <a href="#/geraete" data-testid="new-devices-link">
+            {tr("overview.toDevices")}
+          </a>
         </Banner>
       )}
       <WatchdogBar />

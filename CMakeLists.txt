@@ -100,6 +100,26 @@ if(GC_BUILD_SIM)
   if(WIN32)
     target_link_libraries(gc_sim_server PRIVATE ws2_32)
   endif()
+
+  # Read-only spike: the core next to Home Assistant (docs/HOME_ASSISTANT.md)
+  add_library(gc_ha STATIC ha/ha_bus.cpp)
+  target_include_directories(gc_ha PUBLIC ha)
+  target_link_libraries(gc_ha PUBLIC gc_core)
+  target_compile_options(gc_ha PRIVATE ${GC_WARN})
+  add_library(gc_ha_net STATIC ha/ha_client.cpp)
+  target_link_libraries(gc_ha_net PUBLIC gc_ha Threads::Threads)
+  # httplib.h: relaxed warnings as for the simulator's server
+  if(NOT MSVC)
+    target_compile_options(gc_ha_net PRIVATE -Wall -Wextra)
+  endif()
+  add_executable(gc_ha_server ha/main.cpp)
+  target_link_libraries(gc_ha_server PRIVATE gc_ha_net gc_sim)
+  if(NOT MSVC)
+    target_compile_options(gc_ha_server PRIVATE -Wall -Wextra)
+  endif()
+  if(WIN32)
+    target_link_libraries(gc_ha_net PUBLIC ws2_32)
+  endif()
 endif()
 
 if(GC_BUILD_TESTS)
@@ -118,8 +138,9 @@ if(GC_BUILD_TESTS)
     tests/core/test_scenarios.cpp
     tests/core/test_net.cpp
     tests/core/test_climate.cpp
-    tests/core/test_messages.cpp)
-  target_link_libraries(gc_tests PRIVATE gc_sim)
+    tests/core/test_messages.cpp
+    tests/core/test_ha.cpp)
+  target_link_libraries(gc_tests PRIVATE gc_sim gc_ha_net)
   if(NOT MSVC)
     target_compile_options(gc_tests PRIVATE -Wall -Wextra)
   endif()

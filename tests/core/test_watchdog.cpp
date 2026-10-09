@@ -39,6 +39,22 @@ TEST_CASE("Watchdog: Wert im Band → OK") {
   CHECK(f.item(w, "band.ph")->status == "ok");
 }
 
+TEST_CASE("Watchdog: a value calibrated outside the hub says so; a problem only where a function needs it (RAT-015, RAT-021)") {
+  Fix f;
+  f.cfg.functions["ph_control"].enabled = false;
+  Reading& ph = f.readings["tank.ph"];
+  ph.quality = Quality::Uncalibrated;
+  ph.reason = say(kCalibratedElsewhere);
+  auto w = f.eval();
+  CHECK(f.item(w, "reading.tank.ph")->status == "neutral");
+  CHECK(f.item(w, "reading.tank.ph")->text.key == "watch.reading.external");
+  CHECK(w.overall != "problem");
+  f.cfg.functions["ph_control"].enabled = true;
+  w = f.eval();
+  CHECK(f.item(w, "reading.tank.ph")->status == "problem");
+  CHECK(f.item(w, "reading.tank.ph")->text.key == "watch.reading.external");  // not "not calibrated": the hub cannot calibrate it
+}
+
 TEST_CASE("Watchdog: ungültiger Wert ist ein Problem, nie neutral (M9-1, RAT-015)") {
   Fix f;
   f.readings["tank.ph"].quality = Quality::Offline;

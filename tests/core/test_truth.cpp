@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include "fakes.hpp"
+#include "gc/embedded.hpp"
 #include "gc/truth.hpp"
 
 using namespace gc;
@@ -138,4 +139,78 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {0.502, 3.0}}}}, err));  // < 3 mV
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}}}}, err));
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 5.0}, {1.0, 3.0}}}}, err));
+}
+
+TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_ph"] = {{"label", "pH from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.ph"}}};
+  j["deviceClasses"]["ext_temp"] = {{"label", "Temperature from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.water_temp"}}};
+  j["deviceClasses"]["ext_ph"]["externalCalibration"] = true;  // ignored: the catalog cannot loosen this (R7)
+  CHECK_FALSE(Catalog::fromJson(j).deviceClass("ext_ph")->externalCalibration);
+  Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_ph"].externalCalibration = true;  // set in code, as the Home Assistant adapter does
+  cat.deviceClasses["ext_temp"].externalCalibration = true;
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  SensorTruth truth{cat};
+  cfg.devices = {{"HA-PH", "ext_ph", "pH"}, {"HA-T", "ext_temp", "Water"}};
+  cfg.tank().roles["tank.ph"] = {"HA-PH", 0};
+  cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
+  bus.head("HA-PH");
+  bus.head("HA-T");
+  bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+  bus.set("HA-T", "measure.water_temp", 21.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  const auto& r = truth.get("tank.ph");
+  REQUIRE(r.value.has_value());
+  CHECK(*r.value == doctest::Approx(6.2));  // shown
+  CHECK(r.quality == Quality::Uncalibrated);
+  CHECK(r.reason.key == kCalibratedElsewhere);  // the key the watchdog and the web app look for
+  CHECK_FALSE(r.usable());                  // no value for control
+  CHECK(truth.get("tank.water_temp").quality == Quality::Ok);  // needs no calibration anyway
+  // A calibration stored for it changes nothing: the hub has not checked the one in use
+  cfg.calibrations["HA-PH"]["ph"] = {{"points", {{7.0, 7.0}, {4.0, 4.0}}}};
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK_FALSE(truth.get("tank.ph").usable());
+  // Freshness, plausibility and jumps still apply, so a broken probe shows as broken (RAT-021)
+  clk.ms += 1000;
+  bus.set("HA-PH", "measure.ph", 12.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Implausible);
+  auto steady = [&](double v, int minutes) {
+    for (int i = 0; i < minutes; ++i) {
+      clk.ms += 60 * 1000;
+      bus.set("HA-PH", "measure.ph", v, clk.ms);
+      truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+    }
+  };
+  // No standstill check: what arrives is rounded and calibrated, not a raw
+  // signal, and a steady tank is no fault (RAT-059); freshness covers silence
+  steady(6.2, 17);
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK_FALSE(truth.get("tank.ph").usable());
+  clk.ms += 61 * 1000;  // not reported again
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Stale);
+  // A jump locks as for any probe (RAT-039) ...
+  bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  clk.ms += 60 * 1000;
+  bus.set("HA-PH", "measure.ph", 7.4, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Jump);
+  CHECK(rt.jumpLocks.count("tank.ph") == 1);
+  steady(7.4, 16);
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK(rt.jumpLocks.count("tank.ph") == 0);
+  // ... and an announced change, such as calibrating in maintenance mode, explains it (RAT-042)
+  truth.expectChange("tank.ph", clk.nowMs() + 5 * 60 * 1000);
+  clk.ms += 1000;
+  bus.set("HA-PH", "measure.ph", 6.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK(rt.jumpLocks.count("tank.ph") == 0);
+  CHECK_FALSE(truth.get("tank.ph").usable());
 }

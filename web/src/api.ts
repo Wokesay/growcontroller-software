@@ -22,7 +22,7 @@ export type Port = { port: number; state: "empty" | "checking" | "ok" | "fault" 
 export type Device = {
   id: string; class: string; classLabel: string; name: string; configured: boolean; online: boolean;
   port: number; slot: number; parent: string; fw: string; fault: string;
-  info: { flowMlPerMin?: number | null; ip?: string; outlets?: { on: boolean | null; powerW: number | null }[] };
+  info: { flowMlPerMin?: number | null; ip?: string; entity?: string; outlets?: { on: boolean | null; powerW: number | null }[] };
   calibrations: Record<string, number>;
 };
 
@@ -101,7 +101,7 @@ export type Catalog = {
 
 export type Info = {
   product: string; version: string; api: number; catalogVersion: number; schemaVersion: number;
-  platform: { kind: string; simulated?: boolean; scenario?: string }; setupDone: boolean; hasPassword: boolean; name: string;
+  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean }; setupDone: boolean; hasPassword: boolean; name: string;
 };
 
 export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: Msg; text: Msg; data: Record<string, any> };

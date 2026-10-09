@@ -8,6 +8,21 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant, read-only spike** (`docs/HOME_ASSISTANT.md`): a
+  server (`gc_ha_server`) runs the core next to Home Assistant, reads
+  mapped sensor entities (pH, EC, water and air temperature, level in L,
+  humidity, CO2) through its REST API, runs them through the sensor truth
+  and serves the web app. It switches nothing and only reads states from
+  Home Assistant. pH, EC and level from it are shown but are no values for
+  control, since the hub has not checked a calibration done in Home
+  Assistant (RAT-025); the hub offers no calibration of its own for them.
+  A missing unit (except pH) or an unreadable report time gives no value.
+  A refused token stops reading until restart, so Home Assistant does not
+  ban the computer. Their tiles say "display only" with the value's age
+  instead of "not calibrated", the monitoring says "calibrated outside the
+  hub", and the setup step does not ask for a probe calibration. The
+  setup for the hub's own dosing hardware is not offered on a read-only
+  hub.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub
@@ -208,6 +223,12 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **The overview points to devices waiting to be accepted:** a banner
+  names how many were detected and links to Devices.
+- **Probe calibration accepts only the kinds a device class offers**
+  (RAT-025): a pH calibration on an EC head, for example, is refused with
+  `probe.not_offered` instead of starting a calibration session that
+  paused control on that device for 10 min.
 - **The hub speaks English with keys** (#18, SD-032): controller lines,
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page

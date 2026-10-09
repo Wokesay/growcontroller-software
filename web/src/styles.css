@@ -208,6 +208,7 @@ small, .small { font-size: 0.85rem; }
 .metric-foot { display: flex; align-items: center; justify-content: space-between; gap: 2px 8px; flex-wrap: wrap; font-size: 0.78rem; color: var(--faint); }
 .metric-foot span { min-width: 0; overflow-wrap: anywhere; }
 .metric-reason { font-size: 0.82rem; color: var(--bad); font-weight: 600; overflow-wrap: anywhere; }
+.metric-note { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
 .metric .spark { display: block; height: 34px; width: 100%; max-width: 100%; }
 .band { font-size: 0.78rem; color: var(--muted); }
 .gauge { position: relative; height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }

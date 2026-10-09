@@ -245,8 +245,8 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Rule:** Control functions read only the validity state of the sensor-truth layer. Without a valid calibration (pH: two buffer points with a plausible slope; EC: factor between 0.5 and 2) a reading is "uncalibrated": the raw value may be shown, but nothing regulates on it. Out-of-range results are reported as invalid, never clamped to 0.
 - **Why:** Clamping turns a defect into a plausible-looking number, and a frozen or invalid value that is still numeric passes every simple guard. Control must stop on its existing safe path instead of acting on such values.
 - **Evidence:** Observed on the reference installation (2026): clamping turned a 3.5 V raw signal, i.e. a defect, into a clean-looking pH 0, and four control loops (water heater, humidity, CO2, nutrients) had no check against frozen or stale readings.
-- **Implemented in:** core/include/gc/readmodel.hpp, core/include/gc/truth.hpp, core/src/truth.cpp, docs/INVARIANTS.md
-- **Tests:** tests/core/test_truth.cpp "Sensorwahrheit: ohne gültige Kalibrierung kein Wert für die Regelung (RAT-025)"
+- **Implemented in:** core/include/gc/readmodel.hpp, core/include/gc/truth.hpp, core/src/truth.cpp, docs/INVARIANTS.md; a value calibrated outside the hub (`DeviceClassDef::externalCalibration`, set only in code by `ha/ha_bus.cpp`) is shown but never usable, and the hub refuses calibration kinds a device class does not offer (`core/src/hub.cpp`)
+- **Tests:** tests/core/test_truth.cpp "Sensorwahrheit: ohne gültige Kalibrierung kein Wert für die Regelung (RAT-025)", "Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)"; tests/core/test_ha.cpp "Home Assistant: pH is shown, but not used for control until the hub has checked it (RAT-025)"; tests/core/test_scenarios.cpp (probe calibration of a kind not offered); web/e2e/betrieb.spec.ts "A value calibrated outside the hub shows for display only, with its age, not as a fault (RAT-025)"
 
 
 ### RAT-026 – Validity limits come from the calibration, not from a guess
@@ -561,8 +561,8 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Rule:** The software checks separately whether a sensor still delivers (age of the last sample → "stale") and whether its raw value has stopped moving ("frozen"). The standstill check applies only where change is expected: pH and EC raw values, which normally show noise, are flagged after more than 15 min without change. Calm or coarsely rounded channels such as water temperature get no standstill check.
 - **Why:** A rounded or very quiet signal that does not change is not a fault; flagging it produces false alarms that teach users to ignore warnings. A sensor that stops reporting is still caught by the freshness check.
 - **Evidence:** Observed on the reference installation (2026): a water temperature reported in 0.1 °C steps stayed on one value for more than 60 min twenty times in 14 days (up to 211 min) with a full tank and a working sensor; an air temperature sensor with 0.1 °C resolution stood still for up to 182 min. None of them had a gap in delivery.
-- **Implemented in:** `core/src/truth.cpp` (`SensorTruth::update`, `expectsNoise`, `kFrozenAfter`), `core/include/gc/readmodel.hpp` (`Quality::Stale`, `Quality::Frozen`)
-- **Tests:** `tests/core/test_truth.cpp` – "Sensorwahrheit: veraltet und unplausibel", "Sensorwahrheit: stillstehender Rohwert wird erkannt"
+- **Implemented in:** `core/src/truth.cpp` (`SensorTruth::update`, `expectsNoise`, `kFrozenAfter`; no standstill check for a value calibrated outside the hub, which arrives rounded, not raw), `core/include/gc/readmodel.hpp` (`Quality::Stale`, `Quality::Frozen`)
+- **Tests:** `tests/core/test_truth.cpp` – "Sensorwahrheit: veraltet und unplausibel", "Sensorwahrheit: stillstehender Rohwert wird erkannt", "Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)"
 
 
 ### RAT-060 – Mains outlets protect themselves; no heater without an emergency shutdown

@@ -260,7 +260,9 @@ void Hub::detectDevices() {
       const DeviceCfg* known = cfg_.device(id);
       Msg where = d && d->slot >= 0 ? say("where.slot", {{"n", d->slot + 1}})
                   : d && d->port > 0 ? say("where.port", {{"n", d->port}})
-                  : dc && dc->attach == "net" ? say("where.net") : say("where.hub");
+                  : dc && dc->attach == "net" ? say("where.net")
+                  : dc && dc->attach == "ha"  ? say("where.ha")
+                                              : say("where.hub");
       json label = dc ? json(dc->label) : json(say("device.unnamed"));
       Msg title = say(known ? "ev.device.back" : "ev.device.found", {{"label", label}});
       Msg text = say("ev.device.where", {{"where", where}});
@@ -1603,6 +1605,10 @@ Result Hub::probeCalibration(const json& j) {
   if (!cfg_.device(dev)) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
   std::string cap = kind == "ph" ? "measure.ph" : kind == "ec" ? "measure.ec" : kind == "tank_curve" ? "measure.level" : "";
   if (cap.empty()) return Result::fail(422, "probe.kind", "Unbekannte Kalibrierung");
+  // Only kinds the device class offers; a device calibrated elsewhere offers none.
+  const DeviceClassDef* dc = cat_.deviceClass(cfg_.device(dev)->cls);
+  if (!dc || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
+    return Result::fail(422, "probe.not_offered", "Dieses Gerät lässt sich hier nicht kalibrieren");
   std::string key = dev + ":" + kind;
   if (action == "start") {
     probeSessions_[key] = {{"device", dev}, {"kind", kind}, {"points", json::array()}};

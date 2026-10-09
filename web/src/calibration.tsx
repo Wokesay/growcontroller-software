@@ -152,7 +152,12 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
   const reading = st.readings[role];
 
   useEffect(() => {
-    post("/probe", { device: p.device, kind: p.kind, action: "start" }).then(() => setStarted(true));
+    post("/probe", { device: p.device, kind: p.kind, action: "start" })
+      .then(() => setStarted(true))
+      .catch((e) => {
+        toastError(e);
+        p.onClose();
+      });
     return () => {
       if (simulated.value && p.kind !== "tank_curve") sim("probe", { kind: p.kind, buffer: null }).catch(() => {});
     };

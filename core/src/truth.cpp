@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 const char* qualityName(Quality q) {
@@ -203,23 +205,36 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       tr.lastRaw = s->raw;
       tr.lastRawChange = now;
     }
-    auto value = calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
     bool needsCal = !calibrationKind(role.capability).empty();
+    // Calibrated elsewhere (e.g. in Home Assistant): shown, but the hub has
+    // not checked that calibration, so it is no value for control (RAT-025).
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
+    const bool calibratedElsewhere = needsCal && dc && dc->externalCalibration;
+    auto value = calibratedElsewhere ? std::nullopt : calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
     if (value) r.value = value;
-    else if (needsCal && role.capability != "measure.level") r.value = s->raw;  // Anzeige, nicht für Regelung
+    else if (calibratedElsewhere || (needsCal && role.capability != "measure.level")) r.value = s->raw;  // Anzeige, nicht für Regelung
 
+    // Plausibility and jumps are judged on the value in its unit: the hub's
+    // calibration of the raw value, or a value calibrated elsewhere, which is
+    // already in pH, mS/cm or L, so an implausible or jumping one still shows
+    // (RAT-021). Standstill is judged on the raw signal (RAT-023); a value
+    // calibrated elsewhere has none, only a rounded result, which may rightly
+    // stay the same, so it gets no standstill check and freshness covers
+    // silence (RAT-059).
+    const std::optional<double> assessed = calibratedElsewhere ? std::optional<double>(s->raw) : value;
     if (r.ageMs > static_cast<Ms>(cap->maxAgeS * 1000.0)) {
       setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
            {{"ageS", r.ageMs / 1000}});
-    } else if (!value) {
+    } else if (!assessed) {
       setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
-    } else if (expectsNoise(role.capability) && now - tr.lastRawChange > kFrozenAfter) {
+    } else if (expectsNoise(role.capability) && !calibratedElsewhere && now - tr.lastRawChange > kFrozenAfter) {
       setQ(Quality::Frozen, "truth.frozen", "Wert steht seit über 15 min still – Sonde prüfen");
-    } else if ((isNum(cap->plausMin) && *value < cap->plausMin) || (isNum(cap->plausMax) && *value > cap->plausMax)) {
+    } else if ((isNum(cap->plausMin) && *assessed < cap->plausMin) || (isNum(cap->plausMax) && *assessed > cap->plausMax)) {
       setQ(Quality::Implausible, "truth.implausible",
-           cap->label + " " + fmt(*value, cap->decimals) + " außerhalb " + fmt(cap->plausMin, 1) + "–" +
+           cap->label + " " + fmt(*assessed, cap->decimals) + " außerhalb " + fmt(cap->plausMin, 1) + "–" +
                fmt(cap->plausMax, 1),
-           {{"value", *value}, {"min", cap->plausMin}, {"max", cap->plausMax}});
+           {{"value", *assessed}, {"min", cap->plausMin}, {"max", cap->plausMax}});
     } else {
       // Sprungsperre: Änderung größer als die Schwelle innerhalb von 5 min ohne
       // Erklärung durch eine eigene Gabe → gesperrt bis 15 min Ruhe.
@@ -230,16 +245,16 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         if (isNum(cap->jump) && !explained && !tr.window.empty()) {
           auto [mn, mx] = std::minmax_element(tr.window.begin(), tr.window.end(),
                                               [](const auto& a, const auto& c) { return a.second < c.second; });
-          double from = std::fabs(*value - mn->second) > std::fabs(*value - mx->second) ? mn->second : mx->second;
-          if (std::fabs(*value - from) > cap->jump) {
+          double from = std::fabs(*assessed - mn->second) > std::fabs(*assessed - mx->second) ? mn->second : mx->second;
+          if (std::fabs(*assessed - from) > cap->jump) {
             rt.jumpLocks[roleId] = epoch + kJumpHoldS;
-            json lockInfo = {{"from", from}, {"to", *value}, {"at", epoch}};
+            json lockInfo = {{"from", from}, {"to", *assessed}, {"at", epoch}};
             rt.latches["jump." + roleId] = lockInfo;
             tr.window.clear();  // neuer Bezugswert; frei 15 min nach dem letzten Sprung
           }
         }
         if (explained) tr.window.clear();
-        tr.window.emplace_back(s->ts, *value);
+        tr.window.emplace_back(s->ts, *assessed);
       }
       auto lock = rt.jumpLocks.find(roleId);
       if (lock != rt.jumpLocks.end() && epoch < lock->second) {
@@ -253,9 +268,14 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
           rt.jumpLocks.erase(lock);
           rt.latches.erase("jump." + roleId);
           tr.window.clear();
-          tr.window.emplace_back(s->ts, *value);
+          tr.window.emplace_back(s->ts, *assessed);
         }
-        setQ(Quality::Ok, "truth.ok", "Gültig");
+        if (calibratedElsewhere) {  // passed every check, but its calibration is not the hub's
+          r.quality = Quality::Uncalibrated;
+          r.reason = say("truth.external");  // kCalibratedElsewhere (tested)
+        } else {
+          setQ(Quality::Ok, "truth.ok", "Gültig");
+        }
       }
     }
     readings_[roleId] = r;

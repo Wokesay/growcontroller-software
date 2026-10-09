@@ -11,6 +11,7 @@
 | [HISTORY.md](HISTORY.md) | Measurement series in 3 tiers, event log, export |
 | [API.md](API.md) | REST API v1, access, live channel |
 | [SIMULATOR.md](SIMULATOR.md) | Digital twin, numbers and sources, fault switches |
+| [HOME_ASSISTANT.md](HOME_ASSISTANT.md) | Read-only spike: the core next to Home Assistant |
 | [TESTING.md](TESTING.md) | Test strategy, levels, running the tests |
 | [RELEASE.md](RELEASE.md) | Versions, changelog, releases, OTA, support obligations |
 | [SECURITY_MODEL.md](SECURITY_MODEL.md) | Threat model, EN 18031/CRA implementation |

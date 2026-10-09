@@ -3,7 +3,7 @@
 // Zuordnung der Messstellen und Ausgänge, „Erweitern“.
 import { useEffect, useState } from "preact/hooks";
 import { Link2, PackagePlus, Pencil, Plug, Trash2 } from "lucide-preact";
-import { del, patch, post, probeKinds, put, type Device } from "../api";
+import { del, patch, post, probeKinds, put, type Device, type ProbeKind } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { msg, t } from "../i18n";
@@ -239,7 +239,8 @@ export function DevicesPage() {
     if (q.cal) {
       const [dev, kind] = decodeURIComponent(q.cal).split(":");
       const d = st.devices.find((x) => x.id === dev);
-      if (d) setCal({ d, kind });
+      // Only a kind the device offers; a device calibrated elsewhere offers none
+      if (d && probeKinds(catalog.value, d.class).includes(kind as ProbeKind)) setCal({ d, kind });
     }
   }, [q.tab, q.pump, q.cal]);
   const newOnes = st.devices.filter((d) => !d.configured && d.online);

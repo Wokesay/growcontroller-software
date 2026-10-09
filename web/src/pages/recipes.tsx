@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, RefreshCw, ScrollText, 
 import { del, post, type Canister, type Recipe, type RecipeTemplate } from "../api";
 import { lang, t, type TextKey } from "../i18n";
 import { num } from "../format";
-import { canisters, catalog, recipes, refreshConfig, refreshState, state, toast } from "../store";
+import { canisters, catalog, readOnly, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
 
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0", "#9a8a2c", "#6b7280"];
@@ -51,9 +51,11 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
         {nutrients.length === 0 ? (
           <Banner tone="warn">
             {t("recipes.tpl.noCanisters")}{" "}
-            <a href="#/einrichtung?s=3" onClick={() => navigate("/einrichtung?s=3")}>
-              {t("recipes.tpl.toSetup")}
-            </a>
+            {!readOnly.value && (
+              <a href="#/einrichtung?s=3" onClick={() => navigate("/einrichtung?s=3")}>
+                {t("recipes.tpl.toSetup")}
+              </a>
+            )}
           </Banner>
         ) : (
           <table class="table">

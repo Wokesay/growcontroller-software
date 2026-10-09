@@ -183,6 +183,7 @@ const base: Record<keyof typeof deBase, string> = {
   "setup.cal.pumps": "Pumps",
   "setup.cal.probes": "Probes",
   "setup.cal.noProbes": "No pH/EC probe and no level sensor detected – you measure pH by hand.",
+  "setup.cal.external": "{name}: calibrated outside the hub – nothing to do here.",
   "setup.cal.notYet": "not calibrated yet",
   "setup.cal.again": "Again",
   "setup.cal.calibrate": "Calibrate",
@@ -241,6 +242,7 @@ const base: Record<keyof typeof deBase, string> = {
   "setup.start.zoneHint": "e.g. \"Basement\" or \"South greenhouse\"",
 
   "port.wifi": "Wi-Fi · {ip}",
+  "port.ha": "Home Assistant · {entity}",
   "port.outlet": "Outlet {n}",
   "port.socket": "Socket",
   "net.title": "Smart plugs (Wi-Fi)",

@@ -188,6 +188,7 @@ export const deBase = {
   "setup.cal.pumps": "Pumpen",
   "setup.cal.probes": "Sonden",
   "setup.cal.noProbes": "Keine pH/EC-Sonde und kein Füllstandssensor erkannt – pH misst du dann von Hand.",
+  "setup.cal.external": "{name}: wird außerhalb des Hubs kalibriert – hier nichts zu tun.",
   "setup.cal.notYet": "noch nicht eingemessen",
   "setup.cal.again": "Erneut",
   "setup.cal.calibrate": "Einmessen",
@@ -250,6 +251,7 @@ export const deBase = {
 
   // Netzsteckdosen
   "port.wifi": "WLAN · {ip}",
+  "port.ha": "Home Assistant · {entity}",
   "port.outlet": "Dose {n}",
   "port.socket": "Steckdose",
   "net.title": "Schaltbare Steckdosen (WLAN)",
