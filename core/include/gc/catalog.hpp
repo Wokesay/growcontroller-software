@@ -27,6 +27,9 @@ struct DeviceClassDef {
   int stage = 0;
   int slots = 0;     // Pumpen-Ports eines Dosierblocks
   int channels = 0;  // Kanäle eines Ausgangsmoduls
+  // The device reports calibrated values itself (e.g. a sensor in Home
+  // Assistant calibrated there), so the hub applies no calibration of its own.
+  bool externalCalibration = false;
   std::vector<std::string> provides, calibrations, accepts;
 };
 

@@ -167,6 +167,7 @@ constexpr Entry kMessages[] = {
     {"where.port", "Port {n}"},
     {"where.net", "On your Wi-Fi"},
     {"where.hub", "Built into the hub"},
+    {"where.ha", "In Home Assistant"},
     {"device.unnamed", "Unknown device"},
     {"net.not_confirmed", "not confirmed in the device"},
     {"reading.ph", "pH {value:2}"},

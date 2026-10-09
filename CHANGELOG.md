@@ -8,6 +8,13 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant, read-only spike** (`docs/HOME_ASSISTANT.md`): a
+  server (`gc_ha_server`) runs the core next to Home Assistant, reads
+  mapped sensor entities (pH, EC, water and air temperature, level in L,
+  humidity, CO2) through its REST API, runs them through the sensor truth
+  and serves the web app. It switches nothing. Device classes can mark
+  that the device calibrates itself (`externalCalibration`); the sensor
+  truth then takes the value as it is and keeps all other checks.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub

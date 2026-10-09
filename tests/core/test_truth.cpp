@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include "fakes.hpp"
+#include "gc/embedded.hpp"
 #include "gc/truth.hpp"
 
 using namespace gc;
@@ -138,4 +139,30 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {0.502, 3.0}}}}, err));  // < 3 mV
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}}}}, err));
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 5.0}, {1.0, 3.0}}}}, err));
+}
+
+TEST_CASE("Sensor truth: a device that calibrates itself reports its value as it is (Home Assistant)") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_ph"] = {{"label", "pH from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.ph"}},
+                                  {"externalCalibration", true}};
+  Catalog cat = Catalog::fromJson(j);
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  SensorTruth truth{cat};
+  cfg.devices = {{"HA-PH", "ext_ph", "pH"}};
+  cfg.tank().roles["tank.ph"] = {"HA-PH", 0};
+  bus.head("HA-PH");
+  bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  const auto& r = truth.get("tank.ph");
+  CHECK(r.quality == Quality::Ok);
+  REQUIRE(r.value.has_value());
+  CHECK(*r.value == doctest::Approx(6.2));
+  // The other checks still apply: a value outside the plausible range is no value for control.
+  bus.set("HA-PH", "measure.ph", 12.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Implausible);
+  CHECK_FALSE(truth.get("tank.ph").usable());
 }

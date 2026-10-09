@@ -55,6 +55,7 @@ core/      C++17 core, platform-neutral: catalog, configuration, sensor truth,
            resolver, mixing, actuator gateway, controllers, watchdog, history, events, API
 catalog/   device catalog as data (capabilities, device classes, roles, functions)
 sim/       simulator: twin (ports, dosing block, heads, tank) and host server
+ha/        read-only spike: the core next to Home Assistant (docs/HOME_ASSISTANT.md)
 web/       web app (Preact, TypeScript, Vite) and end-to-end tests (Playwright)
 tests/     C++ tests: unit, API contract, scenarios against the twin
 firmware/  plan and skeleton for the ESP32-S3 (ESP-IDF)

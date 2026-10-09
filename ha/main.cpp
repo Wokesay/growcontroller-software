@@ -1,0 +1,251 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Read-only spike: the hub's core on a computer next to Home Assistant
+// (docs/HOME_ASSISTANT.md). It reads the mapped sensor entities, runs them
+// through the sensor truth and serves the web app; it switches nothing.
+// The HTTP part follows the simulator's server (sim/main.cpp).
+#include <atomic>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <sstream>
+#include <thread>
+
+#include <httplib.h>
+
+#include "gc/api.hpp"
+#include "gc/embedded.hpp"
+#include "gc/hub.hpp"
+#include "ha_bus.hpp"
+#include "ha_client.hpp"
+#include "scenario.hpp"  // sim::FileStorage
+
+namespace {
+
+std::atomic<bool> g_running{true};
+void onSignal(int) { g_running = false; }
+
+// Wall time from the computer. Assumption: its operating system keeps the
+// time synced (NTP), so the time counts as secured (PD-073).
+class HostClock : public gc::IClock {
+ public:
+  gc::Ms nowMs() const override {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
+  }
+  gc::Epoch epoch() const override {
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  }
+  bool secured() const override { return true; }
+
+ private:
+  std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
+};
+
+void randomBytes(std::uint8_t* p, size_t n) {
+  static std::random_device rd;
+  for (size_t i = 0; i < n; ++i) p[i] = static_cast<std::uint8_t>(rd());
+}
+
+std::string tokenOf(const httplib::Request& req) {
+  auto auth = req.get_header_value("Authorization");
+  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
+  auto cookie = req.get_header_value("Cookie");
+  auto pos = cookie.find("gc_session=");
+  if (pos == std::string::npos) return {};
+  auto end = cookie.find(';', pos);
+  return cookie.substr(pos + 11, end == std::string::npos ? std::string::npos : end - pos - 11);
+}
+
+gc::ApiRequest toApi(const httplib::Request& req) {
+  gc::ApiRequest r;
+  r.method = req.method;
+  r.path = req.path;
+  for (const auto& [k, v] : req.params) r.query[k] = v;
+  r.body = req.body;
+  r.token = tokenOf(req);
+  return r;
+}
+
+std::string readFile(const std::string& path) {
+  std::ifstream f(path);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  return ss.str();
+}
+
+void usage() {
+  std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
+            << "  --config FILE       mapping: {\"url\": \"http://homeassistant.local:8123\", \"entities\": [...]}\n"
+            << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
+            << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
+            << "  --port N            HTTP port (8090)\n"
+            << "  --host ADR          address (127.0.0.1)\n"
+            << "  --web DIR           built web app (web/dist)\n"
+            << "  --every S           seconds between two reads (5)\n";
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  std::string config, tokenFile, data = "growcontroller-ha-data", host = "127.0.0.1", web = "web/dist";
+  int port = 8090;
+  int everyS = 5;
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    auto next = [&]() -> std::string {
+      if (i + 1 >= argc) {
+        usage();
+        std::exit(2);
+      }
+      return argv[++i];
+    };
+    if (a == "--config") config = next();
+    else if (a == "--token-file") tokenFile = next();
+    else if (a == "--data") data = next();
+    else if (a == "--port") port = std::stoi(next());
+    else if (a == "--host") host = next();
+    else if (a == "--web") web = next();
+    else if (a == "--every") everyS = std::max(1, std::stoi(next()));
+    else if (a == "--help" || a == "-h") {
+      usage();
+      return 0;
+    } else {
+      std::cerr << "Unknown option " << a << "\n";
+      usage();
+      return 2;
+    }
+  }
+  if (config.empty()) {
+    usage();
+    return 2;
+  }
+  std::string err;
+  const auto mapping = ha::parseMapping(gc::json::parse(readFile(config), nullptr, false), err);
+  if (!err.empty()) {
+    std::cerr << config << ": " << err << "\n";
+    return 2;
+  }
+  std::string token = tokenFile.empty() ? (std::getenv("GC_HA_TOKEN") ? std::getenv("GC_HA_TOKEN") : "") : readFile(tokenFile);
+  while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
+  if (token.empty()) {
+    std::cerr << "No token: --token-file FILE or GC_HA_TOKEN\n";
+    return 2;
+  }
+
+  const gc::Catalog cat = ha::catalog();
+  HostClock clock;
+  ha::HaBus bus(mapping.entities);
+  sim::FileStorage store(data);
+  gc::Hub hub(cat, bus, store, clock, randomBytes);
+  hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
+  hub.boot();
+  gc::Api api(hub, clock);
+  ha::Poller poller(bus, mapping.url, token, [&clock] { return clock.nowMs(); });
+  token.clear();
+
+  httplib::Server svr;
+  if (!svr.bind_to_port(host, port)) {
+    std::cerr << "Port " << port << " not available\n";
+    return 1;
+  }
+  svr.set_default_headers({{"X-Content-Type-Options", "nosniff"},
+                           {"X-Frame-Options", "DENY"},
+                           {"Referrer-Policy", "no-referrer"},
+                           {"Content-Security-Policy",
+                            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                            "connect-src 'self'; frame-ancestors 'none'"}});
+  svr.set_payload_max_length(1 << 20);
+  svr.set_pre_routing_handler([&](const httplib::Request& req, httplib::Response& res) {
+    const bool ok = gc::hostAllowed(req.get_header_value("Host"), host) &&
+                    gc::writeAllowed(req.method, req.get_header_value("Sec-Fetch-Site"), req.get_header_value("Origin"),
+                                     req.get_header_value("Host"));
+    if (ok) return httplib::Server::HandlerResponse::Unhandled;
+    res.status = 403;
+    res.set_content(R"({"error":{"key":"api.origin","text":"Request from a foreign origin refused"}})", "application/json");
+    return httplib::Server::HandlerResponse::Handled;
+  });
+  auto apiHandler = [&](const httplib::Request& req, httplib::Response& res) {
+    gc::ApiResponse r;
+    {
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      r = api.handle(toApi(req));
+    }
+    res.status = r.status;
+    for (const auto& [k, v] : r.headers) res.set_header(k, v);
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(r.body, r.contentType);
+  };
+  svr.Get("/api/v1/events/stream", [&](const httplib::Request& req, httplib::Response& res) {
+    {
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      if (!api.authorized(toApi(req))) {
+        res.status = 401;
+        return;
+      }
+    }
+    std::string tok = tokenOf(req);
+    res.set_header("Cache-Control", "no-store");
+    res.set_chunked_content_provider("text/event-stream", [&hub, &api, tok](size_t, httplib::DataSink& sink) {
+      std::string msg;
+      {
+        std::lock_guard<std::recursive_mutex> l(hub.mutex());
+        gc::ApiRequest r;
+        r.token = tok;
+        if (!api.authorized(r)) return false;
+        msg = "event: state\ndata: " + hub.state().dump() + "\n\n";
+      }
+      if (!sink.write(msg.data(), msg.size())) return false;
+      for (int i = 0; i < 10 && g_running; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      return g_running.load();
+    });
+  });
+  svr.Get(R"(/api/v1/.*)", apiHandler);
+  svr.Post(R"(/api/v1/.*)", apiHandler);
+  svr.Put(R"(/api/v1/.*)", apiHandler);
+  svr.Patch(R"(/api/v1/.*)", apiHandler);
+  svr.Delete(R"(/api/v1/.*)", apiHandler);
+  const bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html");
+  if (haveWeb) svr.set_mount_point("/", web);
+  svr.Get(R"(/(?!api/).*)", [&](const httplib::Request&, httplib::Response& res) {
+    if (!haveWeb) {
+      res.set_content("Web app not built: cd web && npm ci && npm run build", "text/plain; charset=utf-8");
+      return;
+    }
+    res.set_content(readFile((std::filesystem::path(web) / "index.html").string()), "text/html; charset=utf-8");
+  });
+
+  std::signal(SIGINT, onSignal);
+  std::signal(SIGTERM, onSignal);
+  poller.start(std::chrono::seconds(everyS));
+  std::thread loop([&] {
+    int flushCounter = 0;
+    while (g_running) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      hub.tick();
+      if (++flushCounter >= 50) {  // every 10 s
+        flushCounter = 0;
+        hub.flush();
+        store.flush();
+      }
+    }
+    svr.stop();
+  });
+
+  std::cout << "growcontroller on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
+            << "\nReading " << mapping.entities.size() << " entities from " << mapping.url << " every " << everyS << " s\n"
+            << std::flush;
+  svr.listen_after_bind();
+  g_running = false;
+  loop.join();
+  poller.stop();
+  {
+    std::lock_guard<std::recursive_mutex> l(hub.mutex());
+    hub.flush();
+  }
+  store.flush();
+  return 0;
+}

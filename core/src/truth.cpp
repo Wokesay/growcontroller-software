@@ -203,8 +203,13 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       tr.lastRaw = s->raw;
       tr.lastRawChange = now;
     }
-    auto value = calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
-    bool needsCal = !calibrationKind(role.capability).empty();
+    // A device that calibrates itself reports the value as it is.
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
+    const bool external = dc && dc->externalCalibration;
+    auto value = external ? std::optional<double>(s->raw)
+                          : calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
+    bool needsCal = !external && !calibrationKind(role.capability).empty();
     if (value) r.value = value;
     else if (needsCal && role.capability != "measure.level") r.value = s->raw;  // Anzeige, nicht für Regelung
 
