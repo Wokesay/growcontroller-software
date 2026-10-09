@@ -35,8 +35,7 @@ test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen",
   await expect.poll(async () => (await outlet()).switchOns).toBeGreaterThan(before);
   await expect.poll(async () => (await outlet()).on, { timeout: 10_000 }).toBe(false);
   const ev = await (await page.request.get("/api/v1/events?limit=50")).json();
-  // Titles are messages (SD-032); gateway events still carry plain text until they get keys.
-  const off = (e: { title: { key: string; text: string } }) =>
-    e.title.key === "ev.off_unconfirmed" || e.title.text.startsWith("Umwälzpumpe aus") || e.title.text.includes("Aus nicht bestätigt");
+  // Neither a failed switch-off nor a cut-off of the circulation pump, by key (SD-032).
+  const off = (e: { title: { key: string } }) => ["ev.off_unconfirmed", "ev.circ.off", "ev.circ.dry"].includes(e.title.key);
   expect(ev.events.filter(off)).toHaveLength(0);
 });

@@ -5,9 +5,13 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <random>
 
 #include "client.hpp"
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 
 using gc::json;
 using test::Client;
@@ -500,7 +504,7 @@ TEST_CASE("Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klart
   s.step(2000);
   auto [st, e] = c.call("POST", "/api/v1/roles/zone.light/switch", {{"on", true}});
   CHECK(st == 409);
-  CHECK(e["error"]["text"].get<std::string>().find("nicht erreichbar") != std::string::npos);
+  CHECK(e["error"]["key"] == "act.net.unreachable");
 }
 
 TEST_CASE("Gießpumpe: fällt der Füllstand im Lauf unter den Mindestfüllstand, geht sie aus") {
@@ -530,7 +534,7 @@ TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemelde
   s.step(30000);
   auto ev = c.ok("GET", "/api/v1/events?limit=200");
   int n = 0;
-  for (const auto& e : ev["events"]) n += sameEvent(e, "Gießpumpe aus: Trockenlaufschutz");
+  for (const auto& e : ev["events"]) n += sameEvent(e, "ev.irrigation.off");
   CHECK(n == 1);
 }
 
@@ -548,15 +552,15 @@ int countEvents(Client& c, const std::string& title, const std::string& label = 
 // bleibt an. Danach Störung weg: Hub schaltet aus und meldet es einmal.
 void checkCutNotConfirmed(sim::Simulation& s, Client& c, const std::string& id, const std::string& label,
                           const std::string& okTitle, gc::Ms settle = 60000) {
-  REQUIRE(until(s, [&] { return countEvents(c, label + ": Aus nicht bestätigt") > 0; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", label) > 0; }, 400000));
   s.step(settle);
   CHECK(outlet(s, id, 0).on);
-  CHECK(countEvents(c, label + ": Aus nicht bestätigt") == 1);
+  CHECK(countEvents(c, "ev.off_unconfirmed", label) == 1);
   CHECK(countEvents(c, okTitle) == 0);
   fault(s, id, "none");
   REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));
   s.step(5000);
-  CHECK(countEvents(c, label + ": Aus bestätigt") == 1);
+  CHECK(countEvents(c, "ev.off_confirmed", label) == 1);
 }
 
 }  // namespace
@@ -570,7 +574,7 @@ TEST_CASE("Gießpumpe: Ausschalten scheitert → einmal „Aus nicht bestätigt�
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
   fault(s, id, "stuck");  // Schaltbefehle scheitern, die Dose bleibt an
   fault(s, "LVL-77B210", "offline");
-  checkCutNotConfirmed(s, c, id, "Gießpumpe", "Gießpumpe aus: Trockenlaufschutz");
+  checkCutNotConfirmed(s, c, id, "Gießpumpe", "ev.irrigation.off");
 }
 
 TEST_CASE("Umwälzpumpe an der Dose: Ausschalten scheitert → einmal „Aus nicht bestätigt“") {
@@ -582,7 +586,7 @@ TEST_CASE("Umwälzpumpe an der Dose: Ausschalten scheitert → einmal „Aus nic
   c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
   fault(s, id, "stuck");
   fault(s, "LVL-77B210", "offline");
-  checkCutNotConfirmed(s, c, id, "Umwälzpumpe", "Umwälzpumpe aus");
+  checkCutNotConfirmed(s, c, id, "Umwälzpumpe", "ev.circ.off");
 }
 
 TEST_CASE("Zulauf an der Dose: Ausschalten scheitert → einmal „Aus nicht bestätigt“, Rastung bleibt") {
@@ -594,7 +598,7 @@ TEST_CASE("Zulauf an der Dose: Ausschalten scheitert → einmal „Aus nicht bes
   c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
   fault(s, id, "stuck");
   fault(s, "LVL-77B210", "offline");
-  checkCutNotConfirmed(s, c, id, "Zulaufventil", "Zulauf-Notabschaltung");
+  checkCutNotConfirmed(s, c, id, "Zulaufventil", "ev.inlet.cutoff");
   CHECK(c.state()["latches"].contains("inlet.fault"));
 }
 
@@ -606,7 +610,7 @@ TEST_CASE("Höchstlaufzeit: Ausschalten scheitert → einmal „Aus nicht bestä
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
   fault(s, id, "stuck");  // Höchstlaufzeit 5 min, Auto-Off im Gerät erst nach 6 min
-  checkCutNotConfirmed(s, c, id, "Befeuchter", "Befeuchter aus: Höchstlaufzeit", 20000);
+  checkCutNotConfirmed(s, c, id, "Befeuchter", "ev.max_on", 20000);
 }
 
 TEST_CASE("Höchstlaufzeit: Gerät schaltet selbst ab, Befehle weiter abgelehnt → keine Meldung je Takt") {
@@ -617,11 +621,11 @@ TEST_CASE("Höchstlaufzeit: Gerät schaltet selbst ab, Befehle weiter abgelehnt 
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
   fault(s, id, "stuck");
-  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") > 0; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Befeuchter") > 0; }, 400000));
   s.step(180000);  // über das Auto-Off im Gerät (6 min) hinaus, Störung bleibt
   CHECK_FALSE(outlet(s, id, 0).on);
-  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") == 1);
-  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 1);
+  CHECK(countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 1);
+  CHECK(countEvents(c, "ev.off_confirmed", "Befeuchter") == 1);
 }
 
 TEST_CASE("Höchstlaufzeit: nach Umzuordnen keine falsche Entwarnung, neuer Ausgang bleibt unberührt") {
@@ -633,13 +637,13 @@ TEST_CASE("Höchstlaufzeit: nach Umzuordnen keine falsche Entwarnung, neuer Ausg
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", a}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
   fault(s, a, "stuck");
-  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") > 0; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Befeuchter") > 0; }, 400000));
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", b}, {"channel", 0}});  // alter Ausgang klemmt weiter
   s.step(20000);
   CHECK(outlet(s, a, 0).on);
   CHECK_FALSE(outlet(s, b, 0).on);
-  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 0);
-  CHECK(countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 0);
+  CHECK(countEvents(c, "ev.off_confirmed", "Befeuchter") == 0);
+  CHECK(countEvents(c, "ev.max_on", "Befeuchter") == 0);
 }
 
 TEST_CASE("Zwei Schutzgründe an einer klemmenden Dose: je Grund eine Meldung, kein Wechsel je Takt") {
@@ -653,7 +657,7 @@ TEST_CASE("Zwei Schutzgründe an einer klemmenden Dose: je Grund eine Meldung, k
   fault(s, "LVL-77B210", "offline");  // Grund 1: Füllstand ungültig
   s.step(650000);                     // Grund 2: Höchstlaufzeit 10 min; Auto-Off im Gerät erst nach 12 min
   CHECK(outlet(s, id, 0).on);
-  CHECK(countEvents(c, "Gießpumpe: Aus nicht bestätigt") == 2);
+  CHECK(countEvents(c, "ev.off_unconfirmed", "Gießpumpe") == 2);
 }
 
 TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pumpe aus") {
@@ -665,13 +669,13 @@ TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pum
   c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
   fault(s, id, "stuck");
   fault(s, "LVL-77B210", "offline");  // erst „Füllstand ungültig“
-  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 1; }, 300000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 1; }, 300000));
   fault(s, "LVL-77B210", "none");
   {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
     s.control("water", {{"volumeL", 2.0}});  // dann echter Trockenlauf: neuer Grund, neue Meldung
   }
-  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2; }, 120000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 2; }, 120000));
   CHECK(c.state()["latches"].contains("circulation.dry"));
   {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
@@ -681,8 +685,8 @@ TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pum
   fault(s, id, "none");
   REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));  // Hub hält die Rastung durch
   s.step(5000);
-  CHECK(countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2);
-  CHECK(countEvents(c, "Umwälzpumpe: Aus bestätigt") == 1);
+  CHECK(countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 2);
+  CHECK(countEvents(c, "ev.off_confirmed", "Umwälzpumpe") == 1);
 }
 
 TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätigt“ im Protokoll") {
@@ -711,15 +715,15 @@ TEST_CASE("Zulauf: Grund weg, Rastung steht, Ventil klemmt offen → Hub schalte
   c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
   fault(s, id, "stuck");
   fault(s, "LVL-77B210", "offline");
-  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1; }, 300000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Zulaufventil") == 1; }, 300000));
   fault(s, "LVL-77B210", "none");  // Pegel wieder gültig, Rastung nicht quittiert
   s.step(30000);
   CHECK(outlet(s, id, 0).on);
-  CHECK(countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1);  // Fortsetzung, keine neue Meldung
+  CHECK(countEvents(c, "ev.off_unconfirmed", "Zulaufventil") == 1);  // Fortsetzung, keine neue Meldung
   fault(s, id, "none");
   REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000));
   s.step(2000);
-  CHECK(countEvents(c, "Zulaufventil: Aus bestätigt") == 1);
+  CHECK(countEvents(c, "ev.off_confirmed", "Zulaufventil") == 1);
 }
 
 TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
@@ -731,20 +735,21 @@ TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
   c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
   fault(s, id, "stuck");
   fault(s, "LVL-77B210", "offline");
-  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 1; }, 300000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Zulaufventil") == 1; }, 300000));
   fault(s, "LVL-77B210", "none");
   {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
     s.control("water", {{"volumeL", 61.0}});  // über der Notgrenze (60 L)
   }
-  REQUIRE(until(s, [&] { return countEvents(c, "Zulaufventil: Aus nicht bestätigt") == 2; }, 60000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Zulaufventil") == 2; }, 60000));
   auto ev = c.ok("GET", "/api/v1/events?limit=50");
   bool capacity = false;
   for (const auto& e : ev["events"])
-    capacity = capacity || (sameEvent(e, "Zulaufventil: Aus nicht bestätigt") && e["text"].value("text", std::string()).find("Notgrenze") != std::string::npos);
+    capacity = capacity || (sameEvent(e, "ev.off_unconfirmed", "Zulaufventil") &&
+                            e.value(json::json_pointer("/text/args/reason/args/why/key"), std::string()) == "why.capacity");
   CHECK(capacity);
   // Rastungsgrund bleibt eingefroren (RAT-062)
-  CHECK(c.state()["latches"]["inlet.fault"]["why"] == "Füllstand ungültig");
+  CHECK(c.state()["latches"]["inlet.fault"]["why"]["key"] == "why.level_invalid");
 }
 
 TEST_CASE("Umwälzpumpe klemmt: neuer Trockenlauf nach Quittierung meldet neu") {
@@ -759,9 +764,9 @@ TEST_CASE("Umwälzpumpe klemmt: neuer Trockenlauf nach Quittierung meldet neu") 
     std::lock_guard<std::recursive_mutex> l(s.mutex());
     s.control("water", {{"volumeL", 2.0}});
   }
-  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 1; }, 120000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 1; }, 120000));
   c.ok("POST", "/api/v1/latches/circulation.dry/ack");  // quittiert, Pumpe klemmt weiter, Pegel noch zu tief
-  REQUIRE(until(s, [&] { return countEvents(c, "Umwälzpumpe: Aus nicht bestätigt") == 2; }, 10000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 2; }, 10000));
   CHECK(c.state()["latches"].contains("circulation.dry"));
 }
 
@@ -773,9 +778,9 @@ TEST_CASE("Höchstlaufzeit: gleich wieder eingeschaltet → die nächste Abschal
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
   // until prüft nach jedem Takt: Der Schnitt ist gemeldet, sein Abschluss im nächsten Takt steht noch aus.
-  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 1; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.max_on", "Befeuchter") == 1; }, 400000));
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
-  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter aus: Höchstlaufzeit") == 2; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.max_on", "Befeuchter") == 2; }, 400000));
 }
 
 TEST_CASE("Lösen während „Aus nicht bestätigt“ → Meldung, nicht still") {
@@ -786,10 +791,99 @@ TEST_CASE("Lösen während „Aus nicht bestätigt“ → Meldung, nicht still")
   c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.humidifier/switch", {{"on", true}});
   fault(s, id, "stuck");
-  REQUIRE(until(s, [&] { return countEvents(c, "Befeuchter: Aus nicht bestätigt") == 1; }, 400000));
+  REQUIRE(until(s, [&] { return countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 1; }, 400000));
   c.ok("DELETE", "/api/v1/roles/zone.humidifier");
   s.step(5000);
   // The second report comes from releasing the assignment (hub, with key).
-  CHECK(countEvents(c, "Befeuchter: Aus nicht bestätigt") + countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 2);
-  CHECK(countEvents(c, "Befeuchter: Aus bestätigt") == 0);
+  CHECK(countEvents(c, "ev.off_unconfirmed", "Befeuchter") == 2);
+  CHECK(countEvents(c, "ev.off_confirmed", "Befeuchter") == 0);
+}
+
+TEST_CASE("Gateway: refusals name their cause by key (SD-032)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto id = addPlug(s, c, "shelly_strip4", json::array());
+  auto refused = [&](const std::string& role) {
+    auto [st, e] = c.call("POST", "/api/v1/roles/" + role + "/switch", {{"on", true}});
+    CHECK(st == 409);
+    return e["error"];
+  };
+  // Watering pump: level below the minimum (demo: 3 L), then no minimum set
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  s.step(15000);
+  json e = refused("zone.irrigation_pump");
+  CHECK(e["key"] == "act.irrigation.low");
+  CHECK(e["args"]["level"].get<double>() == doctest::Approx(2.0).epsilon(0.1));
+  c.ok("PUT", "/api/v1/tank", {{"minL", nullptr}});
+  CHECK(refused("zone.irrigation_pump")["key"] == "act.irrigation.min_missing");
+  // Humidifier: humidity at the upper limit
+  c.ok("PUT", "/api/v1/roles/zone.humidifier", {{"device", id}, {"channel", 1}});
+  for (double rh = 56; rh <= 90; rh += 1) {  // slowly, so no jump lock holds the reading
+    s.world().room.rh = rh;
+    s.step(20000);
+  }
+  e = refused("zone.humidifier");
+  CHECK(e["key"] == "act.humidifier.rh_high");
+  CHECK(e["args"]["max"] == 85);
+  // A plug that refuses switching commands
+  c.ok("PUT", "/api/v1/roles/zone.light", {{"device", id}, {"channel", 2}});
+  fault(s, id, "stuck");
+  e = refused("zone.light");
+  CHECK(e["key"] == "act.output_refused");
+  CHECK_FALSE(e["args"]["error"].get<std::string>().empty());
+}
+
+TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged still cuts and stays latched") {
+  const auto dir = std::filesystem::temp_directory_path() / ("gc-test-latch-why-" + std::to_string(std::random_device{}()));
+  int n = 0;
+  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42), json(nullptr)}) {
+    CAPTURE(why.dump());
+    std::filesystem::remove_all(dir);
+    auto o = test::opts("demo");
+    o.dataDir = (dir / std::to_string(n++)).string();
+    std::string id;
+    {
+      sim::Simulation s(o);  // latch the inlet, then save everything
+      Client c{s};
+      c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+      id = addPlug(s, c, "shelly_plug", json::array());
+      c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+      c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+      fault(s, "LVL-77B210", "offline");
+      REQUIRE(until(s, [&] { return c.state()["latches"].contains("inlet.fault"); }, 300000));
+      fault(s, "LVL-77B210", "none");
+      s.step(10000);
+    }
+    {
+      const auto file = std::filesystem::path(o.dataDir) / "state.json";
+      json st = json::parse(std::ifstream(file));
+      st["latches"]["inlet.fault"]["why"] = why;  // as an older version or a damaged file left it
+      std::ofstream(file) << st.dump();
+    }
+    o.startEpoch += 3600;  // an hour later
+    sim::Simulation s(o);  // restart from the saved files
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    REQUIRE(c.state()["latches"].contains("inlet.fault"));
+    if (why.is_string() || why.is_object()) CHECK(c.state()["latches"]["inlet.fault"]["why"] == why);
+    outlet(s, id, 0).on = true;  // opened at the plug itself
+    s.step(5000);
+    CHECK_FALSE(outlet(s, id, 0).on);
+    json cut;
+    const json alarms = c.ok("GET", "/api/v1/events?limit=50&type=alarm")["events"];
+    for (const auto& ev : alarms)
+      if (cut.is_null() && sameEvent(ev, "ev.inlet.cutoff")) cut = ev;
+    REQUIRE(cut.is_object());
+    CHECK(cut["text"]["key"] == "ev.inlet.cutoff.latched");
+    const bool kept = why.is_string() || why.is_object();  // anything else: the cut-off's own title
+    CHECK(cut["text"]["args"]["why"] == (kept ? why : json(gc::say("ev.inlet.cutoff"))));
+    c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+    CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
+  }
+  std::filesystem::remove_all(dir);
 }

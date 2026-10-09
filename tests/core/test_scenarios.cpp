@@ -237,6 +237,9 @@ TEST_CASE("Szenario: Trockenlauf – Umwälzpumpe aus, Rastung, Quittierung (M11
   auto st = c.state();
   CHECK(st["outputs"]["tank.circulation"] == false);
   CHECK(st["latches"].contains("circulation.dry"));
+  const json dry = findEvents(c, "alarm").at(0);  // the cut-off by key (SD-032)
+  CHECK(dry["title"]["key"] == "ev.circ.dry");
+  CHECK(dry["text"]["key"] == "ev.circ.dry.low");
   c.ok("POST", "/api/v1/latches/circulation.dry/ack");
   const json released = findEvents(c, "block").at(0);  // named as on the Release button (SD-032)
   CHECK(released["title"]["key"] == "ev.latch_released");
@@ -260,6 +263,10 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   auto st = c.state();
   CHECK(st["outputs"]["tank.inlet"] == false);
   CHECK(st["latches"].contains("inlet.fault"));
+  CHECK(st["latches"]["inlet.fault"]["why"]["key"] == "why.level_invalid");
+  const json cutoff = findEvents(c, "alarm").at(0);  // the cut-off by key (SD-032)
+  CHECK(cutoff["title"]["key"] == "ev.inlet.cutoff");
+  CHECK(cutoff["text"]["args"]["why"]["key"] == "why.level_invalid");
   s.control("fault", {{"device", "LVL-77B210"}, {"fault", "none"}});
   s.step(5 * 60 * 1000);
   CHECK(c.state()["outputs"]["tank.inlet"] == false);
@@ -306,7 +313,11 @@ TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   CHECK(findEvents(c, "mix").at(0)["title"]["key"] == "ev.mix.aborted");
   bool logged = false;
   for (const auto& e : findEvents(c, "dose"))
-    logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() > 5);
+    if (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() > 5) {
+      logged = true;
+      CHECK(e["title"]["key"] == "ev.dose_incomplete");  // cut short by the abort
+      CHECK(e["text"]["key"] == "purpose.mix");
+    }
   CHECK(logged);
 }
 

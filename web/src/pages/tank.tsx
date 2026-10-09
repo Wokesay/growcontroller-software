@@ -182,6 +182,9 @@ function GrowCard() {
   );
 }
 
+// A latch's reason: a message, or plain text in a state saved before SD-032.
+const latchWhy = (v: { why?: unknown } | undefined) => (typeof v?.why === "string" ? v.why : msg(v?.why as Parameters<typeof msg>[0]));
+
 export function TankPage() {
   const st = state.value!;
   const wd = st.watchdog;
@@ -209,7 +212,7 @@ export function TankPage() {
                 <div class="row-between">
                   <span>
                     <Pill tone="bad">{k.startsWith("jump.") ? tr("term.jumpLock") : tr("tank.latched")}</Pill> {latchLabel(k)}
-                    {v?.why ? ` – ${v.why}` : ""}
+                    {latchWhy(v) ? ` – ${latchWhy(v)}` : ""}
                   </span>
                   {!k.startsWith("jump.") && (
                     <Button size="sm" onClick={() => post(`/latches/${k}/ack`).then(refreshState)}>

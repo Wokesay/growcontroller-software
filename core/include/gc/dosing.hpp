@@ -65,7 +65,8 @@ class Actuators {
 
   // Schaltausgänge nur über Rollen (tank.circulation, zone.light …), je nach
   // Gerät am Hub-Ausgang oder an einer Netzsteckdose.
-  bool setRole(const Ctx& c, const std::string& role, bool on, const std::string& who, Msg& err);
+  // `who` names the cause; logged for the inlet (e.g. say("who.refill")).
+  bool setRole(const Ctx& c, const std::string& role, bool on, const Msg& who, Msg& err);
   std::optional<bool> roleState(const Config& cfg, const std::string& role) const;
   // Warum eine Rolle gerade nicht eingeschaltet werden darf (Einschaltsperre).
   std::optional<Msg> inhibit(const Ctx& c, const std::string& role) const;
@@ -88,7 +89,7 @@ class Actuators {
   // enforce versucht es weiter, solange Grund oder Rastung bestehen, und
   // meldet „Aus bestätigt“, sobald der Ausgang aus ist.
   bool cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
-           const std::string& severity, const std::string& title, const std::string& text);
+           const std::string& severity, const Msg& title, const Msg& text);
   // Grund wieder scharf (neue Rastung) bzw. als schon gemeldet vermerken.
   void rearm(const std::string& role, const std::string& key);
   void noteReported(const std::string& role, const std::string& key);
@@ -140,7 +141,7 @@ class Doser {
   // gelaufen (sichere Richtung: nicht nachdosieren).
   void tick(const Ctx& c, Actuators& act);
   // Stoppt und bucht, was schon gelaufen ist (RAT-070).
-  void abort(const Ctx& c, Actuators& act, const std::string& reason);
+  void abort(const Ctx& c, Actuators& act, const Msg& reason);
   const DoseProgress& progress() const { return progress_; }
   const std::optional<DoseOrder>& active() const { return active_; }
   // Fertig/fehlgeschlagen abholen und zurücksetzen.

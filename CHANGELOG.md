@@ -236,6 +236,19 @@ listed in every release under "Security".
   tubing when the rate changed clearly, and then offers to calibrate
   again; after a failed run, closing the window cancels the run. A pump
   that reports a stored rate of 0 no longer counts as a previous rate.
+  The actuator gateway and the doser follow: why an output or pump may
+  not run (`act.*`), how a dose ended (`dose.*`), switch-off reports and
+  protective cut-offs carry keys, so dose events, "may still be on" and
+  dry-run or inlet cut-offs read in the page language; details a device
+  reports itself (for example why a smart plug refused), the names of
+  outputs from the catalog (for example "Zulaufventil") and a sensor's own
+  reason still show in German. A latch's `why` is now a message; a state saved
+  before keeps its text, while going back to an older version shows such
+  a reason as "[object Object]" on the Tank page. For API clients, three
+  refusals of `/roles/{role}/switch` got their own keys: a refusing
+  output `act.output_refused` (was `act.bus`), humidity too high
+  `act.humidifier.rh_high`, and the watering pump's `act.irrigation.level`
+  split into `act.irrigation.min_missing` and `act.irrigation.low`.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
   English when English is chosen; the hub's messages follow later. Numbers use
@@ -250,6 +263,10 @@ listed in every release under "Security".
   dosing block hang directly on a hub port. The device issue form no longer offers the
   collection box, the catalog attaches the climate and CO2 heads to a hub
   port, and the docs no longer list it as a connection.
+- **Merging gateway changes** (SD-033): a technical change to the
+  actuator gateway or to protective cut-offs that changes no logic is
+  merged once `reviewer`, `qa` and `security` accept it; logic changes
+  there still wait for the project owner's "mergen".
 - **CI** (SD-030): the full CI runs on every pull request and push to
   `main`; for docs-only changes it skips its heavy jobs. A summary check
   `ci-ok` lets GitHub block a merge while the full CI is red or still

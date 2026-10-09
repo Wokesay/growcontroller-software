@@ -120,7 +120,7 @@ dedicated test or with a deviation · **○** open.
 | Level curve piecewise linear, strictly increasing | RAT-078 | ✓ | `Curve` · test_truth M10-4/5 |
 | Blind zone, rate check, follow-up correction | RAT-030, RAT-038 | ○ | open |
 | Dry-run protection acts whoever switched the pump on; latch only if the pump was running | RAT-047, RAT-062 | ✓ | test_scenarios M11-1 |
-| Latch survives a restart | RAT-063 | ◐ | `RuntimeState::latches` |
+| Latch survives a restart | RAT-063 | ◐ | `RuntimeState::latches` · test_net "Inlet latch: a reason saved before SD-032" (inlet latch kept and enforced after a restart, also with a reason saved by an older version) |
 | No-load detection via power measurement (< 2.5 W) | RAT-049 | ○ | needs current measurement at the output (dry run via current draw: PD-031) |
 
 ## M12–M15

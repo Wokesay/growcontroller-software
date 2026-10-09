@@ -3,22 +3,26 @@
 
 #include <algorithm>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 namespace {
 
-Msg msg(const std::string& key, const std::string& text, json args = json::object()) {
-  return {key, text, std::move(args)};
+Msg purposeLabel(const std::string& p) {
+  if (p == "mix") return say("purpose.mix");
+  if (p == "manual") return say("purpose.manual");
+  if (p == "ec") return say("purpose.ec");
+  if (p == "ph") return say("purpose.ph");
+  if (p == "calibration") return say("purpose.calibration");
+  if (p == "prime") return say("purpose.prime");
+  return say("purpose.other");
 }
 
-const char* purposeLabel(const std::string& p) {
-  if (p == "mix") return "Mischlauf";
-  if (p == "manual") return "Handgabe";
-  if (p == "ec") return "EC-Nachdosierung";
-  if (p == "ph") return "pH-Korrektur";
-  if (p == "calibration") return "Einmessen";
-  if (p == "prime") return "Schlauch füllen";
-  return "Dosierung";
+// The label of a role from the catalog (translated with the catalog later).
+std::string roleLabel(const Catalog& cat, const std::string& role) {
+  const RoleDef* rd = cat.role(role);
+  return rd ? rd->label : role;
 }
 
 constexpr double kInletHysteresisL = 0.5;  // EIN erst 0,5 L über der AUS-Grenze (RAT-078: 2,5/3 L)
@@ -29,29 +33,26 @@ constexpr double kInletHysteresisL = 0.5;  // EIN erst 0,5 L über der AUS-Grenz
 
 bool Actuators::startRun(const Ctx& c, const std::string& pump, Ms ms, const std::string& purpose,
                          const std::string& jobId, Msg& err) {
-  auto fail = [&](const std::string& key, const std::string& text) {
-    err = msg(key, text);
+  auto fail = [&](Msg m) {
+    err = std::move(m);
     return false;
   };
-  if (c.stopped) return fail("act.stopped", "Not-Halt aktiv – erst fortsetzen");
-  if (!runningPump_.empty()) return fail("act.busy", "Es läuft bereits eine Pumpe");
+  if (c.stopped) return fail(say("act.stopped"));
+  if (!runningPump_.empty()) return fail(say("act.busy"));
   auto it = c.pumps.find(pump);
-  if (it == c.pumps.end() || !it->second.online) return fail("act.offline", "Pumpe nicht erreichbar");
-  if (!it->second.fault.empty()) return fail("act.fault", "Pumpe meldet einen Fehler: " + it->second.fault);
+  if (it == c.pumps.end() || !it->second.online) return fail(say("act.offline"));
+  if (!it->second.fault.empty()) return fail(say("act.fault", {{"fault", it->second.fault}}));
   const bool noFlowNeeded = purpose == "calibration" || purpose == "prime";
-  if (!noFlowNeeded && !(isNum(it->second.flowMlPerMin) && it->second.flowMlPerMin > 0))
-    return fail("act.uncalibrated", "Pumpe nicht eingemessen – ohne Einmesswert wird nicht dosiert");
+  if (!noFlowNeeded && !(isNum(it->second.flowMlPerMin) && it->second.flowMlPerMin > 0)) return fail(say("act.uncalibrated"));
   const Limits lim = c.cfg.limits.bounded();  // feste Grenzen, Konfiguration verschärft nur (R7)
-  if (!noFlowNeeded && ms < static_cast<Ms>(lim.minRunS * 1000))
-    return fail("act.too_short", "Lauf unter " + fmt(lim.minRunS, 1) + " s – zu ungenau");
-  if (ms <= 0 || ms > static_cast<Ms>(lim.maxRunS * 1000))
-    return fail("act.too_long", "Lauf über " + fmt(lim.maxRunS, 0) + " s – in Teilgaben teilen");
+  if (!noFlowNeeded && ms < static_cast<Ms>(lim.minRunS * 1000)) return fail(say("act.too_short", {{"s", lim.minRunS}}));
+  if (ms <= 0 || ms > static_cast<Ms>(lim.maxRunS * 1000)) return fail(say("act.too_long", {{"s", lim.maxRunS}}));
   if (purpose == "ph" || purpose == "ec") {
     auto st = roleState(c.cfg, "tank.circulation");
-    if (!st || !*st) return fail("act.no_mixing", "Ohne Durchmischung keine Dosierung");
+    if (!st || !*st) return fail(say("act.no_mixing"));
   }
   std::string e;
-  if (!bus_.startRun(pump, ms, jobId, e)) return fail("act.bus", "Dosierblock lehnt ab: " + e);
+  if (!bus_.startRun(pump, ms, jobId, e)) return fail(say("act.bus", {{"error", e}}));
   runningPump_ = pump;
   runningPurpose_ = purpose;
   return true;
@@ -94,46 +95,41 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
   const bool levelBound = c.cfg.binding("tank.level") != nullptr;
   const auto& tank = c.cfg.tank();
   if (role == "tank.circulation") {
-    if (c.rt.latches.count("circulation.dry"))
-      return msg("act.circ.latched", "Gerastet: Umwälzpumpe wegen Trockenlauf abgeschaltet – Tank füllen, dann quittieren");
+    if (c.rt.latches.count("circulation.dry")) return say("act.circ.latched");
     if (levelBound) {
-      if (!level.usable()) return msg("act.circ.level_invalid", "Füllstand ungültig – Umwälzpumpe bleibt aus");
+      if (!level.usable()) return say("act.circ.level_invalid");
       if (isNum(tank.minL) && *level.value < tank.minL + kInletHysteresisL)
-        return msg("act.circ.low", "Füllstand " + fmt(*level.value, 1) + " L unter " + fmt(tank.minL + kInletHysteresisL, 1) +
-                                       " L – Trockenlaufschutz");
+        return say("act.circ.low", {{"level", *level.value}, {"min", tank.minL + kInletHysteresisL}});
     }
     return std::nullopt;
   }
   if (role == "tank.inlet") {
-    if (c.rt.latches.count("inlet.fault"))
-      return msg("act.inlet.latched", "Gerastet: Zulauf nach einem Fehler gesperrt – prüfen, dann quittieren");
-    if (!levelBound || !level.usable())
-      return msg("act.inlet.level", "Ohne gültigen Füllstand kein Zulauf (Notabschaltung fehlt)");
-    if (isNum(tank.capacityL) && *level.value >= tank.capacityL) return msg("act.inlet.full", "Tank ist voll");
-    if (!isNum(tank.capacityL)) return msg("act.inlet.capacity", "Nutzvolumen des Tanks fehlt");
+    if (c.rt.latches.count("inlet.fault")) return say("act.inlet.latched");
+    if (!levelBound || !level.usable()) return say("act.inlet.level");
+    if (isNum(tank.capacityL) && *level.value >= tank.capacityL) return say("act.inlet.full");
+    if (!isNum(tank.capacityL)) return say("act.inlet.capacity");
     return std::nullopt;
   }
   // Befeuchter und Entfeuchter nie zugleich (R7, Quelle: RAT-034). Ist der
   // Zustand des Gegengeräts unbekannt (z. B. Dose nicht erreichbar), könnte es
   // noch laufen: dann ebenfalls gesperrt (R5).
-  auto pairBlock = [&](const char* other, const std::string& label) -> std::optional<Msg> {
+  auto pairBlock = [&](const char* other) -> std::optional<Msg> {
     if (!c.cfg.binding(other)) return std::nullopt;
     auto st = roleState(c.cfg, other);
-    if (!st) return msg("act.climate.pair_unknown", label + " nicht erreichbar – könnte noch laufen");
-    if (*st) return msg("act.climate.pair", label + " läuft – bleibt aus");
+    if (!st) return say("act.climate.pair_unknown", {{"label", roleLabel(c.cat, other)}});
+    if (*st) return say("act.climate.pair", {{"label", roleLabel(c.cat, other)}});
     return std::nullopt;
   };
   if (role == "zone.humidifier")
-    if (auto m = pairBlock("zone.dehumidifier", "Entfeuchter")) return m;
+    if (auto m = pairBlock("zone.dehumidifier")) return m;
   if (role == "zone.dehumidifier")
-    if (auto m = pairBlock("zone.humidifier", "Befeuchter")) return m;
+    if (auto m = pairBlock("zone.humidifier")) return m;
   // Befeuchter: bei zugeordneter Feuchte nur mit gültigem Wert und unter der
   // Obergrenze (Kondensat an der Elektrik).
   if (role == "zone.humidifier" && c.cfg.binding("zone.humidity")) {
     const auto& rh = c.truth.get("zone.humidity");
-    if (!rh.usable()) return msg("act.humidifier.rh", "Luftfeuchte ungültig – Befeuchter bleibt aus");
-    if (*rh.value >= kHumidifierMaxRh)
-      return msg("act.humidifier.rh", "Luftfeuchte " + fmt(*rh.value, 0) + " % – über " + fmt(kHumidifierMaxRh, 0) + " % kein Befeuchter");
+    if (!rh.usable()) return say("act.humidifier.rh");
+    if (*rh.value >= kHumidifierMaxRh) return say("act.humidifier.rh_high", {{"rh", *rh.value}, {"max", kHumidifierMaxRh}});
   }
   // Irrigation pump: only with a valid level above the minimum level,
   // otherwise it runs dry. An unreadable level blocks (deviation noted in
@@ -141,30 +137,29 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
   // without a level sensor and dry-run detection, not implemented yet). The current level counts, not a
   // predicted one.
   if (role == "zone.irrigation_pump") {
-    if (!levelBound || !level.usable()) return msg("act.irrigation.level", "Ohne gültigen Füllstand keine Gießpumpe (Trockenlauf)");
-    if (!isNum(tank.minL)) return msg("act.irrigation.level", "Mindestfüllstand des Tanks fehlt");
-    if (*level.value < tank.minL + kInletHysteresisL)
-      return msg("act.irrigation.level", "Füllstand " + fmt(*level.value, 1) + " L zu niedrig für die Gießpumpe");
+    if (!levelBound || !level.usable()) return say("act.irrigation.level");
+    if (!isNum(tank.minL)) return say("act.irrigation.min_missing");
+    if (*level.value < tank.minL + kInletHysteresisL) return say("act.irrigation.low", {{"level", *level.value}});
   }
   // Kompressor: Mindestpause für den Druckausgleich (Quelle: RAT-034).
   // Den Mindestlauf hält die Funktion ein; Ausschalten geht immer.
   if (const RoleDef* rd = c.cat.role(role); rd && rd->profile == "kompressor") {
     auto off = offSince_.find(role);
     if (off != offSince_.end() && c.now - off->second < kCompressorPause)
-      return msg("act.compressor.pause", rd->label + ": Mindestpause " + fmt(kCompressorPause / kMinute, 0) + " min nach dem Ausschalten");
+      return say("act.compressor.pause", {{"label", rd->label}, {"min", static_cast<double>(kCompressorPause / kMinute)}});
   }
   return std::nullopt;
 }
 
-bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const std::string& who, Msg& err) {
+bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const Msg& who, Msg& err) {
   const Binding* b = c.cfg.binding(role);
   if (!b) {
-    err = msg("act.unbound", "Ausgang nicht zugeordnet");
+    err = say("act.unbound");
     return false;
   }
   if (on) {
     if (c.stopped) {
-      err = msg("act.stopped", "Not-Halt aktiv – erst fortsetzen");
+      err = say("act.stopped");
       return false;
     }
     if (auto inh = inhibit(c, role)) {
@@ -177,11 +172,11 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
     if (net_ && net_->owns(b->device) && rd && !rd->profile.empty()) {
       auto got = net_->readConfig(b->device, b->channel);
       if (!got) {
-        err = msg("act.net.unreachable", "Dose im Netzwerk nicht erreichbar");
+        err = say("act.net.unreachable");
         return false;
       }
       if (!sameSafety(*got, safetyForRole(*rd))) {
-        err = msg("act.net.safety", "Schutzeinstellung im Gerät fehlt oder weicht ab – Dose neu zuordnen");
+        err = say("act.net.safety");
         return false;
       }
     }
@@ -190,7 +185,7 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
   if (cur && *cur == on) return true;
   std::string e;
   if (!sw(b->device, b->channel, on, e)) {
-    err = msg("act.bus", "Ausgang lehnt ab: " + e);
+    err = say("act.output_refused", {{"error", e}});
     return false;
   }
   if (on) {
@@ -201,7 +196,7 @@ bool Actuators::setRole(const Ctx& c, const std::string& role, bool on, const st
     offSince_[role] = c.now;
   }
   if (role == "tank.inlet")
-    c.log.add(c.epoch, "tank", "info", Msg{"", on ? "Zulauf auf" : "Zulauf zu"}, Msg{"", who}, {{"role", role}, {"on", on}});
+    c.log.add(c.epoch, "tank", "info", say(on ? "ev.inlet.open" : "ev.inlet.closed"), who, {{"role", role}, {"on", on}});
   return true;
 }
 
@@ -221,7 +216,7 @@ void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keep
 }
 
 bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
-                    const std::string& severity, const std::string& title, const std::string& text) {
+                    const std::string& severity, const Msg& title, const Msg& text) {
   const Binding* b = c.cfg.binding(role);
   if (!b) return false;
   std::string e;
@@ -230,11 +225,10 @@ bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& ke
   if (it == cuts_.end()) it = cuts_.emplace(role, Cut{{}, b->device, b->channel, false}).first;
   if (it->second.keys.insert(key).second) {
     if (ok) {
-      c.log.add(c.epoch, type, severity, Msg{"", title}, Msg{"", text}, {{"role", role}});
+      c.log.add(c.epoch, type, severity, title, text, {{"role", role}});
     } else {
-      const RoleDef* rd = c.cat.role(role);
-      c.log.add(c.epoch, "block", "alarm", Msg{"", (rd ? rd->label : role) + ": Aus nicht bestätigt"},
-                Msg{"", text + " Ausschalten gescheitert: " + e + "."}, {{"role", role}, {"device", b->device}});
+      c.log.add(c.epoch, "block", "alarm", say("ev.off_unconfirmed", {{"label", roleLabel(c.cat, role)}}),
+                say("ev.off_failed.text", {{"reason", text}, {"error", e}}), {{"role", role}, {"device", b->device}});
     }
   }
   if (!ok) it->second.failed = true;
@@ -271,8 +265,8 @@ void Actuators::enforce(const Ctx& c) {
       continue;
     }
     if (it->second.failed) {
-      const RoleDef* rd = c.cat.role(role);
-      c.log.add(c.epoch, "block", "info", Msg{"", (rd ? rd->label : role) + ": Aus bestätigt"}, Msg{"", "Der Ausgang ist jetzt aus."}, {{"role", role}});
+      c.log.add(c.epoch, "block", "info", say("ev.off_confirmed", {{"label", roleLabel(c.cat, role)}}), say("ev.off_confirmed.text"),
+                {{"role", role}});
       offSince_[role] = c.now;
     }
     onSince_.erase(role);
@@ -294,11 +288,10 @@ void Actuators::enforce(const Ctx& c) {
         c.rt.latches["circulation.dry"] = {{"at", c.epoch}, {"levelL", *level.value}};
         rearm("tank.circulation", "circulation.dry");  // neue Rastung, z. B. nach Quittierung: neu melden
       }
-      ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", "Umwälzpumpe aus: Trockenlauf",
-               low ? "Füllstand " + fmt(*level.value, 1) + " L unter " + fmt(tank.minL, 1) + " L. Gerastet bis zur Quittierung."
-                   : std::string("Trockenlauf gerastet, noch nicht quittiert."));
+      ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", say("ev.circ.dry"),
+               low ? say("ev.circ.dry.low", {{"level", *level.value}, {"min", tank.minL}}) : say("ev.circ.dry.latched"));
     } else if (!level.usable()) {
-      ok = cut(c, "tank.circulation", "circulation.level", "block", "warn", "Umwälzpumpe aus", "Füllstand ungültig: " + level.reason.text + ".");
+      ok = cut(c, "tank.circulation", "circulation.level", "block", "warn", say("ev.circ.off"), say("ev.circ.off.text", {{"reason", level.reason}}));
     } else {
       acted = false;
     }
@@ -314,38 +307,41 @@ void Actuators::enforce(const Ctx& c) {
   // erneut zu.
   auto inlet = roleState(c.cfg, "tank.inlet");
   if (inlet && *inlet) {
-    std::string why, key;  // je Grund ein eigener Meldeschlüssel
+    std::optional<Msg> why;  // je Grund ein eigener Meldeschlüssel
+    std::string key;
     if (!level.usable()) {
-      why = "Füllstand ungültig";
+      why = say("why.level_invalid");
       key = "inlet.level";
     } else if (isNum(tank.capacityL) && *level.value >= tank.capacityL) {
-      why = "Notgrenze erreicht bei " + fmt(*level.value, 1) + " L";
+      why = say("why.capacity", {{"level", *level.value}});
       key = "inlet.capacity";
     } else {
       auto p = effectiveParams(c.cat, c.cfg, "refill");
       double maxOpen = p.num("max_open_min");
       auto since = onSince_.find("tank.inlet");
       if (isNum(maxOpen) && since != onSince_.end() && c.now - since->second > static_cast<Ms>(maxOpen * kMinute)) {
-        why = "Ventil länger als " + fmt(maxOpen, 0) + " min offen";
+        why = say("why.open_too_long", {{"min", maxOpen}});
         key = "inlet.open";
       }
     }
     auto latch = c.rt.latches.find("inlet.fault");
-    if (!why.empty()) {
+    if (why) {
       // Grund und Zeitpunkt werden beim Rasten eingefroren (RAT-062); ein
-      // späterer Grund steht in seiner eigenen Meldung.
+      // späterer Grund steht in seiner eigenen Meldung. The reason is kept
+      // as a message, so it shows in the page language (SD-032).
       if (latch == c.rt.latches.end()) {
-        c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
+        c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", *why}};
         rearm("tank.inlet", key);
       }
-      if (cut(c, "tank.inlet", key, "alarm", "alarm", "Zulauf-Notabschaltung", why + ". Gerastet bis zur Quittierung."))
+      if (cut(c, "tank.inlet", key, "alarm", "alarm", say("ev.inlet.cutoff"), say("ev.inlet.cutoff.text", {{"why", *why}})))
         onSince_.erase("tank.inlet");
       noteReported("tank.inlet", "inlet.latched");  // Fortsetzung über die Rastung ist damit gemeldet
     } else if (latch != c.rt.latches.end()) {
       // Grund weg, Rastung steht: offen trotz Rastung (Ausschalten gescheitert, Taster) → erneut zu
+      // A reason saved before SD-032 is plain German text; it stays as it is.
       const json& l = latch->second;
-      const std::string was = l.is_object() && l.contains("why") && l["why"].is_string() ? l["why"].get<std::string>() : "Zulauf-Notabschaltung";
-      if (cut(c, "tank.inlet", "inlet.latched", "alarm", "alarm", "Zulauf-Notabschaltung", "Gerastet: " + was + ", noch nicht quittiert."))
+      const json was = l.is_object() && l.contains("why") && (l["why"].is_string() || l["why"].is_object()) ? l["why"] : json(say("ev.inlet.cutoff"));
+      if (cut(c, "tank.inlet", "inlet.latched", "alarm", "alarm", say("ev.inlet.cutoff"), say("ev.inlet.cutoff.latched", {{"why", was}})))
         onSince_.erase("tank.inlet");
     }
   }
@@ -354,10 +350,10 @@ void Actuators::enforce(const Ctx& c) {
   // aus (Trockenlauf), mit Meldung.
   auto irr = roleState(c.cfg, "zone.irrigation_pump");
   if (irr.value_or(false)) {
-    std::string why;
-    if (!levelBound || !level.usable()) why = "Füllstand ungültig";
-    else if (isNum(tank.minL) && *level.value < tank.minL) why = "Füllstand " + fmt(*level.value, 1) + " L unter dem Mindestfüllstand";
-    if (!why.empty() && cut(c, "zone.irrigation_pump", "irrigation.level", "block", "warn", "Gießpumpe aus: Trockenlaufschutz", why + ".")) {
+    std::optional<Msg> why;
+    if (!levelBound || !level.usable()) why = say("why.level_invalid");
+    else if (isNum(tank.minL) && *level.value < tank.minL) why = say("why.irrigation_low", {{"level", *level.value}});
+    if (why && cut(c, "zone.irrigation_pump", "irrigation.level", "block", "warn", say("ev.irrigation.off"), say("ev.irrigation.off.text", {{"why", *why}}))) {
       onSince_.erase("zone.irrigation_pump");
       offSince_["zone.irrigation_pump"] = c.now;
     }
@@ -376,7 +372,7 @@ void Actuators::enforce(const Ctx& c) {
       continue;
     }
     // Scheitert das Ausschalten, bleibt onSince_ stehen: der nächste Takt versucht es erneut.
-    if (cut(c, role, "maxon", "block", "warn", rd.label + " aus: Höchstlaufzeit", "Höchstlaufzeit " + fmt(rd.maxOnS / 60, 0) + " min erreicht.")) {
+    if (cut(c, role, "maxon", "block", "warn", say("ev.max_on", {{"label", rd.label}}), say("ev.max_on.text", {{"min", rd.maxOnS / 60}}))) {
       onSince_.erase(role);
       offSince_[role] = c.now;
     }
@@ -414,11 +410,11 @@ void Doser::fail(const Ctx& c, Msg error) {
 
 bool Doser::start(const Ctx& c, Actuators& act, DoseOrder order, Msg& err) {
   if (active_) {
-    err = msg("dose.busy", "Es läuft bereits eine Dosierung");
+    err = say("dose.busy");
     return false;
   }
   if (order.step.runs.empty()) {
-    err = msg("dose.empty", "Nichts zu dosieren");
+    err = say("dose.empty");
     return false;
   }
   order.id = order.id.empty() ? "d" + std::to_string(++seq_) : order.id;
@@ -453,8 +449,8 @@ void Doser::logOrder(const Ctx& c) {
   if (o.purpose == "calibration" || o.purpose == "prime") return;
   if (progress_.state == DoseProgress::State::Aborted && progress_.msDone <= 0) return;  // nichts gelaufen
   bool ok = progress_.state == DoseProgress::State::Done;
-  c.log.add(c.epoch, "dose", ok ? "info" : "warn",
-            Msg{"", o.step.name + " · " + fmt(progress_.mlDone, 1) + " ml" + (ok ? "" : " (unvollständig)")}, Msg{"", purposeLabel(o.purpose)},
+  c.log.add(c.epoch, "dose", ok ? "info" : "warn", say(ok ? "ev.dose" : "ev.dose_incomplete", {{"name", o.step.name}, {"ml", progress_.mlDone}}),
+            purposeLabel(o.purpose),
             {{"canister", o.step.canister},
              {"pump", o.step.pump},
              {"ml", progress_.mlDone},
@@ -480,8 +476,7 @@ void Doser::tick(const Ctx& c, Actuators& act) {
       act.clearRun(o.step.pump);
       running_ = false;
       book(c, mine && st.actualMs > 0 ? st.actualMs : runRequestedMs_);
-      fail(c, msg("dose.no_response",
-                  o.step.name + ": keine Rückmeldung vom Dosierblock – Pumpe abgeschaltet, Menge als gelaufen gezählt"));
+      fail(c, say("dose.no_response", {{"name", o.step.name}}));
       return;
     }
     act.clearRun(o.step.pump);
@@ -489,8 +484,8 @@ void Doser::tick(const Ctx& c, Actuators& act) {
     if (lost) {
       act.stopPumps();
       book(c, std::clamp<Ms>(c.now - runStartedAt_, 0, runRequestedMs_));
-      fail(c, msg("dose.lost", o.step.name + ": " + (st.error.empty() ? "Pumpe getrennt" : st.error) +
-                                   " – Menge aus der Laufzeit geschätzt"));
+      const json reason = st.error.empty() ? json(say("dose.disconnected")) : json(st.error);
+      fail(c, say("dose.lost", {{"name", o.step.name}, {"reason", reason}}));
       return;
     }
     if (st.state == RunStatus::State::Done) {
@@ -508,7 +503,8 @@ void Doser::tick(const Ctx& c, Actuators& act) {
     }
     if (st.actualMs > 0) book(c, st.actualMs);
     progress_.state = DoseProgress::State::Failed;
-    progress_.error = msg("dose.failed", o.step.name + ": " + (st.error.empty() ? "Lauf abgebrochen" : st.error));
+    const json reason = st.error.empty() ? json(say("dose.run_cancelled")) : json(st.error);
+    progress_.error = say("dose.failed", {{"name", o.step.name}, {"reason", reason}});
     logOrder(c);
     finished_ = progress_;
     active_.reset();
@@ -523,7 +519,7 @@ void Doser::tick(const Ctx& c, Actuators& act) {
   }
 }
 
-void Doser::abort(const Ctx& c, Actuators& act, const std::string& reason) {
+void Doser::abort(const Ctx& c, Actuators& act, const Msg& reason) {
   if (!active_) return;
   act.stopPumps();
   if (running_) {
@@ -534,7 +530,7 @@ void Doser::abort(const Ctx& c, Actuators& act, const std::string& reason) {
   act.clearRun(active_->step.pump);
   running_ = false;
   progress_.state = DoseProgress::State::Aborted;
-  progress_.error = msg("dose.aborted", active_->step.name + ": " + reason);
+  progress_.error = say("dose.aborted", {{"name", active_->step.name}, {"reason", reason}});
   logOrder(c);
   finished_ = progress_;
   active_.reset();
