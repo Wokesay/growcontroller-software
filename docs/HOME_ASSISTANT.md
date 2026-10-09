@@ -71,8 +71,9 @@ roles assign themselves.
    you restart the server: Home Assistant counts every failed login and
    bans the computer after a few, however slowly they come.
 6. Open the address and set a password. The setup for the hub's own
-   dosing hardware is not forced on a read-only hub; go to Devices and
-   accept the devices there.
+   dosing hardware is not offered on a read-only hub; the overview points
+   to Devices, where you accept the devices. Name and time zone are under
+   Settings.
 
 ## What the sensors in Home Assistant need
 

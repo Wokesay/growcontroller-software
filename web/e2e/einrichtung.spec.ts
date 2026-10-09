@@ -134,7 +134,9 @@ test("Read-only trial (Home Assistant): after the password the app opens, not th
   await page.locator("input[name=password2]").fill("mein-passwort");
   await page.getByRole("button", { name: "Passwort festlegen" }).click();
   await expect(page.getByTestId("watchdog")).toBeVisible();
-  await page.goto("/#/geraete");
+  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way back into it
+  // The overview points to the devices waiting to be accepted
+  await page.getByTestId("new-devices-link").click();
   await expect(page).toHaveURL(/#\/geraete/);
   await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
   await page.unroute(/\/api\/v1\/info(\?|$)/);

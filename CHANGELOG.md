@@ -21,7 +21,7 @@ listed in every release under "Security".
   ban the computer. Their tiles say "display only" with age and trend
   instead of "not calibrated", the monitoring says "calibrated outside the
   hub", and the setup step does not ask for a probe calibration. The
-  setup for the hub's own dosing hardware is not forced on a read-only
+  setup for the hub's own dosing hardware is not offered on a read-only
   hub.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
@@ -223,6 +223,8 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **The overview points to devices waiting to be accepted:** a banner
+  names how many were detected and links to Devices.
 - **Probe calibration accepts only the kinds a device class offers**
   (RAT-025): a pH calibration on an EC head, for example, is refused with
   `probe.not_offered` instead of starting a calibration session that

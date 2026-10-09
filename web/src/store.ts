@@ -13,7 +13,9 @@ export const live = signal<"connecting" | "live" | "offline">("connecting");
 export const lastUpdate = signal<number>(0);
 
 export const simulated = computed(() => !!info.value?.platform?.simulated);
-/** A hub that switches nothing (the Home Assistant trial, docs/HOME_ASSISTANT.md). */
+/** A hub that switches nothing (the Home Assistant trial, docs/HOME_ASSISTANT.md).
+ *  Only for what the page offers; never a safety guarantee (STOP and
+ *  confirmations stay): that nothing switches is enforced by the server. */
 export const readOnly = computed(() => !!info.value?.platform?.readOnly);
 
 type Toast = { id: number; kind: "ok" | "error" | "info"; text: string };

@@ -205,9 +205,11 @@ export function App() {
           ))}
         </nav>
         <div class="side-foot">
-          <a href="#/einrichtung" class="row" style="gap:8px">
-            <Wrench size={15} /> {t("nav.setup")}
-          </a>
+          {!readOnly.value && (  // the setup is for the hub's own dosing hardware
+            <a href="#/einrichtung" class="row" style="gap:8px">
+              <Wrench size={15} /> {t("nav.setup")}
+            </a>
+          )}
           <span>
             <Gauge size={13} /> {t("common.version", { v: info.value?.version })}
           </span>

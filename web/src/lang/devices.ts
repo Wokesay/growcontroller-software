@@ -36,7 +36,7 @@ export const de = {
   "devices.tabExpand": "Erweitern",
   "devices.newOne": "Ein neues Gerät wurde erkannt.",
   "devices.newMany": "{n} neue Geräte wurden erkannt.",
-  "devices.acceptHint": "Übernehmen, damit der Hub sie nutzt.",
+  "devices.acceptHint": "Der Hub nutzt neue Geräte erst, wenn du sie übernimmst.",
   "devices.acceptedAll": "Geräte übernommen",
   "devices.acceptAll": "Alle übernehmen",
   "devices.noPump": "Keine Pumpe gesteckt.",
