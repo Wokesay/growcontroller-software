@@ -9,6 +9,7 @@ import { msg, t as tr } from "../i18n";
 import { ClimateTiles, OutputsOverview } from "./areas";
 import { Banner, Button, Card, NumberInput, Pill } from "../ui";
 import { ControllerRow, EventList, JobView, MetricTile, StockList, useSparks } from "../widgets";
+import { HaBanner, isHa } from "../ha";
 
 
 function WatchdogBar() {
@@ -108,7 +109,8 @@ export function Overview() {
           {tr("overview.maintenance", { until: dateTime(st.maintenanceUntil) })}
         </Banner>
       )}
-      {newDevices > 0 && (
+      {isHa.value && <HaBanner />}
+      {!isHa.value && newDevices > 0 && (
         <Banner tone="info" icon={<PackagePlus size={18} />}>
           {newDevices === 1 ? tr("devices.newOne") : tr("devices.newMany", { n: newDevices })} {tr("devices.acceptHint")}{" "}
           <a href="#/geraete" data-testid="new-devices-link">

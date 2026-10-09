@@ -16,6 +16,7 @@ import { en as widgets } from "./widgets";
 import { en as sim } from "./sim";
 import { en as areas } from "./areas";
 import { en as setup } from "./setup";
+import { en as ha } from "./ha";
 
 const base: Record<keyof typeof deBase, string> = {
   "app.tagline": "Plant automation",
@@ -275,4 +276,4 @@ const base: Record<keyof typeof deBase, string> = {
 };
 
 // The base texts plus the texts of each area (#18).
-export const en: Record<keyof typeof de, string> = { ...base, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup };
+export const en: Record<keyof typeof de, string> = { ...base, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup, ...ha };

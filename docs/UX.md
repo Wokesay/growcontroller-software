@@ -83,7 +83,13 @@ On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
 ## 4. Setup wizard
 
 Customer view: at most 5 steps to the first success, without an account.
-Devices are detected, not selected.
+Devices are detected, not selected. Exception: on a Home Assistant hub
+(docs/HOME_ASSISTANT.md) the user chooses one sensor per measurement under
+Devices › Assignment, because Home Assistant offers dozens of sensors and
+only a few belong to the grow. The list shows each sensor's name, entity ID
+and live value, sorted by name; one tap saves; a sensor used for another
+measurement is shown but cannot be taken; "Home Assistant not answering"
+and "access refused" are said as such, never as "no sensors".
 
 | # | Step | Required |
 |---|---|---|

@@ -12,6 +12,7 @@
 
 #include "fakes.hpp"
 #include "gc/hub.hpp"
+#include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
 
@@ -31,6 +32,13 @@ json state(const std::string& entity, const std::string& value, const std::strin
           {"attributes", {{"unit_of_measurement", unit}}},
           {"last_updated", "2026-10-09T10:00:00+00:00"},
           {"last_reported", reported}};
+}
+
+// The same with Home Assistant's device class and friendly name
+json described(json s, const std::string& deviceClass, const std::string& name) {
+  if (!deviceClass.empty()) s["attributes"]["device_class"] = deviceClass;
+  s["attributes"]["friendly_name"] = name;
+  return s;
 }
 
 // "2026-10-09T12:00:05.000Z" for kNoonMs + 5000; times from noon on only
@@ -105,11 +113,154 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
   CHECK(refused({{"entities", one}}));                                       // no address
   CHECK(refused({{"url", "ws://ha:8123"}, {"entities", one}}));              // not http(s)
   CHECK(refused({{"url", "http://ha:8123/prefix"}, {"entities", one}}));     // a path would be dropped
-  CHECK(refused({{"url", "http://ha:8123"}, {"entities", json::array()}}));  // nothing to read
+  // Without entities the user picks them in the web app
+  CHECK(ha::parseMapping({{"url", "http://ha:8123"}}, err).entities.empty());
+  CHECK(err.empty());
+  CHECK(refused({{"url", "http://ha:8123"}, {"entities", "sensor.grow_ph"}}));  // not a list
   for (const char* id : {"Sensor.Grow", "sensor", "../api/config", "sensor.a.b", "sensor.grow ph"})
     CHECK(refused({{"url", "http://ha:8123"}, {"entities", {{{"entity", id}, {"measures", "ph"}}}}}));
   CHECK(refused({{"url", "http://ha:8123"}, {"entities", {{{"entity", "sensor.x"}, {"measures", "voltage"}}}}}));
   CHECK(refused({{"url", "http://ha:8123"}, {"entities", {one[0], one[0]}}}));  // listed twice
+}
+
+TEST_CASE("Home Assistant: the hub finds the sensors it can use, drops the rest, and uses only what is picked") {
+  const json states = json::array({
+      described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"),
+      described(state("sensor.tank_ec", "1450", "µS/cm", iso(kNoonMs)), "", "Tank EC"),
+      described(state("sensor.tent_temp", "70", "°F", iso(kNoonMs)), "temperature", "Zelt"),
+      described(state("sensor.tank_temp", "unavailable", "°C", iso(kNoonMs)), "temperature", "Tank Wasser"),
+      described(state("sensor.tent_rh", "55", "%", iso(kNoonMs)), "humidity", "Zelt Feuchte"),
+      described(state("sensor.tent_co2", "800", "ppm", iso(kNoonMs)), "carbon_dioxide", "Zelt CO2"),
+      described(state("sensor.tank_volume", "40", "L", iso(kNoonMs)), "volume_storage", "Tank Inhalt"),
+      // %, ppm and L also stand for other things: only with the device class
+      described(state("sensor.phone_battery", "80", "%", iso(kNoonMs)), "battery", "Handy"),
+      described(state("sensor.voc", "300", "ppm", iso(kNoonMs)), "volatile_organic_compounds_parts", "VOC"),
+      described(state("sensor.water_used", "40", "L", iso(kNoonMs)), "water", "Wasserzähler"),
+      [] {  // a volume that only adds up is no level
+        json s = described(state("sensor.water_meter", "1234", "L", iso(kNoonMs)), "volume", "Zähler");
+        s["attributes"]["state_class"] = "total_increasing";
+        return s;
+      }(),
+      // Not a sensor, or not an entity ID the hub accepts
+      described(state("switch.light", "on", "", iso(kNoonMs)), "", "Licht"),
+      {{"entity_id", "person.someone"}, {"state", "home"}, {"attributes", {{"latitude", 52.5}}}},
+      described(state("sensor.Bad Name", "6.0", "pH", iso(kNoonMs)), "ph", "x"),
+      "not a state",
+  });
+  ha::HaBus bus;
+  bus.updateAll(states, kNoonMs, 1000);
+  std::map<std::string, ha::Candidate> found;
+  for (const auto& c : bus.candidates()) found[c.entityId] = c;
+  CHECK(found.size() == 7);
+  CHECK(found["sensor.tank_ph"].kind == "ph");
+  CHECK(found["sensor.tank_ph"].name == "Tank pH");
+  CHECK(found["sensor.tank_ec"].kind == "ec");
+  CHECK(found["sensor.tank_ec"].value == doctest::Approx(1.45));  // in the hub's unit
+  CHECK(found["sensor.tent_temp"].kind == "temperature");
+  CHECK(found["sensor.tent_temp"].value == doctest::Approx(21.11).epsilon(0.001));
+  CHECK(std::isnan(found["sensor.tank_temp"].value));  // unavailable: no value, never 0 (R5)
+  CHECK(found["sensor.tent_rh"].kind == "humidity");
+  CHECK(found["sensor.tent_co2"].kind == "co2");
+  CHECK(found["sensor.tank_volume"].kind == "level");
+  CHECK(bus.devices().empty());  // nothing is a device before it is picked
+  // Picking
+  std::string err;
+  CHECK(bus.select("sensor.tent_temp", "air_temp", err));
+  CHECK_FALSE(bus.select("sensor.tent_temp", "water_temp", err));  // one sensor, one measure
+  CHECK(err == "sensor.tent_temp is already used for air_temp");
+  CHECK_FALSE(bus.select("sensor.tank_ph", "ec", err));            // pH cannot serve as EC
+  CHECK_FALSE(bus.select("sensor.phone_battery", "humidity", err)); // no candidate
+  CHECK_FALSE(bus.select("person.someone", "ph", err));
+  CHECK_FALSE(bus.select("sensor.tank_ph", "voltage", err));
+  CHECK(bus.select("sensor.tank_ph", "ph", err));
+  CHECK(bus.select("sensor.tank_ph", "ph", err));  // the same again is fine
+  bus.updateAll(states, kNoonMs, 2000);
+  const auto devs = bus.devices();
+  REQUIRE(devs.size() == 2);
+  CHECK(devs[0].id == "ha.sensor.tent_temp");
+  CHECK(devs[0].cls == "ha_air_temp");
+  CHECK(devs[0].online);
+  CHECK(devs[0].info["name"] == "Zelt");
+  REQUIRE(bus.sample("ha.sensor.tent_temp", "measure.air_temp"));
+  CHECK(bus.sample("ha.sensor.tent_temp", "measure.air_temp")->raw == doctest::Approx(21.11).epsilon(0.001));
+  const json list = bus.candidatesJson()["candidates"];
+  for (const auto& c : list) {
+    if (c["entity"] == "sensor.tent_temp") {
+      CHECK(c["used"] == "air_temp");
+      CHECK(c["measures"] == json::array({"water_temp", "air_temp"}));
+    }
+    if (c["entity"] == "sensor.tank_temp") CHECK(c["value"].is_null());
+    if (c["entity"] == "sensor.tank_ec") CHECK(c["used"].is_null());
+  }
+  // The pick is saved as the mapping file writes entities, and read back
+  CHECK(ha::parseEntities(ha::entitiesJson(bus.entities()), err).size() == 2);
+  CHECK(err.empty());
+  // A picked sensor that disappears from Home Assistant goes offline and says why
+  bus.updateAll(json::array(), kNoonMs, 3000);
+  CHECK_FALSE(bus.devices()[0].online);
+  CHECK(bus.fault("sensor.tent_temp") == "not in Home Assistant");
+  // A huge installation does not grow the list without end
+  json many = json::array();
+  for (int i = 0; i < 400; ++i) many.push_back(described(state("sensor.t" + std::to_string(i), "20", "°C", iso(kNoonMs)), "temperature", "t"));
+  bus.updateAll(many, kNoonMs, 4000);
+  CHECK(bus.candidates().size() == ha::HaBus::kMaxCandidates);
+}
+
+TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken away again without leftovers") {
+  const json states = json::array({
+      described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"),
+      described(state("sensor.tent_temp", "24.5", "°C", iso(kNoonMs)), "temperature", "Zelt Temperatur"),
+      described(state("sensor.room_temp", "21.0", "°C", iso(kNoonMs)), "temperature", "Wohnzimmer"),
+  });
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus;
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  bus.updateAll(states, kNoonMs + clk.ms, clk.ms);
+  int ticks = 0;
+  auto letHubSee = [&] {  // what the server's loop does meanwhile
+    ++ticks;
+    clk.ms += 200;
+    bus.updateAll(states, kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  // Picked: selected, accepted under its Home Assistant name, bound
+  REQUIRE(ha::assign(hub, bus, "tank.ph", "sensor.tank_ph", letHubSee).status == 200);
+  CHECK(ticks >= 1);
+  REQUIRE(hub.config().device("ha.sensor.tank_ph"));
+  CHECK(hub.config().device("ha.sensor.tank_ph")->name == "Tank pH");
+  REQUIRE(hub.config().binding("tank.ph"));
+  CHECK(hub.config().binding("tank.ph")->device == "ha.sensor.tank_ph");
+  letHubSee();
+  CHECK(hub.state()["readings"]["tank.ph"]["value"].get<double>() == doctest::Approx(6.1));
+  // A temperature serves the role it was picked for, and only that one
+  REQUIRE(ha::assign(hub, bus, "zone.air_temp", "sensor.tent_temp", letHubSee).status == 200);
+  CHECK(hub.config().device("ha.sensor.tent_temp")->cls == "ha_air_temp");
+  const auto twice = ha::assign(hub, bus, "tank.water_temp", "sensor.tent_temp", letHubSee);
+  CHECK(twice.status == 422);
+  CHECK(twice.body["error"]["key"] == "ha.select");
+  CHECK_FALSE(hub.config().binding("tank.water_temp"));
+  // Another sensor for the same role: the first one is gone, not left as a device
+  REQUIRE(ha::assign(hub, bus, "zone.air_temp", "sensor.room_temp", letHubSee).status == 200);
+  CHECK_FALSE(hub.config().device("ha.sensor.tent_temp"));
+  CHECK(hub.config().binding("zone.air_temp")->device == "ha.sensor.room_temp");
+  CHECK(ha::assign(hub, bus, "tank.water_temp", "sensor.tent_temp", letHubSee).status == 200);  // free again
+  // Taken away: unbound, removed, no longer read
+  REQUIRE(ha::assign(hub, bus, "tank.ph", "", letHubSee).status == 200);
+  CHECK_FALSE(hub.config().binding("tank.ph"));
+  CHECK_FALSE(hub.config().device("ha.sensor.tank_ph"));
+  for (const auto& e : bus.entities()) CHECK(e.entityId != "sensor.tank_ph");
+  letHubSee();  // the hub no longer lists it
+  // Refused without leftovers: no measuring role, no candidate, the hub never sees it
+  CHECK(ha::assign(hub, bus, "tank.circulation", "sensor.tank_ph", letHubSee).body["error"]["key"] == "ha.role");
+  CHECK(ha::assign(hub, bus, "tank.ph", "sensor.unknown", letHubSee).status == 422);
+  const auto unseen = ha::assign(hub, bus, "tank.ph", "sensor.tank_ph", [] {});  // no tick: never appears
+  REQUIRE(unseen.status == 504);
+  CHECK(unseen.body["error"]["key"] == "ha.timeout");
+  CHECK_FALSE(hub.config().device("ha.sensor.tank_ph"));
+  for (const auto& e : bus.entities()) CHECK(e.entityId != "sensor.tank_ph");
 }
 
 TEST_CASE("Home Assistant: states become samples in the hub's units; missing stays missing (R5)") {
@@ -289,19 +440,19 @@ TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and 
       res.status = 401;
       return;
     }
-    if (req.matches.size() < 1 || req.path != "/api/states/sensor.grow_ph") {
+    if (req.path != "/api/states") {
       res.status = 404;
       return;
     }
     res.set_header("Date", "Fri, 09 Oct 2026 12:10:00 GMT");  // Home Assistant's own clock
-    res.set_content(state("sensor.grow_ph", "5.9", "", "2026-10-09T12:00:00+00:00").dump(), "application/json");
+    res.set_content(json::array({state("sensor.grow_ph", "5.9", "", "2026-10-09T12:00:00+00:00")}).dump(), "application/json");
   });
   REQUIRE(ha.port > 0);
   {
     ha::HaBus bus({{"sensor.grow_ph", "ph"}, {"sensor.gone", "ec"}});
     ha::Poller p(bus, ha.url(), "secret", [] { return gc::Ms{900000}; });
     const std::string problem = p.pollOnce();
-    CHECK(problem.find("sensor.gone") != std::string::npos);
+    CHECK(problem == "sensor.gone: not in Home Assistant");
     CHECK(problem.find("secret") == std::string::npos);
     const auto s = bus.sample("ha.sensor.grow_ph", "measure.ph");
     REQUIRE(s);
@@ -346,9 +497,9 @@ TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and 
 }
 
 TEST_CASE("Home Assistant: the poller sends nothing but state reads, whatever the hub is asked to do") {
-  FakeHa ha([](const httplib::Request& req, httplib::Response& res) {
-    res.set_content(state(req.path.substr(12), "6.0", req.path.find("temp") != std::string::npos ? "°C" : "",
-                          "2026-10-09T12:00:00+00:00")
+  FakeHa ha([](const httplib::Request&, httplib::Response& res) {
+    res.set_content(json::array({state("sensor.grow_ph", "6.0", "", "2026-10-09T12:00:00+00:00"),
+                                 state("sensor.grow_temp", "21.0", "°C", "2026-10-09T12:00:00+00:00")})
                         .dump(),
                     "application/json");
   });
@@ -373,5 +524,5 @@ TEST_CASE("Home Assistant: the poller sends nothing but state reads, whatever th
   hub.tick();
   std::lock_guard<std::mutex> l(ha.m);
   REQUIRE_FALSE(ha.requests.empty());
-  for (const auto& r : ha.requests) CHECK((r == "GET /api/states/sensor.grow_ph" || r == "GET /api/states/sensor.grow_temp"));
+  for (const auto& r : ha.requests) CHECK(r == "GET /api/states");  // one read per round, nothing else
 }

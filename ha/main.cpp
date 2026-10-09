@@ -3,6 +3,7 @@
 // (docs/HOME_ASSISTANT.md). It reads the mapped sensor entities, runs them
 // through the sensor truth and serves the web app; it switches nothing.
 // The HTTP part follows the simulator's server (sim/main.cpp).
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -19,6 +20,7 @@
 #include "gc/api.hpp"
 #include "gc/embedded.hpp"
 #include "gc/hub.hpp"
+#include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
 #include "scenario.hpp"  // sim::FileStorage
@@ -26,6 +28,7 @@
 namespace {
 
 std::atomic<bool> g_running{true};
+const char* const kSelectionFile = "ha-entities.json";
 void onSignal(int) { g_running = false; }
 
 // Wall time from the computer. Assumption: its operating system keeps the
@@ -78,7 +81,7 @@ std::string readFile(const std::string& path) {
 
 void usage() {
   std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
-            << "  --config FILE       mapping: {\"url\": \"http://192.168.1.20:8123\", \"entities\": [...]} (an IP, not .local)\n"
+            << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local); sensors are picked in the web app\n"
             << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"
@@ -156,8 +159,17 @@ int main(int argc, char** argv) {
 
   const gc::Catalog cat = ha::catalog();
   HostClock clock;
-  ha::HaBus bus(mapping.entities);
   sim::FileStorage store(data);
+  // The sensors picked in the web app, after those the mapping file lists.
+  std::vector<ha::Entity> entities = mapping.entities;
+  if (auto saved = store.read(kSelectionFile)) {
+    auto picked = ha::parseEntities(gc::json::parse(*saved, nullptr, false), err);
+    if (!err.empty()) std::cerr << data << "/" << kSelectionFile << ": " << err << " (ignored)\n";
+    for (auto& e : picked)
+      if (std::none_of(entities.begin(), entities.end(), [&](const ha::Entity& x) { return x.entityId == e.entityId; }))
+        entities.push_back(std::move(e));
+  }
+  ha::HaBus bus(entities);
   gc::Hub hub(cat, bus, store, clock, randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
@@ -229,6 +241,34 @@ int main(int argc, char** argv) {
       for (int i = 0; i < 10 && g_running; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
       return g_running.load();
     });
+  });
+  // Picking sensors from Home Assistant; registered before the hub's own API.
+  auto signedIn = [&](const httplib::Request& req, httplib::Response& res) {
+    if (api.authorized(toApi(req))) return true;
+    res.status = 401;
+    res.set_content(R"({"error":{"key":"api.auth","text":"Not signed in"}})", "application/json");
+    return false;
+  };
+  svr.Get("/api/v1/ha/candidates", [&](const httplib::Request& req, httplib::Response& res) {
+    if (!signedIn(req, res)) return;
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(bus.candidatesJson().dump(), "application/json");
+  });
+  // One step for the web app: pick a sensor for a measuring role, or take it away ("entity": "").
+  svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
+    if (!signedIn(req, res)) return;
+    const auto body = gc::json::parse(req.body, nullptr, false);
+    const gc::Result r = ha::assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"),
+                                    [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    if (r.status == 200) {  // the storage belongs to the hub's lock, like every other write
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      store.write(kSelectionFile, ha::entitiesJson(bus.entities()).dump(2));
+      hub.flush();
+      store.flush();  // on disk now, not with the next flush
+    }
+    res.status = r.status;
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(r.status == 200 ? std::string(R"({"ok":true})") : r.body.dump(), "application/json");
   });
   svr.Get(R"(/api/v1/.*)", apiHandler);
   svr.Post(R"(/api/v1/.*)", apiHandler);

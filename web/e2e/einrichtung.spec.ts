@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Vom ersten Einschalten bis zur ersten Mischung – so, wie ein Kunde es erlebt.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { login, scenario, simSpeed } from "./helpers";
 
 test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, request }) => {
@@ -123,21 +123,93 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
 test("Read-only trial (Home Assistant): after the password the app opens, not the setup for dosing hardware", async ({ page, request }) => {
   await scenario(request, "neu");
   // gc_ha_server announces itself as read-only; the setup asks for a dosing block it cannot have
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);
+  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way back into it
+  await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
+  // The overview points to choosing sensors
+  await page.getByTestId("ha-choose-link").click();
+  await expect(page).toHaveURL(/#\/geraete\?tab=zuordnung/);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("The overview points to devices waiting to be accepted", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.request.post("/api/v1/sim/net_add", { data: { class: "shelly_plug", loads: [] } });  // a socket switched on
+  await page.getByTestId("new-devices-link").click();
+  await expect(page).toHaveURL(/#\/geraete/);
+  await expect(page.getByText("Ein neues Gerät wurde erkannt.")).toBeVisible();
+});
+
+// The Home Assistant trial (docs/HOME_ASSISTANT.md): gc_ha_server offers the
+// sensors Home Assistant has and picks one per measurement in one step. Here
+// the simulator's answers are changed to look like that server.
+const haSensors = [
+  { entity: "sensor.growbox_ph", name: "Growbox pH", kind: "ph", measures: ["ph"], value: 6.1, used: null },
+  { entity: "sensor.zelt_temperatur", name: "Zelt Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 24.6, used: "air_temp" },
+  { entity: "sensor.wohnzimmer_temperatur", name: "Wohnzimmer Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.0, used: null },
+  { entity: "sensor.kaputt", name: "Kaputt", kind: "temperature", measures: ["water_temp", "air_temp"], value: null, used: null },
+];
+async function asHomeAssistant(page: Page, connection: string, sensors = haSensors) {
   await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
     const res = await route.fetch();
     const info = await res.json();
     info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
     await route.fulfill({ response: res, json: info });
   });
+  await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => route.fulfill({ json: { connection, candidates: sensors } }));
+}
+async function newPassword(page: Page) {
   await page.goto("/");
   await page.locator("input[name=password]").fill("mein-passwort");
   await page.locator("input[name=password2]").fill("mein-passwort");
   await page.getByRole("button", { name: "Passwort festlegen" }).click();
   await expect(page.getByTestId("watchdog")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way back into it
-  // The overview points to the devices waiting to be accepted
-  await page.getByTestId("new-devices-link").click();
-  await expect(page).toHaveURL(/#\/geraete/);
-  await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
-  await page.unroute(/\/api\/v1\/info(\?|$)/);
+}
+
+test("Home Assistant: from the overview to a sensor per measurement, in one tap each", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  const picked: unknown[] = [];
+  await page.route(/\/api\/v1\/ha\/assign(\?|$)/, (route) => {
+    picked.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  await newPassword(page);
+  await page.getByTestId("ha-choose-link").click();
+  await expect(page).toHaveURL(/tab=zuordnung/);
+  await expect(page.getByText("Sensoren aus Home Assistant")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Erweitern" })).toHaveCount(0);  // hardware to buy: not here
+  // A role with no fitting sensor is named once, not shown as an empty row
+  await expect(page.getByText(/Kein passender Sensor in Home Assistant für: .*EC im Tank/)).toBeVisible();
+  await expect(page.getByTestId("ha-role-tank.ec")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sensor wählen: pH im Tank" }).click();
+  const picker = page.getByTestId("ha-picker");
+  await expect(picker.getByText("Growbox pH")).toBeVisible();
+  await expect(picker.getByText("Zelt Temperatur")).toHaveCount(0);  // only what measures pH
+  await picker.getByText("Growbox pH").click();
+  await expect(page.getByText("Gespeichert: Growbox pH für pH im Tank")).toBeVisible();
+  expect(picked).toEqual([{ role: "tank.ph", entity: "sensor.growbox_ph" }]);
+  // For water temperature: the sensor already used for the air is shown, but cannot be taken
+  await page.getByRole("button", { name: "Sensor wählen: Wassertemperatur" }).click();
+  await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeDisabled();
+  await expect(picker.getByText("Schon für Lufttemperatur gewählt")).toBeVisible();
+  await expect(picker.getByRole("button", { name: /Kaputt/ })).toContainText("noch kein Wert");  // never 0 (R5)
+  await expect(page.getByText(/Nimm ihn kurz in die Hand/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  expect(picked).toHaveLength(1);  // closing changes nothing
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: a refused token or no answer is said as such, not as \"no sensors\"", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "refused", []);
+  await newPassword(page);
+  await expect(page.getByText("Home Assistant lehnt den Zugang ab. Leg dort einen neuen Token an und starte den Hub neu.")).toBeVisible();
+  await page.goto("/#/geraete?tab=zuordnung");
+  await expect(page.getByText("Home Assistant lehnt den Zugang ab", { exact: true })).toBeVisible();
+  await expect(page.getByText("Keine passenden Sensoren gefunden")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });

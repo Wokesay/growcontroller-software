@@ -21,61 +21,64 @@ Poller::Poller(HaBus& bus, std::string url, std::string token, std::function<gc:
 Poller::~Poller() { stop(); }
 
 std::string Poller::pollOnce() {
-  auto lostAll = [&] {
-    for (const auto& e : bus_.entities()) bus_.lost(e.entityId);
-  };
+  if (stopping_) return "";
 #if !defined(CPPHTTPLIB_OPENSSL_SUPPORT) && !defined(CPPHTTPLIB_SSL_ENABLED)
   if (url_.rfind("https://", 0) == 0) {
-    lostAll();
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
     return "https needs a build with OpenSSL; use http:// in your own network";
   }
 #endif
   httplib::Client cli(url_);
   if (!cli.is_valid()) {
-    lostAll();
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
     return "the Home Assistant address is not valid";
   }
   cli.set_connection_timeout(3, 0);
   cli.set_read_timeout(5, 0);
   cli.set_max_timeout(std::chrono::seconds(10));  // per request, also against a server that trickles bytes
-  cli.set_payload_max_length(64 * 1024);          // one state is a few hundred bytes
-  cli.set_follow_location(false);                 // never carry the token to another host
+  cli.set_payload_max_length(kMaxAnswer);
+  cli.set_follow_location(false);  // never carry the token to another host
   rejected_ = false;
+  // All states in one request: the selected entities and the candidates the
+  // user can pick from. Everything else in it is dropped by the bus.
   const httplib::Headers headers = {{"Authorization", "Bearer " + token_}};
-  std::string problem;
-  for (const auto& e : bus_.entities()) {
-    if (stopping_) break;  // do not wait for the rest of a round
-    auto res = cli.Get("/api/states/" + e.entityId, headers);
-    if (!res) {
-      lostAll();
-      return "Home Assistant not reachable (" + httplib::to_string(res.error()) + ")";
-    }
-    if (res->status == 401 || res->status == 403) {
-      lostAll();
-      rejected_ = true;
-      return res->status == 401 ? "Home Assistant rejected the token" : "Home Assistant refused access (403, maybe this computer is banned)";
-    }
-    if (res->status != 200) {
-      bus_.lost(e.entityId);
-      problem = e.entityId + ": HTTP " + std::to_string(res->status);
-      continue;
-    }
-    auto j = gc::json::parse(res->body, nullptr, false);
-    if (!j.is_object()) {
-      bus_.lost(e.entityId);
-      problem = e.entityId + ": answer is not a JSON object";
-      continue;
-    }
-    // Home Assistant's own time of the answer, so a report's age needs no
-    // agreement between the two clocks; without a Date header, ours.
-    const auto haNow = parseHttpDateMs(res->get_header_value("Date"));
-    if (!haNow && !warnedNoDate_) {
-      warnedNoDate_ = true;
-      std::cerr << "Home Assistant: no Date header; report ages use this computer's clock, keep both clocks synced\n";
-    }
-    bus_.update(e.entityId, j, haNow.value_or(epochMs()), nowMs_());
-    if (const std::string f = bus_.fault(e.entityId); !f.empty()) problem = e.entityId + ": " + f;
+  auto res = cli.Get("/api/states", headers);
+  if (!res) {
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
+    return "Home Assistant not reachable (" + httplib::to_string(res.error()) + ")";
   }
+  if (res->status == 401 || res->status == 403) {
+    bus_.lostAll();
+    bus_.setConnection("refused");
+    rejected_ = true;
+    return res->status == 401 ? "Home Assistant rejected the token" : "Home Assistant refused access (403, maybe this computer is banned)";
+  }
+  if (res->status != 200) {
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
+    return "Home Assistant answered HTTP " + std::to_string(res->status);
+  }
+  auto j = gc::json::parse(res->body, nullptr, false);
+  if (!j.is_array()) {
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
+    return "Home Assistant's answer is not a list of states";
+  }
+  bus_.setConnection("ok");
+  // Home Assistant's own time of the answer, so a report's age needs no
+  // agreement between the two clocks; without a Date header, ours.
+  const auto haNow = parseHttpDateMs(res->get_header_value("Date"));
+  if (!haNow && !warnedNoDate_) {
+    warnedNoDate_ = true;
+    std::cerr << "Home Assistant: no Date header; report ages use this computer's clock, keep both clocks synced\n";
+  }
+  bus_.updateAll(j, haNow.value_or(epochMs()), nowMs_());
+  std::string problem;
+  for (const auto& e : bus_.entities())
+    if (const std::string f = bus_.fault(e.entityId); !f.empty()) problem = e.entityId + ": " + f;
   return problem;
 }
 
@@ -89,7 +92,7 @@ void Poller::start(std::chrono::milliseconds every) {
       try {
         problem = pollOnce();
       } catch (const std::exception& ex) {  // never take the server down
-        for (const auto& e : bus_.entities()) bus_.lost(e.entityId);
+        bus_.lostAll();
         problem = std::string("reading failed: ") + ex.what();
       }
       if (stopping_) break;  // a round cut short is no news

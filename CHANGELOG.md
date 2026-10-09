@@ -8,6 +8,15 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant: choose sensors in the web app instead of listing
+  them** (`docs/HOME_ASSISTANT.md`): `gc_ha_server` reads all states in one
+  request and finds the sensors it can use by Home Assistant's device class
+  and unit (pH, EC, temperature, humidity, CO2, level); everything else is
+  dropped at once. Under Devices › Assignment the user picks one sensor per
+  measurement from a list with name, entity ID and live value; one tap
+  selects, adds and assigns it, and "Don't use a sensor" takes it away
+  again. The mapping file needs only Home Assistant's address. The
+  overview says when Home Assistant does not answer or refuses access.
 - **Home Assistant, read-only spike** (`docs/HOME_ASSISTANT.md`): a
   server (`gc_ha_server`) runs the core next to Home Assistant, reads
   mapped sensor entities (pH, EC, water and air temperature, level in L,

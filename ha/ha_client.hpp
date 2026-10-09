@@ -19,9 +19,12 @@ class Poller {
   Poller(HaBus& bus, std::string url, std::string token, std::function<gc::Ms()> nowMs);
   ~Poller();
 
-  // One round over all entities; returns "" or why it failed (never the token).
-  // After stop() it reads nothing until start() again.
+  // One round: all states in one request; returns "" or why it failed (never
+  // the token). After stop() it reads nothing until start() again.
   std::string pollOnce();
+  // The largest answer taken: all states of a large installation (a state is
+  // a few hundred bytes to a few KB).
+  static constexpr size_t kMaxAnswer = 16 * 1024 * 1024;
   // Home Assistant refused the token (401/403) in the last round. Running,
   // the poller then stops until restart: Home Assistant counts every failed
   // login and bans the computer after a few, however slowly they come.

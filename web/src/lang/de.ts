@@ -14,6 +14,7 @@ import { de as widgets } from "./widgets";
 import { de as sim } from "./sim";
 import { de as areas } from "./areas";
 import { de as setup } from "./setup";
+import { de as ha } from "./ha";
 
 // Deutsche Texte der App. Schlüssel sind stabil; die englische Tabelle
 // (en.ts) muss jeden Schlüssel haben. Platzhalter in {geschweiften Klammern}.
@@ -285,4 +286,4 @@ export const deBase = {
 } as const;
 
 // The base texts plus the texts of each area (#18).
-export const de = { ...deBase, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup };
+export const de = { ...deBase, ...login, ...settings, ...recipes, ...shell, ...overview, ...mix, ...tank, ...functions, ...history, ...devices, ...calibration, ...widgets, ...sim, ...areas, ...setup, ...ha };
