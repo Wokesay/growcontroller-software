@@ -147,6 +147,8 @@ TEST_CASE("Home Assistant: states become samples in the hub's units; missing sta
   CHECK(odd.find('\x1b') == std::string::npos);
   CHECK(odd.find('\x07') == std::string::npos);
   CHECK(odd.size() <= std::string("unit  not supported").size() + 32);
+  bus.update("sensor.level", state("sensor.level", "40", "\xc2\x9b" "2J\x9b" "°x", "2026-10-09T12:00:00+00:00"), kNoonMs, now);
+  CHECK(bus.fault("sensor.level") == "unit 2J°x not supported");  // C1 controls and stray bytes gone, ° kept
   // "unknown" is no value, "unavailable" is offline; neither becomes 0
   bus.update("sensor.ph", state("sensor.ph", "unknown", "", "2026-10-09T12:00:00+00:00"), kNoonMs, now);
   CHECK_FALSE(bus.sample("ha.sensor.ph", "measure.ph"));

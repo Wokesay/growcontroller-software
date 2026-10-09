@@ -78,7 +78,7 @@ std::string readFile(const std::string& path) {
 
 void usage() {
   std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
-            << "  --config FILE       mapping: {\"url\": \"http://homeassistant.local:8123\", \"entities\": [...]}\n"
+            << "  --config FILE       mapping: {\"url\": \"http://192.168.1.20:8123\", \"entities\": [...]} (an IP, not .local)\n"
             << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"

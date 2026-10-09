@@ -34,10 +34,24 @@ const char* labelOf(const std::string& m) {
 
 // Text from Home Assistant as it may appear in a fault: printable, at most
 // 32 bytes, because faults reach the terminal, the state and diagnostics.
+// Keeps printable ASCII and well-formed UTF-8 from U+00A0 on (µ, °); drops
+// control characters, C1 controls (U+0080–U+009F) and stray bytes.
 std::string printable(const std::string& s) {
   std::string out;
-  for (unsigned char c : s)
-    if (c >= 0x20 && c != 0x7f) out += static_cast<char>(c);
+  for (size_t i = 0; i < s.size();) {
+    const auto c = static_cast<unsigned char>(s[i]);
+    if (c < 0x80) {
+      if (c >= 0x20 && c != 0x7f) out += static_cast<char>(c);
+      ++i;
+      continue;
+    }
+    const size_t n = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
+    bool ok = n > 0 && i + n <= s.size();
+    for (size_t k = 1; ok && k < n; ++k) ok = (static_cast<unsigned char>(s[i + k]) & 0xc0) == 0x80;
+    if (ok && n == 2 && c == 0xc2 && static_cast<unsigned char>(s[i + 1]) < 0xa0) ok = false;  // C1 control
+    if (ok) out.append(s, i, n);
+    i += ok ? n : 1;
+  }
   return gc::utf8Prefix(out, 32);
 }
 
