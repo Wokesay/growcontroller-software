@@ -183,6 +183,7 @@ const base: Record<keyof typeof deBase, string> = {
   "setup.cal.pumps": "Pumps",
   "setup.cal.probes": "Probes",
   "setup.cal.noProbes": "No pH/EC probe and no level sensor detected – you measure pH by hand.",
+  "setup.cal.external": "{name}: calibrated outside the hub – nothing to do here.",
   "setup.cal.notYet": "not calibrated yet",
   "setup.cal.again": "Again",
   "setup.cal.calibrate": "Calibrate",

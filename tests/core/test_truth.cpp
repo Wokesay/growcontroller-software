@@ -174,16 +174,43 @@ TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for
   cfg.calibrations["HA-PH"]["ph"] = {{"points", {{7.0, 7.0}, {4.0, 4.0}}}};
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
   CHECK_FALSE(truth.get("tank.ph").usable());
-  // The other checks still run on it, so a broken probe shows as broken, not as "not checked" (RAT-021)
+  // Freshness, plausibility and jumps still apply, so a broken probe shows as broken (RAT-021)
   clk.ms += 1000;
   bus.set("HA-PH", "measure.ph", 12.0, clk.ms);
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
   CHECK(truth.get("tank.ph").quality == Quality::Implausible);
-  for (int i = 0; i < 17; ++i) {  // the same value for more than 15 min, still reported
-    clk.ms += 60 * 1000;
-    bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
-    truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
-  }
-  CHECK(truth.get("tank.ph").quality == Quality::Frozen);
+  auto steady = [&](double v, int minutes) {
+    for (int i = 0; i < minutes; ++i) {
+      clk.ms += 60 * 1000;
+      bus.set("HA-PH", "measure.ph", v, clk.ms);
+      truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+    }
+  };
+  // No standstill check: what arrives is rounded and calibrated, not a raw
+  // signal, and a steady tank is no fault (RAT-059); freshness covers silence
+  steady(6.2, 17);
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK_FALSE(truth.get("tank.ph").usable());
+  clk.ms += 61 * 1000;  // not reported again
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Stale);
+  // A jump locks as for any probe (RAT-039) ...
+  bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  clk.ms += 60 * 1000;
+  bus.set("HA-PH", "measure.ph", 7.4, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Jump);
+  CHECK(rt.jumpLocks.count("tank.ph") == 1);
+  steady(7.4, 16);
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK(rt.jumpLocks.count("tank.ph") == 0);
+  // ... and an announced change, such as calibrating in maintenance mode, explains it (RAT-042)
+  truth.expectChange("tank.ph", clk.nowMs() + 5 * 60 * 1000);
+  clk.ms += 1000;
+  bus.set("HA-PH", "measure.ph", 6.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").reason.key == "truth.external");
+  CHECK(rt.jumpLocks.count("tank.ph") == 0);
   CHECK_FALSE(truth.get("tank.ph").usable());
 }

@@ -15,7 +15,10 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
   individually. Rationale: RAT-042, RAT-072.
 - **Keep three states apart:** "Sensor not responding", "not calibrated",
   "not applicable" (for example water temperature with an empty tank).
-  Rationale: RAT-021, RAT-048.
+  Rationale: RAT-021, RAT-048. **Calibrated outside the hub** (Home
+  Assistant trial) is a state of its own, not "not calibrated": the value
+  shows with its age and trend and is marked "display only"; stale,
+  implausible and jumps still show. Rationale: RAT-025.
 - **Show only what the hardware can do.** What is missing is listed in one
   place: Devices › Expand. Empty "–" tiles and probe advertising get in
   the way (`anwender`).

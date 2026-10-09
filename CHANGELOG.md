@@ -18,8 +18,9 @@ listed in every release under "Security".
   Assistant (RAT-025); the hub offers no calibration of its own for them.
   A missing unit (except pH) or an unreadable report time gives no value.
   A refused token stops reading until restart, so Home Assistant does not
-  ban the computer. The hub's own probe calibration now refuses kinds a
-  device class does not offer.
+  ban the computer. Their tiles say "display only" with age and trend
+  instead of "not calibrated", the monitoring says "calibrated outside the
+  hub", and the setup step does not ask for a probe calibration.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub
@@ -220,6 +221,10 @@ listed in every release under "Security".
     emergency shutdown exists (Rationale: RAT-060).
 
 ### Changed
+- **Probe calibration accepts only the kinds a device class offers**
+  (RAT-025): a pH calibration on an EC head, for example, is refused with
+  `probe.not_offered` instead of starting a calibration session that
+  paused control on that device for 10 min.
 - **The hub speaks English with keys** (#18, SD-032): controller lines,
   their checklists and the monitoring (headline and assessments) come
   from the hub as a key, the values and an English text. A German page

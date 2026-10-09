@@ -269,3 +269,29 @@ test("Calibration: a failed run is cancelled however the window is closed, Escap
   await expect(dialog).toHaveCount(0);
   await expect.poll(async () => (await api("/state")).lastJob?.state).toBe("aborted");
 });
+
+test("A value calibrated outside the hub shows for display only, with its age, not as a fault (RAT-025)", async ({ page }) => {
+  // The Home Assistant trial's state, made from the simulator's: pH calibrated elsewhere
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.readings["tank.ph"] = {
+      ...st.readings["tank.ph"],
+      quality: "uncalibrated",
+      usable: false,
+      ageS: 20,
+      reason: { key: "truth.external", text: "Außerhalb des Hubs kalibriert – vom Hub nicht geprüft", args: {} },
+    };
+    await route.fulfill({ response: res, json: st });
+  });
+  await login(page);
+  const tile = page.getByTestId("metric-pH");
+  await expect(tile.getByText("nur Anzeige")).toBeVisible();
+  await expect(tile.getByText("Außerhalb des Hubs kalibriert – vom Hub nicht geprüft")).toBeVisible();
+  await expect(tile.getByText("nicht kalibriert")).toHaveCount(0);
+  await expect(tile).not.toHaveClass(/\bbad\b/);
+  await expect(tile.locator(".metric-foot")).toContainText("vor 20 s");
+  await page.unroute(/\/api\/v1\/state(\?|$)/);
+  await page.unroute(/\/api\/v1\/events\/stream/);
+});

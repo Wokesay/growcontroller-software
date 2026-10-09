@@ -176,7 +176,9 @@ TEST_CASE("Home Assistant: a report's time is never guessed") {
   const auto first = bus.sample("ha.sensor.ph", "measure.ph");
   REQUIRE(first);
   CHECK(first->ts == 3000);
-  bus.update("sensor.ph", state("sensor.ph", "6.2", "", iso(kNoonMs)), kNoonMs + 7001, 10001);
+  // (Home Assistant's Date header has whole seconds: dating it anew from
+  // each answer, it would read 12000 - 7001 = 4999 here and wander.)
+  bus.update("sensor.ph", state("sensor.ph", "6.2", "", iso(kNoonMs)), kNoonMs + 7001, 12000);
   const auto again = bus.sample("ha.sensor.ph", "measure.ph");
   REQUIRE(again);
   CHECK(again->ts == 3000);
@@ -203,12 +205,10 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   test::Clock clk;
   gc::Hub hub(cat, bus, store, clk, pseudoRandom);
   hub.boot();
-  const std::int64_t epoch0 = static_cast<std::int64_t>(clk.epoch()) * 1000;
   auto report = [&](const std::string& entity, const std::string& value, const std::string& unit) {
-    const std::int64_t haNow = epoch0 + clk.ms;
     auto s = state(entity, value, unit, "");
-    s["last_reported"] = s["last_updated"] = iso(kNoonMs + (haNow - epoch0));
-    bus.update(entity, s, kNoonMs + (haNow - epoch0), clk.ms);
+    s["last_reported"] = s["last_updated"] = iso(kNoonMs + clk.ms);  // reported just now
+    bus.update(entity, s, kNoonMs + clk.ms, clk.ms);
   };
   auto tick = [&](int seconds, bool fresh) {
     for (int i = 0; i < seconds; ++i) {
@@ -233,7 +233,9 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   CHECK(ph["reason"]["key"] == "truth.external");
   CHECK(st["readings"]["tank.water_temp"]["quality"] == "ok");  // needs no calibration
   // The hub offers no calibration of its own for it, and says why instead of asking for one
-  CHECK(hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}}).status == 422);
+  const auto refused = hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}});
+  CHECK(refused.status == 422);
+  CHECK(refused.body["error"]["key"] == "probe.not_offered");
   bool explained = false;
   for (const auto& f : st["functions"])
     for (const auto& c : f["checks"])
@@ -242,8 +244,8 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
         CHECK(c["fix"] == "");
       }
   CHECK(explained);
-  // Not re-reported (ESPHome without force_update): one fresh report, then Home Assistant keeps
-  // answering with it while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
+  // The sensor goes silent (or Home Assistant is older than 2024.4): Home Assistant keeps answering
+  // with the last report while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
   const std::int64_t reportedAt = kNoonMs + clk.ms;
   auto sameReport = [&] {
     auto s = state("sensor.grow_ph", "6.1", "", "");
@@ -312,7 +314,7 @@ TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and 
     p.start(std::chrono::milliseconds(20));
     for (int i = 0; i < 500 && ha.count == before; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     REQUIRE(ha.count == before + 1);                             // the first round ran
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));  // 15 more rounds at 20 ms if it went on
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));  // about 3 more rounds if it went on (it waits in 100 ms steps)
     p.stop();
     CHECK(ha.count == before + 1);
   }

@@ -24,7 +24,10 @@ const qualityText: Record<string, TextKey> = {
 
 export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string }) {
   const r = p.reading;
-  const bad = r && r.quality !== "ok" && r.quality !== "not_bound";
+  // Calibrated outside the hub (Home Assistant trial): a value to look at, not
+  // a fault; it keeps its age and trend and says it is for display only.
+  const external = r?.quality === "uncalibrated" && r.reason.key === "truth.external";
+  const bad = r && r.quality !== "ok" && r.quality !== "not_bound" && !external;
   const outOfBand = r?.usable && p.band && r.value !== null && (r.value < p.band[0] || r.value > p.band[1]);
   return (
     <div class={`metric ${bad ? "bad" : ""}`} data-testid={`metric-${p.label}`}>
@@ -37,6 +40,8 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
           <Pill tone={r!.quality === "uncalibrated" ? "warn" : "bad"} title={msg(r!.reason)}>
             {qualityText[r!.quality] && t(qualityText[r!.quality])}
           </Pill>
+        ) : external ? (
+          <Pill tone="warn">{t("widgets.quality.external")}</Pill>
         ) : outOfBand ? (
           <Pill tone="warn">{t("widgets.outOfBand")}</Pill>
         ) : null}
@@ -47,6 +52,7 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
       </div>
       {p.spark && !bad && <Sparkline values={p.spark} color={p.color} band={p.band} />}
       {bad && r?.reason.text && <div class="metric-reason">{msg(r.reason)}</div>}
+      {external && <div class="metric-note">{msg(r!.reason)}</div>}
       <div class="metric-foot">
         <span>{p.band ? t("widgets.target", { lo: num(p.band[0], 2), hi: num(p.band[1], 2) }) : p.notApplicable ?? ""}</span>
         {!bad && <span>{r?.ageS !== null && r?.ageS !== undefined ? ago(r.ageS) : ""}</span>}

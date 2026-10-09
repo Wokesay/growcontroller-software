@@ -8,8 +8,8 @@ for the product repository; this spike only shows whether it works.
 
 **What it does:** it reads mapped sensor entities from Home Assistant's
 REST API every few seconds, turns them into readings with the usual sensor
-truth (stale, frozen, implausible, jump lock; a missing value is never 0)
-and serves the web app. The setup finds the entities as devices; measuring
+truth (stale, implausible, jump lock; a missing value is never 0) and
+serves the web app. The setup finds the entities as devices; measuring
 roles assign themselves.
 
 **What it does not do:**
@@ -19,10 +19,13 @@ roles assign themselves.
   It sends Home Assistant nothing but `GET /api/states/<entity>` (tested).
 - pH, EC and level are shown but are **no values for control**: they were
   calibrated outside the hub, and the hub has not checked that calibration
-  (RAT-025). They read "Außerhalb des Hubs kalibriert – vom Hub nicht
-  geprüft"; stale, frozen, implausible and jumping values are still marked
-  as such. Temperature, humidity and CO2 need no calibration and are valid
-  readings.
+  (RAT-025). Their tiles say "nur Anzeige" (display only) and "Außerhalb
+  des Hubs kalibriert – vom Hub nicht geprüft" (calibrated outside the hub,
+  not checked by the hub); stale, implausible and jumping values are still
+  marked as such. They get no standstill ("frozen") check: what arrives is
+  a rounded, calibrated value, not a raw signal, and a steady tank is no
+  fault (RAT-059); a sensor that falls silent goes stale. Temperature,
+  humidity and CO2 need no calibration and are valid readings.
 
 ## Run it
 
@@ -82,13 +85,19 @@ roles assign themselves.
   EZO sensors read every 60 s by default [2], the same as the freshness
   limit, so readings would flip between valid and stale.
 - **`force_update: true` only if needed:** if a steady value goes stale
-  although the sensor reports, set it on the ESPHome sensor (default off
-  [2]). It makes Home Assistant record every reading, so its database
-  grows.
+  although the sensor reports, set it on the ESPHome or MQTT sensor
+  (default off [2]). It makes Home Assistant record every reading, so its
+  database grows.
+- **Map the sensor itself, not a rounding template:** a `round()` template
+  sensor only writes when its source changes, so a steady value would go
+  stale (assumption from how templates work, not tested here).
 - **Availability instead of fallback numbers:** template sensors written
   as `| float(0)` turn "unavailable" into 0, which the hub cannot tell from
   a real 0 (RAT-006). Give them an `availability` template instead.
 - **Units:** see below. Without a unit only pH is taken.
+
+Two things to know while it runs:
+
 - **After a Home Assistant restart** restored states carry the restart
   time, so an old value looks fresh until the freshness limit runs out.
 - **Calibrating in Home Assistant** is not announced to the hub: buffer
@@ -138,11 +147,11 @@ steer anything. Each point is open; none is built in this spike.
    to it. Each pump stops on its own (see below).
 8. **How old a calibration may be,** and when to recalibrate, has no rule
    yet; that is a product question.
-9. **Fresh and frozen from Home Assistant's values:** after a Home
-   Assistant restart a restored value needs a change or a second report
-   before it counts; and the frozen check judges a raw signal (RAT-023),
-   while Home Assistant gives rounded, calibrated values, so a steady tank
-   may read as frozen.
+9. **Fresh and stuck values:** after a Home Assistant restart a restored
+   value needs a change or a second report before it counts; and a probe
+   stuck on one value while still reporting needs a check of its own,
+   since the hub's standstill check judges a raw signal (RAT-023, RAT-059)
+   and gets none from Home Assistant.
 
 ## Units
 

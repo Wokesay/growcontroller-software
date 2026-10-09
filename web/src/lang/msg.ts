@@ -119,6 +119,7 @@ export const msgDe: Record<string, string> = {
   "watch.devices.offline": "Antwortet nicht: {names}",
   "watch.reading.ok": "Gültig",
   "watch.reading.uncalibrated": "Nicht kalibriert",
+  "watch.reading.external": "Außerhalb des Hubs kalibriert – nicht geprüft",
   "watch.reading.failed": "Datenausfall: {reason}",
   "watch.band.ph.label": "pH im Zielband",
   "watch.band.ec.label": "EC im Zielband",

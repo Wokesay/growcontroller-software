@@ -134,6 +134,7 @@ constexpr Entry kMessages[] = {
     {"watch.devices.offline", "Not responding: {names}"},
     {"watch.reading.ok", "Valid"},
     {"watch.reading.uncalibrated", "Not calibrated"},
+    {"watch.reading.external", "Calibrated outside the hub – not checked"},
     {"watch.reading.failed", "No valid reading: {reason}"},
     {"watch.band.ph.label", "pH limits"},
     {"watch.band.ec.label", "EC limits"},

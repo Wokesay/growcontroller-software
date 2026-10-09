@@ -62,7 +62,10 @@ WatchResult evaluate(const WatchInput& in) {
       bool needed = (role == "tank.ph" && fnEnabled(in.cfg, "ph_control")) ||
                     (role == "tank.ec" && (fnEnabled(in.cfg, "ec_control") || fnEnabled(in.cfg, "ph_control"))) ||
                     (role == "tank.level" && fnEnabled(in.cfg, "refill"));
-      add("reading." + role, label, needed ? "problem" : "neutral", say("watch.reading.uncalibrated"));
+      // Calibrated outside the hub: the hub cannot calibrate it, so do not ask for that (RAT-021)
+      const bool elsewhere = r.reason.key == "truth.external";
+      add("reading." + role, label, needed ? "problem" : "neutral",
+          say(elsewhere ? "watch.reading.external" : "watch.reading.uncalibrated"));
     } else
       add("reading." + role, label, "problem", say("watch.reading.failed", {{"reason", r.reason}}));
   }

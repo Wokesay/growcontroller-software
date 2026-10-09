@@ -453,6 +453,12 @@ function StepCalibrate(p: { step: number; next: () => void }) {
   const allCal = assigned.length > 0 && assigned.every((k) => st.devices.find((d) => d.id === k.pump)?.info?.flowMlPerMin);
   // Alle Sondenköpfe mit Kalibrierung: ein pH/EC-Kopf oder zwei einzelne, Füllstand
   const probes = cfg.devices.flatMap((d) => probeKinds(catalog.value, d.class).map((k) => ({ dev: d.id, kind: k })));
+  // pH, EC or level that the hub cannot calibrate: calibrated elsewhere (Home Assistant trial)
+  const measured = ["measure.ph", "measure.ec", "measure.level"];
+  const external = cfg.devices.filter((d) => {
+    const dc = catalog.value?.deviceClasses[d.class];
+    return Array.isArray(dc?.provides) && !dc.calibrations?.length && dc.provides.some((c) => measured.includes(c));
+  });
   const probeLabel = (k: ProbeKind) => (k === "ph" ? t("setup.cal.ph") : k === "ec" ? t("setup.cal.ecProbe") : t("setup.cal.level"));
   const cals = cfg.calibrations;
   const probeRow = (dev: string, kind: ProbeKind, label: string) => (
@@ -495,11 +501,11 @@ function StepCalibrate(p: { step: number; next: () => void }) {
       </div>
       {!allCal && assigned.length > 0 && <Banner tone="warn">{t("setup.cal.warn")}</Banner>}
       <div class="section-title">{t("setup.cal.probes")}</div>
-      {probes.length === 0 ? (
-        <p class="muted">{t("setup.cal.noProbes")}</p>
-      ) : (
-        <div class="list">{probes.map((x) => probeRow(x.dev, x.kind, probeLabel(x.kind)))}</div>
-      )}
+      {probes.length > 0 && <div class="list">{probes.map((x) => probeRow(x.dev, x.kind, probeLabel(x.kind)))}</div>}
+      {external.map((d) => (
+        <p class="muted" data-testid="external-probe">{t("setup.cal.external", { name: d.name })}</p>
+      ))}
+      {probes.length === 0 && external.length === 0 && <p class="muted">{t("setup.cal.noProbes")}</p>}
       {cal && <PumpCalibration pump={cal.id} name={cal.name} onClose={() => setCal(null)} />}
       {probe && <ProbeCalibration device={probe.dev} kind={probe.kind} name={probe.name} onClose={() => setProbe(null)} />}
     </Page>

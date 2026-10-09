@@ -97,3 +97,25 @@ test("Einrichtung zeigt vorhandene Rezepte und schaltet auf Englisch", async ({ 
   await page.getByRole("tab", { name: "Deutsch" }).click();
   await expect(page.getByRole("heading", { name: "Willkommen" })).toBeVisible();
 });
+
+test("Setup: a pH calibrated outside the hub needs nothing here and is no missing probe", async ({ page, request }) => {
+  await scenario(request, "demo");
+  // The Home Assistant trial: a pH device the hub cannot calibrate, and no probe head of the hub's own
+  await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const cat = await res.json();
+    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"] };
+    await route.fulfill({ response: res, json: cat });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")), { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" }];
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await login(page);
+  await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
+  await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
+});

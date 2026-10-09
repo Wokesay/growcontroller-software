@@ -80,11 +80,11 @@ std::string Poller::pollOnce() {
 }
 
 void Poller::start(std::chrono::milliseconds every) {
+  stop();  // a thread that ended on a refused token is joined first
   stopping_ = false;
-  running_ = true;
   thread_ = std::thread([this, every] {
     std::string last;
-    while (running_) {
+    while (!stopping_) {
       std::string problem;
       try {
         problem = pollOnce();
@@ -92,13 +92,14 @@ void Poller::start(std::chrono::milliseconds every) {
         for (const auto& e : bus_.entities()) bus_.lost(e.entityId);
         problem = std::string("reading failed: ") + ex.what();
       }
+      if (stopping_) break;  // a round cut short is no news
       if (problem != last) std::cerr << (problem.empty() ? "Home Assistant: reading again\n" : "Home Assistant: " + problem + "\n");
       last = problem;
       if (rejected_) {
         std::cerr << "Home Assistant: reading stopped; fix the token and restart\n";
         break;
       }
-      for (auto waited = std::chrono::milliseconds(0); waited < every && running_; waited += std::chrono::milliseconds(100))
+      for (auto waited = std::chrono::milliseconds(0); waited < every && !stopping_; waited += std::chrono::milliseconds(100))
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   });
@@ -106,7 +107,6 @@ void Poller::start(std::chrono::milliseconds every) {
 
 void Poller::stop() {
   stopping_ = true;
-  running_ = false;
   if (thread_.joinable()) thread_.join();
 }
 

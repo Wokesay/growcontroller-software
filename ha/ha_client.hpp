@@ -32,7 +32,6 @@ class Poller {
   HaBus& bus_;
   std::string url_, token_;
   std::function<gc::Ms()> nowMs_;
-  std::atomic<bool> running_{false};
   std::atomic<bool> stopping_{false};  // set by stop(), read by the polling thread
   std::atomic<bool> rejected_{false};
   bool warnedNoDate_ = false;          // only pollOnce() touches it, one round at a time
