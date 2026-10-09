@@ -109,10 +109,16 @@ struct Eval {
     }
     if (cap->kind == "measure") {
       const Reading& rd2 = truth.get(r.role);
-      // Calibrated elsewhere: the setup line above says so already (one cause, one line)
-      if (rd2.reason.key != kCalibratedElsewhere)
+      // Calibrated elsewhere: where the role needs a calibration, the setup line
+      // above says so already (one cause, one line); elsewhere this line does,
+      // in the resolver's wording
+      const bool elsewhere = rd2.reason.key == kCalibratedElsewhere;
+      if (!(elsewhere && r.calibrated))
         out.push_back({"runtime", rd2.usable(), false,
-                       rd2.usable() ? cap->label + " gültig" : cap->label + ": " + rd2.reason.text, "", {}});
+                       rd2.usable()  ? cap->label + " gültig"
+                       : elsewhere   ? cap->label + ": außerhalb des Hubs kalibriert – vom Hub nicht geprüft"
+                                     : cap->label + ": " + rd2.reason.text,
+                       "", {}});
     } else {
       bool on = deviceOnline(b->device);
       out.push_back({"runtime", on, false, on ? rd->label + " erreichbar" : rd->label + ": Gerät antwortet nicht", "", {}});

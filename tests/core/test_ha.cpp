@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -237,21 +238,20 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   const auto refused = hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}});
   CHECK(refused.status == 422);
   CHECK(refused.body["error"]["key"] == "probe.not_offered");
-  int explained = 0;
-  for (const auto& f : st["functions"]) {
-    int inFunction = 0;
+  // Every function that reads pH says it once, whether it needs a calibration (pH control) or not
+  // (tank monitoring), and in the language of the other lines
+  std::map<std::string, int> explained;
+  for (const auto& f : st["functions"])
     for (const auto& c : f["checks"]) {
       const std::string text = c["text"];
       if (text.find("außerhalb des Hubs kalibriert") != std::string::npos) {
-        ++inFunction;
+        ++explained[f["id"].get<std::string>()];
         CHECK(c["fix"] == "");
       }
-      CHECK(text.find("Calibrated outside") == std::string::npos);  // not a second, English line for it
+      CHECK(text.find("Calibrated outside") == std::string::npos);
     }
-    CHECK(inFunction <= 1);  // one cause, one line
-    explained += inFunction;
-  }
-  CHECK(explained > 0);
+  CHECK(explained["ph_control"] == 1);
+  CHECK(explained["monitor_tank"] == 1);
   // The sensor goes silent (or Home Assistant is older than 2024.4): Home Assistant keeps answering
   // with the last report while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
   const std::int64_t reportedAt = kNoonMs + clk.ms;
