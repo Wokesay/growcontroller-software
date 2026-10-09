@@ -10,7 +10,7 @@ import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
 import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
 
-const qualityText: Record<string, TextKey> = {
+export const qualityText: Record<string, TextKey> = {
   not_bound: "widgets.quality.notBound",
   offline: "widgets.quality.offline",
   no_data: "widgets.quality.noData",

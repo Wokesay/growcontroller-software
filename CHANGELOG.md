@@ -15,8 +15,11 @@ listed in every release under "Security".
   dropped at once. Under Devices › Assignment the user picks one sensor per
   measurement from a list with name, entity ID and live value; one tap
   selects, adds and assigns it, and "Don't use a sensor" takes it away
-  again. The mapping file needs only Home Assistant's address. The
-  overview says when Home Assistant does not answer or refuses access.
+  again; a failed change keeps the former sensor. The picks live in the
+  hub's configuration, and the mapping file needs only Home Assistant's
+  address. A unit the hub does not convert exactly (TDS in ppm) is listed
+  without a value. The overview and the picker say when Home Assistant
+  does not answer or refuses access.
 - **Home Assistant, read-only spike** (`docs/HOME_ASSISTANT.md`): a
   server (`gc_ha_server`) runs the core next to Home Assistant, reads
   mapped sensor entities (pH, EC, water and air temperature, level in L,
@@ -172,6 +175,12 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **Home Assistant trial reads only what it needs:** Home Assistant's
+  state list is filtered while it is parsed (a few fields per state, no
+  nesting), so people, locations and other entities are never kept;
+  names from Home Assistant are cleaned of control and invisible format
+  characters, entity IDs are limited to 255 characters, and the picking
+  routes need a signed-in session.
 - **A damaged event cannot break the app** (SD-032): the web app reads
   the hub's messages defensively (only its own table keys, only strings
   as text, at most four nested levels). If a page or its event list

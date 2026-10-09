@@ -146,19 +146,37 @@ test("The overview points to devices waiting to be accepted", async ({ page, req
 // sensors Home Assistant has and picks one per measurement in one step. Here
 // the simulator's answers are changed to look like that server.
 const haSensors = [
-  { entity: "sensor.growbox_ph", name: "Growbox pH", kind: "ph", measures: ["ph"], value: 6.1, used: null },
-  { entity: "sensor.zelt_temperatur", name: "Zelt Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 24.6, used: "air_temp" },
-  { entity: "sensor.wohnzimmer_temperatur", name: "Wohnzimmer Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.0, used: null },
-  { entity: "sensor.kaputt", name: "Kaputt", kind: "temperature", measures: ["water_temp", "air_temp"], value: null, used: null },
+  { entity: "sensor.growbox_ph", name: "Growbox pH", kind: "ph", measures: ["ph"], value: 6.1, raw: 6.1, unit: "pH", problem: null, used: null },
+  { entity: "sensor.growbox_ec", name: "Growbox EC", kind: "ec", measures: ["ec"], value: 1.42, raw: 1420, unit: "µS/cm", problem: null, used: null },
+  { entity: "sensor.tank_tds", name: "Tank TDS", kind: "ec", measures: ["ec"], value: null, raw: 700, unit: "ppm", problem: "unit_unsupported", used: null },
+  { entity: "sensor.zelt_temperatur", name: "Zelt Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 24.6, raw: 24.6, unit: "°C", problem: null, used: "air_temp" },
+  { entity: "sensor.wohnzimmer_temperatur", name: "Wohnzimmer Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.0, raw: 21.0, unit: "°C", problem: null, used: null },
+  { entity: "sensor.kaputt", name: "Kaputt", kind: "temperature", measures: ["water_temp", "air_temp"], value: null, raw: null, unit: "°C", problem: null, used: null },
 ];
-async function asHomeAssistant(page: Page, connection: string, sensors = haSensors) {
+async function asHomeAssistant(page: Page, connection: string, sensors: unknown[] = haSensors) {
+  let asked = 0;
   await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
     const res = await route.fetch();
     const info = await res.json();
     info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
     await route.fulfill({ response: res, json: info });
   });
-  await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => route.fulfill({ json: { connection, candidates: sensors } }));
+  await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => {
+    asked++;
+    return route.fulfill({ json: { connection, truncated: false, candidates: sensors } });
+  });
+  return () => asked;
+}
+// The tent temperature already serves the air temperature, as gc_ha_server's config would say.
+async function airTempPicked(page: Page) {
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [...cfg.devices, { id: "ha.sensor.zelt_temperatur", class: "ha_air_temp", name: "Zelt Temperatur" }];
+    cfg.zones[0].roles["zone.air_temp"] = { device: "ha.sensor.zelt_temperatur", channel: 0 };
+    await route.fulfill({ response: res, json: cfg });
+  });
 }
 async function newPassword(page: Page) {
   await page.goto("/");
@@ -170,7 +188,7 @@ async function newPassword(page: Page) {
 
 test("Home Assistant: from the overview to a sensor per measurement, in one tap each", async ({ page, request }) => {
   await scenario(request, "neu");
-  await asHomeAssistant(page, "ok");
+  const asked = await asHomeAssistant(page, "ok");
   const picked: unknown[] = [];
   await page.route(/\/api\/v1\/ha\/assign(\?|$)/, (route) => {
     picked.push(route.request().postDataJSON());
@@ -182,24 +200,46 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
   await expect(page.getByText("Sensoren aus Home Assistant")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Erweitern" })).toHaveCount(0);  // hardware to buy: not here
   // A role with no fitting sensor is named once, not shown as an empty row
-  await expect(page.getByText(/Kein passender Sensor in Home Assistant für: .*EC im Tank/)).toBeVisible();
-  await expect(page.getByTestId("ha-role-tank.ec")).toHaveCount(0);
+  await expect(page.getByText(/Kein passender Sensor in Home Assistant für: .*Luftfeuchte/)).toBeVisible();
+  await expect(page.getByTestId("ha-role-zone.humidity")).toHaveCount(0);
   await page.getByRole("button", { name: "Sensor wählen: pH im Tank" }).click();
   const picker = page.getByTestId("ha-picker");
   await expect(picker.getByText("Growbox pH")).toBeVisible();
   await expect(picker.getByText("Zelt Temperatur")).toHaveCount(0);  // only what measures pH
+  await expect(page.getByText(/Pflanzen- und Poolsensoren/)).toBeVisible();
+  const before = asked();
   await picker.getByText("Growbox pH").click();
   await expect(page.getByText("Gespeichert: Growbox pH für pH im Tank")).toBeVisible();
   expect(picked).toEqual([{ role: "tank.ph", entity: "sensor.growbox_ph" }]);
-  // For water temperature: the sensor already used for the air is shown, but cannot be taken
-  await page.getByRole("button", { name: "Sensor wählen: Wassertemperatur" }).click();
-  await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeDisabled();
-  await expect(picker.getByText("Schon für Lufttemperatur gewählt")).toBeVisible();
-  await expect(picker.getByRole("button", { name: /Kaputt/ })).toContainText("noch kein Wert");  // never 0 (R5)
-  await expect(page.getByText(/Nimm ihn kurz in die Hand/)).toBeVisible();
+  expect(asked()).toBeGreaterThan(before);  // the list is fetched again after a save
+  // EC: the Home Assistant value next to the converted one; TDS in ppm gives no value, never a guess (RAT-006)
+  await page.getByRole("button", { name: "Sensor wählen: EC im Tank" }).click();
+  await expect(picker.getByRole("button", { name: /Growbox EC/ })).toContainText("in Home Assistant: 1.420,00 µS/cm");
+  await expect(picker.getByRole("button", { name: /Tank TDS/ })).toContainText("Einheit ppm passt nicht");
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   expect(picked).toHaveLength(1);  // closing changes nothing
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: a sensor serving one measurement cannot be taken for another", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await airTempPicked(page);
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await expect(page.getByRole("button", { name: "Ändern: Sensor für Lufttemperatur" })).toBeVisible();
+  await page.getByRole("button", { name: "Sensor wählen: Wassertemperatur" }).click();
+  const picker = page.getByTestId("ha-picker");
+  await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeDisabled();
+  await expect(picker.getByText("Schon für Lufttemperatur gewählt – erst dort ändern")).toBeVisible();
+  await expect(picker.getByRole("button", { name: /Kaputt/ })).toContainText("kein Wert");  // never 0 (R5)
+  await expect(page.getByText(/Nimm ihn kurz in die Hand/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  // In its own row it can be changed or taken away
+  await page.getByRole("button", { name: "Ändern: Sensor für Lufttemperatur" }).click();
+  await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeEnabled();
+  await expect(picker.getByRole("button", { name: "Keinen Sensor nutzen" })).toBeVisible();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
@@ -207,9 +247,25 @@ test("Home Assistant: a refused token or no answer is said as such, not as \"no 
   await scenario(request, "neu");
   await asHomeAssistant(page, "refused", []);
   await newPassword(page);
-  await expect(page.getByText("Home Assistant lehnt den Zugang ab. Leg dort einen neuen Token an und starte den Hub neu.")).toBeVisible();
+  await expect(page.getByText("Home Assistant lehnt den Zugang ab. Leg dort einen neuen Token an, speichere ihn in der Token-Datei und starte den Hub neu.")).toBeVisible();
   await page.goto("/#/geraete?tab=zuordnung");
   await expect(page.getByText("Home Assistant lehnt den Zugang ab", { exact: true })).toBeVisible();
   await expect(page.getByText("Keine passenden Sensoren gefunden")).toHaveCount(0);
+  // Links to "Expand" (hardware to plug in) land on the sensors here, not on an empty page
+  await page.goto("/#/geraete?tab=erweitern");
+  await expect(page.getByText("Sensoren aus Home Assistant")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: the picker says when Home Assistant does not answer, instead of showing old values", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "unreachable");
+  await airTempPicked(page);
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await page.getByRole("button", { name: "Ändern: Sensor für Lufttemperatur" }).click();
+  await expect(page.getByText("Home Assistant antwortet nicht", { exact: true }).last()).toBeVisible();
+  await expect(page.getByTestId("ha-picker").getByText("Wohnzimmer Temperatur")).toHaveCount(0);
+  await expect(page.getByText(/passende Sensoren/)).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

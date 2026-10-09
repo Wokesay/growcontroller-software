@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Read-only spike: the hub's core on a computer next to Home Assistant
-// (docs/HOME_ASSISTANT.md). It reads the mapped sensor entities, runs them
-// through the sensor truth and serves the web app; it switches nothing.
+// (docs/HOME_ASSISTANT.md). It reads the sensors picked in the web app, runs
+// them through the sensor truth and serves the web app; it switches nothing.
 // The HTTP part follows the simulator's server (sim/main.cpp).
 #include <algorithm>
 #include <atomic>
@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <thread>
@@ -28,7 +29,6 @@
 namespace {
 
 std::atomic<bool> g_running{true};
-const char* const kSelectionFile = "ha-entities.json";
 void onSignal(int) { g_running = false; }
 
 // Wall time from the computer. Assumption: its operating system keeps the
@@ -160,19 +160,11 @@ int main(int argc, char** argv) {
   const gc::Catalog cat = ha::catalog();
   HostClock clock;
   sim::FileStorage store(data);
-  // The sensors picked in the web app, after those the mapping file lists.
-  std::vector<ha::Entity> entities = mapping.entities;
-  if (auto saved = store.read(kSelectionFile)) {
-    auto picked = ha::parseEntities(gc::json::parse(*saved, nullptr, false), err);
-    if (!err.empty()) std::cerr << data << "/" << kSelectionFile << ": " << err << " (ignored)\n";
-    for (auto& e : picked)
-      if (std::none_of(entities.begin(), entities.end(), [&](const ha::Entity& x) { return x.entityId == e.entityId; }))
-        entities.push_back(std::move(e));
-  }
-  ha::HaBus bus(entities);
+  ha::HaBus bus(mapping.entities);
   gc::Hub hub(cat, bus, store, clock, randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
+  ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
   gc::Api api(hub, clock);
   ha::Poller poller(bus, mapping.url, token, [&clock] { return clock.nowMs(); });
 
@@ -243,32 +235,25 @@ int main(int argc, char** argv) {
     });
   });
   // Picking sensors from Home Assistant; registered before the hub's own API.
-  auto signedIn = [&](const httplib::Request& req, httplib::Response& res) {
-    if (api.authorized(toApi(req))) return true;
-    res.status = 401;
-    res.set_content(R"({"error":{"key":"api.auth","text":"Not signed in"}})", "application/json");
-    return false;
-  };
-  svr.Get("/api/v1/ha/candidates", [&](const httplib::Request& req, httplib::Response& res) {
-    if (!signedIn(req, res)) return;
-    res.set_header("Cache-Control", "no-store");
-    res.set_content(bus.candidatesJson().dump(), "application/json");
-  });
-  // One step for the web app: pick a sensor for a measuring role, or take it away ("entity": "").
-  svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
-    if (!signedIn(req, res)) return;
-    const auto body = gc::json::parse(req.body, nullptr, false);
-    const gc::Result r = ha::assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"),
-                                    [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
-    if (r.status == 200) {  // the storage belongs to the hub's lock, like every other write
-      std::lock_guard<std::recursive_mutex> l(hub.mutex());
-      store.write(kSelectionFile, ha::entitiesJson(bus.entities()).dump(2));
-      hub.flush();
-      store.flush();  // on disk now, not with the next flush
-    }
+  auto reply = [](httplib::Response& res, const gc::Result& r) {
     res.status = r.status;
     res.set_header("Cache-Control", "no-store");
-    res.set_content(r.status == 200 ? std::string(R"({"ok":true})") : r.body.dump(), "application/json");
+    res.set_content(r.body.dump(), "application/json");
+  };
+  svr.Get("/api/v1/ha/candidates", [&](const httplib::Request& req, httplib::Response& res) {
+    reply(res, ha::candidatesRoute(api, bus, toApi(req)));
+  });
+  std::mutex assigning;  // one pick at a time, also from two browser tabs
+  svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
+    std::lock_guard<std::mutex> one(assigning);
+    gc::Result r = ha::assignRoute(api, hub, bus, toApi(req), [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    {  // on disk now, not with the next flush, whatever the result changed
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      hub.flush();
+      store.flush();
+    }
+    if (r.status == 200) r.body = {{"ok", true}};
+    reply(res, r);
   });
   svr.Get(R"(/api/v1/.*)", apiHandler);
   svr.Post(R"(/api/v1/.*)", apiHandler);
@@ -304,7 +289,7 @@ int main(int argc, char** argv) {
   });
 
   std::cout << "growcontroller on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
-            << "\nReading " << mapping.entities.size() << " entities from " << mapping.url << " every " << everyS << " s\n"
+            << "\nReading " << bus.entities().size() << " picked sensors from " << mapping.url << " every " << everyS << " s\n"
             << std::flush;
   svr.listen_after_bind();
   g_running = false;

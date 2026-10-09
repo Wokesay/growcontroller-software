@@ -236,10 +236,12 @@ export function DevicesPage() {
   const q = route.value.query;
   // A Home Assistant hub starts on Assignment until a sensor is chosen.
   const haFirst = isHa.value && !Object.entries(catalog.value?.roles ?? {}).some(([r, def]) => def.capability?.startsWith("measure.") && binding(r));
-  const [tab, setTab] = useState<"geraete" | "zuordnung" | "erweitern">((q.tab as any) || (haFirst ? "zuordnung" : "geraete"));
+  // Expand lists hardware to plug in; a Home Assistant hub has none, so links to it land on Assignment.
+  const tabOf = (v?: string) => (isHa.value && v === "erweitern" ? "zuordnung" : v) as "geraete" | "zuordnung" | "erweitern" | undefined;
+  const [tab, setTab] = useState<"geraete" | "zuordnung" | "erweitern">(tabOf(q.tab) || (haFirst ? "zuordnung" : "geraete"));
   const [cal, setCal] = useState<{ d: Device; kind: string } | null>(null);
   useEffect(() => {
-    if (q.tab) setTab(q.tab as any);
+    if (q.tab) setTab(tabOf(q.tab)!);
     if (q.pump) {
       const d = st.devices.find((x) => x.id === q.pump);
       if (d) setCal({ d, kind: "pump" });
@@ -296,6 +298,22 @@ export function DevicesPage() {
                 </Button>
               </div>
             </Banner>
+          )}
+          {isHa.value && blocks.length === 0 && (
+            <div class="stack">
+              <p class="muted">{t("ha.devicesEmpty")}</p>
+              <div>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setTab("zuordnung");
+                    navigate("/geraete?tab=zuordnung");
+                  }}
+                >
+                  {t("ha.bannerChooseLink")}
+                </Button>
+              </div>
+            </div>
           )}
           {blocks.map((b) => {
             const caps = st.devices.filter((d) => d.parent === b.id);

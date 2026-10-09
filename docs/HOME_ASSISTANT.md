@@ -185,26 +185,45 @@ time is no value.
   network. An answer is at most 16 MB and 10 s; redirects are not
   followed, so the token never goes to another host. A refused token
   (401/403) stops reading until restart.
-- Of all states, the bus keeps only the candidates: sensors whose device
+- The answer is filtered while it is parsed (`parseStates`): of each state
+  only `entity_id`, `state`, the report times and the attributes
+  `device_class`, `unit_of_measurement`, `state_class` and `friendly_name`
+  are kept; anything else and anything nested deeper is dropped as it is
+  read, so a large or crafted answer never builds a large tree in memory.
+- Of the states, the bus keeps only the candidates: sensors whose device
   class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
   `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`
-  with `%`), CO2 (`carbon_dioxide`) or level (`volume_storage` or a
-  `volume` in `L` that does not only add up); at most 300. `%`, `ppm` and
-  `L` alone also stand for batteries, VOC or water meters, so they need the
-  device class. Everything else (people, locations, switches) is dropped at
-  once, never kept or logged. Only picked sensors become devices.
+  with `%`), CO2 (`carbon_dioxide`) or level (`volume_storage` or `volume`,
+  in `L`, not adding up like a meter); at most 100 of each kind, so device
+  temperatures cannot crowd out the tank's pH. `%`, `ppm` and `L` alone
+  also stand for batteries, VOC or water meters, so they need the device
+  class. A candidate whose unit the hub does not convert exactly (TDS in
+  ppm, EC in mS/m, temperature in K) is listed without a value and says
+  why; no factor is assumed (RAT-006, RAT-015). Everything else (people,
+  locations, switches) is dropped at once, never kept or logged. Only
+  picked sensors become devices.
+- What the hub cannot tell: whether a sensor with the right unit sits in
+  the right place. A soil sensor's EC or a pool's pH looks like the tank's;
+  the picker says so, and the name and live value are the guard. pH, EC
+  and level stay display only (RAT-025); temperature, humidity and CO2 are
+  used as valid readings, which matters once anything is switched.
 - `ha/ha_assign.*`: one step from the web app, `POST /api/v1/ha/assign`
   with a measuring role and an entity: select the entity, accept the device
   under its Home Assistant name, bind the role; an empty entity takes it
-  away again (unbind, remove, stop reading). If any part fails, nothing is
-  left half done. `GET /api/v1/ha/candidates` lists the candidates with
-  their value, the measure a picked one serves and the connection state
-  (`starting`, `ok`, `unreachable`, `refused`), so the web app can tell "no
-  sensors" from "Home Assistant not answering". Both need a signed-in
-  session; the picks are saved at once in `ha-entities.json` in the data
-  folder.
-- Text from Home Assistant is cut and cleaned before it is shown: a unit
-  in a fault to 32 printable bytes, a sensor's name to 60.
+  away again (unbind, remove, stop reading). A new sensor is bound before
+  the role's former one is dropped, so a failed change keeps the old one;
+  if any part fails, nothing this call added stays behind.
+  `GET /api/v1/ha/candidates` lists the candidates with their value, their
+  value and unit in Home Assistant, a unit problem, the measure a picked
+  one serves and the connection state (`starting`, `ok`, `unreachable`,
+  `refused`), so the web app can tell "no sensors" from "Home Assistant not
+  answering". Both need a signed-in session.
+- The picks live in the hub's configuration (devices `ha.<entity>` of
+  class `ha_<measure>`), saved at once after each pick; at start they are
+  handed back to the bus. There is no second file to get out of step.
+- Text from Home Assistant is cut and cleaned before it is shown, without
+  control or invisible format characters: a unit in a fault to 32 bytes, a
+  sensor's name to 60 in the list (40 as the device's name).
 - A report's age is measured in Home Assistant's own time (its `Date`
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.

@@ -6,18 +6,17 @@
 #include <climits>
 #include <cstdint>
 #include <cstdlib>
+#include <set>
+#include <unordered_map>
 
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 
 namespace ha {
 
 namespace {
 
 const char* const kMeasures[] = {"ph", "ec", "water_temp", "level", "air_temp", "humidity", "co2"};
-
-bool knownMeasure(const std::string& m) {
-  return std::any_of(std::begin(kMeasures), std::end(kMeasures), [&](const char* k) { return m == k; });
-}
 
 std::string classOf(const std::string& measures) { return "ha_" + measures; }
 
@@ -35,9 +34,11 @@ const char* labelOf(const std::string& m) {
 // Text from Home Assistant as it may appear in a fault or a name: printable
 // and short, because it reaches the terminal, the state and diagnostics.
 // Keeps printable ASCII and UTF-8 sequences from U+00A0 on (µ, °); drops
-// control characters, C1 controls (U+0080–U+009F) and stray bytes. The
-// input comes from the JSON parser, which has already rejected ill-formed
-// UTF-8, so the sequences are not checked further.
+// control characters, C1 controls (U+0080–U+009F), invisible format
+// characters that can reorder or hide text (U+200B–U+200F, U+2028–U+202E,
+// U+2060–U+2069, U+FEFF) and stray bytes. The input comes from the JSON
+// parser, which has already rejected ill-formed UTF-8, so the sequences are
+// not checked further.
 std::string printable(const std::string& s, size_t maxBytes = 32) {
   std::string out;
   for (size_t i = 0; i < s.size();) {
@@ -51,17 +52,16 @@ std::string printable(const std::string& s, size_t maxBytes = 32) {
     bool ok = n > 0 && i + n <= s.size();
     for (size_t k = 1; ok && k < n; ++k) ok = (static_cast<unsigned char>(s[i + k]) & 0xc0) == 0x80;
     if (ok && n == 2 && c == 0xc2 && static_cast<unsigned char>(s[i + 1]) < 0xa0) ok = false;  // C1 control
+    if (ok && n == 3) {
+      const auto b1 = static_cast<unsigned char>(s[i + 1]), b2 = static_cast<unsigned char>(s[i + 2]);
+      const bool format = (c == 0xe2 && b1 == 0x80 && ((b2 >= 0x8b && b2 <= 0x8f) || (b2 >= 0xa8 && b2 <= 0xae))) ||
+                          (c == 0xe2 && b1 == 0x81 && b2 >= 0xa0 && b2 <= 0xa9) || (c == 0xef && b1 == 0xbb && b2 == 0xbf);
+      if (format) ok = false;
+    }
     if (ok) out.append(s, i, n);
     i += ok ? n : 1;
   }
   return gc::utf8Prefix(out, maxBytes);
-}
-
-// domain.object_id in lower case, as Home Assistant writes entity IDs.
-bool validEntityId(const std::string& id) {
-  const size_t dot = id.find('.');
-  return dot != std::string::npos && dot > 0 && dot + 1 < id.size() && id.find('.', dot + 1) == std::string::npos &&
-         std::all_of(id.begin(), id.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.'; });
 }
 
 const gc::json& attributesOf(const gc::json& state) {
@@ -115,6 +115,41 @@ std::int64_t daysFromCivil(std::int64_t y, unsigned m, unsigned d) {
 }
 
 }  // namespace
+
+bool knownMeasure(const std::string& m) {
+  return std::any_of(std::begin(kMeasures), std::end(kMeasures), [&](const char* k) { return m == k; });
+}
+
+bool validEntityId(const std::string& id) {
+  const size_t dot = id.find('.');
+  return id.size() <= 255 && dot != std::string::npos && dot > 0 && dot + 1 < id.size() && id.find('.', dot + 1) == std::string::npos &&
+         std::all_of(id.begin(), id.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.'; });
+}
+
+gc::json parseStates(const std::string& body) {
+  // Kept while parsing: the list (depth 0), each state (1), the fields the
+  // hub reads (2) and in "attributes" the four it needs (3). Everything else
+  // is dropped as it is read, so a large or deeply nested answer never
+  // builds a large tree.
+  static const std::set<std::string> kState = {"entity_id", "state", "last_reported", "last_updated", "attributes"};
+  static const std::set<std::string> kAttr = {"device_class", "unit_of_measurement", "state_class", "friendly_name"};
+  using E = gc::json::parse_event_t;
+  const gc::json::parser_callback_t keep = [](int depth, E ev, gc::json& p) {
+    switch (ev) {
+      case E::key:
+        return (depth == 2 && kState.count(p.get<std::string>()) > 0) || (depth == 3 && kAttr.count(p.get<std::string>()) > 0);
+      case E::object_start:
+        return depth == 1 || depth == 2;
+      case E::array_start:
+        return depth == 0;
+      case E::value:
+        return depth == 2 || depth == 3;
+      default:
+        return true;
+    }
+  };
+  return gc::json::parse(body, keep, false);
+}
 
 std::optional<std::int64_t> parseTimestampMs(const std::string& s) {
   // YYYY-MM-DDTHH:MM:SS[.fraction][Z|±HH:MM]
@@ -186,6 +221,7 @@ std::string classify(const gc::json& state) {
 }
 
 std::vector<std::string> measuresOf(const std::string& kind) {
+  // a kind is itself a measure, except that a temperature can be water or air
   if (kind == "temperature") return {"water_temp", "air_temp"};
   if (knownMeasure(kind)) return {kind};
   return {};
@@ -200,7 +236,7 @@ std::vector<Entity> parseEntities(const gc::json& j, std::string& err) {
   }
   for (const auto& e : j) {
     Entity x{gc::jstr(e, "entity"), gc::jstr(e, "measures")};
-    // It goes into a URL path and into device IDs.
+    // It goes into device IDs and the hub's configuration.
     if (!validEntityId(x.entityId) || !knownMeasure(x.measures)) {
       err = "each entity needs \"entity\" (e.g. sensor.grow_ph) and \"measures\" (ph, ec, water_temp, level, air_temp, humidity, co2)";
       return {};
@@ -272,35 +308,58 @@ void HaBus::update(const std::string& entityId, const gc::json& state, std::int6
 }
 
 void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs) {
-  std::lock_guard<std::mutex> l(m_);
+  // Looked through without the lock, so the hub's tick never waits for a
+  // large answer; only the result is swapped in below.
+  std::unordered_map<std::string, const gc::json*> byId;
+  std::map<std::string, size_t> perKind;
   std::vector<Candidate> found;
-  std::vector<std::string> answered;
+  std::map<std::string, gc::json> raw;
+  bool truncated = false;
   if (states.is_array())
     for (const auto& s : states) {
       if (!s.is_object()) continue;
       const std::string id = gc::jstr(s, "entity_id");
-      if (!validEntityId(id)) continue;
-      auto e = std::find_if(entities_.begin(), entities_.end(), [&](const Entity& x) { return x.entityId == id; });
-      if (e != entities_.end()) {
-        updateLocked(*e, s, haNowMs, nowMs);
-        answered.push_back(id);
-      }
-      // Everything else in Home Assistant is dropped here, not kept or logged.
+      if (!validEntityId(id) || byId.count(id)) continue;
+      byId[id] = &s;
+      // Everything that is no candidate is dropped here, not kept or logged.
       const std::string kind = classify(s);
-      if (kind.empty() || found.size() >= kMaxCandidates) continue;
-      Candidate c{id, printable(gc::jstr(attributesOf(s), "friendly_name"), 60), kind};
-      std::string fault;
-      if (gc::jstr(s, "state") != "unavailable")
-        c.value = convert(measuresOf(kind).front(), numericState(s), gc::jstr(attributesOf(s), "unit_of_measurement"), fault);
+      if (kind.empty()) continue;
+      if (perKind[kind] >= kMaxPerKind) {  // per kind, so 100 device temperatures cannot hide the tank's pH
+        truncated = true;
+        continue;
+      }
+      ++perKind[kind];
+      const gc::json& attrs = attributesOf(s);
+      Candidate c;
+      c.entityId = id;
+      c.name = printable(gc::jstr(attrs, "friendly_name"), 60);
+      c.kind = kind;
+      c.unit = printable(gc::jstr(attrs, "unit_of_measurement"), 16);
+      if (gc::jstr(s, "state") != "unavailable") {
+        c.raw = numericState(s);
+        std::string fault;
+        c.value = convert(measuresOf(kind).front(), c.raw, gc::jstr(attrs, "unit_of_measurement"), fault);
+        if (!fault.empty()) c.problem = fault == "unit missing" ? "unit_missing" : "unit_unsupported";
+      }
       found.push_back(std::move(c));
+      raw[id] = s;  // already only the few fields the hub reads
     }
-  for (const auto& e : entities_)
-    if (std::find(answered.begin(), answered.end(), e.entityId) == answered.end()) {
+  std::lock_guard<std::mutex> l(m_);
+  for (const auto& e : entities_) {
+    auto it = byId.find(e.entityId);
+    if (it != byId.end()) {
+      updateLocked(e, *it->second, haNowMs, nowMs);
+    } else {
       State gone;
       gone.fault = "not in Home Assistant";  // renamed or removed there
       states_[e.entityId] = gone;
     }
+  }
   candidates_ = std::move(found);
+  raw_ = std::move(raw);
+  truncated_ = truncated;
+  lastHaNowMs_ = haNowMs;
+  lastNowMs_ = nowMs;
 }
 
 gc::json HaBus::candidatesJson() const {
@@ -313,9 +372,25 @@ gc::json HaBus::candidatesJson() const {
                     {"kind", c.kind},
                     {"measures", measuresOf(c.kind)},
                     {"value", std::isfinite(c.value) ? gc::json(c.value) : gc::json(nullptr)},
+                    {"raw", std::isfinite(c.raw) ? gc::json(c.raw) : gc::json(nullptr)},
+                    {"unit", c.unit},
+                    {"problem", c.problem.empty() ? gc::json(nullptr) : gc::json(c.problem)},
                     {"used", e != entities_.end() ? gc::json(e->measures) : gc::json(nullptr)}});
   }
-  return {{"connection", connection_}, {"candidates", list}};
+  return {{"connection", connection_}, {"truncated", truncated_}, {"candidates", list}};
+}
+
+std::string HaBus::selectedMeasure(const std::string& entityId) const {
+  std::lock_guard<std::mutex> l(m_);
+  for (const auto& e : entities_)
+    if (e.entityId == entityId) return e.measures;
+  return "";
+}
+
+void HaBus::adopt(const Entity& entity) {
+  std::lock_guard<std::mutex> l(m_);
+  if (std::none_of(entities_.begin(), entities_.end(), [&](const Entity& e) { return e.entityId == entity.entityId; }))
+    entities_.push_back(entity);
 }
 
 void HaBus::deselect(const std::string& entityId) {
@@ -330,26 +405,28 @@ void HaBus::setConnection(const std::string& c) {
   connection_ = c;
 }
 
-bool HaBus::select(const std::string& entityId, const std::string& measures, std::string& err) {
+bool HaBus::select(const std::string& entityId, const std::string& measures, gc::Msg& why) {
   std::lock_guard<std::mutex> l(m_);
-  err.clear();
   for (const auto& e : entities_)
     if (e.entityId == entityId) {
       if (e.measures == measures) return true;
-      err = entityId + " is already used for " + e.measures;
+      why = gc::say("ha.used", {{"entity", entityId}});
       return false;
     }
   auto c = std::find_if(candidates_.begin(), candidates_.end(), [&](const Candidate& x) { return x.entityId == entityId; });
   if (c == candidates_.end()) {
-    err = entityId + " is not a sensor the hub can use";
+    why = gc::say("ha.unknown", {{"entity", entityId}});
     return false;
   }
   const auto can = measuresOf(c->kind);
   if (std::find(can.begin(), can.end(), measures) == can.end()) {
-    err = entityId + " does not measure " + measures;
+    why = gc::say("ha.mismatch", {{"entity", entityId}});
     return false;
   }
   entities_.push_back({entityId, measures});
+  // Its last state is known from the round that offered it: the device is
+  // online at once, not only after the next round.
+  if (auto r = raw_.find(entityId); r != raw_.end()) updateLocked(entities_.back(), r->second, lastHaNowMs_, lastNowMs_);
   return true;
 }
 
@@ -398,6 +475,9 @@ void HaBus::lost(const std::string& entityId) {
 void HaBus::lostAll() {
   std::lock_guard<std::mutex> l(m_);
   for (const auto& e : entities_) states_[e.entityId] = State{};
+  // The candidates' last values are no longer current either
+  for (auto& c : candidates_) c.value = c.raw = gc::kNaN;
+  raw_.clear();
 }
 
 std::vector<gc::DeviceReport> HaBus::devices() const {

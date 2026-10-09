@@ -61,7 +61,7 @@ std::string Poller::pollOnce() {
     bus_.setConnection("unreachable");
     return "Home Assistant answered HTTP " + std::to_string(res->status);
   }
-  auto j = gc::json::parse(res->body, nullptr, false);
+  const gc::json j = parseStates(res->body);
   if (!j.is_array()) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
@@ -93,6 +93,7 @@ void Poller::start(std::chrono::milliseconds every) {
         problem = pollOnce();
       } catch (const std::exception& ex) {  // never take the server down
         bus_.lostAll();
+        bus_.setConnection("unreachable");
         problem = std::string("reading failed: ") + ex.what();
       }
       if (stopping_) break;  // a round cut short is no news

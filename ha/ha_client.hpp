@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Reads the mapped entities from Home Assistant's REST API
-// (GET /api/states/<entity_id>, Bearer token) and hands them to the HaBus.
+// Reads Home Assistant's states through its REST API (GET /api/states,
+// Bearer token) and hands them to the HaBus.
 // Runs in its own thread so the hub's tick never waits for the network.
 #pragma once
 

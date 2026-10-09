@@ -35,8 +35,16 @@ struct Mapping {
   std::vector<Entity> entities;
 };
 Mapping parseMapping(const gc::json& j, std::string& err);
-// A list of entities as the mapping file and the selection file write it.
+// A list of entities as the mapping file writes it.
 std::vector<Entity> parseEntities(const gc::json& j, std::string& err);
+// domain.object_id in lower case, at most 255 characters, as Home Assistant
+// writes entity IDs; they become device IDs.
+bool validEntityId(const std::string& id);
+bool knownMeasure(const std::string& measures);
+// Home Assistant's answer to GET /api/states, keeping only what the hub
+// reads (entity_id, state, the report times and four attributes); anything
+// else, and anything nested deeper, is dropped while parsing.
+gc::json parseStates(const std::string& body);
 gc::json entitiesJson(const std::vector<Entity>& entities);
 
 // A sensor in Home Assistant the hub could use. kind is what its device
@@ -45,6 +53,9 @@ gc::json entitiesJson(const std::vector<Entity>& entities);
 struct Candidate {
   std::string entityId, name, kind;
   double value = gc::kNaN;  // in the hub's unit; NaN if there is none now
+  double raw = gc::kNaN;    // as Home Assistant reports it
+  std::string unit;         // Home Assistant's unit
+  std::string problem;      // "", "unit_missing" or "unit_unsupported"
 };
 // What a state describes by Home Assistant's own words; "" if nothing the hub uses.
 std::string classify(const gc::json& state);
@@ -62,7 +73,7 @@ std::optional<std::int64_t> parseHttpDateMs(const std::string& s);
 class HaBus : public gc::IBus {
  public:
   explicit HaBus(std::vector<Entity> entities = {});
-  static constexpr size_t kMaxCandidates = 300;
+  static constexpr size_t kMaxPerKind = 100;
 
   static std::string deviceId(const std::string& entityId) { return "ha." + entityId; }
 
@@ -79,9 +90,15 @@ class HaBus : public gc::IBus {
   // All states at once (GET /api/states): updates the selected entities and
   // refreshes the candidates. A selected entity missing from the list is lost.
   void updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs);
-  // Use a candidate for a measure. Refused if it is no candidate, cannot
-  // serve that measure, or is already used for another one.
-  bool select(const std::string& entityId, const std::string& measures, std::string& err);
+  // Use a candidate for a measure. Refused (why: ha.unknown, ha.mismatch,
+  // ha.used) if it is no candidate, cannot serve that measure, or is already
+  // used for another one.
+  bool select(const std::string& entityId, const std::string& measures, gc::Msg& why);
+  // Use an entity without checking that it is a candidate now: the picks the
+  // hub's configuration holds, at start.
+  void adopt(const Entity& entity);
+  // The measure an entity is used for, "" if none.
+  std::string selectedMeasure(const std::string& entityId) const;
   // Stop using an entity; it stays a candidate.
   void deselect(const std::string& entityId);
   // How the last round went, for the web app: "starting", "ok", "unreachable" or "refused".
@@ -89,8 +106,9 @@ class HaBus : public gc::IBus {
 
   std::vector<Entity> entities() const;  // a copy: the web app may select while the poller reads
   std::vector<Candidate> candidates() const;
-  // For the web app: {"connection": …, "candidates": [{entity, name, kind,
-  // measures, value, used}]}, "used" naming the measure a selected one serves.
+  // For the web app: {"connection": …, "truncated": …, "candidates": [{entity,
+  // name, kind, measures, value, raw, unit, problem, used}]}, "used" naming
+  // the measure a selected one serves.
   gc::json candidatesJson() const;
 
   void poll(gc::Ms) override {}
@@ -117,6 +135,10 @@ class HaBus : public gc::IBus {
   void updateLocked(const Entity& e, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs);
   std::vector<Entity> entities_;
   std::vector<Candidate> candidates_;
+  std::map<std::string, gc::json> raw_;  // the candidates' last states, to start a pick with
+  bool truncated_ = false;
+  std::int64_t lastHaNowMs_ = 0;
+  gc::Ms lastNowMs_ = 0;
   std::string connection_ = "starting";
   std::map<std::string, State> states_;  // by entity ID
   mutable std::mutex m_;                 // the poller thread updates, the web app selects
