@@ -237,14 +237,21 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   const auto refused = hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}});
   CHECK(refused.status == 422);
   CHECK(refused.body["error"]["key"] == "probe.not_offered");
-  bool explained = false;
-  for (const auto& f : st["functions"])
-    for (const auto& c : f["checks"])
-      if (c["text"].get<std::string>().find("außerhalb des Hubs kalibriert") != std::string::npos) {
-        explained = true;
+  int explained = 0;
+  for (const auto& f : st["functions"]) {
+    int inFunction = 0;
+    for (const auto& c : f["checks"]) {
+      const std::string text = c["text"];
+      if (text.find("außerhalb des Hubs kalibriert") != std::string::npos) {
+        ++inFunction;
         CHECK(c["fix"] == "");
       }
-  CHECK(explained);
+      CHECK(text.find("Calibrated outside") == std::string::npos);  // not a second, English line for it
+    }
+    CHECK(inFunction <= 1);  // one cause, one line
+    explained += inFunction;
+  }
+  CHECK(explained > 0);
   // The sensor goes silent (or Home Assistant is older than 2024.4): Home Assistant keeps answering
   // with the last report while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
   const std::int64_t reportedAt = kNoonMs + clk.ms;

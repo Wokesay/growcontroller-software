@@ -109,8 +109,10 @@ struct Eval {
     }
     if (cap->kind == "measure") {
       const Reading& rd2 = truth.get(r.role);
-      out.push_back({"runtime", rd2.usable(), false,
-                     rd2.usable() ? cap->label + " gültig" : cap->label + ": " + rd2.reason.text, "", {}});
+      // Calibrated elsewhere: the setup line above says so already (one cause, one line)
+      if (rd2.reason.key != kCalibratedElsewhere)
+        out.push_back({"runtime", rd2.usable(), false,
+                       rd2.usable() ? cap->label + " gültig" : cap->label + ": " + rd2.reason.text, "", {}});
     } else {
       bool on = deviceOnline(b->device);
       out.push_back({"runtime", on, false, on ? rd->label + " erreichbar" : rd->label + ": Gerät antwortet nicht", "", {}});
