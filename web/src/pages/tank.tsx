@@ -212,7 +212,7 @@ export function TankPage() {
                 <div class="row-between">
                   <span>
                     <Pill tone="bad">{k.startsWith("jump.") ? tr("term.jumpLock") : tr("tank.latched")}</Pill> {latchLabel(k)}
-                    {latchWhy(v) && ` – ${latchWhy(v)}`}
+                    {latchWhy(v) ? ` – ${latchWhy(v)}` : ""}
                   </span>
                   {!k.startsWith("jump.") && (
                     <Button size="sm" onClick={() => post(`/latches/${k}/ack`).then(refreshState)}>

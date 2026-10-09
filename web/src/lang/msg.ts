@@ -415,7 +415,7 @@ export const msgDe: Record<string, string> = {
   "ev.circ.dry.low": "Füllstand {level:1} L unter {min:1} L. Gerastet bis zur Quittierung.",
   "ev.circ.dry.latched": "Trockenlauf gerastet, noch nicht quittiert.",
   "ev.circ.off": "Umwälzpumpe aus",
-  "ev.circ.off.text": "Füllstand ungültig: {reason}.",
+  "ev.circ.off.text": "Füllstand ungültig: {reason}",
   "why.level_invalid": "Füllstand ungültig",
   "why.capacity": "Notgrenze erreicht bei {level:1} L",
   "why.open_too_long": "Ventil länger als {min:0} min offen",

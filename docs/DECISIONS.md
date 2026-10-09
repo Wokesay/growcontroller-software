@@ -474,24 +474,37 @@ Recorded on 2026-10-08 (#18).
 - A test fails when the core can send a key that has no German text in
   the web app.
 
+
 ## SD-033: Gateway and cut-off changes without a logic change merge after the subagents accept them
 
-Decided by the project owner on 2026-10-08. It refines SD-023 for this
-repository until the product session adapts PD-045.
+Decided by the project owner on 2026-10-08 in the software session, and
+introduced with PR #66, which the owner approved with "mergen". It refines
+SD-023 for this repository until the product session adapts PD-045; if
+that session decides otherwise, its decision applies and a later SD
+records it.
 
 - A technical change to the actuator gateway or to protective cut-offs
   that changes no logic is merged by Claude under SD-023's other
-  conditions (green CI, no open review threads), once `reviewer`, `qa`
-  and `security` have accepted it with no blocking findings. Examples:
+  conditions (green CI, no open review threads, `ux` where the UI is
+  touched), once `reviewer`, `qa` and `security` have accepted it with no
+  blocking findings. Examples:
   messages and texts, signatures, refactoring with unchanged behaviour,
   tests.
 - `security` confirms in its review that switching behaviour, cut-offs,
   latches and the emergency stop are unchanged; the PR says so and names
   the tests.
+- Texts of warnings and cut-offs keep their safety meaning; `security`
+  checks this too.
+- Existing gateway and cut-off tests stay green with no assertion removed
+  or weakened. A change to persisted safety state (latches, cut-offs) has
+  a test that loads a state saved before.
 - A decision about the logic (what is switched and when, limits, latches,
   cut-off conditions) is put to the project owner with its reasons, and
-  the PR waits for "mergen".
-- Releases, license and security rules still wait for "mergen" (SD-023).
+  the PR waits for "mergen". So does any change where it is unclear
+  whether it touches the logic, or where `security` cannot confirm
+  unchanged behaviour.
+- Releases, license and security rules, and changes to this rule, still
+  wait for "mergen" (SD-023).
 
 
 ---

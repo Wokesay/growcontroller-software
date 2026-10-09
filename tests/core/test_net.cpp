@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <random>
 
 #include "client.hpp"
 #include "gc/embedded.hpp"
@@ -838,9 +839,9 @@ TEST_CASE("Gateway: refusals name their cause by key (SD-032)") {
 }
 
 TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged still cuts and stays latched") {
-  const auto dir = std::filesystem::temp_directory_path() / "gc-test-latch-why";
+  const auto dir = std::filesystem::temp_directory_path() / ("gc-test-latch-why-" + std::to_string(std::random_device{}()));
   int n = 0;
-  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42)}) {
+  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42), json(nullptr)}) {
     CAPTURE(why.dump());
     std::filesystem::remove_all(dir);
     auto o = test::opts("demo");
@@ -864,10 +865,12 @@ TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged st
       st["latches"]["inlet.fault"]["why"] = why;  // as an older version or a damaged file left it
       std::ofstream(file) << st.dump();
     }
+    o.startEpoch += 3600;  // an hour later
     sim::Simulation s(o);  // restart from the saved files
     Client c{s};
     c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-    CHECK(c.state()["latches"]["inlet.fault"]["why"] == why);
+    REQUIRE(c.state()["latches"].contains("inlet.fault"));
+    if (why.is_string() || why.is_object()) CHECK(c.state()["latches"]["inlet.fault"]["why"] == why);
     outlet(s, id, 0).on = true;  // opened at the plug itself
     s.step(5000);
     CHECK_FALSE(outlet(s, id, 0).on);
@@ -877,7 +880,8 @@ TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged st
       if (cut.is_null() && sameEvent(ev, "ev.inlet.cutoff")) cut = ev;
     REQUIRE(cut.is_object());
     CHECK(cut["text"]["key"] == "ev.inlet.cutoff.latched");
-    CHECK(cut["text"]["args"]["why"] == (why.is_number() ? json(gc::say("ev.inlet.cutoff")) : why));
+    const bool kept = why.is_string() || why.is_object();  // anything else: the cut-off's own title
+    CHECK(cut["text"]["args"]["why"] == (kept ? why : json(gc::say("ev.inlet.cutoff"))));
     c.ok("POST", "/api/v1/latches/inlet.fault/ack");
     CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
   }

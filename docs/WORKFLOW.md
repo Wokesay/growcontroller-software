@@ -153,8 +153,11 @@ devices, so 2–5 h per week with Claude triage. Rules:
   RAT ID, changelog).
 - **Merge** only through a pull request, after green CI and the reviews
   above. Claude merges, except releases, license and security rules and
-  changes to the actuator gateway or protective cut-offs, which wait for
-  the project owner's "mergen" (PD-045, SD-023). Squash only; the
+  logic changes to the actuator gateway or protective cut-offs, which wait
+  for the project owner's "mergen" (PD-045, SD-023). Technical changes
+  there without a logic change merge once `reviewer`, `qa` and `security`
+  accept them and `security` confirms unchanged behaviour; in doubt,
+  "mergen" (SD-033). Squash only; the
   ruleset on `main` enforces "pull request only", the quick checks and,
   through `ci-ok`, the full CI for code changes (SD-027, SD-030).
 

@@ -240,8 +240,9 @@ listed in every release under "Security".
   not run (`act.*`), how a dose ended (`dose.*`), switch-off reports and
   protective cut-offs carry keys, so dose events, "may still be on" and
   dry-run or inlet cut-offs read in the page language; details a device
-  reports itself (for example why a smart plug refused) and device names
-  still show in German. A latch's `why` is now a message; a state saved
+  reports itself (for example why a smart plug refused), the names of
+  outputs from the catalog (for example "Zulaufventil") and a sensor's own
+  reason still show in German. A latch's `why` is now a message; a state saved
   before keeps its text, while going back to an older version shows such
   a reason as "[object Object]" on the Tank page. For API clients, three
   refusals of `/roles/{role}/switch` got their own keys: a refusing
