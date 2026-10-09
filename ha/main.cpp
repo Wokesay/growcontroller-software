@@ -82,7 +82,7 @@ void usage() {
             << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"
-            << "  --host ADR          address (127.0.0.1)\n"
+            << "  --host ADDR         address (127.0.0.1)\n"
             << "  --web DIR           built web app (web/dist)\n"
             << "  --every S           seconds between two reads (5)\n";
 }
@@ -102,13 +102,23 @@ int main(int argc, char** argv) {
       }
       return argv[++i];
     };
+    auto number = [&]() {
+      const std::string v = next();
+      char* end = nullptr;
+      const long n = std::strtol(v.c_str(), &end, 10);
+      if (v.empty() || *end != '\0' || n <= 0 || n > 65535) {
+        std::cerr << a << ": not a number: " << v << "\n";
+        std::exit(2);
+      }
+      return static_cast<int>(n);
+    };
     if (a == "--config") config = next();
     else if (a == "--token-file") tokenFile = next();
     else if (a == "--data") data = next();
-    else if (a == "--port") port = std::stoi(next());
+    else if (a == "--port") port = number();
     else if (a == "--host") host = next();
     else if (a == "--web") web = next();
-    else if (a == "--every") everyS = std::max(1, std::stoi(next()));
+    else if (a == "--every") everyS = number();
     else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -122,6 +132,10 @@ int main(int argc, char** argv) {
     usage();
     return 2;
   }
+  if (!std::filesystem::exists(config)) {
+    std::cerr << config << ": file not found\n";
+    return 2;
+  }
   std::string err;
   const auto mapping = ha::parseMapping(gc::json::parse(readFile(config), nullptr, false), err);
   if (!err.empty()) {
@@ -129,6 +143,9 @@ int main(int argc, char** argv) {
     return 2;
   }
   std::string token = tokenFile.empty() ? (std::getenv("GC_HA_TOKEN") ? std::getenv("GC_HA_TOKEN") : "") : readFile(tokenFile);
+#ifndef _WIN32
+  unsetenv("GC_HA_TOKEN");  // not passed on to anything this process starts
+#endif
   while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
   if (token.empty()) {
     std::cerr << "No token: --token-file FILE or GC_HA_TOKEN\n";
@@ -144,9 +161,18 @@ int main(int argc, char** argv) {
   hub.boot();
   gc::Api api(hub, clock);
   ha::Poller poller(bus, mapping.url, token, [&clock] { return clock.nowMs(); });
-  token.clear();
 
   httplib::Server svr;
+  // As the simulator's server: no shared port another program could bind too.
+  svr.set_socket_options([](socket_t sock) {
+#if defined(_WIN32)
+    httplib::set_socket_opt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#elif defined(__APPLE__)
+    (void)sock;
+#else
+    httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
+  });
   if (!svr.bind_to_port(host, port)) {
     std::cerr << "Port " << port << " not available\n";
     return 1;
@@ -241,11 +267,11 @@ int main(int argc, char** argv) {
   svr.listen_after_bind();
   g_running = false;
   loop.join();
-  poller.stop();
-  {
+  {  // save first: stopping the poller can wait for a slow Home Assistant
     std::lock_guard<std::recursive_mutex> l(hub.mutex());
     hub.flush();
   }
   store.flush();
+  poller.stop();
   return 0;
 }

@@ -125,7 +125,6 @@ Catalog Catalog::fromJson(const json& j) {
     d.stage = v.value("stage", 0);
     d.slots = v.value("slots", 0);
     d.channels = v.value("channels", 0);
-    d.externalCalibration = v.value("externalCalibration", false);
     d.provides = strList(v, "provides");
     d.calibrations = strList(v, "calibrations");
     d.accepts = strList(v, "accepts");

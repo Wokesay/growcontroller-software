@@ -250,6 +250,7 @@ export const deBase = {
 
   // Netzsteckdosen
   "port.wifi": "WLAN · {ip}",
+  "port.ha": "Home Assistant · {entity}",
   "port.outlet": "Dose {n}",
   "port.socket": "Steckdose",
   "net.title": "Schaltbare Steckdosen (WLAN)",

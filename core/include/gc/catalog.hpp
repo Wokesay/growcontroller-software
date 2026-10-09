@@ -27,8 +27,10 @@ struct DeviceClassDef {
   int stage = 0;
   int slots = 0;     // Pumpen-Ports eines Dosierblocks
   int channels = 0;  // Kanäle eines Ausgangsmoduls
-  // The device reports calibrated values itself (e.g. a sensor in Home
-  // Assistant calibrated there), so the hub applies no calibration of its own.
+  // The device reports values calibrated elsewhere (e.g. a sensor in Home
+  // Assistant). The hub shows them but has not checked that calibration, so
+  // pH, EC and level from it are no values for control (RAT-025). Set only
+  // in code, never from catalog data, so the catalog cannot loosen it (R7).
   bool externalCalibration = false;
   std::vector<std::string> provides, calibrations, accepts;
 };

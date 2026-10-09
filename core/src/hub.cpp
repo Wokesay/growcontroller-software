@@ -1605,6 +1605,10 @@ Result Hub::probeCalibration(const json& j) {
   if (!cfg_.device(dev)) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
   std::string cap = kind == "ph" ? "measure.ph" : kind == "ec" ? "measure.ec" : kind == "tank_curve" ? "measure.level" : "";
   if (cap.empty()) return Result::fail(422, "probe.kind", "Unbekannte Kalibrierung");
+  // Only kinds the device class offers; a device calibrated elsewhere offers none.
+  const DeviceClassDef* dc = cat_.deviceClass(cfg_.device(dev)->cls);
+  if (!dc || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
+    return Result::fail(422, "probe.kind", "Dieses Gerät lässt sich hier nicht kalibrieren");
   std::string key = dev + ":" + kind;
   if (action == "start") {
     probeSessions_[key] = {{"device", dev}, {"kind", kind}, {"points", json::array()}};

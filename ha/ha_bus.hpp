@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Read-only spike: Home Assistant as the device layer. Each mapped entity
 // (e.g. sensor.grow_ph) appears to the hub as a device that provides one
-// measure. Home Assistant calibrates its sensors itself, so the device
-// classes carry externalCalibration. Nothing is switched: every run or
-// switch command is refused.
+// measure. Home Assistant calibrates its sensors itself; the device classes
+// carry externalCalibration, so pH, EC and level are shown but are no values
+// for control until the hub can check them. Nothing is switched: every run
+// or switch command is refused.
 #pragma once
 
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,8 +35,10 @@ Mapping parseMapping(const gc::json& j, std::string& err);
 // The built-in catalog plus one device class per measure (ha_ph, ha_ec, …).
 gc::Catalog catalog();
 
-// "2026-10-09T18:36:12.123456+00:00" → milliseconds since 1970; -1 if unreadable.
-std::int64_t parseTimestampMs(const std::string& s);
+// "2026-10-09T18:36:12.123456+00:00" → milliseconds since 1970; none if unreadable.
+std::optional<std::int64_t> parseTimestampMs(const std::string& s);
+// An HTTP date ("Thu, 09 Oct 2026 12:00:00 GMT") → milliseconds since 1970.
+std::optional<std::int64_t> parseHttpDateMs(const std::string& s);
 
 class HaBus : public gc::IBus {
  public:
@@ -42,9 +46,13 @@ class HaBus : public gc::IBus {
 
   static std::string deviceId(const std::string& entityId) { return "ha." + entityId; }
 
-  // A state object from Home Assistant (GET /api/states/<entity>), seen at
-  // nowMs (hub clock) and nowEpochMs (wall clock).
-  void update(const gc::json& state, std::int64_t nowEpochMs, gc::Ms nowMs);
+  // The state of an entity from Home Assistant (GET /api/states/<entity>).
+  // haNowMs is Home Assistant's own time of the answer (its Date header), so
+  // the age of a report does not depend on two clocks agreeing; nowMs is the
+  // hub's clock.
+  void update(const std::string& entityId, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs);
+  // A fault of an entity (e.g. an unsupported unit), "" if none.
+  std::string fault(const std::string& entityId) const;
   // Home Assistant or the entity could not be read: the device goes offline.
   void lost(const std::string& entityId);
 
@@ -66,8 +74,9 @@ class HaBus : public gc::IBus {
     bool seen = false;       // Home Assistant answered for this entity
     bool available = false;  // not "unavailable"
     double value = gc::kNaN;
-    gc::Ms ts = 0;
-    std::string fault;       // e.g. a unit the hub cannot convert
+    std::int64_t reportedAt = -1;  // Home Assistant's time of the last report
+    gc::Ms ts = 0;                 // that report on the hub's clock, fixed once seen
+    std::string fault;             // e.g. a unit the hub cannot convert
   };
   std::vector<Entity> entities_;
   std::map<std::string, State> states_;  // by entity ID

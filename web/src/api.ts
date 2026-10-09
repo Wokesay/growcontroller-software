@@ -22,7 +22,7 @@ export type Port = { port: number; state: "empty" | "checking" | "ok" | "fault" 
 export type Device = {
   id: string; class: string; classLabel: string; name: string; configured: boolean; online: boolean;
   port: number; slot: number; parent: string; fw: string; fault: string;
-  info: { flowMlPerMin?: number | null; ip?: string; outlets?: { on: boolean | null; powerW: number | null }[] };
+  info: { flowMlPerMin?: number | null; ip?: string; entity?: string; outlets?: { on: boolean | null; powerW: number | null }[] };
   calibrations: Record<string, number>;
 };
 

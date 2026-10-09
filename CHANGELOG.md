@@ -12,9 +12,13 @@ listed in every release under "Security".
   server (`gc_ha_server`) runs the core next to Home Assistant, reads
   mapped sensor entities (pH, EC, water and air temperature, level in L,
   humidity, CO2) through its REST API, runs them through the sensor truth
-  and serves the web app. It switches nothing. Device classes can mark
-  that the device calibrates itself (`externalCalibration`); the sensor
-  truth then takes the value as it is and keeps all other checks.
+  and serves the web app. It switches nothing and only reads states from
+  Home Assistant. pH, EC and level from it are shown but are no values for
+  control, since the hub has not checked a calibration done in Home
+  Assistant (RAT-025); the hub offers no calibration of its own for them.
+  A missing unit (except pH) or an unreadable report time gives no value.
+  The hub's own probe calibration now refuses kinds a device class does
+  not offer.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub

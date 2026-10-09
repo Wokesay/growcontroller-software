@@ -203,19 +203,21 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       tr.lastRaw = s->raw;
       tr.lastRawChange = now;
     }
-    // A device that calibrates itself reports the value as it is.
+    bool needsCal = !calibrationKind(role.capability).empty();
+    // Calibrated elsewhere (e.g. in Home Assistant): shown, but the hub has
+    // not checked that calibration, so it is no value for control (RAT-025).
     const DeviceCfg* dev = cfg.device(b->device);
     const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
-    const bool external = dc && dc->externalCalibration;
-    auto value = external ? std::optional<double>(s->raw)
-                          : calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
-    bool needsCal = !external && !calibrationKind(role.capability).empty();
+    const bool unchecked = needsCal && dc && dc->externalCalibration;
+    auto value = unchecked ? std::nullopt : calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
     if (value) r.value = value;
-    else if (needsCal && role.capability != "measure.level") r.value = s->raw;  // Anzeige, nicht für Regelung
+    else if (unchecked || (needsCal && role.capability != "measure.level")) r.value = s->raw;  // Anzeige, nicht für Regelung
 
     if (r.ageMs > static_cast<Ms>(cap->maxAgeS * 1000.0)) {
       setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
            {{"ageS", r.ageMs / 1000}});
+    } else if (unchecked) {
+      setQ(Quality::Uncalibrated, "truth.external", "In Home Assistant kalibriert – vom Hub nicht geprüft");
     } else if (!value) {
       setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
     } else if (expectsNoise(role.capability) && now - tr.lastRawChange > kFrozenAfter) {

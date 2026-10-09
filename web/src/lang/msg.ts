@@ -152,7 +152,7 @@ export const msgDe: Record<string, string> = {
   "where.port": "Anschluss {n}",
   "where.net": "im Netzwerk",
   "where.hub": "im Hub",
-  "where.ha": "In Home Assistant",
+  "where.ha": "in Home Assistant",
   "device.unnamed": "Unbekanntes Gerät",
   "net.not_confirmed": "im Gerät nicht bestätigt",
   "reading.ph": "pH {value:2}",

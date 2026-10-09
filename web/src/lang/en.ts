@@ -241,6 +241,7 @@ const base: Record<keyof typeof deBase, string> = {
   "setup.start.zoneHint": "e.g. \"Basement\" or \"South greenhouse\"",
 
   "port.wifi": "Wi-Fi · {ip}",
+  "port.ha": "Home Assistant · {entity}",
   "port.outlet": "Outlet {n}",
   "port.socket": "Socket",
   "net.title": "Smart plugs (Wi-Fi)",

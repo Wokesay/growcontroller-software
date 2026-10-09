@@ -93,7 +93,12 @@ struct Eval {
       return;
     }
     out.push_back({"setup", true, false, rd->label + " zugeordnet", "roles", {}});
-    if (r.calibrated && cap->kind == "measure") {
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat.deviceClass(dev->cls) : nullptr;
+    if (r.calibrated && cap->kind == "measure" && dc && dc->externalCalibration) {
+      // Calibrated elsewhere; the hub cannot calibrate it and has not checked it (RAT-025).
+      out.push_back({"setup", false, false, rd->label + ": in Home Assistant kalibriert, vom Hub nicht geprüft", "", {}});
+    } else if (r.calibrated && cap->kind == "measure") {
       std::string kind = rd->capability == "measure.ph" ? "ph" : rd->capability == "measure.ec" ? "ec" : "tank_curve";
       const json* cal = cfg.calibration(b->device, kind);
       double probe = kind == "tank_curve" ? 1.0 : 7.0;

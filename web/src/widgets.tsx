@@ -273,6 +273,7 @@ export function devicePlace(d: Device): string {
   if (d.slot >= 0) return t("port.pump", { n: d.slot + 1 });
   if (d.port > 0) return t("port.hub", { n: d.port });
   if (d.info?.ip) return t("port.wifi", { ip: d.info.ip });
+  if (d.info?.entity) return t("port.ha", { entity: d.info.entity });
   return t("widgets.hub");
 }
 

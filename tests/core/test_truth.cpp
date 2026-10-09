@@ -141,28 +141,37 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 5.0}, {1.0, 3.0}}}}, err));
 }
 
-TEST_CASE("Sensor truth: a device that calibrates itself reports its value as it is (Home Assistant)") {
+TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)") {
   auto j = json::parse(gc::embedded::kCatalogJson);
-  j["deviceClasses"]["ext_ph"] = {{"label", "pH from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.ph"}},
-                                  {"externalCalibration", true}};
+  j["deviceClasses"]["ext_ph"] = {{"label", "pH from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.ph"}}};
+  j["deviceClasses"]["ext_temp"] = {{"label", "Temperature from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.water_temp"}}};
+  j["deviceClasses"]["ext_ph"]["externalCalibration"] = true;  // ignored: the catalog cannot loosen this (R7)
+  CHECK_FALSE(Catalog::fromJson(j).deviceClass("ext_ph")->externalCalibration);
   Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_ph"].externalCalibration = true;  // set in code, as the Home Assistant adapter does
+  cat.deviceClasses["ext_temp"].externalCalibration = true;
   Config cfg;
   RuntimeState rt;
   test::FakeBus bus;
   test::Clock clk;
   SensorTruth truth{cat};
-  cfg.devices = {{"HA-PH", "ext_ph", "pH"}};
+  cfg.devices = {{"HA-PH", "ext_ph", "pH"}, {"HA-T", "ext_temp", "Water"}};
   cfg.tank().roles["tank.ph"] = {"HA-PH", 0};
+  cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
   bus.head("HA-PH");
+  bus.head("HA-T");
   bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+  bus.set("HA-T", "measure.water_temp", 21.0, clk.ms);
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
   const auto& r = truth.get("tank.ph");
-  CHECK(r.quality == Quality::Ok);
   REQUIRE(r.value.has_value());
-  CHECK(*r.value == doctest::Approx(6.2));
-  // The other checks still apply: a value outside the plausible range is no value for control.
-  bus.set("HA-PH", "measure.ph", 12.0, clk.ms);
+  CHECK(*r.value == doctest::Approx(6.2));  // shown
+  CHECK(r.quality == Quality::Uncalibrated);
+  CHECK(r.reason.key == "truth.external");
+  CHECK_FALSE(r.usable());                  // no value for control
+  CHECK(truth.get("tank.water_temp").quality == Quality::Ok);  // needs no calibration anyway
+  // A calibration stored for it changes nothing: the hub has not checked the one in use
+  cfg.calibrations["HA-PH"]["ph"] = {{"points", {{7.0, 7.0}, {4.0, 4.0}}}};
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
-  CHECK(truth.get("tank.ph").quality == Quality::Implausible);
   CHECK_FALSE(truth.get("tank.ph").usable());
 }
