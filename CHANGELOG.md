@@ -20,7 +20,9 @@ listed in every release under "Security".
   A refused token stops reading until restart, so Home Assistant does not
   ban the computer. Their tiles say "display only" with age and trend
   instead of "not calibrated", the monitoring says "calibrated outside the
-  hub", and the setup step does not ask for a probe calibration.
+  hub", and the setup step does not ask for a probe calibration. The
+  setup for the hub's own dosing hardware is not forced on a read-only
+  hub.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub

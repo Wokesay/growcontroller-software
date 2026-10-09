@@ -119,3 +119,23 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
   await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
 });
+
+test("Read-only trial (Home Assistant): after the password the app opens, not the setup for dosing hardware", async ({ page, request }) => {
+  await scenario(request, "neu");
+  // gc_ha_server announces itself as read-only; the setup asks for a dosing block it cannot have
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
+    await route.fulfill({ response: res, json: info });
+  });
+  await page.goto("/");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  await page.goto("/#/geraete");
+  await expect(page).toHaveURL(/#\/geraete/);
+  await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
+  await page.unroute(/\/api\/v1\/info(\?|$)/);
+});

@@ -70,7 +70,9 @@ roles assign themselves.
    terminal. When Home Assistant refuses the token, reading stops until
    you restart the server: Home Assistant counts every failed login and
    bans the computer after a few, however slowly they come.
-6. Open the address, set a password, accept the devices under Devices.
+6. Open the address and set a password. The setup for the hub's own
+   dosing hardware is not forced on a read-only hub; go to Devices and
+   accept the devices there.
 
 ## What the sensors in Home Assistant need
 
@@ -199,6 +201,10 @@ time is no value.
   system keeps the time synced).
 - The data folder holds the hub's password hash; keep it private
   (`chmod 700`).
+- **Not on an SD card yet:** the server writes its files every 10 s, the
+  history included; QA measured about 14 MB per 30 s. A hard power cut or
+  kill loses what changed in the last 10 s, a password just set included.
+  Fewer and smaller writes are a follow-up.
 - No switching yet. Dosing through Home Assistant needs pumps that stop on
   their own (a run time on the device, for example ESPHome `ezo_pmp` or a
   script with a maximum on-time), because a lost "off" over Wi-Fi must

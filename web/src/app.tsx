@@ -7,7 +7,7 @@ import {
 } from "lucide-preact";
 import { post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
-import { authed, config, info, live, refreshState, simulated, state, toast } from "./store";
+import { authed, config, info, live, readOnly, refreshState, simulated, state, toast } from "./store";
 import { ErrorBoundary, Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
 import { Overview } from "./pages/overview";
@@ -164,7 +164,8 @@ export function App() {
       </div>
     );
   const r = route.value;
-  if (!state.value.setupDone && r.path !== "/einrichtung" && !r.query.skip) {
+  // A read-only hub has no dosing hardware to set up, so the setup is not forced on it
+  if (!state.value.setupDone && !readOnly.value && r.path !== "/einrichtung" && !r.query.skip) {
     navigate("/einrichtung");
   }
   if (r.path === "/einrichtung")
