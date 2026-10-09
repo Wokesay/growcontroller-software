@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "ha_client.hpp"
 
-#include <algorithm>
 #include <iostream>
 
 #include <httplib.h>
@@ -45,7 +44,7 @@ std::string Poller::pollOnce() {
   const httplib::Headers headers = {{"Authorization", "Bearer " + token_}};
   std::string problem;
   for (const auto& e : bus_.entities()) {
-    if (thread_.joinable() && !running_) break;  // stopping: do not wait for the rest
+    if (stopping_) break;  // do not wait for the rest of a round
     auto res = cli.Get("/api/states/" + e.entityId, headers);
     if (!res) {
       lostAll();
@@ -70,6 +69,10 @@ std::string Poller::pollOnce() {
     // Home Assistant's own time of the answer, so a report's age needs no
     // agreement between the two clocks; without a Date header, ours.
     const auto haNow = parseHttpDateMs(res->get_header_value("Date"));
+    if (!haNow && !warnedNoDate_) {
+      warnedNoDate_ = true;
+      std::cerr << "Home Assistant: no Date header; report ages use this computer's clock, keep both clocks synced\n";
+    }
     bus_.update(e.entityId, j, haNow.value_or(epochMs()), nowMs_());
     if (const std::string f = bus_.fault(e.entityId); !f.empty()) problem = e.entityId + ": " + f;
   }
@@ -77,6 +80,7 @@ std::string Poller::pollOnce() {
 }
 
 void Poller::start(std::chrono::milliseconds every) {
+  stopping_ = false;
   running_ = true;
   thread_ = std::thread([this, every] {
     std::string last;
@@ -90,14 +94,18 @@ void Poller::start(std::chrono::milliseconds every) {
       }
       if (problem != last) std::cerr << (problem.empty() ? "Home Assistant: reading again\n" : "Home Assistant: " + problem + "\n");
       last = problem;
-      const std::chrono::milliseconds wait = rejected_ ? std::max<std::chrono::milliseconds>(every, kRejectedWait) : every;
-      for (auto waited = std::chrono::milliseconds(0); waited < wait && running_; waited += std::chrono::milliseconds(100))
+      if (rejected_) {
+        std::cerr << "Home Assistant: reading stopped; fix the token and restart\n";
+        break;
+      }
+      for (auto waited = std::chrono::milliseconds(0); waited < every && running_; waited += std::chrono::milliseconds(100))
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   });
 }
 
 void Poller::stop() {
+  stopping_ = true;
   running_ = false;
   if (thread_.joinable()) thread_.join();
 }

@@ -17,10 +17,11 @@ roles assign themselves.
 - It switches nothing. Every run of a pump and every switch command is
   refused, so dosing, refill, circulation and the climate outputs stay off.
   It sends Home Assistant nothing but `GET /api/states/<entity>` (tested).
-- pH, EC and level are shown but are **no values for control**: Home
-  Assistant calibrated them, and the hub has not checked that calibration
-  (RAT-025). They read "In Home Assistant kalibriert – vom Hub nicht
-  geprüft". Temperature, humidity and CO2 need no calibration and are valid
+- pH, EC and level are shown but are **no values for control**: they were
+  calibrated outside the hub, and the hub has not checked that calibration
+  (RAT-025). They read "Außerhalb des Hubs kalibriert – vom Hub nicht
+  geprüft"; stale, frozen, implausible and jumping values are still marked
+  as such. Temperature, humidity and CO2 need no calibration and are valid
   readings.
 
 ## Run it
@@ -63,40 +64,81 @@ roles assign themselves.
    Other options: `--port` (8090), `--host` (127.0.0.1), `--every S`
    (seconds between two reads, 5). Problems with Home Assistant (not
    reachable, token refused, a unit it cannot use) are printed in the
-   terminal.
+   terminal. When Home Assistant refuses the token, reading stops until
+   you restart the server: Home Assistant counts every failed login and
+   bans the computer after a few, however slowly they come.
 6. Open the address, set a password, accept the devices under Devices.
 
 ## What the sensors in Home Assistant need
 
-- **Home Assistant 2024.3 or later**, so a state carries `last_reported`.
+- **Home Assistant 2024.4 or later**, so a state carries `last_reported`,
+  which every report updates even when the value stays the same [1].
   The hub dates each value by its last report; a value that is not
   reported again goes stale after the capability's limit (60 s for pH, EC
   and level, 120 s for temperature, humidity and CO2), even though Home
-  Assistant still answers.
-- **ESPHome sensors with `force_update: true`**, otherwise Home Assistant
-  drops repeated identical values and a steady reading looks stuck.
-- **A report interval of 10 s or less for pH, EC and level** (ESPHome's
-  EZO default is 60 s, the same as the freshness limit, so readings would
-  flip between valid and stale).
+  Assistant still answers. On an older version a steady value goes stale,
+  which is safe but useless.
+- **A report interval of 10 s or less for pH, EC and level.** ESPHome's
+  EZO sensors read every 60 s by default [2], the same as the freshness
+  limit, so readings would flip between valid and stale.
+- **`force_update: true` only if needed:** if a steady value goes stale
+  although the sensor reports, set it on the ESPHome sensor (default off
+  [2]). It makes Home Assistant record every reading, so its database
+  grows.
 - **Availability instead of fallback numbers:** template sensors written
   as `| float(0)` turn "unavailable" into 0, which the hub cannot tell from
   a real 0 (RAT-006). Give them an `availability` template instead.
 - **Units:** see below. Without a unit only pH is taken.
 
-Points to settle before any of this may feed control later:
-
-- **EC temperature compensation:** an EZO-EC circuit assumes 25 °C unless
-  it is sent the water temperature; uncompensated EC reads several percent
-  low per degree below that. Who compensates, and how, is open.
-- **Galvanic isolation** of pH and EC probes (the hub's heads have it; many
-  DIY builds do not). Interference gives wrong but plausible values.
-- **Probe location and smoothing:** a probe in a sump or return line, or
-  smoothing in Home Assistant, adds delay the hub's wait times do not know.
-- **Other automations** in Home Assistant that dose or pump would be a
-  second controller next to the hub.
+- **After a Home Assistant restart** restored states carry the restart
+  time, so an old value looks fresh until the freshness limit runs out.
 - **Calibrating in Home Assistant** is not announced to the hub: buffer
   tests show up as jumps. Calibrate only while the hub is in maintenance
   mode.
+
+Sources (retrieved 2026-10-09):
+[1] Home Assistant developer blog, "New state timestamp State.last_reported",
+2024-03-20,
+https://developers.home-assistant.io/blog/2024/03/20/state_reported_timestamp;
+the version 2024.4 is inferred from that date (assumption, not confirmed
+from release notes).
+[2] ESPHome source: `esphome/components/ezo/sensor.py` (polling interval
+"60s") and `esphome/components/sensor/__init__.py` (`force_update`
+default false), https://github.com/esphome/esphome (branch `dev`).
+
+## Before any of this may feed control
+
+What the hub would need before pH, EC or level from Home Assistant may
+steer anything. Each point is open; none is built in this spike.
+
+1. **The hub's own check, with a date.** Not a calibration: the hub
+   compares the values with references. pH with two buffers, the slope
+   inside the band the hub accepts for its own calibration (RAT-025); EC
+   with one reference solution; level with two known volumes.
+2. **The calibration state from the node where it has one.** An EZO pH
+   circuit reports how many points it was calibrated with (`Cal,?`; at
+   least two, RAT-025) and its slope, which can be mapped as an entity and
+   checked against the same band.
+3. **A calibration change in Home Assistant voids the check,** seen as a
+   change of that entity or as a jump. The reading goes back to "not
+   checked".
+4. **EC temperature compensation:** an EZO-EC circuit assumes 25 °C unless
+   it is sent the water temperature; uncompensated EC is off by roughly
+   2 % per degree (a typical value, not measured here). Who compensates,
+   and how, is a product question.
+5. **Galvanic isolation** of pH and EC probes (the hub's heads have it;
+   many DIY builds do not). Interference gives wrong but plausible values;
+   an acceptance test compares readings with the circulation pump on and
+   off (RAT-044, "Deviation").
+6. **Probe location and smoothing:** a probe in a sump or return line, or
+   smoothing in Home Assistant, adds delay. The waits after a dose must
+   cover it: at least twice the smoothing window, or the time to tolerance
+   measured on the tank (RAT-052, RAT-058).
+7. **The hub is the only one switching** pumps that dose or move water;
+   another automation in Home Assistant would be a second controller next
+   to it. Each pump stops on its own (see below).
+8. **How old a calibration may be,** and when to recalibrate, has no rule
+   yet; that is a product question.
 
 ## Units
 
@@ -127,8 +169,9 @@ time is no value.
 - `ha/ha_client.*`: reads `GET /api/states/<entity>` with the token in its
   own thread, so the hub's tick never waits for the network. Each answer is
   at most 64 KB and 10 s; redirects are not followed, so the token never
-  goes to another host. A refused token (401/403) waits five minutes
-  before the next try, so Home Assistant does not ban the computer.
+  goes to another host. A refused token (401/403) stops reading until
+  restart. Text from Home Assistant in a fault (a unit) is cut to 32
+  printable bytes.
 - A report's age is measured in Home Assistant's own time (its `Date`
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.
@@ -148,9 +191,6 @@ time is no value.
   script with a maximum on-time), because a lost "off" over Wi-Fi must
   never keep a pump running; and the hub must be the only one switching
   them. That is the next design step, after a product decision.
-- Before pH, EC or level from Home Assistant may feed control, the hub
-  needs its own check of them (reference buffers or volumes, with a date),
-  and a calibration change in Home Assistant must void that check.
 - The HTTP code of `ha/main.cpp` follows `sim/main.cpp`; a shared module
   is a follow-up.
 - Packaging as a Home Assistant add-on comes later, if the product goes

@@ -143,8 +143,10 @@ int main(int argc, char** argv) {
     return 2;
   }
   std::string token = tokenFile.empty() ? (std::getenv("GC_HA_TOKEN") ? std::getenv("GC_HA_TOKEN") : "") : readFile(tokenFile);
-#ifndef _WIN32
-  unsetenv("GC_HA_TOKEN");  // not passed on to anything this process starts
+#ifdef _WIN32
+  _putenv_s("GC_HA_TOKEN", "");  // not passed on to anything this process starts
+#else
+  unsetenv("GC_HA_TOKEN");
 #endif
   while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
   if (token.empty()) {

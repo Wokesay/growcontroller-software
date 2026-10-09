@@ -93,7 +93,7 @@ dedicated test or with a deviation · **○** open.
 | Always runs, also without a cultivation run and in maintenance mode | RAT-023, RAT-075 | ◐ | `SensorTruth::update` every cycle |
 | A missing value is never 0 | RAT-006 | ✓ | test_truth M8-1; `arch_check.sh` |
 | Freshness and frozen readings are checked separately | RAT-023, RAT-059 | ✓ | test_truth |
-| Invalid calibration → no control value | RAT-025, RAT-026 | ✓ | test_truth |
+| Invalid calibration → no control value; a value calibrated outside the hub is shown, never used for control | RAT-025, RAT-026 | ✓ | test_truth, "a value calibrated elsewhere is shown, but not used for control (RAT-025)"; test_ha |
 | Jump lock (pH > 1.0 / EC > 0.5 in 5 min), released after 15 min steady, survives a restart | RAT-039, RAT-044 | ✓ | test_truth M8-2, test_scenarios, E2E |
 | An announced intervention explains a jump | RAT-042 | ✓ | own doses, mix run, inlet, calibration, maintenance mode · test_truth M8-3 |
 | Failure only after n missed readings | RAT-027 | ○ | job of the bus driver (firmware) |

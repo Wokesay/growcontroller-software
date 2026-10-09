@@ -437,6 +437,11 @@ TEST_CASE("Sonden: pH und EC als getrennte Köpfe, Wassertemperatur vom EC-Kopf"
   s.step(30000);
   REQUIRE(c.state()["readings"]["tank.ec"]["value"].is_number());
   const double now = c.state()["readings"]["tank.ec"]["value"];
+  // Only the kinds the device class offers: a pH calibration on the EC head is refused
+  auto [notOffered, why] = c.call("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ph"}, {"action", "start"}});
+  CHECK(notOffered == 422);
+  CHECK(why["error"]["key"] == "probe.not_offered");
+  CHECK(c.state()["probeCalibration"].empty());
   c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "start"}});
   c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "point"}, {"reference", now}});
   c.ok("POST", "/api/v1/probe", {{"device", ec}, {"kind", "ec"}, {"action", "commit"}});

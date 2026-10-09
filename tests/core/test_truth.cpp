@@ -174,4 +174,16 @@ TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for
   cfg.calibrations["HA-PH"]["ph"] = {{"points", {{7.0, 7.0}, {4.0, 4.0}}}};
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
   CHECK_FALSE(truth.get("tank.ph").usable());
+  // The other checks still run on it, so a broken probe shows as broken, not as "not checked" (RAT-021)
+  clk.ms += 1000;
+  bus.set("HA-PH", "measure.ph", 12.0, clk.ms);
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("tank.ph").quality == Quality::Implausible);
+  for (int i = 0; i < 17; ++i) {  // the same value for more than 15 min, still reported
+    clk.ms += 60 * 1000;
+    bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
+    truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  }
+  CHECK(truth.get("tank.ph").quality == Quality::Frozen);
+  CHECK_FALSE(truth.get("tank.ph").usable());
 }

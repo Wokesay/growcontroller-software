@@ -213,20 +213,22 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     if (value) r.value = value;
     else if (unchecked || (needsCal && role.capability != "measure.level")) r.value = s->raw;  // Anzeige, nicht für Regelung
 
+    // The checks below run on the value in its unit: the hub's calibration of
+    // a raw value, or a value calibrated elsewhere, which is already in pH,
+    // mS/cm or L, so a stuck, implausible or jumping one still shows (RAT-021).
+    const std::optional<double> checked = unchecked ? std::optional<double>(s->raw) : value;
     if (r.ageMs > static_cast<Ms>(cap->maxAgeS * 1000.0)) {
       setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
            {{"ageS", r.ageMs / 1000}});
-    } else if (unchecked) {
-      setQ(Quality::Uncalibrated, "truth.external", "In Home Assistant kalibriert – vom Hub nicht geprüft");
-    } else if (!value) {
+    } else if (!checked) {
       setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
     } else if (expectsNoise(role.capability) && now - tr.lastRawChange > kFrozenAfter) {
       setQ(Quality::Frozen, "truth.frozen", "Wert steht seit über 15 min still – Sonde prüfen");
-    } else if ((isNum(cap->plausMin) && *value < cap->plausMin) || (isNum(cap->plausMax) && *value > cap->plausMax)) {
+    } else if ((isNum(cap->plausMin) && *checked < cap->plausMin) || (isNum(cap->plausMax) && *checked > cap->plausMax)) {
       setQ(Quality::Implausible, "truth.implausible",
-           cap->label + " " + fmt(*value, cap->decimals) + " außerhalb " + fmt(cap->plausMin, 1) + "–" +
+           cap->label + " " + fmt(*checked, cap->decimals) + " außerhalb " + fmt(cap->plausMin, 1) + "–" +
                fmt(cap->plausMax, 1),
-           {{"value", *value}, {"min", cap->plausMin}, {"max", cap->plausMax}});
+           {{"value", *checked}, {"min", cap->plausMin}, {"max", cap->plausMax}});
     } else {
       // Sprungsperre: Änderung größer als die Schwelle innerhalb von 5 min ohne
       // Erklärung durch eine eigene Gabe → gesperrt bis 15 min Ruhe.
@@ -237,16 +239,16 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         if (isNum(cap->jump) && !explained && !tr.window.empty()) {
           auto [mn, mx] = std::minmax_element(tr.window.begin(), tr.window.end(),
                                               [](const auto& a, const auto& c) { return a.second < c.second; });
-          double from = std::fabs(*value - mn->second) > std::fabs(*value - mx->second) ? mn->second : mx->second;
-          if (std::fabs(*value - from) > cap->jump) {
+          double from = std::fabs(*checked - mn->second) > std::fabs(*checked - mx->second) ? mn->second : mx->second;
+          if (std::fabs(*checked - from) > cap->jump) {
             rt.jumpLocks[roleId] = epoch + kJumpHoldS;
-            json lockInfo = {{"from", from}, {"to", *value}, {"at", epoch}};
+            json lockInfo = {{"from", from}, {"to", *checked}, {"at", epoch}};
             rt.latches["jump." + roleId] = lockInfo;
             tr.window.clear();  // neuer Bezugswert; frei 15 min nach dem letzten Sprung
           }
         }
         if (explained) tr.window.clear();
-        tr.window.emplace_back(s->ts, *value);
+        tr.window.emplace_back(s->ts, *checked);
       }
       auto lock = rt.jumpLocks.find(roleId);
       if (lock != rt.jumpLocks.end() && epoch < lock->second) {
@@ -260,9 +262,12 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
           rt.jumpLocks.erase(lock);
           rt.latches.erase("jump." + roleId);
           tr.window.clear();
-          tr.window.emplace_back(s->ts, *value);
+          tr.window.emplace_back(s->ts, *checked);
         }
-        setQ(Quality::Ok, "truth.ok", "Gültig");
+        if (unchecked)  // passed every check, but its calibration is not the hub's
+          setQ(Quality::Uncalibrated, "truth.external", "Außerhalb des Hubs kalibriert – vom Hub nicht geprüft");
+        else
+          setQ(Quality::Ok, "truth.ok", "Gültig");
       }
     }
     readings_[roleId] = r;

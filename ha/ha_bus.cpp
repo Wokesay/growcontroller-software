@@ -32,6 +32,15 @@ const char* labelOf(const std::string& m) {
   return "CO2 aus Home Assistant";
 }
 
+// Text from Home Assistant as it may appear in a fault: printable, at most
+// 32 bytes, because faults reach the terminal, the state and diagnostics.
+std::string printable(const std::string& s) {
+  std::string out;
+  for (unsigned char c : s)
+    if (c >= 0x20 && c != 0x7f) out += static_cast<char>(c);
+  return gc::utf8Prefix(out, 32);
+}
+
 // The value in the hub's unit, or NaN with a fault when the unit is missing
 // or not one the hub can convert. Only pH has no unit; for anything else a
 // missing unit is a missing input, never a guess (RAT-006): 5 µS/cm read as
@@ -54,7 +63,7 @@ double convert(const std::string& measures, double v, const std::string& unit, s
   if (measures == "level" && unit == "L") return v;
   if (measures == "humidity" && unit == "%") return v;
   if (measures == "co2" && unit == "ppm") return v;
-  fault = "unit " + unit + " not supported";
+  fault = "unit " + printable(unit) + " not supported";
   return gc::kNaN;
 }
 
@@ -194,7 +203,7 @@ void HaBus::update(const std::string& entityId, const gc::json& state, std::int6
   }
   const std::string raw = gc::jstr(state, "state");
   st.available = raw != "unavailable";
-  // Last report from the device: last_reported (Home Assistant 2024.3 and
+  // Last report from the device: last_reported (Home Assistant 2024.4 and
   // later) or last_updated, whichever is later. Without a readable time the
   // hub cannot tell a fresh value from a stuck one, so there is no value.
   const auto reported = parseTimestampMs(gc::jstr(state, "last_reported"));

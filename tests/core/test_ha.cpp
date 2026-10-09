@@ -32,8 +32,10 @@ json state(const std::string& entity, const std::string& value, const std::strin
           {"last_reported", reported}};
 }
 
-// "2026-10-09T12:00:05.000Z" for kNoonMs + 5000
+// "2026-10-09T12:00:05.000Z" for kNoonMs + 5000; times from noon on only
 std::string iso(std::int64_t ms) {
+  REQUIRE(ms >= kNoonMs);
+  REQUIRE(ms < kNoonMs + 12 * 3600 * 1000);
   const std::int64_t s = ms / 1000 - kNoonMs / 1000;
   char buf[40];
   std::snprintf(buf, sizeof buf, "2026-10-09T%02lld:%02lld:%02lld.%03lldZ", static_cast<long long>(12 + s / 3600),
@@ -50,18 +52,16 @@ struct FakeHa {
   std::vector<std::string> requests;  // "GET /api/states/…"
   std::atomic<int> count{0};
   explicit FakeHa(std::function<void(const httplib::Request&, httplib::Response&)> handler) {
-    auto record = [this, handler](const httplib::Request& req, httplib::Response& res) {
+    // Recorded before routing, so a request with any method is seen
+    svr.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response&) {
       {
         std::lock_guard<std::mutex> l(m);
         requests.push_back(req.method + " " + req.path);
       }
       ++count;
-      handler(req, res);
-    };
-    svr.Get(R"(/.*)", record);
-    svr.Post(R"(/.*)", record);
-    svr.Put(R"(/.*)", record);
-    svr.Delete(R"(/.*)", record);
+      return httplib::Server::HandlerResponse::Unhandled;
+    });
+    svr.Get(R"(/.*)", handler);
     port = svr.bind_to_any_port("127.0.0.1");
     t = std::thread([this] { svr.listen_after_bind(); });
     svr.wait_until_ready();
@@ -140,6 +140,13 @@ TEST_CASE("Home Assistant: states become samples in the hub's units; missing sta
   CHECK(devs[0].cls == "ha_ph");
   CHECK(devs[0].online);
   CHECK(devs[3].fault == "unit % not supported");
+  // Home Assistant's text reaches terminal, state and diagnostics only printable and short
+  bus.update("sensor.level", state("sensor.level", "40", "\x1b]0;x\x07" + std::string(100, 'L'), "2026-10-09T12:00:00+00:00"),
+             kNoonMs, now);
+  const std::string odd = bus.fault("sensor.level");
+  CHECK(odd.find('\x1b') == std::string::npos);
+  CHECK(odd.find('\x07') == std::string::npos);
+  CHECK(odd.size() <= std::string("unit  not supported").size() + 32);
   // "unknown" is no value, "unavailable" is offline; neither becomes 0
   bus.update("sensor.ph", state("sensor.ph", "unknown", "", "2026-10-09T12:00:00+00:00"), kNoonMs, now);
   CHECK_FALSE(bus.sample("ha.sensor.ph", "measure.ph"));
@@ -223,27 +230,43 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   CHECK(ph["quality"] == "uncalibrated");                    // but no value for control
   CHECK(ph["reason"]["key"] == "truth.external");
   CHECK(st["readings"]["tank.water_temp"]["quality"] == "ok");  // needs no calibration
-  // The hub offers no calibration of its own for it
+  // The hub offers no calibration of its own for it, and says why instead of asking for one
   CHECK(hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}}).status == 422);
-  // Not re-reported: stale after the capability's maximum age, although Home Assistant answers
-  report("sensor.grow_ph", "6.1", "");
-  for (int i = 0; i < 70; ++i) {
+  bool explained = false;
+  for (const auto& f : st["functions"])
+    for (const auto& c : f["checks"])
+      if (c["text"].get<std::string>().find("außerhalb des Hubs kalibriert") != std::string::npos) {
+        explained = true;
+        CHECK(c["fix"] == "");
+      }
+  CHECK(explained);
+  // Not re-reported (ESPHome without force_update): one fresh report, then Home Assistant keeps
+  // answering with it while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
+  const std::int64_t reportedAt = kNoonMs + clk.ms;
+  auto sameReport = [&] {
+    auto s = state("sensor.grow_ph", "6.1", "", "");
+    s["last_reported"] = s["last_updated"] = iso(reportedAt);
+    bus.update("sensor.grow_ph", s, kNoonMs + clk.ms, clk.ms);
+  };
+  for (int i = 0; i < 59; ++i) {
+    sameReport();
     clk.ms += 1000;
-    bus.update("sensor.grow_ph", [&] {
-      auto s = state("sensor.grow_ph", "6.1", "", "");
-      s["last_reported"] = s["last_updated"] = iso(kNoonMs + (clk.ms - 71000));  // the same old report
-      return s;
-    }(), kNoonMs + clk.ms, clk.ms);
     hub.tick();
   }
-  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "stale");
+  CHECK(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");  // 59 s: not stale yet
+  for (int i = 0; i < 3; ++i) {
+    sameReport();
+    clk.ms += 1000;
+    hub.tick();
+  }
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "stale");  // 62 s
   bus.lost("sensor.grow_ph");
   clk.ms += 1000;
   hub.tick();
   CHECK(hub.state()["readings"]["tank.ph"]["value"].is_null());  // never 0 (R5)
 }
 
-TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and backs off when refused") {
+TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and stops when refused") {
   std::atomic<int> refuse{0};
   FakeHa ha([&](const httplib::Request& req, httplib::Response& res) {
     if (refuse) {
@@ -282,12 +305,14 @@ TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and 
     CHECK(problem.find("wrong") == std::string::npos);
     CHECK(p.rejected());
     CHECK_FALSE(bus.devices()[0].online);
-    // Running, it does not retry a refused token every round (Home Assistant would ban this computer)
+    // Running, it does not try a refused token again (Home Assistant bans after a few failed logins)
     const int before = ha.count;
     p.start(std::chrono::milliseconds(20));
-    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    for (int i = 0; i < 500 && ha.count == before; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    REQUIRE(ha.count == before + 1);                             // the first round ran
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));  // 15 more rounds at 20 ms if it went on
     p.stop();
-    CHECK(ha.count - before == 1);
+    CHECK(ha.count == before + 1);
   }
   {
     refuse = 403;
@@ -308,7 +333,7 @@ TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and 
   }
 }
 
-TEST_CASE("Home Assistant: whatever the hub is asked to do, only state reads reach Home Assistant") {
+TEST_CASE("Home Assistant: the poller sends nothing but state reads, whatever the hub is asked to do") {
   FakeHa ha([](const httplib::Request& req, httplib::Response& res) {
     res.set_content(state(req.path.substr(12), "6.0", req.path.find("temp") != std::string::npos ? "°C" : "",
                           "2026-10-09T12:00:00+00:00")

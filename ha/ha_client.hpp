@@ -21,11 +21,10 @@ class Poller {
 
   // One round over all entities; returns "" or why it failed (never the token).
   std::string pollOnce();
-  // Home Assistant refused the token (401/403) in the last round. The poller
-  // then waits kRejectedWait before trying again, so Home Assistant does not
-  // ban this computer for repeated failed logins.
+  // Home Assistant refused the token (401/403) in the last round. Running,
+  // the poller then stops until restart: Home Assistant counts every failed
+  // login and bans the computer after a few, however slowly they come.
   bool rejected() const { return rejected_; }
-  static constexpr std::chrono::minutes kRejectedWait{5};
   void start(std::chrono::milliseconds every);
   void stop();
 
@@ -34,7 +33,9 @@ class Poller {
   std::string url_, token_;
   std::function<gc::Ms()> nowMs_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> stopping_{false};  // set by stop(), read by the polling thread
   std::atomic<bool> rejected_{false};
+  bool warnedNoDate_ = false;          // only pollOnce() touches it, one round at a time
   std::thread thread_;
 };
 

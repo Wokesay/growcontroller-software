@@ -17,8 +17,9 @@ listed in every release under "Security".
   control, since the hub has not checked a calibration done in Home
   Assistant (RAT-025); the hub offers no calibration of its own for them.
   A missing unit (except pH) or an unreadable report time gives no value.
-  The hub's own probe calibration now refuses kinds a device class does
-  not offer.
+  A refused token stops reading until restart, so Home Assistant does not
+  ban the computer. The hub's own probe calibration now refuses kinds a
+  device class does not offer.
 - **Fan sockets come back on after a power loss** (PD-050, SD-028):
   binding a socket to the exhaust or circulation fan sets it to "on after
   power loss"; every other socket stays "off". After a restart the hub
