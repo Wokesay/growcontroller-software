@@ -22,6 +22,9 @@ enum class Quality {
   Ok
 };
 const char* qualityName(Quality q);
+// Reason key of a value calibrated outside the hub: Uncalibrated, shown, never
+// usable (RAT-025). The watchdog and the web app tell this case apart by it.
+inline constexpr const char* kCalibratedElsewhere = "truth.external";
 
 struct Reading {
   std::string role, capability, unit;

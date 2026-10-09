@@ -18,7 +18,7 @@ listed in every release under "Security".
   Assistant (RAT-025); the hub offers no calibration of its own for them.
   A missing unit (except pH) or an unreadable report time gives no value.
   A refused token stops reading until restart, so Home Assistant does not
-  ban the computer. Their tiles say "display only" with age and trend
+  ban the computer. Their tiles say "display only" with the value's age
   instead of "not calibrated", the monitoring says "calibrated outside the
   hub", and the setup step does not ask for a probe calibration. The
   setup for the hub's own dosing hardware is not offered on a read-only

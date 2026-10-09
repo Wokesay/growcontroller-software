@@ -25,7 +25,8 @@ const qualityText: Record<string, TextKey> = {
 export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string }) {
   const r = p.reading;
   // Calibrated outside the hub (Home Assistant trial): a value to look at, not
-  // a fault; it keeps its age and trend and says it is for display only.
+  // a fault; it keeps its age and says it is for display only. It has no
+  // trend: the history keeps only values usable for control.
   const external = r?.quality === "uncalibrated" && r.reason.key === "truth.external";
   const bad = r && r.quality !== "ok" && r.quality !== "not_bound" && !external;
   const outOfBand = r?.usable && p.band && r.value !== null && (r.value < p.band[0] || r.value > p.band[1]);
@@ -50,7 +51,7 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
         {p.notApplicable ? <span class="faint" style="font-size:1.1rem">{t("widgets.notApplicable")}</span> : num(r?.value ?? null, r?.decimals ?? 2)}
         {!p.notApplicable && r?.unit && <span class="unit">{r.unit}</span>}
       </div>
-      {p.spark && !bad && <Sparkline values={p.spark} color={p.color} band={p.band} />}
+      {p.spark && !bad && !external && <Sparkline values={p.spark} color={p.color} band={p.band} />}
       {bad && r?.reason.text && <div class="metric-reason">{msg(r.reason)}</div>}
       {external && <div class="metric-note">{msg(r!.reason)}</div>}
       <div class="metric-foot">

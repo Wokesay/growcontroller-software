@@ -176,17 +176,18 @@ TEST_CASE("Home Assistant: a report's time is never guessed") {
   const auto first = bus.sample("ha.sensor.ph", "measure.ph");
   REQUIRE(first);
   CHECK(first->ts == 3000);
-  // (Home Assistant's Date header has whole seconds: dating it anew from
-  // each answer, it would read 12000 - 7001 = 4999 here and wander.)
+  // (Dated anew from each answer it would wander with the gap between the
+  // two clocks, here 12000 - 7001 = 4999; the Date header's whole seconds
+  // make that gap jump in practice.)
   bus.update("sensor.ph", state("sensor.ph", "6.2", "", iso(kNoonMs)), kNoonMs + 7001, 12000);
   const auto again = bus.sample("ha.sensor.ph", "measure.ph");
   REQUIRE(again);
   CHECK(again->ts == 3000);
   // A report dated after Home Assistant's "now" (clock step) counts as new, not as older
-  bus.update("sensor.ph", state("sensor.ph", "6.3", "", iso(kNoonMs + 60000)), kNoonMs + 8000, 11000);
+  bus.update("sensor.ph", state("sensor.ph", "6.3", "", iso(kNoonMs + 60000)), kNoonMs + 8000, 13000);
   const auto ahead = bus.sample("ha.sensor.ph", "measure.ph");
   REQUIRE(ahead);
-  CHECK(ahead->ts == 11000);
+  CHECK(ahead->ts == 13000);
 }
 
 TEST_CASE("Home Assistant: the spike switches nothing") {

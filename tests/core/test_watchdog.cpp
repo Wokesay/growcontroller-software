@@ -44,7 +44,7 @@ TEST_CASE("Watchdog: a value calibrated outside the hub says so; a problem only 
   f.cfg.functions["ph_control"].enabled = false;
   Reading& ph = f.readings["tank.ph"];
   ph.quality = Quality::Uncalibrated;
-  ph.reason = say("truth.external");
+  ph.reason = say(kCalibratedElsewhere);
   auto w = f.eval();
   CHECK(f.item(w, "reading.tank.ph")->status == "neutral");
   CHECK(f.item(w, "reading.tank.ph")->text.key == "watch.reading.external");

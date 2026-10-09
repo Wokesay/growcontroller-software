@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 const char* qualityName(Quality q) {
@@ -268,10 +270,12 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
           tr.window.clear();
           tr.window.emplace_back(s->ts, *assessed);
         }
-        if (calibratedElsewhere)  // passed every check, but its calibration is not the hub's
-          setQ(Quality::Uncalibrated, "truth.external", "Außerhalb des Hubs kalibriert – vom Hub nicht geprüft");
-        else
+        if (calibratedElsewhere) {  // passed every check, but its calibration is not the hub's
+          r.quality = Quality::Uncalibrated;
+          r.reason = say("truth.external");  // kCalibratedElsewhere (tested)
+        } else {
           setQ(Quality::Ok, "truth.ok", "Gültig");
+        }
       }
     }
     readings_[roleId] = r;

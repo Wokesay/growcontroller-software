@@ -20,6 +20,7 @@ class Poller {
   ~Poller();
 
   // One round over all entities; returns "" or why it failed (never the token).
+  // After stop() it reads nothing until start() again.
   std::string pollOnce();
   // Home Assistant refused the token (401/403) in the last round. Running,
   // the poller then stops until restart: Home Assistant counts every failed

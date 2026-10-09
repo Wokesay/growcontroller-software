@@ -34,8 +34,10 @@ const char* labelOf(const std::string& m) {
 
 // Text from Home Assistant as it may appear in a fault: printable, at most
 // 32 bytes, because faults reach the terminal, the state and diagnostics.
-// Keeps printable ASCII and well-formed UTF-8 from U+00A0 on (µ, °); drops
-// control characters, C1 controls (U+0080–U+009F) and stray bytes.
+// Keeps printable ASCII and UTF-8 sequences from U+00A0 on (µ, °); drops
+// control characters, C1 controls (U+0080–U+009F) and stray bytes. The
+// input comes from the JSON parser, which has already rejected ill-formed
+// UTF-8, so the sequences are not checked further.
 std::string printable(const std::string& s) {
   std::string out;
   for (size_t i = 0; i < s.size();) {

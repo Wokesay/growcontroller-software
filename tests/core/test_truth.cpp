@@ -167,7 +167,7 @@ TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for
   REQUIRE(r.value.has_value());
   CHECK(*r.value == doctest::Approx(6.2));  // shown
   CHECK(r.quality == Quality::Uncalibrated);
-  CHECK(r.reason.key == "truth.external");
+  CHECK(r.reason.key == kCalibratedElsewhere);  // the key the watchdog and the web app look for
   CHECK_FALSE(r.usable());                  // no value for control
   CHECK(truth.get("tank.water_temp").quality == Quality::Ok);  // needs no calibration anyway
   // A calibration stored for it changes nothing: the hub has not checked the one in use
