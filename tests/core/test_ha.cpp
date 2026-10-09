@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <thread>
@@ -118,7 +119,7 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
   CHECK(ha::parseMapping({{"url", "http://ha:8123"}}, err).entities.empty());
   CHECK(err.empty());
   CHECK(refused({{"url", "http://ha:8123"}, {"entities", "sensor.grow_ph"}}));  // not a list
-  for (const char* id : {"Sensor.Grow", "sensor", "../api/config", "sensor.a.b", "sensor.grow ph"})
+  for (const char* id : {"Sensor.Grow", "sensor", "../api/config", "sensor.a.b", "sensor.grow ph", "person.someone"})
     CHECK(refused({{"url", "http://ha:8123"}, {"entities", {{{"entity", id}, {"measures", "ph"}}}}}));
   CHECK(refused({{"url", "http://ha:8123"}, {"entities", {{{"entity", "sensor.x"}, {"measures", "voltage"}}}}}));
   CHECK(refused({{"url", "http://ha:8123"}, {"entities", {one[0], one[0]}}}));  // listed twice
@@ -219,7 +220,7 @@ TEST_CASE("Home Assistant: the hub finds the sensors it can use, drops the rest,
   bus.updateAll(many, kNoonMs, 4000);
   CHECK(bus.candidates().size() == ha::HaBus::kMaxPerKind + 1);
   CHECK(bus.candidates().back().entityId == "sensor.tank_ph");
-  CHECK(bus.candidatesJson()["truncated"] == true);
+  CHECK(bus.candidatesJson()["truncated"] == json::array({"temperature"}));  // only the kind that was cut
 }
 
 TEST_CASE("Home Assistant: only units the hub converts exactly give a value; nothing is guessed (RAT-006, RAT-015)") {
@@ -277,9 +278,9 @@ TEST_CASE("Home Assistant: an answer keeps only what the hub reads, however larg
   big.push_back(one);
   big.push_back({{"entity_id", "person.someone"}, {"state", "home"}, {"attributes", {{"latitude", 52.5}, {"friendly_name", "Someone"}}}});
   big.push_back({{"entity_id", "sensor." + std::string(300, 'a')}, {"state", "1"}, {"attributes", {{"device_class", "ph"}}}});  // too long an ID
-  std::string nested = "[";
-  for (int i = 0; i < 10000; ++i) nested += "[";
-  for (int i = 0; i < 10000; ++i) nested += "]";
+  std::string nested = "[";  // 20 levels: within the limit, read past and dropped
+  for (int i = 0; i < 20; ++i) nested += "[";
+  for (int i = 0; i < 20; ++i) nested += "]";
   nested += "]";
   std::string body = big.dump();
   body.insert(body.size() - 1, "," + nested);
@@ -291,11 +292,26 @@ TEST_CASE("Home Assistant: an answer keeps only what the hub reads, however larg
   CHECK_FALSE(ph["attributes"].contains("options"));
   CHECK(ph["attributes"]["device_class"] == "ph");
   CHECK(kept.dump().size() < 2000);  // nothing large or nested survives
+  CHECK(kept.size() == 1);            // only sensors: the person and the over-long ID are gone
   ha::HaBus bus;
   bus.updateAll(kept, kNoonMs, 1000);
   REQUIRE(bus.candidates().size() == 1);
   CHECK(bus.candidates()[0].name == "Tank pH");  // invisible format characters gone
   CHECK(ha::parseStates("not json").is_discarded());
+  // Too deep a nesting stops the read instead of building it
+  CHECK(ha::parseStates("[" + std::string(100, '[') + std::string(100, ']') + "]").is_discarded());
+  // Many tiny states cost time in proportion to their number, not its square
+  std::string tiny = "[";
+  for (int i = 0; i < 200000; ++i) tiny += i ? ",{}" : "{}";
+  tiny += "]";
+  const auto t0 = std::chrono::steady_clock::now();
+  CHECK(ha::parseStates(tiny).empty());
+  CHECK(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
+  // Invisible characters beyond the format ones are gone too
+  bus.updateAll(json::array({described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph",
+                                       "Tank\xc2\xad pH\xf3\xa0\x80\x81")}),
+                kNoonMs, 2000);
+  CHECK(bus.candidates()[0].name == "Tank pH");
 }
 
 TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken away again without leftovers") {
@@ -375,6 +391,12 @@ TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken 
   CHECK(after.selectedMeasure("sensor.room_temp") == "air_temp");
   CHECK(after.selectedMeasure("sensor.tent_temp") == "water_temp");
   CHECK(after.selectedMeasure("sensor.tank_ph").empty());
+  // The configuration wins over the mapping file at start
+  ha::HaBus listed({{"sensor.room_temp", "water_temp"}});
+  gc::Hub fourth(cat, listed, store, clk, pseudoRandom);
+  fourth.boot();
+  ha::adoptFromConfig(fourth, listed);
+  CHECK(listed.selectedMeasure("sensor.room_temp") == "air_temp");
   // Bound in the configuration but not read (lost on the way): picking it again reads it again
   ha::HaBus forgetful;
   gc::Hub third(cat, forgetful, store, clk, pseudoRandom);
@@ -420,7 +442,7 @@ TEST_CASE("Home Assistant: the server's routes need a signed-in session") {
   CHECK(hub.config().binding("tank.ph"));
   gc::ApiRequest junk = signedIn;
   junk.body = "[1,2";
-  CHECK(ha::assignRoute(api, hub, bus, junk, [] {}).status == 422);
+  CHECK(ha::assignRoute(api, hub, bus, junk, [] {}).status == 400);
 }
 
 TEST_CASE("Home Assistant: states become samples in the hub's units; missing stays missing (R5)") {

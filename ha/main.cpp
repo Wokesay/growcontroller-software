@@ -245,8 +245,10 @@ int main(int argc, char** argv) {
   });
   std::mutex assigning;  // one pick at a time, also from two browser tabs
   svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
+    const gc::ApiRequest areq = toApi(req);
+    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));  // before any lock or write
     std::lock_guard<std::mutex> one(assigning);
-    gc::Result r = ha::assignRoute(api, hub, bus, toApi(req), [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    gc::Result r = ha::assignRoute(api, hub, bus, areq, [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
     {  // on disk now, not with the next flush, whatever the result changed
       std::lock_guard<std::recursive_mutex> l(hub.mutex());
       hub.flush();

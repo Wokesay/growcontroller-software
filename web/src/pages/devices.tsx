@@ -8,7 +8,7 @@ import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { msg, t } from "../i18n";
 import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
-import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
+import { Banner, Button, Card, Empty, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 import { HaRoles, isHa } from "../ha";
 
@@ -300,20 +300,23 @@ export function DevicesPage() {
             </Banner>
           )}
           {isHa.value && blocks.length === 0 && (
-            <div class="stack">
-              <p class="muted">{t("ha.devicesEmpty")}</p>
-              <div>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setTab("zuordnung");
-                    navigate("/geraete?tab=zuordnung");
-                  }}
-                >
-                  {t("ha.bannerChooseLink")}
-                </Button>
-              </div>
-            </div>
+            <Card>
+              <Empty
+                title={t("ha.title")}
+                text={t("ha.devicesEmpty")}
+                action={
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setTab("zuordnung");
+                      navigate("/geraete?tab=zuordnung");
+                    }}
+                  >
+                    {t("ha.bannerChooseLink")}
+                  </Button>
+                }
+              />
+            </Card>
           )}
           {blocks.map((b) => {
             const caps = st.devices.filter((d) => d.parent === b.id);

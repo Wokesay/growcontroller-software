@@ -101,7 +101,11 @@ void adoptFromConfig(gc::Hub& hub, HaBus& bus) {
     const std::string entity = entityOf(d.id);
     if (entity.empty() || d.cls.rfind(kClassPrefix, 0) != 0) continue;
     const std::string measures = d.cls.substr(kClassPrefix.size());
-    if (validEntityId(entity) && knownMeasure(measures)) bus.adopt({entity, measures});
+    if (!validEntityId(entity) || !knownMeasure(measures)) continue;
+    // The configuration wins over the mapping file: a sensor picked for
+    // another measure than the file says is read for what it is bound to.
+    if (const std::string listed = bus.selectedMeasure(entity); !listed.empty() && listed != measures) bus.deselect(entity);
+    bus.adopt({entity, measures});
   }
 }
 
@@ -114,7 +118,7 @@ gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequ
                        const std::function<void()>& letHubSee) {
   if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
   const auto body = gc::json::parse(req.body, nullptr, false);
-  if (!body.is_object()) return gc::Result::fail(422, gc::say("ha.role"));
+  if (!body.is_object()) return gc::Result::fail(400, "api.json", "Ungültiges JSON");
   return assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"), letHubSee);
 }
 

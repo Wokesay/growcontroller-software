@@ -14,6 +14,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -41,9 +42,10 @@ std::vector<Entity> parseEntities(const gc::json& j, std::string& err);
 // writes entity IDs; they become device IDs.
 bool validEntityId(const std::string& id);
 bool knownMeasure(const std::string& measures);
-// Home Assistant's answer to GET /api/states, keeping only what the hub
-// reads (entity_id, state, the report times and four attributes); anything
-// else, and anything nested deeper, is dropped while parsing.
+// Home Assistant's answer to GET /api/states, keeping only sensors and of
+// them only what the hub reads (entity_id, state, the report times and four
+// attributes); everything else is never built. Discarded if the answer is
+// no JSON or nests deeper than 32 levels.
 gc::json parseStates(const std::string& body);
 gc::json entitiesJson(const std::vector<Entity>& entities);
 
@@ -106,7 +108,7 @@ class HaBus : public gc::IBus {
 
   std::vector<Entity> entities() const;  // a copy: the web app may select while the poller reads
   std::vector<Candidate> candidates() const;
-  // For the web app: {"connection": …, "truncated": …, "candidates": [{entity,
+  // For the web app: {"connection": …, "truncated": [kinds], "candidates": [{entity,
   // name, kind, measures, value, raw, unit, problem, used}]}, "used" naming
   // the measure a selected one serves.
   gc::json candidatesJson() const;
@@ -136,7 +138,7 @@ class HaBus : public gc::IBus {
   std::vector<Entity> entities_;
   std::vector<Candidate> candidates_;
   std::map<std::string, gc::json> raw_;  // the candidates' last states, to start a pick with
-  bool truncated_ = false;
+  std::set<std::string> truncated_;  // kinds with more candidates than kMaxPerKind
   std::int64_t lastHaNowMs_ = 0;
   gc::Ms lastNowMs_ = 0;
   std::string connection_ = "starting";

@@ -185,11 +185,13 @@ time is no value.
   network. An answer is at most 16 MB and 10 s; redirects are not
   followed, so the token never goes to another host. A refused token
   (401/403) stops reading until restart.
-- The answer is filtered while it is parsed (`parseStates`): of each state
-  only `entity_id`, `state`, the report times and the attributes
-  `device_class`, `unit_of_measurement`, `state_class` and `friendly_name`
-  are kept; anything else and anything nested deeper is dropped as it is
-  read, so a large or crafted answer never builds a large tree in memory.
+- The answer is read event by event (`parseStates`, a SAX reader): only
+  sensors with a valid entity ID are built, and of them only `entity_id`,
+  `state`, the report times and the attributes `device_class`,
+  `unit_of_measurement`, `state_class` and `friendly_name`; people,
+  locations and everything else are never built. Nesting deeper than 32
+  levels stops the read, and at most 100 000 states are kept, so a large or
+  crafted answer costs time and memory only in proportion to its sensors.
 - Of the states, the bus keeps only the candidates: sensors whose device
   class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
   `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`

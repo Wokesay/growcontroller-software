@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { computed } from "@preact/signals";
 import { get, post } from "./api";
-import { ago, num } from "./format";
+import { ago, num, numUpTo } from "./format";
 import { msg, t } from "./i18n";
 import { binding, catalog, config, info, refreshConfig, refreshState, state, toast } from "./store";
 import { Banner, Button, Modal, Pill } from "./ui";
@@ -26,7 +26,7 @@ export type HaCandidate = {
   problem: "unit_missing" | "unit_unsupported" | null;
   used: string | null;
 };
-type HaList = { connection: Connection; truncated: boolean; candidates: HaCandidate[] };
+type HaList = { connection: Connection; truncated: string[]; candidates: HaCandidate[] };
 
 // The measuring roles and the measure each one reads ("zone.air_temp" → "air_temp").
 const ROLES: [string, string][] = [
@@ -74,7 +74,10 @@ const valueText = (measure: string, v: number | null | undefined) => {
 };
 // By name only, so a row never moves under the finger when its value comes and goes.
 const byName = (a: HaCandidate, b: HaCandidate) => (a.name || a.entity).localeCompare(b.name || b.entity);
-const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const kindOf = (measure: string) => (measure === "water_temp" || measure === "air_temp" ? "temperature" : measure);
+const unitProblem = (c: HaCandidate | undefined) =>
+  c?.problem === "unit_missing" ? t("ha.unitMissing") : c?.problem === "unit_unsupported" ? t("ha.unitUnsupported", { unit: c.unit }) : "";
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 // The other role this sensor is bound to, if any.
 const boundElsewhere = (entity: string, role: string) => ROLES.find(([r]) => r !== role && binding(r)?.device === `ha.${entity}`)?.[0];
 
@@ -127,6 +130,7 @@ export function HaRoles() {
             // The badge follows the reading, as on the tiles
             const external = reading?.quality === "uncalibrated" && reading.reason.key === "truth.external";
             const bad = !!reading && reading.quality !== "ok" && reading.quality !== "not_bound" && !external;
+            const problem = unitProblem(cands.find((c) => c.entity === entity)); // a unit the hub cannot use, said as such
             return (
               <div class="item" data-testid={`ha-role-${role}`}>
                 <span class="grow">
@@ -138,7 +142,8 @@ export function HaRoles() {
                   {b && (
                     <div class="muted small" style="overflow-wrap:anywhere">
                       {[device?.name || entity, valueText(measure, reading?.value), reading?.ageS != null ? ago(reading.ageS) : ""].filter(Boolean).join(" · ")}
-                      {bad && reading?.reason.text && <div>{msg(reading.reason)}</div>}
+                      {bad && reading?.reason.text && live !== false && !problem && <div>{msg(reading.reason)}</div>}
+                      {problem && <div>{problem}</div>}
                       {live === false && entity && <div>{t("ha.missing", { entity })}</div>}
                     </div>
                   )}
@@ -177,7 +182,6 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; reloa
   const all = (p.list?.candidates ?? []).filter((c) => c.measures.includes(p.measure)).sort(byName);
   const shown = q.trim() ? all.filter((c) => fold(`${c.name} ${c.entity}`).includes(fold(q.trim()))) : all;
   const label = roleLabel(p.role);
-  const hubUnit = capOf(p.measure)?.unit ?? "";
   useEffect(() => {
     if (all.length > 8 && window.matchMedia?.("(pointer: fine)").matches) search.current?.focus();
   }, []);
@@ -218,16 +222,16 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; reloa
       {ok && (
         <p class="muted small">
           {q.trim() ? t("ha.countFiltered", { n: shown.length, total: all.length }) : all.length === 1 ? t("ha.countOne") : t("ha.count", { n: all.length })}
-          {p.list?.truncated && ` ${t("ha.truncated")}`}
         </p>
       )}
+      {ok && Array.isArray(p.list?.truncated) && p.list!.truncated.includes(kindOf(p.measure)) && <p class="muted small">{t("ha.truncated")}</p>}
       {ok && TIP.has(p.measure) && all.length > 1 && <p class="muted small">{t("ha.tip")}</p>}
       {ok && ALSO_ELSEWHERE.has(p.measure) && <p class="muted small">{t("ha.alsoElsewhere")}</p>}
       <div class="ha-options" data-testid="ha-picker" aria-busy={saving !== null || undefined}>
         {ok &&
           shown.map((c) => {
             const elsewhere = boundElsewhere(c.entity, p.role);
-            const converted = c.value !== null && c.raw !== null && !!c.unit && c.unit !== hubUnit;
+            const converted = c.value !== null && c.raw !== null && c.value !== c.raw; // µS/cm → mS/cm, °F → °C
             return (
               <button
                 class={`ha-option ${c.entity === current ? "current" : ""}`}
@@ -239,16 +243,14 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; reloa
                 <span class="grow">
                   <strong>{c.name || c.entity}</strong>
                   <span class="muted small mono ha-entity">{c.entity}</span>
-                  {converted && <span class="muted small">{t("ha.inHa", { value: num(c.raw!, 2), unit: c.unit })}</span>}
+                  {converted && <span class="muted small">{t("ha.inHa", { value: numUpTo(c.raw!, 2), unit: c.unit })}</span>}
                   {elsewhere && <span class="ha-used small">{t("ha.usedFor", { role: roleLabel(elsewhere) })}</span>}
                   {saving === c.entity && <span class="muted small">{t("ha.saving")}</span>}
                 </span>
                 {c.value !== null ? (
                   <span class="ha-value">{valueText(p.measure, c.value)}</span>
                 ) : (
-                  <span class="muted small ha-novalue">
-                    {c.problem === "unit_missing" ? t("ha.unitMissing") : c.problem === "unit_unsupported" ? t("ha.unitUnsupported", { unit: c.unit }) : t("ha.noValue")}
-                  </span>
+                  <span class="muted small ha-novalue">{unitProblem(c) || t("ha.noValue")}</span>
                 )}
               </button>
             );

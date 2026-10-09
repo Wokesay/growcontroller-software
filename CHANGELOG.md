@@ -176,8 +176,9 @@ listed in every release under "Security".
 
 ### Security
 - **Home Assistant trial reads only what it needs:** Home Assistant's
-  state list is filtered while it is parsed (a few fields per state, no
-  nesting), so people, locations and other entities are never kept;
+  state list is read event by event and only sensors, with a few fields
+  each, are built, so people, locations and other entities are never kept;
+  deep nesting stops the read;
   names from Home Assistant are cleaned of control and invisible format
   characters, entity IDs are limited to 255 characters, and the picking
   routes need a signed-in session.

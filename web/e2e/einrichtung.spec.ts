@@ -163,7 +163,7 @@ async function asHomeAssistant(page: Page, connection: string, sensors: unknown[
   });
   await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => {
     asked++;
-    return route.fulfill({ json: { connection, truncated: false, candidates: sensors } });
+    return route.fulfill({ json: { connection, truncated: [], candidates: sensors } });
   });
   return () => asked;
 }
@@ -206,6 +206,7 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
   const picker = page.getByTestId("ha-picker");
   await expect(picker.getByText("Growbox pH")).toBeVisible();
   await expect(picker.getByText("Zelt Temperatur")).toHaveCount(0);  // only what measures pH
+  await expect(picker.getByRole("button", { name: /Growbox pH/ })).not.toContainText("in Home Assistant");  // nothing converted
   await expect(page.getByText(/Pflanzen- und Poolsensoren/)).toBeVisible();
   const before = asked();
   await picker.getByText("Growbox pH").click();
@@ -214,11 +215,15 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
   expect(asked()).toBeGreaterThan(before);  // the list is fetched again after a save
   // EC: the Home Assistant value next to the converted one; TDS in ppm gives no value, never a guess (RAT-006)
   await page.getByRole("button", { name: "Sensor wählen: EC im Tank" }).click();
-  await expect(picker.getByRole("button", { name: /Growbox EC/ })).toContainText("in Home Assistant: 1.420,00 µS/cm");
+  await expect(picker.getByRole("button", { name: /Growbox EC/ })).toContainText("in Home Assistant: 1.420 µS/cm");
   await expect(picker.getByRole("button", { name: /Tank TDS/ })).toContainText("Einheit ppm passt nicht");
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   expect(picked).toHaveLength(1);  // closing changes nothing
+  // Selected but not bound to any role (e.g. from the mapping file): still free to pick
+  await page.getByRole("button", { name: "Sensor wählen: Lufttemperatur" }).click();
+  await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
