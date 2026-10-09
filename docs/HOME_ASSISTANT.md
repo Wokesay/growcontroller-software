@@ -189,9 +189,11 @@ time is no value.
   sensors with a valid entity ID are built, and of them only `entity_id`,
   `state`, the report times and the attributes `device_class`,
   `unit_of_measurement`, `state_class` and `friendly_name`; people,
-  locations and everything else are never built. Nesting deeper than 32
-  levels stops the read, and at most 100 000 states are kept, so a large or
-  crafted answer costs time and memory only in proportion to its sensors.
+  locations and everything else are never kept (their few fields pass
+  through one scratch object and are dropped when the state ends). Nesting
+  deeper than 32 levels or an answer that is no list stops the read, and at
+  most 20 000 sensors are kept, so a large or crafted answer costs time and
+  memory only in proportion to its sensors.
 - Of the states, the bus keeps only the candidates: sensors whose device
   class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
   `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`

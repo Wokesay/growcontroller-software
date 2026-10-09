@@ -298,6 +298,9 @@ TEST_CASE("Home Assistant: an answer keeps only what the hub reads, however larg
   REQUIRE(bus.candidates().size() == 1);
   CHECK(bus.candidates()[0].name == "Tank pH");  // invisible format characters gone
   CHECK(ha::parseStates("not json").is_discarded());
+  CHECK(ha::parseStates("{}").is_discarded());  // not a list: a problem, not "no sensors"
+  CHECK(ha::parseStates("5").is_discarded());
+  CHECK(ha::parseStates("[]").is_array());
   // Too deep a nesting stops the read instead of building it
   CHECK(ha::parseStates("[" + std::string(100, '[') + std::string(100, ']') + "]").is_discarded());
   // Many tiny states cost time in proportion to their number, not its square

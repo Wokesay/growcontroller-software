@@ -142,7 +142,7 @@ namespace {
 class StatesReader : public gc::json::json_sax_t {
  public:
   static constexpr int kMaxDepth = 32;
-  static constexpr size_t kMaxStates = 100000;
+  static constexpr size_t kMaxStates = 20000;  // sensors; a large installation has a few thousand
   gc::json out = gc::json::array();
 
   bool null() override { return scalar(nullptr); }
@@ -191,6 +191,7 @@ class StatesReader : public gc::json::json_sax_t {
     return true;
   }
   bool parse_error(std::size_t, const std::string&, const nlohmann::detail::exception&) override { return false; }
+  bool sawList() const { return inList_; }  // the answer was a list, not an object or a bare value
 
  private:
   bool skipping() const { return skipFrom_ > 0 && depth_ >= skipFrom_; }
@@ -218,7 +219,7 @@ class StatesReader : public gc::json::json_sax_t {
 
 gc::json parseStates(const std::string& body) {
   StatesReader r;
-  if (!gc::json::sax_parse(body, &r)) return gc::json(gc::json::value_t::discarded);
+  if (!gc::json::sax_parse(body, &r) || !r.sawList()) return gc::json(gc::json::value_t::discarded);
   return std::move(r.out);
 }
 
