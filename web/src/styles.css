@@ -209,6 +209,18 @@ small, .small { font-size: 0.85rem; }
 .metric-foot span { min-width: 0; overflow-wrap: anywhere; }
 .metric-reason { font-size: 0.82rem; color: var(--bad); font-weight: 600; overflow-wrap: anywhere; }
 .metric-note { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
+.ha-options { display: grid; gap: 8px; }
+.ha-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px 14px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+.ha-option > .grow { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.ha-option:hover:not(:disabled) { border-color: var(--accent); }
+.ha-option.current { border-color: var(--accent); border-width: 2px; padding: 9px 13px; }
+.ha-option:disabled { cursor: default; background: var(--surface-2); }
+.ha-option:disabled :is(strong, .ha-entity, .ha-value) { opacity: 0.6; }
+.ha-option.ha-none { background: transparent; border-style: dashed; color: var(--muted); }
+.ha-entity, .ha-option strong { overflow-wrap: anywhere; }
+.ha-used { color: var(--muted); }
+.ha-value { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
+.ha-novalue { text-align: right; max-width: 45%; }
 .metric .spark { display: block; height: 34px; width: 100%; max-width: 100%; }
 .band { font-size: 0.78rem; color: var(--muted); }
 .gauge { position: relative; height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }

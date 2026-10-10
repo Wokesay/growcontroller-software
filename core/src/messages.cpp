@@ -136,6 +136,12 @@ constexpr Entry kMessages[] = {
     {"watch.reading.uncalibrated", "Not calibrated"},
     {"watch.reading.external", "Calibrated outside the hub – not checked"},
     {"truth.external", "Calibrated outside the hub – not checked by the hub"},
+    // Picking a sensor from Home Assistant (ha/, docs/HOME_ASSISTANT.md)
+    {"ha.role", "This is not a reading the hub takes from Home Assistant."},
+    {"ha.unknown", "Home Assistant doesn't offer this sensor right now."},
+    {"ha.mismatch", "This sensor measures something else."},
+    {"ha.used", "This sensor is already used for another reading."},
+    {"ha.timeout", "The hub didn't see the sensor in time. Try again."},
     {"watch.reading.failed", "No valid reading: {reason}"},
     {"watch.band.ph.label", "pH limits"},
     {"watch.band.ec.label", "EC limits"},

@@ -102,7 +102,7 @@ if(GC_BUILD_SIM)
   endif()
 
   # Read-only spike: the core next to Home Assistant (docs/HOME_ASSISTANT.md)
-  add_library(gc_ha STATIC ha/ha_bus.cpp)
+  add_library(gc_ha STATIC ha/ha_bus.cpp ha/ha_assign.cpp)
   target_include_directories(gc_ha PUBLIC ha)
   target_link_libraries(gc_ha PUBLIC gc_core)
   target_compile_options(gc_ha PRIVATE ${GC_WARN})

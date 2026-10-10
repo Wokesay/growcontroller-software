@@ -4,6 +4,12 @@
 import { locale, t } from "./i18n";
 
 const nf = new Map<string, Intl.NumberFormat>();
+/** A number as another program shows it: up to `decimals` places, no trailing zeros. */
+export function numUpTo(v: number | null | undefined, decimals = 2): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "–";
+  return new Intl.NumberFormat(locale(), { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(v);
+}
+
 export function num(v: number | null | undefined, decimals = 1): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
   const key = `${locale()}:${decimals}`;

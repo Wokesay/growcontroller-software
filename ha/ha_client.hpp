@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Reads the mapped entities from Home Assistant's REST API
-// (GET /api/states/<entity_id>, Bearer token) and hands them to the HaBus.
+// Reads Home Assistant's states through its REST API (GET /api/states,
+// Bearer token) and hands them to the HaBus.
 // Runs in its own thread so the hub's tick never waits for the network.
 #pragma once
 
@@ -19,9 +19,12 @@ class Poller {
   Poller(HaBus& bus, std::string url, std::string token, std::function<gc::Ms()> nowMs);
   ~Poller();
 
-  // One round over all entities; returns "" or why it failed (never the token).
-  // After stop() it reads nothing until start() again.
+  // One round: all states in one request; returns "" or why it failed (never
+  // the token). After stop() it reads nothing until start() again.
   std::string pollOnce();
+  // The largest answer taken: all states of a large installation (a state is
+  // a few hundred bytes to a few KB).
+  static constexpr size_t kMaxAnswer = 16 * 1024 * 1024;
   // Home Assistant refused the token (401/403) in the last round. Running,
   // the poller then stops until restart: Home Assistant counts every failed
   // login and bans the computer after a few, however slowly they come.

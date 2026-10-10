@@ -22,7 +22,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
   implausible and jumps still show. Rationale: RAT-025.
 - **Show only what the hardware can do.** What is missing is listed in one
   place: Devices › Expand. Empty "–" tiles and probe advertising get in
-  the way (`anwender`).
+  the way (`anwender`). On a Home Assistant hub there is nothing to plug
+  in: Expand and the ports are hidden, and a measurement without a fitting
+  sensor is named once under Assignment.
 - **No jargon up front:** no Modbus, no RS485. Ports are called "Port 3"
   with a picture; wrong connections are explained in a sentence. A
   hobbyist look puts buyers off (`kunde`).
@@ -83,7 +85,16 @@ On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
 ## 4. Setup wizard
 
 Customer view: at most 5 steps to the first success, without an account.
-Devices are detected, not selected.
+Devices are detected, not selected. Exception: on a Home Assistant hub
+(docs/HOME_ASSISTANT.md) the user chooses one sensor per measurement under
+Devices › Assignment, because Home Assistant offers dozens of sensors and
+only a few belong to the grow. The list shows each sensor's name, entity ID
+and live value, sorted by name only (rows never move as values come and
+go); one tap saves; a sensor used for another
+measurement is shown but cannot be taken; a unit the hub cannot use is
+named instead of a value, and a converted value also shows Home
+Assistant's own; "Home Assistant not answering"
+and "access refused" are said as such, never as "no sensors".
 
 | # | Step | Required |
 |---|---|---|

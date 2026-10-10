@@ -8,6 +8,18 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant: choose sensors in the web app instead of listing
+  them** (`docs/HOME_ASSISTANT.md`): `gc_ha_server` reads all states in one
+  request and finds the sensors it can use by Home Assistant's device class
+  and unit (pH, EC, temperature, humidity, CO2, level); everything else is
+  dropped at once. Under Devices › Assignment the user picks one sensor per
+  measurement from a list with name, entity ID and live value; one tap
+  selects, adds and assigns it, and "Don't use a sensor" takes it away
+  again; a failed change keeps the former sensor. The picks live in the
+  hub's configuration, and the mapping file needs only Home Assistant's
+  address. A unit the hub does not convert exactly (TDS in ppm) is listed
+  without a value. The overview and the picker say when Home Assistant
+  does not answer or refuses access.
 - **Home Assistant, read-only spike** (`docs/HOME_ASSISTANT.md`): a
   server (`gc_ha_server`) runs the core next to Home Assistant, reads
   mapped sensor entities (pH, EC, water and air temperature, level in L,
@@ -163,6 +175,15 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **Home Assistant trial reads only what it needs:** Home Assistant's
+  state list is read event by event and only sensors, with a few fields
+  each, are built, so people, locations and other entities are never kept;
+  a kept name is cut to 256 bytes while reading and any other longer field
+  is dropped, so a cut never makes an ID valid or changes a value; deep
+  nesting stops the read;
+  names from Home Assistant are cleaned of control and invisible format
+  characters, entity IDs are limited to 255 characters, and the picking
+  routes need a signed-in session.
 - **A damaged event cannot break the app** (SD-032): the web app reads
   the hub's messages defensively (only its own table keys, only strings
   as text, at most four nested levels). If a page or its event list
@@ -337,6 +358,8 @@ listed in every release under "Security".
 - Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
 ### Fixed
+- **Escape closes a window right after it opens:** windows listened for
+  the key only after the next frame, so an Escape pressed at once was lost.
 - **Recipes from a template keep the language of the page** (#32): a
   recipe created from a template was always stored with the German name
   and note, also in English. The recipes page now sends its language

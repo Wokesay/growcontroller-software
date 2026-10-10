@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Read-only spike: the hub's core on a computer next to Home Assistant
-// (docs/HOME_ASSISTANT.md). It reads the mapped sensor entities, runs them
-// through the sensor truth and serves the web app; it switches nothing.
+// (docs/HOME_ASSISTANT.md). It reads the sensors picked in the web app, runs
+// them through the sensor truth and serves the web app; it switches nothing.
 // The HTTP part follows the simulator's server (sim/main.cpp).
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -10,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <thread>
@@ -19,6 +21,7 @@
 #include "gc/api.hpp"
 #include "gc/embedded.hpp"
 #include "gc/hub.hpp"
+#include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
 #include "scenario.hpp"  // sim::FileStorage
@@ -78,7 +81,7 @@ std::string readFile(const std::string& path) {
 
 void usage() {
   std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
-            << "  --config FILE       mapping: {\"url\": \"http://192.168.1.20:8123\", \"entities\": [...]} (an IP, not .local)\n"
+            << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local); sensors are picked in the web app\n"
             << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"
@@ -156,11 +159,12 @@ int main(int argc, char** argv) {
 
   const gc::Catalog cat = ha::catalog();
   HostClock clock;
-  ha::HaBus bus(mapping.entities);
   sim::FileStorage store(data);
+  ha::HaBus bus(mapping.entities);
   gc::Hub hub(cat, bus, store, clock, randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
+  ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
   gc::Api api(hub, clock);
   ha::Poller poller(bus, mapping.url, token, [&clock] { return clock.nowMs(); });
 
@@ -230,6 +234,29 @@ int main(int argc, char** argv) {
       return g_running.load();
     });
   });
+  // Picking sensors from Home Assistant; registered before the hub's own API.
+  auto reply = [](httplib::Response& res, const gc::Result& r) {
+    res.status = r.status;
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(r.body.dump(), "application/json");
+  };
+  svr.Get("/api/v1/ha/candidates", [&](const httplib::Request& req, httplib::Response& res) {
+    reply(res, ha::candidatesRoute(api, bus, toApi(req)));
+  });
+  std::mutex assigning;  // one pick at a time, also from two browser tabs
+  svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
+    const gc::ApiRequest areq = toApi(req);
+    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));  // before any lock or write
+    std::lock_guard<std::mutex> one(assigning);
+    gc::Result r = ha::assignRoute(api, hub, bus, areq, [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    {  // on disk now, not with the next flush, whatever the result changed
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      hub.flush();
+      store.flush();
+    }
+    if (r.status == 200) r.body = {{"ok", true}};
+    reply(res, r);
+  });
   svr.Get(R"(/api/v1/.*)", apiHandler);
   svr.Post(R"(/api/v1/.*)", apiHandler);
   svr.Put(R"(/api/v1/.*)", apiHandler);
@@ -264,7 +291,7 @@ int main(int argc, char** argv) {
   });
 
   std::cout << "growcontroller on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
-            << "\nReading " << mapping.entities.size() << " entities from " << mapping.url << " every " << everyS << " s\n"
+            << "\nReading " << bus.entities().size() << " picked sensors from " << mapping.url << " every " << everyS << " s\n"
             << std::flush;
   svr.listen_after_bind();
   g_running = false;

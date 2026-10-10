@@ -6,17 +6,19 @@ instead of on its own hardware: Home Assistant stays the device layer
 sensors from it. Whether the product goes this way is a product question
 for the product repository; this spike only shows whether it works.
 
-**What it does:** it reads mapped sensor entities from Home Assistant's
-REST API every few seconds, turns them into readings with the usual sensor
-truth (stale, implausible, jump lock; a missing value is never 0) and
-serves the web app. The setup finds the entities as devices; measuring
-roles assign themselves.
+**What it does:** it reads Home Assistant's states through its REST API
+every few seconds and finds the sensors it can use: pH, EC, temperature,
+humidity, CO2 and level, recognised by Home Assistant's own device class
+and unit. In the web app (Devices › Assignment) you choose one sensor per
+measurement; one tap picks it, adds it as a device and assigns it. The
+values go through the usual sensor truth (stale, implausible, jump lock; a
+missing value is never 0). Nobody has to write a list of entity IDs.
 
 **What it does not do:**
 
 - It switches nothing. Every run of a pump and every switch command is
   refused, so dosing, refill, circulation and the climate outputs stay off.
-  It sends Home Assistant nothing but `GET /api/states/<entity>` (tested).
+  It sends Home Assistant nothing but `GET /api/states` (tested).
 - pH, EC and level are shown but are **no values for control**: they were
   calibrated outside the hub, and the hub has not checked that calibration
   (RAT-025). Their tiles say "nur Anzeige" (display only) and "Außerhalb
@@ -37,25 +39,19 @@ roles assign themselves.
 3. Save the token in a file only you can read (`chmod 600 ha-token`; on
    Windows, a file in your own user folder). Never paste it into chats,
    issues or repositories.
-4. Write a mapping file:
+4. Write a file with Home Assistant's address:
 
    ```json
-   {
-     "url": "http://192.168.1.20:8123",
-     "entities": [
-       {"entity": "sensor.grow_ph", "measures": "ph"},
-       {"entity": "sensor.grow_ec", "measures": "ec"},
-       {"entity": "sensor.grow_water_temp", "measures": "water_temp"},
-       {"entity": "sensor.tent_temperature", "measures": "air_temp"},
-       {"entity": "sensor.tent_humidity", "measures": "humidity"}
-     ]
-   }
+   {"url": "http://192.168.1.20:8123"}
    ```
 
-   `measures` is one of `ph`, `ec`, `water_temp`, `level`, `air_temp`,
-   `humidity`, `co2`. Use the IP address of Home Assistant, not
-   `homeassistant.local`: the token goes to whatever answers for that name,
-   and `.local` names can be answered by any device in the network.
+   Use the IP address of Home Assistant, not `homeassistant.local`: the
+   token goes to whatever answers for that name, and `.local` names can be
+   answered by any device in the network. If you prefer, the file can also
+   list the entities (`"entities": [{"entity": "sensor.grow_ph",
+   "measures": "ph"}]`, `measures` one of `ph`, `ec`, `water_temp`,
+   `level`, `air_temp`, `humidity`, `co2`); they are then used from the
+   start.
 5. Start it on a computer in your network, as a normal user (not root),
    with a new, empty data folder:
 
@@ -72,8 +68,10 @@ roles assign themselves.
    bans the computer after a few, however slowly they come.
 6. Open the address and set a password. The setup for the hub's own
    dosing hardware is not offered on a read-only hub; the overview points
-   to Devices, where you accept the devices. Name and time zone are under
-   Settings.
+   to Devices › Assignment. There, choose a sensor for each measurement:
+   the list shows each sensor's Home Assistant name, its entity ID and its
+   current value. Can't tell two sensors apart? Warm one in your hand and
+   watch its value rise. Name and time zone are under Settings.
 
 ## What the sensors in Home Assistant need
 
@@ -182,16 +180,63 @@ time is no value.
   shows such pH, EC and level values but keeps them unusable for control;
   the resolver says so instead of asking for a calibration, and the hub
   refuses its own calibration for such devices.
-- `ha/ha_client.*`: reads `GET /api/states/<entity>` with the token in its
-  own thread, so the hub's tick never waits for the network. Each answer is
-  at most 64 KB and 10 s; redirects are not followed, so the token never
-  goes to another host. A refused token (401/403) stops reading until
-  restart. Text from Home Assistant in a fault (a unit) is cut to 32
-  printable bytes.
+- `ha/ha_client.*`: reads all states in one request (`GET /api/states`)
+  with the token in its own thread, so the hub's tick never waits for the
+  network. An answer is at most 16 MB and 10 s; redirects are not
+  followed, so the token never goes to another host. A refused token
+  (401/403) stops reading until restart.
+- The answer is read event by event (`parseStates`, a SAX reader): only
+  sensors with a valid entity ID are built, and of them only `entity_id`,
+  `state`, the report times and the attributes `device_class`,
+  `unit_of_measurement`, `state_class` and `friendly_name`; people,
+  locations and everything else are never kept (their few fields pass
+  through one scratch object and are dropped when the state ends). Nesting
+  deeper than 32 levels or an answer that is no list stops the read, and at
+  most 20 000 sensors are kept, so a large or crafted answer costs time and
+  memory only in proportion to its sensors. A name longer than 256 bytes is
+  cut; any other kept field longer than that is dropped (the ID then makes
+  the state invalid, a value or time counts as missing), because a cut could
+  turn an invalid ID into a valid one or change a value.
+- Of the states, the bus keeps only the candidates: sensors whose device
+  class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
+  `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`
+  with `%`), CO2 (`carbon_dioxide`) or level (`volume_storage` or `volume`,
+  in `L`, not adding up like a meter); at most 100 of each kind, so device
+  temperatures cannot crowd out the tank's pH. `%`, `ppm` and `L` alone
+  also stand for batteries, VOC or water meters, so they need the device
+  class. A candidate whose unit the hub does not convert exactly (TDS in
+  ppm, EC in mS/m, temperature in K) is listed without a value and says
+  why; no factor is assumed (RAT-006, RAT-015). Everything else (people,
+  locations, switches) is dropped at once, never kept or logged. Only
+  picked sensors become devices.
+- What the hub cannot tell: whether a sensor with the right unit sits in
+  the right place. A soil sensor's EC or a pool's pH looks like the tank's;
+  the picker says so, and the name and live value are the guard. pH, EC
+  and level stay display only (RAT-025); temperature, humidity and CO2 are
+  used as valid readings, which matters once anything is switched.
+- `ha/ha_assign.*`: one step from the web app, `POST /api/v1/ha/assign`
+  with a measuring role and an entity: select the entity, accept the device
+  under its Home Assistant name, bind the role; an empty entity takes it
+  away again (unbind, remove, stop reading). A new sensor is bound before
+  the role's former one is dropped, so a failed change keeps the old one;
+  if any part fails, nothing this call added stays behind.
+  `GET /api/v1/ha/candidates` lists the candidates with their value, their
+  value and unit in Home Assistant, a unit problem, the measure a picked
+  one serves and the connection state (`starting`, `ok`, `unreachable`,
+  `refused`), so the web app can tell "no sensors" from "Home Assistant not
+  answering". Both need a signed-in session.
+- The picks live in the hub's configuration (devices `ha.<entity>` of
+  class `ha_<measure>`), saved at once after each pick; at start they are
+  handed back to the bus. There is no second file to get out of step.
+- Text from Home Assistant is cut and cleaned before it is shown, without
+  control or invisible format characters: a unit in a fault to 32 bytes, a
+  sensor's name to 60 in the list (40 as the device's name).
 - A report's age is measured in Home Assistant's own time (its `Date`
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.
 - `ha/main.cpp`: the server (`gc_ha_server`), following the simulator's.
+- `web/src/ha.tsx`: the picker in Devices › Assignment and the overview's
+  notice on a Home Assistant hub.
 
 ## Limits and open points
 

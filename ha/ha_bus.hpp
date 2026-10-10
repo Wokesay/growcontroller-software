@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Read-only spike: Home Assistant as the device layer. Each mapped entity
+// Read-only spike: Home Assistant as the device layer. Each selected entity
 // (e.g. sensor.grow_ph) appears to the hub as a device that provides one
-// measure. Home Assistant calibrates its sensors itself; the device classes
-// carry externalCalibration, so pH, EC and level are shown but are no values
-// for control until the hub can check them. Nothing is switched: every run
-// or switch command is refused.
+// measure. The user selects from the candidates: sensors whose Home
+// Assistant description (device class, unit) says they measure something
+// the hub uses; or the mapping file lists the entities. Home Assistant
+// calibrates its sensors itself; the device classes carry
+// externalCalibration, so pH, EC and level are shown but are no values for
+// control until the hub can check them. Nothing is switched: every run or
+// switch command is refused.
 #pragma once
 
 #include <cstdint>
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,12 +29,40 @@ struct Entity {
   std::string entityId, measures;
 };
 
-// The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph"}]}.
+// The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph"}]};
+// "entities" may be left out, the user then selects in the web app.
 struct Mapping {
   std::string url;
   std::vector<Entity> entities;
 };
 Mapping parseMapping(const gc::json& j, std::string& err);
+// A list of entities as the mapping file writes it.
+std::vector<Entity> parseEntities(const gc::json& j, std::string& err);
+// domain.object_id in lower case, at most 255 characters, as Home Assistant
+// writes entity IDs; they become device IDs.
+bool validEntityId(const std::string& id);
+bool knownMeasure(const std::string& measures);
+// Home Assistant's answer to GET /api/states, keeping only sensors and of
+// them only what the hub reads (entity_id, state, the report times and four
+// attributes); everything else is never built. Discarded if the answer is
+// no JSON or nests deeper than 32 levels.
+gc::json parseStates(const std::string& body);
+gc::json entitiesJson(const std::vector<Entity>& entities);
+
+// A sensor in Home Assistant the hub could use. kind is what its device
+// class and unit say: "ph", "ec", "temperature", "humidity", "co2" or
+// "level"; a temperature can serve as water or air temperature.
+struct Candidate {
+  std::string entityId, name, kind;
+  double value = gc::kNaN;  // in the hub's unit; NaN if there is none now
+  double raw = gc::kNaN;    // as Home Assistant reports it
+  std::string unit;         // Home Assistant's unit
+  std::string problem;      // "", "unit_missing" or "unit_unsupported"
+};
+// What a state describes by Home Assistant's own words; "" if nothing the hub uses.
+std::string classify(const gc::json& state);
+// The measures a kind can serve ("temperature" → water_temp, air_temp).
+std::vector<std::string> measuresOf(const std::string& kind);
 
 // The built-in catalog plus one device class per measure (ha_ph, ha_ec, …).
 gc::Catalog catalog();
@@ -42,11 +74,12 @@ std::optional<std::int64_t> parseHttpDateMs(const std::string& s);
 
 class HaBus : public gc::IBus {
  public:
-  explicit HaBus(std::vector<Entity> entities);
+  explicit HaBus(std::vector<Entity> entities = {});
+  static constexpr size_t kMaxPerKind = 100;
 
   static std::string deviceId(const std::string& entityId) { return "ha." + entityId; }
 
-  // The state of an entity from Home Assistant (GET /api/states/<entity>).
+  // The state of one selected entity from Home Assistant.
   // haNowMs is Home Assistant's own time of the answer (its Date header), so
   // the age of a report does not depend on two clocks agreeing; nowMs is the
   // hub's clock.
@@ -55,8 +88,30 @@ class HaBus : public gc::IBus {
   std::string fault(const std::string& entityId) const;
   // Home Assistant or the entity could not be read: the device goes offline.
   void lost(const std::string& entityId);
+  void lostAll();
+  // All states at once (GET /api/states): updates the selected entities and
+  // refreshes the candidates. A selected entity missing from the list is lost.
+  void updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs);
+  // Use a candidate for a measure. Refused (why: ha.unknown, ha.mismatch,
+  // ha.used) if it is no candidate, cannot serve that measure, or is already
+  // used for another one.
+  bool select(const std::string& entityId, const std::string& measures, gc::Msg& why);
+  // Use an entity without checking that it is a candidate now: the picks the
+  // hub's configuration holds, at start.
+  void adopt(const Entity& entity);
+  // The measure an entity is used for, "" if none.
+  std::string selectedMeasure(const std::string& entityId) const;
+  // Stop using an entity; it stays a candidate.
+  void deselect(const std::string& entityId);
+  // How the last round went, for the web app: "starting", "ok", "unreachable" or "refused".
+  void setConnection(const std::string& c);
 
-  const std::vector<Entity>& entities() const { return entities_; }
+  std::vector<Entity> entities() const;  // a copy: the web app may select while the poller reads
+  std::vector<Candidate> candidates() const;
+  // For the web app: {"connection": …, "truncated": [kinds], "candidates": [{entity,
+  // name, kind, measures, value, raw, unit, problem, used}]}, "used" naming
+  // the measure a selected one serves.
+  gc::json candidatesJson() const;
 
   void poll(gc::Ms) override {}
   std::vector<gc::PortReport> ports() const override { return {}; }
@@ -77,10 +132,18 @@ class HaBus : public gc::IBus {
     std::int64_t reportedAt = -1;  // Home Assistant's time of the last report
     gc::Ms ts = 0;                 // that report on the hub's clock, fixed once seen
     std::string fault;             // e.g. a unit the hub cannot convert
+    std::string name;              // Home Assistant's friendly name
   };
+  void updateLocked(const Entity& e, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs);
   std::vector<Entity> entities_;
+  std::vector<Candidate> candidates_;
+  std::map<std::string, gc::json> raw_;  // the candidates' last states, to start a pick with
+  std::set<std::string> truncated_;  // kinds with more candidates than kMaxPerKind
+  std::int64_t lastHaNowMs_ = 0;
+  gc::Ms lastNowMs_ = 0;
+  std::string connection_ = "starting";
   std::map<std::string, State> states_;  // by entity ID
-  mutable std::mutex m_;                 // update() comes from the poller thread
+  mutable std::mutex m_;                 // the poller thread updates, the web app selects
 };
 
 }  // namespace ha

@@ -8,8 +8,9 @@ import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { msg, t } from "../i18n";
 import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
-import { Banner, Button, Card, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
+import { Banner, Button, Card, Empty, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
+import { HaRoles, isHa } from "../ha";
 
 function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) {
   const d = p.d;
@@ -80,17 +81,22 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
           onClose={() => setEdit(false)}
           footer={
             <>
-              <Button
-                variant="danger-soft"
-                onClick={async () => {
-                  await del(`/devices/${d.id}`);
-                  setEdit(false);
-                  await refreshConfig();
-                  await refreshState();
-                }}
-              >
-                <Trash2 size={15} /> {t("devices.remove")}
-              </Button>
+              {/* A sensor from Home Assistant goes through Assignment, which also stops reading it. */}
+              {d.id.startsWith("ha.") ? (
+                <span class="muted small grow">{t("ha.removeHint")}</span>
+              ) : (
+                <Button
+                  variant="danger-soft"
+                  onClick={async () => {
+                    await del(`/devices/${d.id}`);
+                    setEdit(false);
+                    await refreshConfig();
+                    await refreshState();
+                  }}
+                >
+                  <Trash2 size={15} /> {t("devices.remove")}
+                </Button>
+              )}
               <Button
                 variant="primary"
                 onClick={async () => {
@@ -228,10 +234,14 @@ function Expand() {
 export function DevicesPage() {
   const st = state.value!;
   const q = route.value.query;
-  const [tab, setTab] = useState<"geraete" | "zuordnung" | "erweitern">((q.tab as any) || "geraete");
+  // A Home Assistant hub starts on Assignment until a sensor is chosen.
+  const haFirst = isHa.value && !Object.entries(catalog.value?.roles ?? {}).some(([r, def]) => def.capability?.startsWith("measure.") && binding(r));
+  // Expand lists hardware to plug in; a Home Assistant hub has none, so links to it land on Assignment.
+  const tabOf = (v?: string) => (isHa.value && v === "erweitern" ? "zuordnung" : v) as "geraete" | "zuordnung" | "erweitern" | undefined;
+  const [tab, setTab] = useState<"geraete" | "zuordnung" | "erweitern">(tabOf(q.tab) || (haFirst ? "zuordnung" : "geraete"));
   const [cal, setCal] = useState<{ d: Device; kind: string } | null>(null);
   useEffect(() => {
-    if (q.tab) setTab(q.tab as any);
+    if (q.tab) setTab(tabOf(q.tab)!);
     if (q.pump) {
       const d = st.devices.find((x) => x.id === q.pump);
       if (d) setCal({ d, kind: "pump" });
@@ -247,20 +257,24 @@ export function DevicesPage() {
   const blocks = st.devices.filter((d) => d.class !== "pump_cap");
   return (
     <div class="stack">
-      <Card title={t("setup.dev.hubPorts")} icon={<Plug size={18} />} actions={<span class="faint small">{t("devices.portsNote")}</span>}>
-        <PortGrid />
-      </Card>
+      {!isHa.value && (
+        <Card title={t("setup.dev.hubPorts")} icon={<Plug size={18} />} actions={<span class="faint small">{t("devices.portsNote")}</span>}>
+          <PortGrid />
+        </Card>
+      )}
       <Seg
         value={tab}
         onChange={(v) => {
           setTab(v);
           navigate(`/geraete?tab=${v}`);
         }}
-        options={[
-          ["geraete", t("nav.devices")],
-          ["zuordnung", t("devices.tabAssign")],
-          ["erweitern", t("devices.tabExpand")],
-        ]}
+        options={
+          [
+            ["geraete", t("nav.devices")],
+            ["zuordnung", t("devices.tabAssign")],
+            ...(isHa.value ? [] : [["erweitern", t("devices.tabExpand")]]),
+          ] as ["geraete" | "zuordnung" | "erweitern", string][]
+        }
       />
       {tab === "geraete" && (
         <>
@@ -285,6 +299,25 @@ export function DevicesPage() {
               </div>
             </Banner>
           )}
+          {isHa.value && blocks.length === 0 && (
+            <Card>
+              <Empty
+                title={t("ha.title")}
+                text={t("ha.devicesEmpty")}
+                action={
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setTab("zuordnung");
+                      navigate("/geraete?tab=zuordnung");
+                    }}
+                  >
+                    {t("ha.bannerChooseLink")}
+                  </Button>
+                }
+              />
+            </Card>
+          )}
           {blocks.map((b) => {
             const caps = st.devices.filter((d) => d.parent === b.id);
             return (
@@ -302,11 +335,11 @@ export function DevicesPage() {
         </>
       )}
       {tab === "zuordnung" && (
-        <Card title={t("devices.tabAssign")} icon={<Link2 size={18} />}>
-          <Roles />
+        <Card title={isHa.value ? t("ha.title") : t("devices.tabAssign")} icon={<Link2 size={18} />}>
+          {isHa.value ? <HaRoles /> : <Roles />}
         </Card>
       )}
-      {tab === "erweitern" && (
+      {tab === "erweitern" && !isHa.value && (
         <Card title={t("devices.tabExpand")} icon={<PackagePlus size={18} />}>
           <Expand />
         </Card>

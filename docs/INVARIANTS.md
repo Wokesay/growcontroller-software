@@ -92,6 +92,7 @@ dedicated test or with a deviation · **○** open.
 |---|---|---|---|
 | Always runs, also without a cultivation run and in maintenance mode | RAT-023, RAT-075 | ◐ | `SensorTruth::update` every cycle |
 | A missing value is never 0 | RAT-006 | ✓ | test_truth M8-1; `arch_check.sh` |
+| A value from outside the hub is taken only in a unit the hub converts exactly; a missing unit, another unit or one that needs an assumed factor (TDS in ppm, level in %) gives no value | RAT-006, RAT-015 | ✓ | test_ha "only units the hub converts exactly give a value" |
 | Freshness and frozen readings are checked separately; a value calibrated outside the hub has no raw signal and gets no frozen check, only freshness | RAT-023, RAT-059 | ✓ | test_truth |
 | Invalid calibration → no control value; a value calibrated outside the hub is shown, never used for control | RAT-025, RAT-026 | ✓ | test_truth, "a value calibrated elsewhere is shown, but not used for control (RAT-025)"; test_ha |
 | Jump lock (pH > 1.0 / EC > 0.5 in 5 min), released after 15 min steady, survives a restart | RAT-039, RAT-044 | ✓ | test_truth M8-2, test_scenarios, E2E |
