@@ -87,3 +87,17 @@ test("the publishing job builds nothing and the release build uses no cache", ()
   assert.doesNotMatch(packages, /actions\/cache/);
   assert.match(packages, /cache: \$\{\{ !inputs\.release && 'npm' \|\| '' \}\}/);
 });
+
+test("the app image is built without write access and only pushed by publish", () => {
+  // SD-034: app.yml builds and smoke tests, release.yml's publish pushes.
+  const app = readFileSync(join(dir, "app.yml"), "utf8");
+  assert.doesNotMatch(app, /docker (login|push)|imagetools create|:\s*write\b/);
+  assert.match(app, /docker build --pull /, "every build pulls its base image afresh");
+  const release = readFileSync(join(dir, "release.yml"), "utf8");
+  const publish = job(release, "publish");
+  assert.doesNotMatch(publish, /docker (build|run)\b|buildx build/);
+  assert.equal((release.match(/docker push|docker login/g) ?? []).length, (publish.match(/docker push|docker login/g) ?? []).length);
+  for (const arch of ["amd64", "aarch64"]) {
+    assert.match(job(release, `app-${arch}`), new RegExp(`uses: ./.github/workflows/app.yml\\n {4}with:\\n {6}arch: ${arch}\\n {6}release: true\\n`));
+  }
+});

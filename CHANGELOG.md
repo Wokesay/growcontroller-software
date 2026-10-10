@@ -8,6 +8,17 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **growcontroller as a Home Assistant app** (SD-034,
+  `docs/HOME_ASSISTANT.md`): add this repository in Home Assistant's app
+  store (formerly add-on store) and install growcontroller on a Raspberry
+  Pi (64-bit) or PC; open its web UI on port 8099, set a password and pick
+  the sensors. Nothing to configure, no token to make: `gc_ha_server
+  --app` reaches Home Assistant through the Supervisor. Still read-only:
+  it switches nothing. Home Assistant downloads a ready-made image of
+  about 3 MB (`ghcr.io/wokesay/growcontroller-ha`) that holds only the
+  server, the web app and the license texts. CI builds and starts it for
+  `amd64` and `aarch64` on every code change; the release workflow
+  publishes and attests it for a tag (`docs/RELEASE.md`).
 - **Home Assistant address with a path** (`docs/HOME_ASSISTANT.md`): the
   mapping file's `url` may carry a plain path in front of the API, such as
   `http://supervisor/core`, which is how a Home Assistant add-on reaches

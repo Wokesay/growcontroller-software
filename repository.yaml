@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# This repository as a Home Assistant app repository (SD-034): add
+# https://github.com/Wokesay/growcontroller-software in Home Assistant's app
+# store; the app is in ha/app.
+name: growcontroller
+url: https://github.com/Wokesay/growcontroller-software
+maintainer: The growcontroller-software contributors

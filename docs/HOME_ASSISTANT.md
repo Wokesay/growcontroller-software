@@ -30,7 +30,31 @@ missing value is never 0). Nobody has to write a list of entity IDs.
   fault (RAT-059); a sensor that falls silent goes stale. Temperature,
   humidity and CO2 need no calibration and are valid readings.
 
-## Run it
+## As a Home Assistant app
+
+On Home Assistant OS or Supervised (a Raspberry Pi 4 or 5 with a 64-bit
+system, or a PC) it installs from Home Assistant's app store, formerly
+the add-on store (SD-034):
+
+1. **Settings → Apps → store → ⋮ → Repositories**, add
+   `https://github.com/Wokesay/growcontroller-software`.
+2. Install **growcontroller**, start it, **Open web UI** (port 8099).
+3. Set a password, then choose the sensors in Devices › Assignment (step
+   6 below).
+
+Nothing is configured and no token is made: `gc_ha_server --app` reaches
+Home Assistant at `http://supervisor/core` with the Supervisor's token
+(`SUPERVISOR_TOKEN`, granted by `homeassistant_api` in
+`ha/app/config.yaml`), keeps its data in the app's folder (`/data/hub`,
+part of Home Assistant's backups) and serves the web app on port 8099 of
+the Home Assistant host. Home Assistant downloads a ready-made image of
+about 3 MB (`ghcr.io/wokesay/growcontroller-ha`, built and published by
+the release workflow for the version in `ha/app/config.yaml`,
+`docs/RELEASE.md`). The image is `FROM scratch`: the static server, the
+web app and the license texts, no shell. The app's own documentation in
+the store is `ha/app/DOCS.md`.
+
+## Run it on a computer of your own
 
 1. Build the software (`README.md`, "Build it yourself") and the web app.
 2. In Home Assistant create a user for this trial **without admin rights**,
@@ -244,6 +268,17 @@ time is no value.
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.
 - `ha/main.cpp`: the server (`gc_ha_server`), following the simulator's.
+  `--app` sets what the app needs (above) and refuses `--config` and
+  `--token-file`; the Supervisor's token is read from the environment and
+  removed from it at once, like `GC_HA_TOKEN`.
+- `ha/app/`: the app (`config.yaml`, `Dockerfile`, store texts);
+  `repository.yaml` at the root makes the repository an app repository.
+  `.github/workflows/app.yml` builds the image for `amd64` and `aarch64`,
+  each on its own architecture, and starts it as the Supervisor would
+  (labels, answer, web app, a foreign host name refused, clean stop on
+  SIGTERM, private data folder), on every code change and for a release;
+  `tools/app.test.mjs` keeps `config.yaml`, the server, the Dockerfile and
+  the release workflow in step.
 - `web/src/ha.tsx`: the picker in Devices › Assignment and the overview's
   notice on a Home Assistant hub.
 
@@ -272,5 +307,16 @@ time is no value.
   them. That is the next design step, after a product decision.
 - The HTTP code of `ha/main.cpp` follows `sim/main.cpp`; a shared module
   is a follow-up.
-- Packaging as a Home Assistant add-on comes later, if the product goes
-  this way.
+- **The app's web app is plain HTTP on port 8099 of the Home Assistant
+  host,** reachable by every device in your network; the growcontroller
+  password travels in the clear there. Home Assistant's ingress (its own
+  login and HTTPS) would need the web app to work below a path; that is a
+  follow-up.
+- **The Supervisor's token is not read-only:** Home Assistant has no
+  read-only access for apps, so the app could call any of Home Assistant's
+  API. growcontroller sends only `GET /api/states` (tested); the image has
+  no shell and the app no other rights (`tools/app.test.mjs` refuses any
+  other key in `config.yaml`).
+- The app store reads `ha/app/config.yaml` from `main`: between merging a
+  new version and the release workflow's end, Home Assistant offers a
+  version whose image is not there yet, and an install fails until it is.

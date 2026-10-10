@@ -33,7 +33,7 @@ jobs:
       - name: Architecture rules
         run: tools/arch_check.sh
       - name: CI and release scripts, workflow pins
-        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs
+        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs
       - name: Text keys of the web app
         run: node --test tools/i18n_keys.test.mjs
       - name: Licenses (REUSE, npm dependencies)

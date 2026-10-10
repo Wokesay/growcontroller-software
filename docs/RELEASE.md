@@ -10,7 +10,8 @@ As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
   proposal: SemVer with the channel in the name and a title that names the
   content.
 - **SemVer** `MAJOR.MINOR.PATCH[-beta.N]` (draft E12). The version is in
-  `VERSION`, `web/package.json` and in the tag `vX.Y.Z`.
+  `VERSION`, `web/package.json`, `ha/app/config.yaml` and in the tag
+  `vX.Y.Z`.
 - **MAJOR:** a break in configuration, API or bus protocol. Integrators and
   bus devices need this signal.
 - **PATCH:** only bug and security fixes. This way security updates come
@@ -45,22 +46,32 @@ entry under `[Unreleased]`.
 
 ## Release process
 
-1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION` and
-   `web/package.json`, PR, review (`reviewer`, `release`, and `security`
-   for security topics), CI green.
+1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION`,
+   `web/package.json` and `ha/app/config.yaml`, PR, review (`reviewer`,
+   `release`, and `security` for security topics), CI green. Tag right
+   after the merge: Home Assistant's app store reads `config.yaml` from
+   `main` and offers the new version before its image exists.
 2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
    repository admin can set `v*` tags, SD-027). The workflow
    `release.yml` (#29):
-   - `verify`: the tag matches `VERSION` and points at a commit on
-     `main`.
+   - `verify`: the tag matches `VERSION` (and `web/package.json` and
+     `ha/app/config.yaml` match it) and points at a commit on `main`.
    - `packages` and `build`, without write access and without a cache:
      the simulator for three platforms, the web app, the license notices,
      two SBOMs (CycloneDX: web app from npm, C++ libraries from
      `cmake/deps.cmake`), `SHA256SUMS` and the release notes from the
      changelog section.
+   - `app-amd64` and `app-aarch64` (`app.yml`, SD-034), without write
+     access and without a cache: the Home Assistant app image, each on a
+     runner of its architecture, started and checked as the Supervisor
+     would start it, saved with its checksum.
    - `publish`, the only job that can write: checks the files against
-     `SHA256SUMS`, attests their build provenance and creates the GitHub
-     release. It runs no npm and builds nothing.
+     `SHA256SUMS` and the app images against their checksums and labels,
+     checks that the tag still points at the built commit, attests the
+     files' build provenance, pushes the app image
+     (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`, one name for both
+     architectures, plus `X.Y.Z-amd64` and `X.Y.Z-aarch64`), attests it
+     and creates the GitHub release. It runs no npm and builds nothing.
    - Pre-releases (`-beta`, `-proto`) are marked as pre-release.
    - A pull request that changes the release machinery runs everything
      except `publish` as a dry run.
@@ -77,13 +88,30 @@ entry under `[Unreleased]`.
        --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
      ```
 
+   - The app image is checked the same way:
+
+     ```bash
+     gh attestation verify oci://ghcr.io/wokesay/growcontroller-ha:X.Y.Z \
+       --repo Wokesay/growcontroller-software \
+       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+       --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
+     ```
+
+   - **Once, after the first release with the app:** the project owner
+     makes the package public (GitHub profile → Packages →
+     `growcontroller-ha` → Package settings → Change visibility →
+     Public). Home Assistant downloads it without a login.
    - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
      the statically linked compiler runtimes; the web app embedded in the
-     simulator is in the web SBOM. Dependabot does not cover
-     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
-     are updated by hand.
+     simulator is in the web SBOM. The app image has no SBOM of its own
+     yet: it holds the same server code, the web app and the musl C
+     library of its Alpine build image. Dependabot updates the app's base
+     image (pinned by digest); it does not cover `cmake/deps.cmake`, the
+     `espressif/idf` container, the Alpine packages of the app's build and
+     `reuse`; they are updated by hand.
    - If `publish` fails after the release was created, delete the
-     unfinished release (not the tag) and run the job again.
+     unfinished release (not the tag) and run the job again. A second run
+     pushes the same app image again.
    - Simulator downloads belong only to Beta releases, not to Stable
      (PD-036); `release.yml` does not yet tell the channels apart (#19).
 3. **Firmware** (once `firmware/` builds):

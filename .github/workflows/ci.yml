@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # CI: architecture rules, licenses, core with sanitizers, web app,
-# end-to-end in the browser against the simulator, firmware, packages.
+# end-to-end in the browser against the simulator, firmware, packages, the
+# Home Assistant app image.
 # It runs on every PR and push to main. Docs-only changes skip the heavy
 # jobs (decided by the job `changes` with tools/ci_changes.mjs); checks.yml
 # runs the quick checks for them (PD-059). `ci-ok` sums up all jobs and is a required check of
@@ -176,6 +177,21 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/packages.yml
 
+  # The Home Assistant app image builds and starts (SD-034)
+  app-amd64:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/app.yml
+    with:
+      arch: amd64
+
+  app-aarch64:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/app.yml
+    with:
+      arch: aarch64
+
   # The job id `ci-ok` is a required check of the ruleset on main (SD-030);
   # renaming it blocks every merge until the ruleset follows. Every other
   # job of this workflow must be in its needs (tools/ci_changes.test.mjs
@@ -184,7 +200,7 @@ jobs:
   # ci-ok would count as passed. A skipped job passes only if the filter
   # said docs only.
   ci-ok:
-    needs: [changes, checks, firmware, packages]
+    needs: [changes, checks, firmware, packages, app-amd64, app-aarch64]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

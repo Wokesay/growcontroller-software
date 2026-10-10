@@ -30,6 +30,19 @@ the simulator.
 | nlohmann/json | 3.11.3 | MIT; contains Hedley (CC0-1.0) and parts of Google Abseil (Apache-2.0) | https://github.com/nlohmann/json |
 | cpp-httplib | 0.54.1 | MIT | https://github.com/yhirose/cpp-httplib |
 
+### Home Assistant app image only
+
+The app image (`ha/app/Dockerfile`, SD-034) holds `gc_ha_server` linked
+statically against the C and C++ runtime libraries of its Alpine 3.22
+build image. musl's notice ships in the image as
+`/licenses/musl-COPYRIGHT.txt` (from `tools/licenses/`), next to
+`THIRD_PARTY_LICENSES.txt`.
+
+| Component | Version | License | Source |
+|---|---|---|---|
+| musl | 1.2.5 | MIT; parts under BSD-2-Clause and other permissive terms (see its notice) | https://musl.libc.org/ |
+| libstdc++, libgcc (GCC runtime libraries) | as shipped with Alpine 3.22 | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/ |
+
 ### Firmware only
 
 | Component | Version | License | Source |

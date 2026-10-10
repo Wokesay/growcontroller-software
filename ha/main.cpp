@@ -88,7 +88,10 @@ void usage() {
             << "  --port N            HTTP port (8090)\n"
             << "  --host ADDR         address (127.0.0.1)\n"
             << "  --web DIR           built web app (web/dist)\n"
-            << "  --every S           seconds between two reads (5)\n";
+            << "  --every S           seconds between two reads (5)\n"
+            << "  --app               as a Home Assistant app (SD-034): Home Assistant at http://supervisor/core with the\n"
+            << "                      Supervisor's token (SUPERVISOR_TOKEN), data in /data/hub, the web app from /web,\n"
+            << "                      reachable in the network on port 8099; --config and --token-file are refused\n";
 }
 
 }  // namespace
@@ -97,6 +100,12 @@ int main(int argc, char** argv) {
   std::string config, tokenFile, data = "growcontroller-ha-data", host = "127.0.0.1", web = "web/dist";
   int port = 8090;
   int everyS = 5;
+  // As a Home Assistant app the address and the token are fixed: the Supervisor's
+  // token never goes anywhere but the Supervisor (SD-034).
+  bool app = false;
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == "--app") app = true;
+  if (app) data = "/data/hub", host = "0.0.0.0", web = "/web", port = 8099;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string {
@@ -123,6 +132,7 @@ int main(int argc, char** argv) {
     else if (a == "--host") host = next();
     else if (a == "--web") web = next();
     else if (a == "--every") everyS = number();
+    else if (a == "--app") continue;
     else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -132,29 +142,34 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
-  if (config.empty()) {
+  if (app && (!config.empty() || !tokenFile.empty())) {
+    std::cerr << "--app takes Home Assistant's address and token from the Supervisor; leave out --config and --token-file\n";
+    return 2;
+  }
+  if (config.empty() && !app) {
     usage();
     return 2;
   }
-  if (!std::filesystem::exists(config)) {
+  if (!app && !std::filesystem::exists(config)) {
     std::cerr << config << ": file not found\n";
     return 2;
   }
   std::string err;
-  const auto mapping = ha::parseMapping(gc::json::parse(readFile(config), nullptr, false), err);
+  const auto mapping = ha::parseMapping(app ? gc::json{{"url", "http://supervisor/core"}} : gc::json::parse(readFile(config), nullptr, false), err);
   if (!err.empty()) {
     std::cerr << config << ": " << err << "\n";
     return 2;
   }
-  std::string token = tokenFile.empty() ? (std::getenv("GC_HA_TOKEN") ? std::getenv("GC_HA_TOKEN") : "") : readFile(tokenFile);
+  const char* tokenVar = app ? "SUPERVISOR_TOKEN" : "GC_HA_TOKEN";
+  std::string token = tokenFile.empty() ? (std::getenv(tokenVar) ? std::getenv(tokenVar) : "") : readFile(tokenFile);
 #ifdef _WIN32
-  _putenv_s("GC_HA_TOKEN", "");  // not passed on to anything this process starts
+  _putenv_s(tokenVar, "");  // not passed on to anything this process starts
 #else
-  unsetenv("GC_HA_TOKEN");
+  unsetenv(tokenVar);
 #endif
   while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
   if (token.empty()) {
-    std::cerr << "No token: --token-file FILE or GC_HA_TOKEN\n";
+    std::cerr << (app ? "No SUPERVISOR_TOKEN: start this as a Home Assistant app with homeassistant_api\n" : "No token: --token-file FILE or GC_HA_TOKEN\n");
     return 2;
   }
 

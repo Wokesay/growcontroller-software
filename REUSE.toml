@@ -26,3 +26,12 @@ path = "tools/licenses/Apache-2.0.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "The Apache Software Foundation"
 SPDX-License-Identifier = "Apache-2.0"
+
+# musl's copyright file (version 1.2.5, as in the Alpine 3.22 build of the
+# Home Assistant app), shipped in the app image, where musl is linked
+# statically (ha/app/Dockerfile).
+[[annotations]]
+path = "tools/licenses/musl-COPYRIGHT.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2005-2020 Rich Felker, et al."
+SPDX-License-Identifier = "MIT"
