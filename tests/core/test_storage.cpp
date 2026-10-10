@@ -299,6 +299,33 @@ TEST_CASE("Storage: a simulator in memory only keeps everything through a fast-f
   }
 }
 
+TEST_CASE("Storage: after a full card, a clean shutdown right after space returns keeps the history (#68)") {
+  TempDir dir;
+  const gc::Epoch start = 1790000000;
+  json before;
+  gc::Epoch end = 0;
+  {
+    sim::Simulation s(onCard(dir, start));
+    test::Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    // Neither the history journal nor its snapshot can be written for five minutes
+    fs::remove(dir.path / "history.log");
+    fs::create_directories(dir.path / "blocked");
+    fs::create_directory_symlink(dir.path / "blocked", dir.path / "history.log");
+    fs::create_directories(dir.path / "history.bin.tmp");
+    for (int i = 0; i < 320; ++i) s.step(1000);  // retried after 10, 30, 70, 150 and 310 s; the next one is minutes away
+    fs::remove_all(dir.path / "history.bin.tmp");  // space again
+    for (int i = 0; i < 20; ++i) s.step(1000);
+    end = s.hub().now();
+    before = c.ok("GET", "/api/v1/history?series=tank.ph&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30));
+  }  // a clean shutdown, before the next retry was due
+  sim::Simulation again(onCard(dir, end + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  CHECK(before["series"][0]["t"].size() > 30);
+  CHECK(c2.ok("GET", "/api/v1/history?series=tank.ph&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30))["series"] == before["series"]);
+}
+
 TEST_CASE("Storage: a first setup that failed does not keep the alarm once the card takes files again (#68)") {
   TempDir dir;
   sim::Options o = test::opts("neu");
@@ -327,14 +354,18 @@ TEST_CASE("Storage: a snapshot that does not fit leaves no temporary file, and a
   fs::create_directory_symlink(dir.path / "blocked", dir.path / "history.log");
   struct Limit {  // no file over 1 MB, like a card with 1 MB left; the history snapshot is about 4.6 MB
     rlimit before{};
+    void (*handler)(int) = nullptr;
     Limit() {
-      std::signal(SIGXFSZ, SIG_IGN);
+      handler = std::signal(SIGXFSZ, SIG_IGN);
       getrlimit(RLIMIT_FSIZE, &before);
       rlimit small = before;
       small.rlim_cur = 1 << 20;
       setrlimit(RLIMIT_FSIZE, &small);
     }
-    ~Limit() { setrlimit(RLIMIT_FSIZE, &before); }
+    ~Limit() {
+      setrlimit(RLIMIT_FSIZE, &before);
+      std::signal(SIGXFSZ, handler);
+    }
   } limit;
   for (int i = 0; i < 30; ++i) s.step(1000);
   CHECK_FALSE(fs::exists(dir.path / "history.bin.tmp"));  // a failed snapshot does not keep the space

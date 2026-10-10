@@ -111,9 +111,10 @@ running and logs one alarm "Data is not being saved". Every 10 s it writes
 the small files that failed again from what it holds (state with the STOP
 first, a configuration changed meanwhile included), and the large
 snapshots, which also replace a failed journal, with a growing pause up to
-10 minutes. A write that fails leaves no temporary file behind, so a STOP
-still fits on a nearly full card. "Data is being saved again" comes once
-all of them are on disk. A new password is
+10 minutes (from the start again once a small file can be written, and
+once more when the hub shuts down). A write that fails leaves no
+temporary file behind, so a STOP still fits on a nearly full card. "Data
+is being saved again" comes once all of them are on disk. A new password is
 refused with "Not saved" instead of pretending. The Home Assistant server
 does not start with a data folder it cannot write.
 

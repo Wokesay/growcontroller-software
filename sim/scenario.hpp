@@ -49,7 +49,8 @@ class FileStorage : public gc::IStorage {
   bool toDisk(const std::string& name, const std::string& data, bool atEnd);
   std::vector<std::string> release();
   std::string dir_;
-  bool noFolder_ = false;          // the folder cannot be created: memory only, said once
+  bool noFolder_ = false;          // the folder cannot be created at the start: memory only, said once
+  bool used_ = false;              // files were written: a folder that goes away later is a failure
   std::set<std::string> failing_;  // files whose last write failed: each said once, and again when it works
   int holds_ = 0;
   std::map<std::string, std::string> cache_;

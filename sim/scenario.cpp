@@ -147,6 +147,7 @@ bool FileStorage::ready() {
   }
   if (ec || replaceFile(fs::path(dir_) / ".write-test", "")) return false;
   fs::remove(fs::path(dir_) / ".write-test", ec);
+  used_ = true;  // from here a folder that goes away is a failed write, not memory only
 #ifndef _WIN32
   for (const char* f : {"auth.json", "config.json", "state.json", "job.json", "events.json", "events.log", "history.bin", "history.log"})
     if (fs::exists(fs::path(dir_) / f, ec)) fs::permissions(fs::path(dir_) / f, fs::perms::owner_read | fs::perms::owner_write, ec);
@@ -178,7 +179,7 @@ std::vector<std::string> FileStorage::release() {
   std::set<std::string> stems;
   const auto stem = [](const std::string& name) { return fs::path(name).stem().string(); };
   const auto put = [&](const std::string& name, const std::string& data, bool atEnd) {
-    if (!stems.count(stem(name)) && (toDisk(name, data, atEnd) || !onDisk())) return;
+    if (!stems.count(stem(name)) && (!onDisk() || toDisk(name, data, atEnd))) return;
     stems.insert(stem(name));
     failed.push_back(name);
   };
@@ -199,19 +200,21 @@ bool FileStorage::toDisk(const std::string& name, const std::string& data, bool 
     fs::permissions(dir_, fs::perms::owner_all, ignored);  // a new folder is the owner's only
 #endif
   }
-  if (ec) {
-    // A folder that cannot be created (e.g. under a protected path): said once, then memory only.
+  if (ec && !used_) {
+    // A folder that cannot be created at the start (e.g. under a protected path):
+    // said once, then memory only. Once files were written, it is a failed write.
     std::cerr << "Data cannot be saved (" << dir_ << ": " << ec.message() << "). Running in memory only.\n";
     noFolder_ = true;
     return false;
   }
-  ec = atEnd ? appendFile(fs::path(dir_) / name, data) : replaceFile(fs::path(dir_) / name, data);
+  if (!ec) ec = atEnd ? appendFile(fs::path(dir_) / name, data) : replaceFile(fs::path(dir_) / name, data);
   if (ec) {
     if (failing_.insert(name).second)
       std::cerr << "Cannot save " << name << " (" << dir_ << ": " << ec.message() << "); it is tried again.\n";
     return false;
   }
   if (failing_.erase(name)) std::cerr << "Saving " << name << " works again (" << dir_ << ").\n";
+  used_ = true;
   written_ += data.size();
   return true;
 }

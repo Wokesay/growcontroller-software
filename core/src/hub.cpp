@@ -245,6 +245,11 @@ void Hub::flush() {
   saveAuth();
   saveState();
   saveEvents();  // the history's journal is written with every sample
+  // A journal that failed waits for its snapshot; on the way out it is tried
+  // once more, whatever its pause, so a restart right after space returned
+  // keeps what happened since.
+  if (unsaved_.count(kEventsFile) || unsaved_.count(kEventsLog)) saveEventsSnapshot();
+  if (unsaved_.count(kHistoryFile) || unsaved_.count(kHistoryLog)) saveHistorySnapshot();
 }
 
 bool Hub::saveAuth() {
@@ -270,8 +275,10 @@ bool Hub::stored(bool ok, const std::string& name) {
   // One alarm while any file is not on disk; "saved again" only once every
   // one of them has been written. The hub keeps running in memory meanwhile.
   if (ok) {
-    if (unsaved_.erase(name) && unsaved_.empty())
-      log_.add(clock_.epoch(), "system", "info", say("ev.storage_ok"), say("ev.storage_ok.text"));
+    if (!unsaved_.erase(name)) return true;
+    snapshotRetryAt_ = 0;  // space again: a snapshot still waiting is tried with the next retry
+    snapshotBackoffS_ = 10;
+    if (unsaved_.empty()) log_.add(clock_.epoch(), "system", "info", say("ev.storage_ok"), say("ev.storage_ok.text"));
     return true;
   }
   if (unsaved_.empty())
@@ -291,8 +298,9 @@ void Hub::retryUnsaved(Epoch epoch) {
   if (has(kAuthFile)) saveAuth();
   if (has(kConfigFile)) writeFile(kConfigFile, json(cfg_).dump(1));  // the same revision, written again
   if (has(kJobFile)) jobOnDisk_.empty() ? stored(true, kJobFile) : writeJob(jobOnDisk_);
-  for (const std::string& name : names)  // a copy of a broken file cannot be made again
-    if (name.find(".broken.") != std::string::npos) stored(true, name);
+  static const std::set<std::string> kKnown = {kStateFile, kAuthFile, kConfigFile, kJobFile, kEventsFile, kEventsLog, kHistoryFile, kHistoryLog};
+  for (const std::string& name : names)  // a copy of a broken file, or one the hub does not keep, cannot be made again
+    if (!kKnown.count(name)) stored(true, name);
   const bool events = has(kEventsFile) || has(kEventsLog), history = has(kHistoryFile) || has(kHistoryLog);
   if ((!events && !history) || epoch < snapshotRetryAt_) return;
   if (events) saveEventsSnapshot();
