@@ -53,8 +53,8 @@ missing value is never 0). Nobody has to write a list of entity IDs.
    add-on reaches it: `{"url": "http://supervisor/core"}` reads
    `http://supervisor/core/api/states`. The name `supervisor` is meant only
    inside an add-on, where the Supervisor's own network answers it and its
-   token is used; elsewhere use the IP. Leave out `/api` at the end (the hub
-   adds `/api/states`). The host must be a plain name, an IPv4 address or an
+   token is used; elsewhere use the IP. Leave out `/api` (the hub adds
+   `/api/states`). The host must be a plain name, an IPv4 address or an
    IPv6 address in `[ ]`: no `user@`, `?` or `#`, so the token goes only to
    the host you read in the address. If you prefer, the file can also
    list the entities (`"entities": [{"entity": "sensor.grow_ph",

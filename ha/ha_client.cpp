@@ -71,7 +71,7 @@ std::string Poller::pollOnce() {
     bus_.lostAll();
     bus_.setConnection("unreachable");
     return "Home Assistant answered HTTP " + std::to_string(res->status) + " for " + address_->base + "/api/states" +
-           (res->status == 404 && !address_->base.empty() ? "; check the path in url" : "");
+           (res->status == 404 && !address_->base.empty() ? "; check the path in \"url\"" : "");
   }
   const gc::json j = parseStates(res->body);
   if (!j.is_array()) {

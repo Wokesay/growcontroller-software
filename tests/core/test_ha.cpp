@@ -677,14 +677,19 @@ TEST_CASE("Home Assistant: an address with a path is read below it, as in an add
   ha::Poller p(bus, ha.url() + "/core/", "secret", [] { return gc::Ms{900000}; });
   CHECK(p.pollOnce().empty());
   CHECK(bus.candidatesJson()["connection"] == "ok");
+  // A path Home Assistant does not know: the answer names it
+  ha::HaBus lost({{"sensor.grow_ph", "ph"}});
+  ha::Poller wrong(lost, ha.url() + "/lovelace", "secret", [] { return gc::Ms{0}; });
+  CHECK(wrong.pollOnce() == "Home Assistant answered HTTP 404 for /lovelace/api/states; check the path in \"url\"");
   // An address the mapping would refuse is not used, whatever passes it in
   ha::HaBus other({{"sensor.grow_ph", "ph"}});
   ha::Poller bad(other, "http://evil@127.0.0.1:" + std::to_string(ha.port) + "/core", "secret", [] { return gc::Ms{0}; });
   CHECK(bad.pollOnce() == "the Home Assistant address is not valid");
   CHECK(other.candidatesJson()["connection"] == "unreachable");
   ha.stop();
-  REQUIRE(ha.requests.size() == 1);
+  REQUIRE(ha.requests.size() == 2);  // the bad address sent nothing
   CHECK(ha.requests[0] == "GET /core/api/states");
+  CHECK(ha.requests[1] == "GET /lovelace/api/states");
 }
 
 TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and stops when refused") {
