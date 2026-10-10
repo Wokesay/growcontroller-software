@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <set>
+#include <type_traits>
 #include <unordered_map>
 
 #include "gc/embedded.hpp"
@@ -143,6 +144,7 @@ class StatesReader : public gc::json::json_sax_t {
  public:
   static constexpr int kMaxDepth = 32;
   static constexpr size_t kMaxStates = 20000;  // sensors; a large installation has a few thousand
+  static constexpr size_t kMaxText = 256;       // bytes of a kept text (entity IDs are at most 255)
   gc::json out = gc::json::array();
 
   bool null() override { return scalar(nullptr); }
@@ -203,6 +205,10 @@ class StatesReader : public gc::json::json_sax_t {
   template <typename T>
   bool scalar(T&& v) {
     if (skipping()) return true;
+    if constexpr (std::is_same_v<std::decay_t<T>, string_t>) {
+      // A kept text is short in any real answer; cut it, so a huge name costs nothing later.
+      if (v.size() > kMaxText) v = gc::utf8Prefix(v, kMaxText);
+    }
     static const std::set<std::string> kState = {"entity_id", "state", "last_reported", "last_updated"};
     static const std::set<std::string> kAttr = {"device_class", "unit_of_measurement", "state_class", "friendly_name"};
     if (depth_ == 2 && kState.count(key_)) cur_[key_] = std::forward<T>(v);

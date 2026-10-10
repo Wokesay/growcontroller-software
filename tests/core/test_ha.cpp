@@ -301,6 +301,9 @@ TEST_CASE("Home Assistant: an answer keeps only what the hub reads, however larg
   CHECK(ha::parseStates("{}").is_discarded());  // not a list: a problem, not "no sensors"
   CHECK(ha::parseStates("5").is_discarded());
   CHECK(ha::parseStates("[]").is_array());
+  // A huge kept text is cut while reading
+  json huge = json::array({described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", std::string(1000000, 'n'))});
+  CHECK(ha::parseStates(huge.dump()).dump().size() < 2000);
   // Too deep a nesting stops the read instead of building it
   CHECK(ha::parseStates("[" + std::string(100, '[') + std::string(100, ']') + "]").is_discarded());
   // Many tiny states cost time in proportion to their number, not its square
@@ -446,6 +449,9 @@ TEST_CASE("Home Assistant: the server's routes need a signed-in session") {
   gc::ApiRequest junk = signedIn;
   junk.body = "[1,2";
   CHECK(ha::assignRoute(api, hub, bus, junk, [] {}).status == 400);
+  junk.body = json{{"role", "tank.ph"}}.dump();  // no entity: nothing is taken away
+  CHECK(ha::assignRoute(api, hub, bus, junk, [] {}).status == 400);
+  CHECK(hub.config().binding("tank.ph"));
 }
 
 TEST_CASE("Home Assistant: states become samples in the hub's units; missing stays missing (R5)") {

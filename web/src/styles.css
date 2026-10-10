@@ -217,7 +217,7 @@ small, .small { font-size: 0.85rem; }
 .ha-option:disabled { cursor: default; background: var(--surface-2); }
 .ha-option:disabled :is(strong, .ha-entity, .ha-value) { opacity: 0.6; }
 .ha-option.ha-none { background: transparent; border-style: dashed; color: var(--muted); }
-.ha-entity { overflow-wrap: anywhere; }
+.ha-entity, .ha-option strong { overflow-wrap: anywhere; }
 .ha-used { color: var(--muted); }
 .ha-value { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
 .ha-novalue { text-align: right; max-width: 45%; }

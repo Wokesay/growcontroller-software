@@ -152,6 +152,7 @@ const haSensors = [
   { entity: "sensor.zelt_temperatur", name: "Zelt Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 24.6, raw: 24.6, unit: "°C", problem: null, used: "air_temp" },
   { entity: "sensor.wohnzimmer_temperatur", name: "Wohnzimmer Temperatur", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.0, raw: 21.0, unit: "°C", problem: null, used: null },
   { entity: "sensor.kaputt", name: "Kaputt", kind: "temperature", measures: ["water_temp", "air_temp"], value: null, raw: null, unit: "°C", problem: null, used: null },
+  { entity: "sensor.growbox_wassertemperatur_ds18b20_sonde_unten", name: "Growboxwassertemperatursondeimtankunten", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.3, raw: 21.3, unit: "°C", problem: null, used: null },
 ];
 async function asHomeAssistant(page: Page, connection: string, sensors: unknown[] = haSensors) {
   let asked = 0;
@@ -245,6 +246,22 @@ test("Home Assistant: a sensor serving one measurement cannot be taken for anoth
   await page.getByRole("button", { name: "Ändern: Sensor für Lufttemperatur" }).click();
   await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeEnabled();
   await expect(picker.getByRole("button", { name: "Keinen Sensor nutzen" })).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: on a phone, a long sensor name never pushes its live value out of view", async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await page.getByRole("button", { name: "Sensor wählen: Wassertemperatur" }).click();
+  const option = page.getByTestId("ha-picker").getByRole("button", { name: /Growboxwassertemperatursonde/ });
+  const value = option.locator(".ha-value");
+  await expect(value).toBeVisible();
+  const box = await value.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 

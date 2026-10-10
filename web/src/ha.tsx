@@ -109,6 +109,14 @@ export function HaRoles() {
   const rows = ROLES.filter(([role, m]) => binding(role) || fits(m).length > 0);
   const without = ROLES.filter(([role, m]) => !binding(role) && fits(m).length === 0).map(([role]) => roleLabel(role));
   const ok = list?.connection === "ok";
+  // Until the list is there, show nothing that would move once it arrives
+  if (!list)
+    return (
+      <div class="stack">
+        <p class="muted">{t("ha.help")}</p>
+        <ConnectionNotice list={list} />
+      </div>
+    );
   return (
     <div class="stack">
       <p class="muted">{t("ha.help")}</p>
@@ -144,7 +152,7 @@ export function HaRoles() {
                       {[device?.name || entity, valueText(measure, reading?.value), reading?.ageS != null ? ago(reading.ageS) : ""].filter(Boolean).join(" · ")}
                       {bad && reading?.reason.text && live !== false && !problem && <div>{msg(reading.reason)}</div>}
                       {problem && <div>{problem}</div>}
-                      {live === false && entity && <div>{t("ha.missing", { entity })}</div>}
+                      {live === false && entity && ok && <div>{t("ha.missing", { entity })}</div>}
                     </div>
                   )}
                 </span>
