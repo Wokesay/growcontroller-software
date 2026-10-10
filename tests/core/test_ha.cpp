@@ -114,7 +114,11 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
   const json one = {{{"entity", "sensor.grow_ph"}, {"measures", "ph"}}};
   CHECK(refused({{"entities", one}}));                                       // no address
   CHECK(refused({{"url", "ws://ha:8123"}, {"entities", one}}));              // not http(s)
-  CHECK(refused({{"url", "http://ha:8123/prefix"}, {"entities", one}}));     // a path would be dropped
+  // A path in front of the API, as the Supervisor gives an add-on (http://supervisor/core/api/…)
+  CHECK(ha::parseMapping({{"url", "http://supervisor/core/"}}, err).url == "http://supervisor/core");
+  CHECK(err.empty());
+  for (const char* url : {"http://ha/../api", "http://ha/a?b=1", "http://ha/a#x", "http://ha/a b", "http://ha//core", "http://ha/a/./b", "http://ha/%2e%2e"})
+    CHECK(refused({{"url", url}}));
   // Without entities the user picks them in the web app
   CHECK(ha::parseMapping({{"url", "http://ha:8123"}}, err).entities.empty());
   CHECK(err.empty());
@@ -626,6 +630,24 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   clk.ms += 1000;
   hub.tick();
   CHECK(hub.state()["readings"]["tank.ph"]["value"].is_null());  // never 0 (R5)
+}
+
+TEST_CASE("Home Assistant: an address with a path is read below it, as in an add-on") {
+  FakeHa ha([&](const httplib::Request& req, httplib::Response& res) {
+    if (req.path != "/core/api/states") {
+      res.status = 404;
+      return;
+    }
+    res.set_content(json::array({state("sensor.grow_ph", "5.9", "", "2026-10-09T12:00:00+00:00")}).dump(), "application/json");
+  });
+  REQUIRE(ha.port > 0);
+  ha::HaBus bus({{"sensor.grow_ph", "ph"}});
+  ha::Poller p(bus, ha.url() + "/core", "secret", [] { return gc::Ms{900000}; });
+  CHECK(p.pollOnce().empty());
+  CHECK(bus.candidatesJson()["connection"] == "ok");
+  ha.stop();
+  REQUIRE(ha.requests.size() == 1);
+  CHECK(ha.requests[0] == "GET /core/api/states");
 }
 
 TEST_CASE("Home Assistant: the poller reads with the token, never shows it, and stops when refused") {

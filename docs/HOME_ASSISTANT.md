@@ -47,7 +47,10 @@ missing value is never 0). Nobody has to write a list of entity IDs.
 
    Use the IP address of Home Assistant, not `homeassistant.local`: the
    token goes to whatever answers for that name, and `.local` names can be
-   answered by any device in the network. If you prefer, the file can also
+   answered by any device in the network. The address may carry a plain
+   path in front of Home Assistant's API (letters, digits, `-`, `_`), as an
+   add-on reaches it: `{"url": "http://supervisor/core"}` reads
+   `http://supervisor/core/api/states`. If you prefer, the file can also
    list the entities (`"entities": [{"entity": "sensor.grow_ph",
    "measures": "ph"}]`, `measures` one of `ph`, `ec`, `water_temp`,
    `level`, `air_temp`, `humidity`, `co2`); they are then used from the

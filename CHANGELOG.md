@@ -8,6 +8,11 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant address with a path** (`docs/HOME_ASSISTANT.md`): the
+  mapping file's `url` may carry a plain path in front of the API, such as
+  `http://supervisor/core`, which is how a Home Assistant add-on reaches
+  Home Assistant. Dot segments, escapes, queries and empty segments are
+  refused.
 - **Home Assistant: choose sensors in the web app instead of listing
   them** (`docs/HOME_ASSISTANT.md`): `gc_ha_server` reads all states in one
   request and finds the sensors it can use by Home Assistant's device class

@@ -2,6 +2,7 @@
 #include "ha_bus.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <climits>
 #include <cstdint>
@@ -345,12 +346,20 @@ Mapping parseMapping(const gc::json& j, std::string& err) {
     err = "the mapping must be a JSON object";
     return m;
   }
-  // http(s)://host[:port] without a path: the API paths are added to it.
+  // http(s)://host[:port], optionally with a plain path in front of the API
+  // (an add-on reaches Home Assistant at http://supervisor/core/api/…).
   m.url = gc::jstr(j, "url");
   while (!m.url.empty() && m.url.back() == '/') m.url.pop_back();
   const size_t scheme = m.url.rfind("http://", 0) == 0 ? 7 : m.url.rfind("https://", 0) == 0 ? 8 : 0;
-  if (scheme == 0 || m.url.size() == scheme || m.url.find('/', scheme) != std::string::npos) {
-    err = "\"url\" must be http://host:port or https://host:port, without a path";
+  const size_t slash = scheme == 0 ? std::string::npos : m.url.find('/', scheme);
+  const std::string path = slash == std::string::npos ? "" : m.url.substr(slash);
+  bool plain = true;  // letters, digits, - _ and single slashes; no dot segments, no escapes, no query
+  for (size_t i = 0; i < path.size(); ++i) {
+    const char c = path[i];
+    plain = plain && (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || (c == '/' && (i + 1 >= path.size() || path[i + 1] != '/')));
+  }
+  if (scheme == 0 || m.url.size() == scheme || slash == scheme || !plain) {
+    err = "\"url\" must be http://host:port or https://host:port, with at most a plain path";
     return m;
   }
   if (j.contains("entities")) m.entities = parseEntities(j["entities"], err);

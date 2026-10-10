@@ -16,7 +16,13 @@ std::int64_t epochMs() {
 }  // namespace
 
 Poller::Poller(HaBus& bus, std::string url, std::string token, std::function<gc::Ms()> nowMs)
-    : bus_(bus), url_(std::move(url)), token_(std::move(token)), nowMs_(std::move(nowMs)) {}
+    : bus_(bus), url_(std::move(url)), token_(std::move(token)), nowMs_(std::move(nowMs)) {
+  const size_t scheme = url_.find("://");
+  const size_t slash = scheme == std::string::npos ? std::string::npos : url_.find('/', scheme + 3);
+  origin_ = url_.substr(0, slash);
+  base_ = slash == std::string::npos ? "" : url_.substr(slash);
+  while (!base_.empty() && base_.back() == '/') base_.pop_back();
+}
 
 Poller::~Poller() { stop(); }
 
@@ -29,7 +35,7 @@ std::string Poller::pollOnce() {
     return "https needs a build with OpenSSL; use http:// in your own network";
   }
 #endif
-  httplib::Client cli(url_);
+  httplib::Client cli(origin_);
   if (!cli.is_valid()) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
@@ -44,7 +50,7 @@ std::string Poller::pollOnce() {
   // All states in one request: the selected entities and the candidates the
   // user can pick from. Everything else in it is dropped by the bus.
   const httplib::Headers headers = {{"Authorization", "Bearer " + token_}};
-  auto res = cli.Get("/api/states", headers);
+  auto res = cli.Get(base_ + "/api/states", headers);
   if (!res) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
