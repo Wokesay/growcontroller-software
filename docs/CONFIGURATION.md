@@ -99,10 +99,15 @@ Stored separately:
   `docs/HISTORY.md`).
 
 Writing (#68): `config.json`, `state.json`, `auth.json` and `job.json` are
-written whole and atomically (temporary file, then rename) and are on disk
-when the change returns; on a computer with `fsync` for the file and its
-folder. A STOP, a new password and a configuration change survive a power
-cut right after the click.
+written whole and atomically (temporary file, then rename). A new
+password, a configuration change and a STOP are on disk when the click
+returns (Linux: `fsync` of the file and its folder; macOS and Windows:
+best effort) and survive a power cut right after it. Other changes to the
+run-time state (stock, a latch acknowledged, a manual measurement) follow
+with the next tick, within a second. Files are created for the owner only.
+If the data folder takes nothing (full, not writable), the hub keeps
+running, logs one alarm "Data is not being saved", tries again with every
+write, and refuses a new password with "Not saved" instead of pretending.
 
 **Versioning:**
 

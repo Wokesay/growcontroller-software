@@ -2,6 +2,7 @@
 #include "scenario.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -26,39 +27,58 @@ using gc::json;
 
 namespace {
 
+std::error_code lastError() { return {errno ? errno : EIO, std::generic_category()}; }
+
+// For the owner only; a planted link in the folder is not followed.
+std::FILE* openForOwner(const fs::path& path, bool atEnd) {
+#ifdef _WIN32
+  return std::fopen(path.string().c_str(), atEnd ? "ab" : "wb");
+#else
+  int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | (atEnd ? O_APPEND : O_TRUNC), 0600);
+  if (fd < 0) return nullptr;
+  std::FILE* f = ::fdopen(fd, atEnd ? "ab" : "wb");
+  if (!f) ::close(fd);
+  return f;
+#endif
+}
+
 // On disk when it returns: a power loss leaves the old file or the new one.
 std::error_code replaceFile(const fs::path& target, const std::string& data) {
   const fs::path tmp = target.string() + ".tmp";
-  std::FILE* f = std::fopen(tmp.string().c_str(), "wb");
-  if (!f) return std::make_error_code(std::errc::io_error);
+  errno = 0;
+  std::FILE* f = openForOwner(tmp, false);
+  if (!f) return lastError();
   bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size() && std::fflush(f) == 0;
 #ifdef _WIN32
   ok = ok && _commit(_fileno(f)) == 0;
 #else
   ok = ok && ::fsync(fileno(f)) == 0;
 #endif
-  ok = std::fclose(f) == 0 && ok;
-  if (!ok) return std::make_error_code(std::errc::io_error);
-  std::error_code ec;
-  fs::rename(tmp, target, ec);  // atomar ersetzen
+  const std::error_code ec = ok ? std::error_code() : lastError();
+  if (std::fclose(f) != 0 && ok) return lastError();
+  if (ec) return ec;
+  std::error_code rc;
+  fs::rename(tmp, target, rc);  // atomar ersetzen
 #ifndef _WIN32
-  if (!ec) {  // the rename itself is on disk only with the folder
-    int dir = ::open(target.parent_path().string().c_str(), O_RDONLY);
+  if (!rc) {  // the rename itself is on disk only with the folder
+    int dir = ::open(target.parent_path().c_str(), O_RDONLY | O_CLOEXEC);
     if (dir >= 0) {
       ::fsync(dir);
       ::close(dir);
     }
   }
 #endif
-  return ec;
+  return rc;
 }
 
 std::error_code appendFile(const fs::path& target, const std::string& data) {
-  std::FILE* f = std::fopen(target.string().c_str(), "ab");
-  if (!f) return std::make_error_code(std::errc::io_error);
-  bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
-  ok = std::fclose(f) == 0 && ok;
-  return ok ? std::error_code() : std::make_error_code(std::errc::io_error);
+  errno = 0;
+  std::FILE* f = openForOwner(target, true);
+  if (!f) return lastError();
+  const bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
+  const std::error_code ec = ok ? std::error_code() : lastError();
+  if (std::fclose(f) != 0 && ok) return lastError();
+  return ec;
 }
 
 }  // namespace
@@ -89,9 +109,9 @@ bool FileStorage::write(const std::string& name, const std::string& data) {
   std::lock_guard<std::mutex> l(m_);
   cache_[name] = data;
   pending_.erase(name);  // the whole file replaces what was to be appended
-  if (memoryOnly()) return true;
+  if (dir_.empty()) return true;  // memory only by choice
   if (holds_ > 0) {
-    dirty_.insert(name);
+    if (std::find(dirty_.begin(), dirty_.end(), name) == dirty_.end()) dirty_.push_back(name);
     return true;
   }
   return toDisk(name, data, false);
@@ -101,9 +121,9 @@ bool FileStorage::append(const std::string& name, const std::string& data) {
   std::lock_guard<std::mutex> l(m_);
   readLocked(name);  // reads stay right: the cache holds the whole file
   cache_[name] += data;
-  if (memoryOnly()) return true;
+  if (dir_.empty()) return true;
   if (holds_ > 0) {
-    if (!dirty_.count(name)) pending_[name] += data;  // a dirty file goes whole, with this in it
+    if (std::find(dirty_.begin(), dirty_.end(), name) == dirty_.end()) pending_[name] += data;  // a dirty file goes whole
     return true;
   }
   return toDisk(name, data, true);
@@ -124,26 +144,36 @@ std::uint64_t FileStorage::bytesWritten() const {
 }
 
 void FileStorage::release() {
+  // In the order first written: a snapshot before the journal it empties.
   holds_ = 0;
-  for (const auto& name : dirty_)
-    if (!memoryOnly()) toDisk(name, cache_[name], false);
-  for (const auto& [name, data] : pending_)
-    if (!memoryOnly()) toDisk(name, data, true);
+  for (const auto& name : dirty_) toDisk(name, cache_[name], false);
+  for (const auto& [name, data] : pending_) toDisk(name, data, true);
   dirty_.clear();
   pending_.clear();
 }
 
 bool FileStorage::toDisk(const std::string& name, const std::string& data, bool atEnd) {
-  // Nicht beschreibbarer Ordner (z. B. Programm in einem geschützten
-  // Verzeichnis): einmal melden, dann nur im Speicher weiterlaufen.
+  if (noFolder_) return false;
   std::error_code ec;
-  fs::create_directories(dir_, ec);
-  if (!ec) ec = atEnd ? appendFile(fs::path(dir_) / name, data) : replaceFile(fs::path(dir_) / name, data);
+  if (fs::create_directories(dir_, ec) && !ec) {
+#ifndef _WIN32
+    fs::permissions(dir_, fs::perms::owner_all, ec);  // a new folder is the owner's only
+#endif
+  }
   if (ec) {
-    std::cerr << "Daten können nicht gespeichert werden (" << dir_ << ": " << ec.message() << "). Der Simulator läuft nur im Speicher weiter.\n";
-    memoryOnly_ = true;
+    // A folder that cannot be created (e.g. under a protected path): said once, then memory only.
+    std::cerr << "Data cannot be saved (" << dir_ << ": " << ec.message() << "). Running in memory only.\n";
+    noFolder_ = true;
     return false;
   }
+  ec = atEnd ? appendFile(fs::path(dir_) / name, data) : replaceFile(fs::path(dir_) / name, data);
+  if (ec) {
+    if (!failing_) std::cerr << "Cannot save " << name << " (" << dir_ << ": " << ec.message() << "); trying again with the next write.\n";
+    failing_ = true;
+    return false;
+  }
+  if (failing_) std::cerr << "Saving works again (" << dir_ << ").\n";
+  failing_ = false;
   written_ += data.size();
   return true;
 }
@@ -236,6 +266,8 @@ void Simulation::configureDemo() {
   auto& h = *hub_;
   if (opts_.password.empty()) opts_.password = "demo-passwort";
   h.auth().setInitialPassword(opts_.password);
+  h.saveAuth();  // on disk before the long prefill: a start cut short must not leave setup open
+  h.markPasswordSet();
   h.acceptDevice("DB-7A31C0", "Dosierblock 1");
   h.acceptDevice("CAP-1F02A4", "Pumpe grün");
   h.acceptDevice("CAP-1F02B7", "Pumpe orange");

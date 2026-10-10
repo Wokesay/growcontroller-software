@@ -249,10 +249,11 @@ time is no value.
   (`chmod 700`).
 - **Writes to the data folder (#68):** a password, a configuration change,
   a picked sensor and a STOP are on disk when the call returns. History and
-  events are appended, and written whole only once after the start and
-  once a day (`docs/HISTORY.md`). An idle server writes well under 1 MB an
-  hour (tested), so an SD card is fine; a hard power cut loses at most the
-  last few seconds of history.
+  events are appended, and written whole only at the start and once a day
+  (`docs/HISTORY.md`). An idle server hands about 90 KB of data an hour to
+  the disk, about 2 MB an hour at the file system, so an SD card is fine.
+  A hard power cut loses up to about 30 s of history and events (appended
+  without `fsync`), never a STOP or a password.
 - No switching yet. Dosing through Home Assistant needs pumps that stop on
   their own (a run time on the device, for example ESPHome `ezo_pmp` or a
   script with a maximum on-time), because a lost "off" over Wi-Fi must

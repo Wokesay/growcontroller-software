@@ -70,37 +70,113 @@ TEST_CASE("Storage: an idle hub writes little to the card (#68)") {
   for (int i = 0; i < 2 * 3600; ++i) s.step(1000);
   const auto written = s.storage().bytesWritten() - before;
   MESSAGE("bytes written in two idle hours: " << written);
-  CHECK(written < 2000000);  // rewriting the whole history every 10 min wrote about 55 MB
+  CHECK(written < 400000);  // rewriting the whole history every 10 min wrote about 55 MB
 }
 
-TEST_CASE("Storage: history and events come back after a restart, from the snapshot and the journal (#68)") {
+TEST_CASE("Storage: history and events come back after a hard stop, from the snapshot and the journal (#68)") {
   TempDir dir;
   const gc::Epoch start = 1790000000;
-  json before, events;
-  gc::Epoch end = 0;
-  {
-    sim::Simulation s(onCard(dir, start));
-    test::Client c{s};
-    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-    for (int i = 0; i < 1800; ++i) s.step(1000);  // half an hour after the snapshot at the start
-    c.ok("POST", "/api/v1/stop");
-    end = s.hub().now();
-    before = c.ok("GET", "/api/v1/history?series=tank.ph,tank.ec&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30));
-    events = c.ok("GET", "/api/v1/events?limit=5");
-  }
-  sim::Simulation s(onCard(dir, end + 1));
+  sim::Simulation s(onCard(dir, start));
   test::Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 1800; ++i) s.step(1000);  // half an hour after the snapshot at the start
+  c.ok("POST", "/api/v1/stop");
+  const gc::Epoch end = s.hub().now();
+  const std::string range = "&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30);
+  const json before = c.ok("GET", "/api/v1/history?series=tank.ph,tank.ec" + range);
+  const json coarse = c.ok("GET", "/api/v1/history?points=10&series=tank.ph" + range);  // the coarse tiers, open slots included
+  const json events = c.ok("GET", "/api/v1/events?limit=5");
+  // A hard stop: the first simulation never saves again; a second one starts from what is on disk
+  sim::Simulation again(onCard(dir, end + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   // Up to 30 s before the end: the newest slot takes the samples after the restart
-  const json after = c.ok("GET", "/api/v1/history?series=tank.ph,tank.ec&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30));
+  const json after = c2.ok("GET", "/api/v1/history?series=tank.ph,tank.ec" + range);
   REQUIRE(before["series"].size() == 2);
   CHECK(before["series"][0]["t"].size() > 100);  // half an hour in 10 s steps
   CHECK(after["series"] == before["series"]);
-  const json again = c.ok("GET", "/api/v1/events?limit=50");
+  CHECK(c2.ok("GET", "/api/v1/history?points=10&series=tank.ph" + range)["series"] == coarse["series"]);
+  const json kept = c2.ok("GET", "/api/v1/events?limit=50&to=4000000000");
   bool stopKept = false;
-  for (const auto& e : again["events"])
+  for (const auto& e : kept["events"])
     if (e["id"] == events["events"][0]["id"]) stopKept = e["title"]["key"] == "ev.stop";
   CHECK(stopKept);
+}
+
+TEST_CASE("Storage: a day and more in one go, with its snapshot, comes back whole (#68)") {
+  TempDir dir;
+  const gc::Epoch start = 1790000000;
+  sim::Simulation s(onCard(dir, start));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.fastForward(25);  // writes are held in one go, the daily snapshot falls inside
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});  // the session ended meanwhile
+  const gc::Epoch end = s.hub().now();
+  const std::string range = "&from=" + std::to_string(end - 6 * 3600) + "&to=" + std::to_string(end - 900);
+  const json before = c.ok("GET", "/api/v1/history?series=tank.ph" + range);
+  const json events = c.ok("GET", "/api/v1/events?limit=1");
+  sim::Simulation again(onCard(dir, end + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  CHECK(before["series"][0]["t"].size() > 100);
+  CHECK(c2.ok("GET", "/api/v1/history?series=tank.ph" + range)["series"] == before["series"]);
+  const json kept = c2.ok("GET", "/api/v1/events?limit=200&to=4000000000");
+  bool found = false;
+  for (const auto& e : kept["events"]) found = found || e["id"] == events["events"][0]["id"];
+  CHECK(found);
+}
+
+TEST_CASE("Storage: failed logins cannot grow the event journal without limit (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  for (int i = 0; i < 12000; ++i) c.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});  // locked after five: cheap
+  size_t lines = 0;
+  for (char ch : onDisk(dir.path / "events.log")) lines += ch == '\n';
+  CHECK(lines <= 5000);
+  const json snapshot = json::parse(onDisk(dir.path / "events.json"), nullptr, false);
+  CHECK(snapshot["events"].size() <= 5000);
+}
+
+TEST_CASE("Storage: setup writes the password and its lock marker at once, or says it could not (#68)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  sim::Simulation s(o);
+  test::Client c{s};
+  // The password file cannot be written (a folder where its temporary file goes, like a full card)
+  fs::create_directories(dir.path / "auth.json.tmp");
+  auto [st, body] = c.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(st == 500);
+  CHECK(body["error"]["key"] == "store.failed");
+  CHECK(c.ok("GET", "/api/v1/auth/session")["hasPassword"] == false);  // nothing set: setup stays possible
+  bool alarm = false;
+  const json logged = s.hub().events(0, 4000000000, "", 50);
+  for (const auto& e : logged["events"]) alarm = alarm || e["title"]["key"] == "ev.storage_failed";
+  CHECK(alarm);
+  // Space again: setup works and both files are on disk without a flush
+  fs::remove_all(dir.path / "auth.json.tmp");
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(!json::parse(onDisk(dir.path / "auth.json"), nullptr, false)["hash"].get<std::string>().empty());
+  CHECK(json::parse(onDisk(dir.path / "config.json"), nullptr, false)["system"]["passwordSet"] == true);
+  // A failed write is tried again: a STOP after the card had a problem is on disk
+  fs::create_directories(dir.path / "state.json.tmp");
+  c.ok("POST", "/api/v1/stop");
+  CHECK_FALSE(gc::jbool(json::parse(onDisk(dir.path / "state.json"), nullptr, false), "stopped", false));
+  fs::remove_all(dir.path / "state.json.tmp");
+  c.ok("POST", "/api/v1/stop");
+  CHECK(gc::jbool(json::parse(onDisk(dir.path / "state.json"), nullptr, false), "stopped", false));
+}
+
+TEST_CASE("Storage: a snapshot that cannot be written leaves its journal alone (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  fs::create_directories(dir.path / "events.json.tmp");  // no snapshot of the events can be written
+  for (int i = 0; i < 6000; ++i) c.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  size_t lines = 0;
+  for (char ch : onDisk(dir.path / "events.log")) lines += ch == '\n';
+  CHECK(lines >= 6000);  // every failed login is still on disk, in the journal
 }
 
 TEST_CASE("Storage: a new scenario starts without the old journals (#68)") {

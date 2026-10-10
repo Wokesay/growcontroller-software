@@ -9,8 +9,14 @@ namespace gc {
 
 namespace {
 constexpr const char* kMagic = "GCH1";
-constexpr const char* kTimeTag = "GCT1";  // after the series: the newest sample's time (older files lack it)
+constexpr const char* kTimeTag = "GCT2";  // after the series: each series' newest sample (older files lack it)
 constexpr size_t kMaxIdLen = 255, kMaxPerRecord = 1024;
+
+std::uint32_t checksum(const char* p, size_t n) {  // FNV-1a
+  std::uint32_t h = 2166136261u;
+  for (size_t i = 0; i < n; ++i) h = (h ^ static_cast<unsigned char>(p[i])) * 16777619u;
+  return h;
+}
 
 template <typename T>
 void put(std::string& out, const T& v) {
@@ -178,11 +184,12 @@ bool Series::load(const char*& p, const char* end) {
 
 void History::add(const std::string& id, Epoch t, double v) {
   series_[id].add(t, v);
-  lastT_ = std::max(lastT_, t);
+  Epoch& newest = newest_[id];
+  newest = std::max(newest, t);
 }
 
 std::string History::record(Epoch t, const std::vector<std::pair<std::string, double>>& samples) {
-  // [u32 length][i64 t][u16 n] n × [u16 id length][id][f64 value]
+  // [u32 length][u32 checksum] then the body: [i64 t][u16 n] n × [u16 id length][id][f64 value]
   std::string body;
   put(body, static_cast<std::int64_t>(t));
   const auto n = static_cast<std::uint16_t>(std::min(samples.size(), kMaxPerRecord));
@@ -195,17 +202,19 @@ std::string History::record(Epoch t, const std::vector<std::pair<std::string, do
   }
   std::string out;
   put(out, static_cast<std::uint32_t>(body.size()));
+  put(out, checksum(body.data(), body.size()));
   return out + body;
 }
 
-size_t History::replay(const std::string& journal) {
-  const Epoch after = lastT_;  // the snapshot already holds everything up to here
+size_t History::replay(const std::string& journal, const std::set<std::string>& ids) {
+  const std::map<std::string, Epoch> held = newest_;  // the snapshot holds each series up to here
   const char* p = journal.data();
   const char* end = p + journal.size();
   size_t added = 0;
   while (p < end) {
-    std::uint32_t len = 0;
-    if (!get(p, end, len) || static_cast<size_t>(end - p) < len) break;  // torn end
+    std::uint32_t len = 0, sum = 0;
+    if (!get(p, end, len) || !get(p, end, sum) || static_cast<size_t>(end - p) < len) break;  // torn end
+    if (checksum(p, len) != sum) break;  // torn, then written over: nothing after it is trusted
     const char* q = p;
     const char* rend = p + len;
     p = rend;
@@ -225,9 +234,15 @@ size_t History::replay(const std::string& journal) {
       if (ok) samples.emplace_back(std::move(id), v);
     }
     if (!ok || q != rend) break;  // damaged: nothing after it is trusted
-    if (t <= after) continue;
-    for (const auto& [id, v] : samples) add(id, t, v);
-    ++added;
+    if (!plausibleEpoch(t)) continue;  // a time no clock can have would push the series ahead for good
+    bool any = false;
+    for (const auto& [id, v] : samples) {
+      auto h = held.find(id);
+      if (!ids.count(id) || (h != held.end() && t <= h->second)) continue;
+      add(id, t, v);
+      any = true;
+    }
+    added += any ? 1 : 0;
   }
   return added;
 }
@@ -255,7 +270,12 @@ std::string History::dump() const {
     s.dump(out);
   }
   out += kTimeTag;
-  put(out, static_cast<std::int64_t>(lastT_));
+  put(out, static_cast<std::uint32_t>(newest_.size()));
+  for (const auto& [id, t] : newest_) {
+    put(out, static_cast<std::uint16_t>(std::min(id.size(), kMaxIdLen)));
+    out += id.substr(0, kMaxIdLen);
+    put(out, static_cast<std::int64_t>(t));
+  }
   return out;
 }
 
@@ -274,13 +294,24 @@ bool History::load(const std::string& data) {
     p += len;
     if (!loaded[id].load(p, end)) return false;
   }
-  std::int64_t last = 0;
-  if (end - p >= 4 && std::memcmp(p, kTimeTag, 4) == 0) {
+  std::map<std::string, Epoch> newest;
+  if (p < end) {  // a snapshot cut inside its times is no snapshot: its journal would count twice
+    if (end - p < 4 || std::memcmp(p, kTimeTag, 4) != 0) return false;
     p += 4;
-    if (!get(p, end, last)) last = 0;
+    std::uint32_t count = 0;
+    if (!get(p, end, count) || count > loaded.size()) return false;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      std::uint16_t len = 0;
+      std::int64_t t = 0;
+      if (!get(p, end, len) || static_cast<size_t>(end - p) < len) return false;
+      std::string id(p, len);
+      p += len;
+      if (!get(p, end, t)) return false;
+      newest[id] = t;
+    }
   }
   series_ = std::move(loaded);
-  lastT_ = last;
+  newest_ = std::move(newest);
   return true;
 }
 

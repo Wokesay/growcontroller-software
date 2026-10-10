@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <set>
 
 #include "gc/events.hpp"
 #include "gc/history.hpp"
@@ -122,6 +123,7 @@ bool sameSeries(const History& a, const History& b, const std::string& id, Epoch
 
 TEST_CASE("History journal: snapshot plus journal gives the same history, never counted twice (#68)") {
   const Epoch t0 = 1790000000 - 1790000000 % 3600;
+  const std::set<std::string> ids = {"tank.ph", "tank.ec"};
   History live;
   std::string journal, snapshot;
   for (int i = 0; i < 720; ++i) {  // two hours, one round every 10 s
@@ -136,38 +138,80 @@ TEST_CASE("History journal: snapshot plus journal gives the same history, never 
   }
   History back;
   REQUIRE(back.load(snapshot));
-  CHECK(back.replay(journal) == 360);
+  CHECK(back.replay(journal, ids) == 360);
   CHECK(sameSeries(live, back, "tank.ph", t0, t0 + 7199));
   CHECK(sameSeries(live, back, "tank.ec", t0, t0 + 7199));
-  CHECK(back.replay(journal) == 0);  // read twice: nothing added twice
+  CHECK(back.replay(journal, ids) == 0);  // read twice: nothing added twice
 
   SUBCASE("a journal that outlived its snapshot is skipped, not counted twice") {
     History full;
     std::string all;
     for (int i = 0; i < 720; ++i) all += History::record(t0 + i * 10, {{"tank.ph", 5.8 + 0.001 * i}});
     REQUIRE(full.load(live.dump()));
-    CHECK(full.replay(all) == 0);
+    CHECK(full.replay(all, ids) == 0);
     CHECK(sameSeries(live, full, "tank.ph", t0, t0 + 7199));
   }
   SUBCASE("a torn end from a power loss is skipped, everything before it counts") {
     History torn;
     REQUIRE(torn.load(snapshot));
-    CHECK(torn.replay(journal.substr(0, journal.size() - 5)) == 359);
+    CHECK(torn.replay(journal.substr(0, journal.size() - 5), ids) == 359);
   }
   SUBCASE("a damaged record stops the replay; nothing after it is trusted") {
     std::string bad = journal;
-    bad[History::record(t0, {{"tank.ph", 1.0}, {"tank.ec", 1.0}}).size() * 10 + 13] = '\x7f';  // an id length in record 11
+    bad[History::record(t0, {{"tank.ph", 1.0}, {"tank.ec", 1.0}}).size() * 10 + 20] ^= 0x01;  // one bit in record 11
     History damaged;
     REQUIRE(damaged.load(snapshot));
-    CHECK(damaged.replay(bad) == 10);
+    CHECK(damaged.replay(bad, ids) == 10);
   }
-  SUBCASE("a snapshot from before the journal (no time in it) still loads") {
-    const std::string old = snapshot.substr(0, snapshot.size() - 12);
+  SUBCASE("a snapshot from before the journal (no times in it) still loads; a cut one does not") {
+    const std::string tag = "GCT2";
+    const std::string old = snapshot.substr(0, snapshot.rfind(tag));
     History h;
     CHECK(h.load(old));
     CHECK(sameSeries(h, back, "tank.ph", t0, t0 + 3580));  // the snapshot's last slot was still open
-    CHECK(h.replay(journal) == 360);  // without a time in it, the journal is taken whole
+    CHECK(h.replay(journal, ids) == 360);                  // without times in it, the journal is taken whole
+    History cut;
+    CHECK_FALSE(cut.load(snapshot.substr(0, snapshot.size() - 3)));
   }
+}
+
+TEST_CASE("History journal: a torn record followed by a whole one is never read as values (#68)") {
+  const Epoch t0 = 1790000000;
+  const std::set<std::string> ids = {"tank.ph", "tank.ec"};
+  std::string good;
+  for (int i = 0; i < 3; ++i) good += History::record(t0 + i * 10, {{"tank.ph", 6.0}, {"tank.ec", 1400.0}});
+  const std::string torn = History::record(t0 + 30, {{"tank.ph", 6.1}, {"tank.ec", 1410.0}});
+  const std::string whole = History::record(t0 + 40, {{"tank.ph", 6.2}, {"tank.ec", 1420.0}});
+  for (size_t cut = 1; cut < torn.size(); ++cut) {
+    CAPTURE(cut);
+    History h;
+    CHECK(h.replay(good + torn.substr(0, cut) + whole, ids) == 3);  // power loss mid-record, then one more record
+    const auto ec = h.query("tank.ec", t0, t0 + 60, 0);
+    for (double v : ec.avg) CHECK((std::isnan(v) || v == 1400.0));
+    CHECK(h.ids() == std::vector<std::string>{"tank.ec", "tank.ph"});
+  }
+}
+
+TEST_CASE("History journal: only known series and plausible times, each series by its own newest time (#68)") {
+  const Epoch t0 = 1790000000;
+  History h;
+  const std::string journal = History::record(t0, {{"tank.ph", 6.0}, {"junk", 1.0}}) +  // an id no role has
+                              History::record(kNotAfter + 1000, {{"tank.ph", 9.9}}) +   // a time no clock can have
+                              History::record(t0 + 10, {{"tank.ph", 6.2}});
+  CHECK(h.replay(journal, {"tank.ph"}) == 2);
+  CHECK(h.ids() == std::vector<std::string>{"tank.ph"});
+  const auto ph = h.query("tank.ph", t0, t0 + 19, 0);
+  REQUIRE(ph.avg.size() == 2);
+  CHECK(ph.avg[0] == doctest::Approx(6.0));
+  CHECK(ph.avg[1] == doctest::Approx(6.2));  // the far-future record did not push the series ahead
+
+  // One series ran ahead (a clock glitch); a series added later is still replayed
+  History glitch;
+  glitch.add("tank.ph", t0 + 86400, 6.0);
+  History later;
+  REQUIRE(later.load(glitch.dump()));
+  CHECK(later.replay(History::record(t0 + 10, {{"tank.ec", 1400.0}}), {"tank.ph", "tank.ec"}) == 1);
+  CHECK(later.query("tank.ec", t0, t0 + 60, 0).t.size() > 0);
 }
 
 TEST_CASE("Event journal: events after the snapshot come back by id, a torn line is skipped (#68)") {

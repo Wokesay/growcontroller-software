@@ -1,6 +1,6 @@
 # History, events, export
 
-As of 2026-10-06. Proposal by `software`, implemented in the prototype
+As of 2026-10-10. Proposal by `software`, implemented in the prototype
 (`history.*`, `events.*`).
 
 ## Series in three tiers
@@ -23,14 +23,30 @@ As of 2026-10-06. Proposal by `software`, implemented in the prototype
 **On a computer** (simulator, Home Assistant server; #68): the history is
 a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
 (`history.log`) with one record per sampling round, appended every 10 s.
-The snapshot is written once after the start and then once a day, and
-empties the journal. After a restart the hub reads the snapshot and then
-the journal records newer than the snapshot, so a journal that survived
-its snapshot (power loss in between) is not counted twice; a torn record
-at the end is skipped. The event log works the same way (`events.json`
-plus `events.log`, one event per line, replayed by id). An idle hub with
-the demo setup writes about 90 KB an hour this way (tested), instead of
-the whole history (about 4.6 MB) every 10 minutes.
+
+- The snapshot is written at every start, before anything is appended,
+  and then once a day; it empties the journal, but only once it is on
+  disk itself.
+- After a restart the hub reads the snapshot and then the journal: per
+  series only samples newer than that series in the snapshot, only the
+  catalog's series, only plausible times. A journal that survived its
+  snapshot (power loss in between) is not counted twice.
+- Each record carries a checksum: a record torn by a power loss ends the
+  replay and is never read as values; the snapshot at the start then
+  replaces the journal.
+- The event log works the same way (`events.json` plus `events.log`, one
+  event per line, replayed by id). The journal never holds more events
+  than the log keeps (5000); then a snapshot is taken early, so failed
+  logins cannot fill the card.
+- An idle hub with the demo setup hands about 90 KB of data an hour to
+  the disk this way (tested below 0.4 MB in two hours); with the file
+  system's 4 KB pages that is about 2 MB an hour. Before it was the whole
+  history (about 4.6 MB) every 10 minutes.
+- A version from before the journals ignores them: going back loses up
+  to a day of history and events.
+
+Not for the device yet: its 2 MB storage partition cannot hold the
+snapshot of several series; there the ring buffer below is the plan.
 
 **On the hub** (proposal by `software`, not implemented yet):
 

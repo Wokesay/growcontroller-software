@@ -134,11 +134,16 @@ ApiResponse Api::route(const ApiRequest& req) {
       return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
     if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
+    // auth.json first, on disk; only then the lock against a second setup (#68).
+    // Not saved: nothing is set, so setup stays possible once the card takes it.
+    if (!hub_.saveAuth()) {
+      hub_.auth().load(json::object());
+      return fromResult(Result::fail(500, say("store.failed")));
+    }
+    hub_.markPasswordSet();
     hub_.logEvent("auth", "info", say("ev.auth.password_set"), say("ev.auth.first_setup"));
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
-    hub_.saveAuth();         // auth.json zuerst schreiben …
-    hub_.markPasswordSet();  // … dann die Sperre gegen eine zweite Einrichtung
     ApiResponse r = jsonResp(200, {{"ok", true}});
     if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
     return r;
@@ -169,10 +174,14 @@ ApiResponse Api::route(const ApiRequest& req) {
 
   if (is("PUT", {"auth", "password"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    const json before = hub_.auth().toJson();
     Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"));
     if (!e.key.empty()) return fail(422, e.key, e.text);
+    if (!hub_.saveAuth()) {  // the old password stays, in memory as on disk
+      hub_.auth().load(before);
+      return fromResult(Result::fail(500, say("store.failed")));
+    }
     hub_.logEvent("auth", "notice", say("ev.auth.password_changed"), say("ev.auth.password_changed.text"));
-    hub_.saveAuth();
     return jsonResp(200, {{"ok", true}});
   }
   if (is("GET", {"state"})) return jsonResp(200, hub_.state());

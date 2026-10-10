@@ -9,6 +9,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "gc/api.hpp"
 #include "netbus.hpp"
@@ -17,12 +18,15 @@
 
 namespace sim {
 
-// Dateiablage (#68). Ohne Ordner nur im Speicher.
-//   write():  on disk when it returns – temp file, fsync, rename, then the folder.
-//   append(): added to the end at once, without fsync (journals: a torn end is
-//             skipped when read).
-//   hold():   while held (the simulator running faster than real time),
-//             writes stay in memory and go to disk once each on release.
+// Files in a data folder (#68); without a folder in memory only.
+//   write():  on disk when it returns true – temporary file, fsync, rename,
+//             then the folder (Linux; best effort on macOS and Windows).
+//   append(): added to the end at once, without fsync (journals: a torn end
+//             is skipped when read).
+//   hold():   while held (inside one simulator step), writes stay in memory
+//             and go to disk once each on release, in the order first written.
+// A failed write returns false and is tried again with the next one; files
+// are created for the owner only (0600, folder 0700).
 class FileStorage : public gc::IStorage {
  public:
   explicit FileStorage(std::string dir) : dir_(std::move(dir)) {}
@@ -34,15 +38,15 @@ class FileStorage : public gc::IStorage {
   std::uint64_t bytesWritten() const;  // bytes handed to the disk
 
  private:
-  bool memoryOnly() const { return dir_.empty() || memoryOnly_; }
   std::optional<std::string> readLocked(const std::string& name);
   bool toDisk(const std::string& name, const std::string& data, bool atEnd);
   void release();
   std::string dir_;
-  bool memoryOnly_ = false;  // Ordner nicht beschreibbar: lesen ja, schreiben nein
+  bool noFolder_ = false;  // the folder cannot be created: memory only, said once
+  bool failing_ = false;   // the last write failed: said once, said again when it works
   int holds_ = 0;
   std::map<std::string, std::string> cache_;
-  std::set<std::string> dirty_;                 // written while held
+  std::vector<std::string> dirty_;              // written while held, in order
   std::map<std::string, std::string> pending_;  // appended while held
   std::uint64_t written_ = 0;
   mutable std::mutex m_;

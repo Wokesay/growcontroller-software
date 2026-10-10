@@ -52,8 +52,8 @@ class Hub {
   void setPlatform(json p) { platform_ = std::move(p); }
   void boot();
   void tick();
-  void flush();     // alles Ungespeicherte sichern (password, state, new events)
-  void saveAuth();  // the password file, on disk when it returns
+  void flush();     // saves what is not on disk yet: password, state, new events
+  bool saveAuth();  // the password file, on disk when it returns true
 
   std::recursive_mutex& mutex() { return mtx_; }
   const Catalog& catalog() const { return cat_; }
@@ -136,6 +136,12 @@ class Hub {
   void saveJob();
   void saveEvents();    // appends the new events to the journal
   void saveSnapshot();  // history and events whole; empties their journals
+  void saveEventsSnapshot();
+  void saveHistorySnapshot();
+  // Writes through the storage; a failed write is said once as an alarm (#68).
+  bool put(const std::string& name, const std::string& data);
+  bool add(const std::string& name, const std::string& data);
+  bool stored(bool ok, const std::string& name);
   void sampleHistory(Epoch epoch);
   void tickImpl();
   void tickJob(Ctx& c);
@@ -192,6 +198,8 @@ class Hub {
   bool unsecuredReported_ = false;
   bool stateDirty_ = false;
   std::uint64_t savedEventId_ = 0;
+  std::uint64_t journaledEvents_ = 0;  // in the events journal since its snapshot
+  bool storageFailing_ = false;
   int idSeq_ = 0;
 };
 

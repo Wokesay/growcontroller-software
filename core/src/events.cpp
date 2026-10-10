@@ -91,6 +91,7 @@ void EventLog::load(const json& j) {
     Event ev;
     if (eventFromJson(e, ev)) events_.push_back(ev);
   }
+  while (events_.size() > cap_) events_.pop_front();
 }
 
 std::string EventLog::journalSince(std::uint64_t afterId) const {

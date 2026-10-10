@@ -6,14 +6,16 @@
 // Werte als float; Lücken sind NaN und erscheinen in der API als null.
 // Auf dem Gerät liegt dieselbe Struktur in einer eigenen Flash-Partition
 // (Anhängen, Löschen nur beim Umlauf); im Simulator im RAM mit Dateiabzug.
-// Storage (#68): a daily snapshot (dump) plus a journal with one record per
-// sampling round, so a card is not rewritten for every new value. A record
-// is replayed only when it is newer than the snapshot, so a journal that
-// survived its snapshot is not counted twice.
+// Storage (#68): a snapshot (dump) plus a journal with one record per
+// sampling round, so a card is not rewritten for every new value. A sample
+// is replayed only when it is newer than its series in the snapshot, so a
+// journal that survived its snapshot is not counted twice; each record
+// carries a checksum, so a torn record is never read as values.
 #pragma once
 
 #include <array>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,9 +59,10 @@ class History {
   void add(const std::string& id, Epoch t, double v);
   // One journal record: the samples of one round, all at time t.
   static std::string record(Epoch t, const std::vector<std::pair<std::string, double>>& samples);
-  // Adds the journal's records newer than what is held; stops at a torn or damaged end.
-  // Returns the number of records added.
-  size_t replay(const std::string& journal);
+  // Adds the journal's samples of the given series that are newer than what is held;
+  // a record with an implausible time is skipped, a torn or damaged one ends the replay.
+  // Returns the number of records with samples added.
+  size_t replay(const std::string& journal, const std::set<std::string>& ids);
   bool has(const std::string& id) const { return series_.count(id) > 0; }
   SeriesPoints query(const std::string& id, Epoch from, Epoch to, size_t maxPoints) const;
   std::vector<std::string> ids() const;
@@ -68,7 +71,7 @@ class History {
 
  private:
   std::map<std::string, Series> series_;
-  Epoch lastT_ = 0;  // newest sample held, also in the snapshot
+  std::map<std::string, Epoch> newest_;  // newest sample per series, also in the snapshot
 };
 
 }  // namespace gc
