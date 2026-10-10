@@ -22,21 +22,27 @@ on:
         value: ${{ jobs.image.outputs.sum }}
 permissions:
   contents: read
+defaults:
+  run:
+    # -eo pipefail: a failing command in a pipe fails the step
+    shell: bash
 jobs:
   image:
     runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     outputs:
       sum: ${{ steps.save.outputs.sum }}
+    env:
+      ARCH: ${{ inputs.arch }}
+      # Source code link (AGPL-3.0 §13): always the commit (a tag can move)
+      GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The stand-in for the Supervisor: the build's own base image
+      STANDIN: alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build
-        env:
-          ARCH: ${{ inputs.arch }}
-          # Source code link (AGPL-3.0 §13): always the commit (a tag can move)
-          GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           case "$ARCH" in amd64|aarch64) ;; *) echo "::error::Unknown architecture $ARCH"; exit 1 ;; esac
           v="$(tr -d '\r\n' < VERSION)"
@@ -46,46 +52,80 @@ jobs:
             --build-arg BUILD_VERSION="$v" --build-arg BUILD_ARCH="$ARCH" --build-arg GC_SOURCE_REV="$GC_SOURCE_REV" \
             -t "growcontroller-ha:$ARCH" .
       - name: Smoke test
-        env:
-          ARCH: ${{ inputs.arch }}
-          GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           v="$(tr -d '\r\n' < VERSION)"
           img="growcontroller-ha:$ARCH"
-          # What the Supervisor reads from the image
+          # What the Supervisor reads from the image, and its size
           labels=$(docker image inspect "$img" --format '{{index .Config.Labels "io.hass.version"}} {{index .Config.Labels "io.hass.type"}} {{index .Config.Labels "io.hass.arch"}} {{index .Config.Labels "org.opencontainers.image.revision"}}')
           if [ "$labels" != "$v app $ARCH $GC_SOURCE_REV" ]; then
             echo "::error::Image labels are \"$labels\""; exit 1
           fi
-          # Started as the Supervisor starts it: a token in the environment,
-          # no arguments. Home Assistant is not there, which the app reports.
-          docker run -d --name app -e SUPERVISOR_TOKEN=smoke-test -p 127.0.0.1:8099:8099 "$img"
+          size=$(docker image inspect "$img" --format '{{.Size}}')
+          echo "Image size: $size bytes"
+          if [ "$size" -gt 15000000 ]; then echo "::error::The image grew past 15 MB"; exit 1; fi
+          # Refused without the Supervisor's token, or with a file of its own
+          rc=0; docker run --rm "$img" > /dev/null 2>&1 || rc=$?
+          if [ "$rc" != 2 ]; then echo "::error::Without SUPERVISOR_TOKEN the app ended with $rc, not 2"; exit 1; fi
+          rc=0; docker run --rm -e SUPERVISOR_TOKEN=smoke-test "$img" --config /x > /dev/null 2>&1 || rc=$?
+          if [ "$rc" != 2 ]; then echo "::error::--config was not refused ($rc)"; exit 1; fi
+          # A stand-in for the Supervisor on a network of its own, reached by
+          # name as in Home Assistant: it answers every request with an empty
+          # list of states and keeps what it was asked.
+          docker network create gc-smoke
+          docker run -d --name supervisor --network gc-smoke --network-alias supervisor "$STANDIN" sh -c \
+            'while true; do printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]" | nc -l -p 80 >> /tmp/requests 2>&1; done'
+          # Started like the Supervisor starts it: a token in the environment,
+          # no arguments.
+          docker run -d --name app --network gc-smoke -e SUPERVISOR_TOKEN=smoke-test -p 127.0.0.1:8099:8099 "$img"
           ok=""
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8099/api/v1/info -o info.json; then ok=1; break; fi
             sleep 1
           done
-          docker logs app
-          if [ -z "$ok" ]; then echo "::error::The app did not answer"; exit 1; fi
+          if [ -z "$ok" ]; then docker logs app; echo "::error::The app did not answer"; exit 1; fi
           jq -e --arg v "$v" '.version == $v and .platform.kind == "home-assistant" and .platform.readOnly == true' info.json
           curl -fsS http://127.0.0.1:8099/ -o index.html
           grep -q '<div id="app"' index.html
           code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: example.com' http://127.0.0.1:8099/api/v1/info)
           if [ "$code" != 403 ]; then echo "::error::A foreign host name got $code, not 403"; exit 1; fi
+          # Long paths (the web server matches them with recursive regular
+          # expressions on musl's thread stacks) leave the app running.
+          long=$(printf 'a%.0s' $(seq 1 250))
+          curl -s -o /dev/null "http://127.0.0.1:8099/$long" || true
+          curl -s -o /dev/null "http://127.0.0.1:8099/api/v1/$long" || true
+          curl -fsS http://127.0.0.1:8099/api/v1/info -o /dev/null || { docker logs app; echo "::error::A long path took the app down"; exit 1; }
+          # It reached the Supervisor by name with its token, read only the states.
+          sleep 6
+          docker logs app
+          docker exec supervisor cat /tmp/requests | tee requests.txt
+          grep -q '^GET /core/api/states HTTP/1.1' requests.txt
+          grep -q '^Authorization: Bearer smoke-test' requests.txt
+          if grep -E '^[A-Z]+ ' requests.txt | grep -vq '^GET /core/api/states HTTP/1.1'; then
+            echo "::error::The app asked the Supervisor for more than the states"; exit 1
+          fi
+          if docker logs app 2>&1 | grep -q 'not reachable'; then echo "::error::The app did not reach the stand-in"; exit 1; fi
           # Stopped as the Supervisor stops it; the data folder is private.
           docker stop -t 10 app
           code=$(docker inspect app --format '{{.State.ExitCode}}')
           if [ "$code" != 0 ]; then echo "::error::The app ended with $code on SIGTERM"; exit 1; fi
           docker cp app:/data/hub hub
-          if [ -z "$(find hub -type f)" ] || [ -n "$(find hub -type f ! -perm 600)" ]; then
+          if [ "$(stat -c %a hub)" != 700 ] || [ -z "$(find hub -type f)" ] || [ -n "$(find hub -type f ! -perm 600)" ]; then
             echo "::error::The data folder is empty or not private"; ls -la hub; exit 1
           fi
+          # The license texts and the source code link are in the image.
+          docker cp app:/licenses licenses
+          for f in LICENSE.txt THIRD_PARTY_LICENSES.txt musl-COPYRIGHT.txt BUILD_PACKAGES.txt; do
+            test -s "licenses/$f" || { echo "::error::/licenses/$f is missing"; exit 1; }
+          done
+          cat licenses/BUILD_PACKAGES.txt
+          docker cp app:/web web-out
+          grep -rqF "$GC_SOURCE_REV" web-out/assets || { echo "::error::The web app has no link to $GC_SOURCE_REV"; exit 1; }
           docker rm app
+          docker rm -f supervisor
+          docker network rm gc-smoke
       - name: Save the image
         id: save
         if: inputs.release
-        env:
-          ARCH: ${{ inputs.arch }}
         run: |
           mkdir -p out
           docker save "growcontroller-ha:$ARCH" | gzip -n > "out/growcontroller-ha-$ARCH.tar.gz"

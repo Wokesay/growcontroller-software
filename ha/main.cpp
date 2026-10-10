@@ -81,7 +81,7 @@ std::string readFile(const std::string& path) {
 
 void usage() {
   std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
-            << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local; in an add-on http://supervisor/core);\n"
+            << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local; as an app use --app);\n"
             << "                      sensors are picked in the web app\n"
             << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
@@ -91,21 +91,17 @@ void usage() {
             << "  --every S           seconds between two reads (5)\n"
             << "  --app               as a Home Assistant app (SD-034): Home Assistant at http://supervisor/core with the\n"
             << "                      Supervisor's token (SUPERVISOR_TOKEN), data in /data/hub, the web app from /web,\n"
-            << "                      reachable in the network on port 8099; --config and --token-file are refused\n";
+            << "                      reachable in the network on port 8099 (--data, --host, --web, --port still apply);\n"
+            << "                      --config and --token-file are refused\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string config, tokenFile, data = "growcontroller-ha-data", host = "127.0.0.1", web = "web/dist";
-  int port = 8090;
+  std::string config, tokenFile, data, host, web;
+  int port = 0;
   int everyS = 5;
-  // As a Home Assistant app the address and the token are fixed: the Supervisor's
-  // token never goes anywhere but the Supervisor (SD-034).
   bool app = false;
-  for (int i = 1; i < argc; ++i)
-    if (std::string(argv[i]) == "--app") app = true;
-  if (app) data = "/data/hub", host = "0.0.0.0", web = "/web", port = 8099;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string {
@@ -132,7 +128,7 @@ int main(int argc, char** argv) {
     else if (a == "--host") host = next();
     else if (a == "--web") web = next();
     else if (a == "--every") everyS = number();
-    else if (a == "--app") continue;
+    else if (a == "--app") app = true;
     else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -142,6 +138,12 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
+  // Defaults. As a Home Assistant app (SD-034) the address and the token are
+  // fixed below, so the Supervisor's token never goes anywhere but the Supervisor.
+  if (data.empty()) data = app ? "/data/hub" : "growcontroller-ha-data";
+  if (host.empty()) host = app ? "0.0.0.0" : "127.0.0.1";
+  if (web.empty()) web = app ? "/web" : "web/dist";
+  if (port == 0) port = app ? 8099 : 8090;
   if (app && (!config.empty() || !tokenFile.empty())) {
     std::cerr << "--app takes Home Assistant's address and token from the Supervisor; leave out --config and --token-file\n";
     return 2;
@@ -157,16 +159,20 @@ int main(int argc, char** argv) {
   std::string err;
   const auto mapping = ha::parseMapping(app ? gc::json{{"url", "http://supervisor/core"}} : gc::json::parse(readFile(config), nullptr, false), err);
   if (!err.empty()) {
-    std::cerr << config << ": " << err << "\n";
+    std::cerr << (app ? "--app" : config) << ": " << err << "\n";
     return 2;
   }
   const char* tokenVar = app ? "SUPERVISOR_TOKEN" : "GC_HA_TOKEN";
   std::string token = tokenFile.empty() ? (std::getenv(tokenVar) ? std::getenv(tokenVar) : "") : readFile(tokenFile);
+  // Not passed on to anything this process starts. The Supervisor also sets
+  // the same token under its old name.
+  for (const char* var : {tokenVar, app ? "HASSIO_TOKEN" : tokenVar}) {
 #ifdef _WIN32
-  _putenv_s(tokenVar, "");  // not passed on to anything this process starts
+    _putenv_s(var, "");
 #else
-  unsetenv(tokenVar);
+    unsetenv(var);
 #endif
+  }
   while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
   if (token.empty()) {
     std::cerr << (app ? "No SUPERVISOR_TOKEN: start this as a Home Assistant app with homeassistant_api\n" : "No token: --token-file FILE or GC_HA_TOKEN\n");
@@ -177,7 +183,8 @@ int main(int argc, char** argv) {
   HostClock clock;
   sim::FileStorage store(data);
   if (!store.ready()) {  // a password set here must survive a restart (#68)
-    std::cerr << "The data folder " << data << " cannot be written. Choose a writable one with --data.\n";
+    std::cerr << "The data folder " << data << " cannot be written. "
+              << (app ? "Restart the app; if it stays, reinstall it.\n" : "Choose a writable one with --data.\n");
     return 2;
   }
   ha::HaBus bus(mapping.entities);

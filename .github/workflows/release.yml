@@ -39,6 +39,10 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    # -eo pipefail: a failing command in a pipe fails the step
+    shell: bash
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -69,7 +73,7 @@ jobs:
             echo "::error::web/package.json has $web, VERSION has $v"; exit 1
           fi
           # Home Assistant installs the image tagged with the app's version.
-          if ! grep -qx "version: \"$v\"" ha/app/config.yaml; then
+          if ! grep -qxF "version: \"$v\"" ha/app/config.yaml; then
             echo "::error::ha/app/config.yaml does not have version \"$v\""; exit 1
           fi
           # Checked on every run, so the dry run proves the tag check can work.
@@ -174,7 +178,7 @@ jobs:
             echo "::error::CHANGELOG.md has no section [$section]"; exit 1
           fi
           printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> out/NOTES.md
-          printf '\n**Home Assistant:** add this repository in the app store of Home Assistant and install growcontroller (docs/HOME_ASSISTANT.md).\n' >> out/NOTES.md
+          printf '\n**Home Assistant:** add this repository in the app store of Home Assistant (with advanced mode on in your profile) and install growcontroller (docs/HOME_ASSISTANT.md).\n' >> out/NOTES.md
           cat out/dist/SHA256SUMS
           # Later jobs accept only this checksum list.
           echo "sums=$(sha256sum out/dist/SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -185,12 +189,22 @@ jobs:
           path: out/
           retention-days: 7
 
-  # Read-only, on every run (also the dry run): the release files arrive
-  # complete and match their checksums before anything can be published.
+  # Read-only, on every run (also the dry run): the release files and app
+  # images arrive complete and match their checksums before anything can be
+  # published, and the app image goes through publish's own push steps
+  # (tools/workflows.test.mjs keeps them the same) into a registry on this
+  # runner.
   check:
-    needs: [build, app-amd64, app-aarch64]
+    needs: [verify, build, app-amd64, app-aarch64]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    services:
+      registry:
+        image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+        ports:
+          - 5000:5000
+    env:
+      IMAGE: localhost:5000/wokesay/growcontroller-ha
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -200,8 +214,10 @@ jobs:
         with:
           pattern: growcontroller-ha-*
           path: app
-      - name: Check the app images against their checksums
+      - name: Check the app images against their checksums and labels
         env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          REV: ${{ github.event.pull_request.head.sha || github.sha }}
           SUM_AMD64: ${{ needs.app-amd64.outputs.sum }}
           SUM_AARCH64: ${{ needs.app-aarch64.outputs.sum }}
         run: |
@@ -211,6 +227,42 @@ jobs:
           if [ "$(find . -type f | wc -l)" != 2 ]; then
             echo "::error::Expected exactly the two app images"; find .; exit 1
           fi
+          for arch in amd64 aarch64; do
+            docker load -i "growcontroller-ha-$arch/growcontroller-ha-$arch.tar.gz"
+            labels=$(docker image inspect "growcontroller-ha:$arch" --format '{{index .Config.Labels "io.hass.version"}} {{index .Config.Labels "io.hass.arch"}} {{index .Config.Labels "org.opencontainers.image.revision"}}')
+            if [ "$labels" != "$VERSION $arch $REV" ]; then
+              echo "::error::The $arch image is labelled \"$labels\""; exit 1
+            fi
+          done
+      - name: Push the app image
+        id: image
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          v="$VERSION"
+          digests=()
+          for arch in amd64 aarch64; do
+            docker tag "growcontroller-ha:$arch" "$IMAGE:$v-$arch"
+            docker push "$IMAGE:$v-$arch" | tee push.log
+            d=$(grep -oE 'digest: sha256:[0-9a-f]{64}' push.log | tail -n 1 | cut -d' ' -f2)
+            if [ -z "$d" ]; then echo "::error::No digest for the $arch image"; exit 1; fi
+            digests+=("$d")
+          done
+          # The name Home Assistant pulls, made from exactly the two images
+          # pushed here (by digest, so a tag moved meanwhile cannot slip in)
+          docker buildx imagetools create -t "$IMAGE:$v" "$IMAGE@${digests[0]}" "$IMAGE@${digests[1]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest}}' | jq -r .digest)
+          case "$digest" in
+            sha256:*) ;;
+            *) echo "::error::No digest for $IMAGE:$v"; exit 1 ;;
+          esac
+          docker buildx imagetools inspect "$IMAGE@$digest" --raw > index.json
+          listed=$(jq -r '.manifests[] | .digest + " " + .platform.os + "/" + .platform.architecture' index.json | sort)
+          wanted=$(printf '%s linux/amd64\n%s linux/arm64\n' "${digests[0]}" "${digests[1]}" | sort)
+          if [ "$listed" != "$wanted" ]; then
+            echo "::error::$IMAGE@$digest lists:"; echo "$listed"; exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Check the files against their checksums
         env:
           SUMS: ${{ needs.build.outputs.sums }}
@@ -271,6 +323,7 @@ jobs:
       - name: Check the app images against their checksums and labels
         env:
           VERSION: ${{ needs.verify.outputs.version }}
+          REV: ${{ github.event.pull_request.head.sha || github.sha }}
           SUM_AMD64: ${{ needs.app-amd64.outputs.sum }}
           SUM_AARCH64: ${{ needs.app-aarch64.outputs.sum }}
         run: |
@@ -283,7 +336,7 @@ jobs:
           for arch in amd64 aarch64; do
             docker load -i "growcontroller-ha-$arch/growcontroller-ha-$arch.tar.gz"
             labels=$(docker image inspect "growcontroller-ha:$arch" --format '{{index .Config.Labels "io.hass.version"}} {{index .Config.Labels "io.hass.arch"}} {{index .Config.Labels "org.opencontainers.image.revision"}}')
-            if [ "$labels" != "$VERSION $arch $GITHUB_SHA" ]; then
+            if [ "$labels" != "$VERSION $arch $REV" ]; then
               echo "::error::The $arch image is labelled \"$labels\""; exit 1
             fi
           done
@@ -305,26 +358,42 @@ jobs:
           subject-checksums: out/dist/SHA256SUMS
       # Before the release: if this fails, nothing is released yet, and a
       # second run pushes the same images again.
+      - name: Log in to the container registry
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Push the app image
         id: image
         env:
           VERSION: ${{ needs.verify.outputs.version }}
-          REGISTRY_TOKEN: ${{ github.token }}
         run: |
           v="$VERSION"
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          digests=()
           for arch in amd64 aarch64; do
             docker tag "growcontroller-ha:$arch" "$IMAGE:$v-$arch"
-            docker push "$IMAGE:$v-$arch"
+            docker push "$IMAGE:$v-$arch" | tee push.log
+            d=$(grep -oE 'digest: sha256:[0-9a-f]{64}' push.log | tail -n 1 | cut -d' ' -f2)
+            if [ -z "$d" ]; then echo "::error::No digest for the $arch image"; exit 1; fi
+            digests+=("$d")
           done
-          # The name Home Assistant pulls, for both architectures
-          docker buildx imagetools create -t "$IMAGE:$v" "$IMAGE:$v-amd64" "$IMAGE:$v-aarch64"
+          # The name Home Assistant pulls, made from exactly the two images
+          # pushed here (by digest, so a tag moved meanwhile cannot slip in)
+          docker buildx imagetools create -t "$IMAGE:$v" "$IMAGE@${digests[0]}" "$IMAGE@${digests[1]}"
           digest=$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest}}' | jq -r .digest)
-          docker logout ghcr.io
           case "$digest" in
-            sha256:*) echo "digest=$digest" >> "$GITHUB_OUTPUT" ;;
+            sha256:*) ;;
             *) echo "::error::No digest for $IMAGE:$v"; exit 1 ;;
           esac
+          docker buildx imagetools inspect "$IMAGE@$digest" --raw > index.json
+          listed=$(jq -r '.manifests[] | .digest + " " + .platform.os + "/" + .platform.architecture' index.json | sort)
+          wanted=$(printf '%s linux/amd64\n%s linux/arm64\n' "${digests[0]}" "${digests[1]}" | sort)
+          if [ "$listed" != "$wanted" ]; then
+            echo "::error::$IMAGE@$digest lists:"; echo "$listed"; exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Log out of the container registry
+        if: always()
+        run: docker logout ghcr.io
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
@@ -335,5 +404,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          # Once more right before the release: the tag has not moved since.
+          read -r at type < <(gh api "repos/$GH_REPO/git/ref/tags/$REF_NAME" --jq '.object.sha + " " + .object.type')
+          if [ "$type" = tag ]; then at=$(gh api "repos/$GH_REPO/git/tags/$at" --jq .object.sha); fi
+          if [ "$at" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $REF_NAME moved to $at since the build of $GITHUB_SHA"; exit 1
+          fi
           pre=""; case "$REF_NAME" in *-*) pre="--prerelease";; esac
           gh release create "$REF_NAME" $pre --verify-tag --title "$REF_NAME" --notes-file out/NOTES.md out/dist/*

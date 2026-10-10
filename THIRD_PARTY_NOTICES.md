@@ -22,8 +22,8 @@ As of 2026-10-07. `tools/check_licenses.mjs` checks the npm packages in CI.
 
 ### C++ (single headers, pinned with SHA-256 in `cmake/deps.cmake`)
 
-nlohmann/json is in the firmware and the simulator, cpp-httplib only in
-the simulator.
+nlohmann/json is in the firmware, the simulator and the Home Assistant
+app image, cpp-httplib in the simulator and the app image.
 
 | Library | Version | License | Source |
 |---|---|---|---|
@@ -36,7 +36,8 @@ The app image (`ha/app/Dockerfile`, SD-034) holds `gc_ha_server` linked
 statically against the C and C++ runtime libraries of its Alpine 3.22
 build image. musl's notice ships in the image as
 `/licenses/musl-COPYRIGHT.txt` (from `tools/licenses/`), next to
-`THIRD_PARTY_LICENSES.txt`.
+`THIRD_PARTY_LICENSES.txt`; `/licenses/BUILD_PACKAGES.txt` names the exact
+Alpine package versions of musl and the GCC runtime that went in.
 
 | Component | Version | License | Source |
 |---|---|---|---|

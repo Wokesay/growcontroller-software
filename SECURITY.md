@@ -36,7 +36,7 @@ details confidential until disclosure.
 
 | Version | Security updates |
 |---|---|
-| 0.x (prototype) | no – do not use with real hardware |
+| 0.x (prototype) | only the latest pre-release, including the Home Assistant app: a fix comes in the next pre-release; do not dose or switch real hardware with it |
 
 The support period for sold devices will be set before the first sale (at
 least 5 years, CRA Art. 13).

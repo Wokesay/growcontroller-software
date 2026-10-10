@@ -63,15 +63,20 @@ entry under `[Unreleased]`.
      changelog section.
    - `app-amd64` and `app-aarch64` (`app.yml`, SD-034), without write
      access and without a cache: the Home Assistant app image, each on a
-     runner of its architecture, started and checked as the Supervisor
-     would start it, saved with its checksum.
+     runner of its architecture, started and checked next to a stand-in
+     for the Supervisor, saved with its checksum.
+   - `check`, read-only and in every dry run too: the files and app
+     images match their checksums, and the app image goes through
+     `publish`'s own push steps into a registry on the runner, so the
+     first tag is not their first run.
    - `publish`, the only job that can write: checks the files against
      `SHA256SUMS` and the app images against their checksums and labels,
      checks that the tag still points at the built commit, attests the
      files' build provenance, pushes the app image
-     (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`, one name for both
-     architectures, plus `X.Y.Z-amd64` and `X.Y.Z-aarch64`), attests it
-     and creates the GitHub release. It runs no npm and builds nothing.
+     (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`, one name made from the
+     two pushed images by digest, plus `X.Y.Z-amd64` and
+     `X.Y.Z-aarch64`), attests it, checks the tag once more and creates
+     the GitHub release. It runs no npm and builds nothing.
    - Pre-releases (`-beta`, `-proto`) are marked as pre-release.
    - A pull request that changes the release machinery runs everything
      except `publish` as a dry run.
@@ -100,15 +105,31 @@ entry under `[Unreleased]`.
    - **Once, after the first release with the app:** the project owner
      makes the package public (GitHub profile → Packages →
      `growcontroller-ha` → Package settings → Change visibility →
-     Public). Home Assistant downloads it without a login.
+     Public). Home Assistant downloads it without a login. A public
+     package cannot be made private again. Under Package settings →
+     Manage Actions access, only this repository should be listed.
+   - **Accepting a release with the app:** `docker buildx imagetools
+     inspect ghcr.io/wokesay/growcontroller-ha:X.Y.Z` lists linux/amd64
+     and linux/arm64; on a real Home Assistant (a Raspberry Pi and, where
+     possible, a PC) the app shows in the store, installs, opens its web
+     UI, sets a password, reads sensors, keeps its data through a restart
+     and an update from the previous version, and is in a backup.
+   - Merge a version change to `ha/app/config.yaml` only together with
+     the release: `config.yaml` on `main` is what every installed app
+     compares itself with (SD-034).
    - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
      the statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
-     yet: it holds the same server code, the web app and the musl C
-     library of its Alpine build image. Dependabot updates the app's base
-     image (pinned by digest); it does not cover `cmake/deps.cmake`, the
-     `espressif/idf` container, the Alpine packages of the app's build and
-     `reuse`; they are updated by hand.
+     yet: it holds the same server code, the web app, and musl and the
+     GCC runtime from Alpine 3.22, whose exact package versions the image
+     names in `/licenses/BUILD_PACKAGES.txt`; image scanners see none of
+     them in a static binary. The Alpine packages of the build are not
+     pinned: each build takes the current ones of Alpine 3.22 (supported
+     until 2027-05). Security fixes for musl, the GCC runtime,
+     cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
+     the app's base image (pinned by digest); it does not cover
+     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
+     are updated by hand.
    - If `publish` fails after the release was created, delete the
      unfinished release (not the tag) and run the job again. A second run
      pushes the same app image again.

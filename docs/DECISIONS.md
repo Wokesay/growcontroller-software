@@ -536,6 +536,12 @@ Assistant way is still a product question.
 - The web app is served on port 8099 of the Home Assistant host, plain
   HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
   a follow-up.
+- `ha/app/config.yaml` on `main` is the app's distribution manifest:
+  every installed app compares itself with its version. A version change
+  there is a release step and waits for the owner's "mergen" like the
+  release.
+- The image is built in stages, so the web app's npm packages never see
+  the server's sources.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
   tag (SD-023, SD-027).

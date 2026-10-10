@@ -91,13 +91,40 @@ test("the publishing job builds nothing and the release build uses no cache", ()
 test("the app image is built without write access and only pushed by publish", () => {
   // SD-034: app.yml builds and smoke tests, release.yml's publish pushes.
   const app = readFileSync(join(dir, "app.yml"), "utf8");
-  assert.doesNotMatch(app, /docker (login|push)|imagetools create|:\s*write\b/);
+  assert.doesNotMatch(app, /docker (login|push)|imagetools create|--push\b|type=registry|--cache-(from|to)|:\s*write\b/);
   assert.match(app, /docker build --pull /, "every build pulls its base image afresh");
   const release = readFileSync(join(dir, "release.yml"), "utf8");
   const publish = job(release, "publish");
   assert.doesNotMatch(publish, /docker (build|run)\b|buildx build/);
-  assert.equal((release.match(/docker push|docker login/g) ?? []).length, (publish.match(/docker push|docker login/g) ?? []).length);
+  assert.equal((release.match(/docker login/g) ?? []).length, (publish.match(/docker login/g) ?? []).length);
   for (const arch of ["amd64", "aarch64"]) {
     assert.match(job(release, `app-${arch}`), new RegExp(`uses: ./.github/workflows/app.yml\\n {4}with:\\n {6}arch: ${arch}\\n {6}release: true\\n`));
+  }
+});
+
+test("the dry run pushes the app image with publish's own steps", () => {
+  // check runs on every release run, publish only for a tag: the same
+  // steps, so the first tag is not their first run.
+  const release = readFileSync(join(dir, "release.yml"), "utf8");
+  const step = (text, name) => {
+    const m = text.match(new RegExp(`^ {6}- name: ${name}\\n((?: {8}.*\\n)*)`, "m"));
+    assert.ok(m, name);
+    return m[1].replace(/^ {8}id: image\n/m, "");
+  };
+  for (const name of ["Check the app images against their checksums and labels", "Push the app image"]) {
+    assert.equal(step(job(release, "check"), name), step(job(release, "publish"), name), name);
+  }
+  assert.match(job(release, "check"), /IMAGE: localhost:5000\//);
+  assert.match(job(release, "check"), /image: registry:2@sha256:[0-9a-f]{64}\n/);
+  assert.match(job(release, "publish"), /IMAGE: ghcr\.io\//);
+});
+
+test("steps fail on a failing command in a pipe and get no secrets passed on", () => {
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    assert.doesNotMatch(text, /secrets:\s*inherit/, f);
+  }
+  for (const f of ["app.yml", "release.yml"]) {
+    assert.match(readFileSync(join(dir, f), "utf8"), /^defaults:\n {2}run:\n(?: {4}#.*\n)* {4}shell: bash\n/m, f);
   }
 });

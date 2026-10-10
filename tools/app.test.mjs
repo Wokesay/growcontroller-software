@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The Home Assistant app (SD-034): its config.yaml installs the image that
-// release.yml publishes for this version, asks for no more than read
-// access to Home Assistant and one port, and matches the server's --app
-// mode and the Dockerfile.
+// release.yml publishes for this version, asks for nothing but Home
+// Assistant's API through the Supervisor and one port, and matches the
+// server's --app mode and the Dockerfile.
 //   node --test tools/app.test.mjs
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -66,6 +67,8 @@ test("the reader of the app's YAML refuses what it does not know", () => {
 
 test("the app installs the image of this release", () => {
   assert.equal(config.version, version, "config.yaml version = VERSION");
+  // As release.yml's verify reads it: quoted, on a line of its own
+  assert.ok(read("ha/app/config.yaml").split("\n").includes(`version: "${version}"`));
   assert.equal(config.image, IMAGE);
   const release = read(".github/workflows/release.yml");
   assert.match(release, new RegExp(`^ {6}IMAGE: ${IMAGE.replace(/[.]/g, "\\.")}$`, "m"), "release.yml pushes the same image");
@@ -76,7 +79,7 @@ test("the app installs the image of this release", () => {
   }
 });
 
-test("the app asks for read access to Home Assistant and one port, nothing more", () => {
+test("the app asks for Home Assistant's API through the Supervisor and one port, nothing more", () => {
   const allowed = [
     "name", "version", "slug", "description", "url", "stage", "arch", "image", "startup", "boot",
     "homeassistant_api", "ports", "ports_description", "webui", "watchdog",
@@ -90,18 +93,42 @@ test("the app asks for read access to Home Assistant and one port, nothing more"
 });
 
 test("the server's --app mode and the image match the app", () => {
+  // tools/ha_server.test.mjs runs --app itself; here only the values the
+  // app's config.yaml depends on.
   const main = read("ha/main.cpp");
-  assert.match(main, /if \(app\) data = "\/data\/hub", host = "0\.0\.0\.0", web = "\/web", port = 8099;/);
+  assert.match(main, /if \(data\.empty\(\)\) data = app \? "\/data\/hub"/);
+  assert.match(main, /if \(port == 0\) port = app \? 8099 :/);
   assert.match(main, /app \? gc::json\{\{"url", "http:\/\/supervisor\/core"\}\}/);
   assert.match(main, /"SUPERVISOR_TOKEN"/);
   const docker = read("ha/app/Dockerfile");
   assert.match(docker, /^EXPOSE 8099$/m);
   assert.match(docker, /^ENTRYPOINT \["\/gc_ha_server", "--app"\]$/m);
-  assert.match(docker, /^FROM scratch$/m, "nothing but the server, the web app and the licenses");
+  assert.doesNotMatch(docker, /^CMD\b/m, "no further arguments to --app");
   for (const label of ['io.hass.version="\\$BUILD_VERSION"', 'io.hass.type="app"', 'io.hass.arch="\\$BUILD_ARCH"']) {
     assert.match(docker, new RegExp(label), label);
   }
-  assert.match(docker, /^FROM alpine:[\d.]+@sha256:[0-9a-f]{64} AS build$/m, "base image pinned by digest");
+  // Stages: the web app, the server without node, the license texts, and
+  // the image with nothing but their results.
+  const stages = [...docker.matchAll(/^FROM (\S+)(?: AS (\w+))?$/gm)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(stages.map(([, name]) => name), ["web", "server", "licenses", undefined]);
+  for (const [from, name] of stages.slice(0, 3)) assert.match(from, /^alpine:[\d.]+@sha256:[0-9a-f]{64}$/, `${name}: pinned by digest`);
+  assert.equal(stages[3][0], "scratch");
+  const server = docker.slice(docker.indexOf(" AS server"), docker.indexOf(" AS licenses"));
+  assert.doesNotMatch(server, /nodejs|npm|COPY (\.|web|tools)\b|--from=web/, "the server stage gets no node and no web packages");
+  const image = docker.slice(docker.indexOf("FROM scratch"));
+  assert.deepEqual([...image.matchAll(/^COPY (.*)$/gm)].map((m) => m[1]), [
+    "--from=server /src/build/gc_ha_server /gc_ha_server",
+    "--from=web /src/web/dist /web",
+    "--from=licenses /out /licenses",
+  ]);
+});
+
+test("Home Assistant finds exactly this one app in the repository", () => {
+  // The Supervisor looks for config.yaml/json files in its clone,
+  // skipping folders that start with a dot.
+  const files = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0");
+  const found = files.filter((f) => /(^|\/)config\.(ya?ml|json)$/.test(f) && !f.split("/").some((part) => part.startsWith(".")));
+  assert.deepEqual(found, ["ha/app/config.yaml"]);
 });
 
 test("the repository is a Home Assistant app repository", () => {
