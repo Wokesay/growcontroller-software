@@ -144,7 +144,7 @@ class StatesReader : public gc::json::json_sax_t {
  public:
   static constexpr int kMaxDepth = 32;
   static constexpr size_t kMaxStates = 20000;  // sensors; a large installation has a few thousand
-  static constexpr size_t kMaxText = 256;       // bytes of a kept text (entity IDs are at most 255)
+  static constexpr size_t kMaxText = 256;       // bytes of a kept text: a longer name is cut, any other field dropped
   gc::json out = gc::json::array();
 
   bool null() override { return scalar(nullptr); }
@@ -189,7 +189,7 @@ class StatesReader : public gc::json::json_sax_t {
   }
   bool end_array() override { return leave(); }
   bool key(string_t& k) override {
-    if (!skipping()) key_ = k;
+    if (!skipping()) key_ = k.size() > 32 ? string_t() : k;  // only short keys are ever kept
     return true;
   }
   bool parse_error(std::size_t, const std::string&, const nlohmann::detail::exception&) override { return false; }
@@ -205,12 +205,16 @@ class StatesReader : public gc::json::json_sax_t {
   template <typename T>
   bool scalar(T&& v) {
     if (skipping()) return true;
-    if constexpr (std::is_same_v<std::decay_t<T>, string_t>) {
-      // A kept text is short in any real answer; cut it, so a huge name costs nothing later.
-      if (v.size() > kMaxText) v = gc::utf8Prefix(v, kMaxText);
-    }
     static const std::set<std::string> kState = {"entity_id", "state", "last_reported", "last_updated"};
     static const std::set<std::string> kAttr = {"device_class", "unit_of_measurement", "state_class", "friendly_name"};
+    if constexpr (std::is_same_v<std::decay_t<T>, string_t>) {
+      // A kept text is short in any real answer. A name is cut, so a huge one costs nothing later;
+      // any other field is dropped, because a cut could make an ID valid or change a value or a time.
+      if (v.size() > kMaxText) {
+        if (key_ != "friendly_name") return true;
+        v = gc::utf8Prefix(v, kMaxText);
+      }
+    }
     if (depth_ == 2 && kState.count(key_)) cur_[key_] = std::forward<T>(v);
     if (depth_ == 3 && inAttrs_ && kAttr.count(key_)) cur_["attributes"][key_] = std::forward<T>(v);
     return true;

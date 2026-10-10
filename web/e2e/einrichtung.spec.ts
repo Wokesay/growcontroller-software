@@ -265,6 +265,42 @@ test("Home Assistant: on a phone, a long sensor name never pushes its live value
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Home Assistant: if the hub delivers no sensor list, the assigned sensors still show, with a notice", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await airTempPicked(page);
+  await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => route.fulfill({ status: 500, json: { error: "x" } }));
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await expect(page.getByText("Der Hub liefert gerade keine Sensorliste. Deine Zuordnungen bleiben gespeichert.")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId("ha-role-zone.air_temp")).toContainText("Zelt Temperatur");
+  await expect(page.getByText("Der Hub fragt Home Assistant nach Sensoren …")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: \"renamed?\" is asked only while Home Assistant answers", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok", haSensors.filter((c) => c.entity !== "sensor.zelt_temperatur"));
+  await airTempPicked(page);
+  // The picked sensor is offline in the hub; the state comes by polling, not from the live stream
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.devices = [...st.devices, { id: "ha.sensor.zelt_temperatur", class: "ha_air_temp", classLabel: "", name: "Zelt Temperatur", configured: true, online: false, port: 0, slot: 0, parent: "", fw: "", fault: "", info: {}, calibrations: {} }];
+    await route.fulfill({ response: res, json: st });
+  });
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  const row = page.getByTestId("ha-role-zone.air_temp");
+  await expect(row).toContainText("fehlt in Home Assistant");
+  // Home Assistant stops answering: the notice says why, the row does not guess a rename
+  await asHomeAssistant(page, "unreachable");
+  await expect(page.getByText("Home Assistant antwortet nicht", { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(row).not.toContainText("fehlt in Home Assistant");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("Home Assistant: a refused token or no answer is said as such, not as \"no sensors\"", async ({ page, request }) => {
   await scenario(request, "neu");
   await asHomeAssistant(page, "refused", []);

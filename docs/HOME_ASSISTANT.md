@@ -193,7 +193,10 @@ time is no value.
   through one scratch object and are dropped when the state ends). Nesting
   deeper than 32 levels or an answer that is no list stops the read, and at
   most 20 000 sensors are kept, so a large or crafted answer costs time and
-  memory only in proportion to its sensors.
+  memory only in proportion to its sensors. A name longer than 256 bytes is
+  cut; any other kept field longer than that is dropped (the ID then makes
+  the state invalid, a value or time counts as missing), because a cut could
+  turn an invalid ID into a valid one or change a value.
 - Of the states, the bus keeps only the candidates: sensors whose device
   class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
   `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`

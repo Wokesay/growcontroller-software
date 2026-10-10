@@ -304,6 +304,14 @@ TEST_CASE("Home Assistant: an answer keeps only what the hub reads, however larg
   // A huge kept text is cut while reading
   json huge = json::array({described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", std::string(1000000, 'n'))});
   CHECK(ha::parseStates(huge.dump()).dump().size() < 2000);
+  // Only a name is cut; any other over-long field is dropped, so a cut never makes it valid or changes its meaning
+  json longId = json::array({state("sensor." + std::string(248, 'a') + "\u00e9", "6.1", "", iso(kNoonMs))});
+  CHECK(longId[0]["entity_id"].get<std::string>().size() == 257);
+  CHECK(ha::parseStates(longId.dump()).empty());
+  json longState = json::array({described(state("sensor.tank_ph", std::string(256, '6') + "x", "", iso(kNoonMs)), "ph", "pH")});
+  const json keptState = ha::parseStates(longState.dump());
+  REQUIRE(keptState.size() == 1);
+  CHECK_FALSE(keptState[0].contains("state"));
   // Too deep a nesting stops the read instead of building it
   CHECK(ha::parseStates("[" + std::string(100, '[') + std::string(100, ']') + "]").is_discarded());
   // Many tiny states cost time in proportion to their number, not its square

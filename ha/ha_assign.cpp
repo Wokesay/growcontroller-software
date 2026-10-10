@@ -120,7 +120,7 @@ gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequ
   const auto body = gc::json::parse(req.body, nullptr, false);
   // "entity" must be given ("" takes the sensor away), so a request that forgot it removes nothing.
   if (!body.is_object() || !body.contains("entity") || !body["entity"].is_string())
-    return gc::Result::fail(400, "api.json", "Ungültiges JSON");
+    return gc::Result::fail(400, "api.bad_input", "Eingabe hat das falsche Format");
   return assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"), letHubSee);
 }
 

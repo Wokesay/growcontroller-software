@@ -42,16 +42,21 @@ const TIP = new Set(["water_temp", "air_temp", "humidity", "co2"]); // warm it b
 const ALSO_ELSEWHERE = new Set(["ph", "ec"]); // plant and pool sensors report these too
 
 /** The candidates, refreshed every few seconds while a view needs them; reload() after a change. */
-export function useHaList(everyMs = 5000): { list: HaList | null; reload: () => Promise<void> } {
+export function useHaList(everyMs = 5000): { list: HaList | null; reload: () => Promise<void>; failing: boolean } {
   const [list, setList] = useState<HaList | null>(null);
+  const [fails, setFails] = useState(0);
   const alive = useRef(true);
   const reload = useCallback(
     () =>
       get<HaList>("/ha/candidates")
         .then((l) => {
-          if (alive.current) setList(l);
+          if (!alive.current) return;
+          setList(l);
+          setFails(0);
         })
-        .catch(() => {}),
+        .catch(() => {
+          if (alive.current) setFails((n) => n + 1);
+        }),
     [],
   );
   useEffect(() => {
@@ -63,7 +68,8 @@ export function useHaList(everyMs = 5000): { list: HaList | null; reload: () => 
       window.clearInterval(id);
     };
   }, []);
-  return { list, reload };
+  // Three misses in a row: say so instead of waiting for good
+  return { list, reload, failing: fails >= 3 };
 }
 
 const roleLabel = (role: string) => catalog.value?.roles[role]?.label ?? role;
@@ -82,7 +88,8 @@ const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCas
 const boundElsewhere = (entity: string, role: string) => ROLES.find(([r]) => r !== role && binding(r)?.device === `ha.${entity}`)?.[0];
 
 /** The connection state as one notice; null while all is well. */
-function ConnectionNotice(p: { list: HaList | null }) {
+function ConnectionNotice(p: { list: HaList | null; failing?: boolean }) {
+  if (!p.list && p.failing) return <Banner tone="warn">{t("ha.listFailed")}</Banner>;
   if (!p.list || p.list.connection === "starting") return <p class="muted">{t("ha.loading")}</p>;
   if (p.list.connection === "refused")
     return (
@@ -101,7 +108,7 @@ function ConnectionNotice(p: { list: HaList | null }) {
 
 /** Devices › Assignment on a Home Assistant hub: one row per measuring role. */
 export function HaRoles() {
-  const { list, reload } = useHaList();
+  const { list, reload, failing } = useHaList();
   const [pick, setPick] = useState<{ role: string; measure: string } | null>(null);
   const st = state.value!;
   const cands = list?.candidates ?? [];
@@ -109,8 +116,9 @@ export function HaRoles() {
   const rows = ROLES.filter(([role, m]) => binding(role) || fits(m).length > 0);
   const without = ROLES.filter(([role, m]) => !binding(role) && fits(m).length === 0).map(([role]) => roleLabel(role));
   const ok = list?.connection === "ok";
-  // Until the list is there, show nothing that would move once it arrives
-  if (!list)
+  // Until the list is there, show nothing that would move once it arrives;
+  // if it does not come, show the assigned sensors with a notice
+  if (!list && !failing)
     return (
       <div class="stack">
         <p class="muted">{t("ha.help")}</p>
@@ -120,7 +128,7 @@ export function HaRoles() {
   return (
     <div class="stack">
       <p class="muted">{t("ha.help")}</p>
-      <ConnectionNotice list={list} />
+      <ConnectionNotice list={list} failing={failing} />
       {ok && cands.length === 0 && rows.length === 0 && (
         <div>
           <strong>{t("ha.emptyTitle")}</strong>
@@ -174,13 +182,13 @@ export function HaRoles() {
         <summary>{t("ha.why")}</summary>
         <p class="muted small">{t("ha.whyText")}</p>
       </details>
-      {pick && <HaPicker role={pick.role} measure={pick.measure} list={list} reload={reload} onClose={() => setPick(null)} />}
+      {pick && <HaPicker role={pick.role} measure={pick.measure} list={list} failing={failing} reload={reload} onClose={() => setPick(null)} />}
     </div>
   );
 }
 
 /** Choosing the sensor for one role: search, live values, one tap saves. */
-function HaPicker(p: { role: string; measure: string; list: HaList | null; reload: () => Promise<void>; onClose: () => void }) {
+function HaPicker(p: { role: string; measure: string; list: HaList | null; failing: boolean; reload: () => Promise<void>; onClose: () => void }) {
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState<string | null>(null); // the entity being saved, "" for "none"
   const search = useRef<HTMLInputElement>(null);
@@ -209,7 +217,7 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; reloa
   };
   return (
     <Modal title={t("ha.pickerTitle", { role: label })} onClose={p.onClose} wide>
-      <ConnectionNotice list={p.list} />
+      <ConnectionNotice list={p.list} failing={p.failing} />
       {ok && all.length > 8 && (
         <input
           ref={search}
