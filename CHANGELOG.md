@@ -15,7 +15,7 @@ listed in every release under "Security".
   made from its checked parts: the host is a plain name, an IPv4 address or
   an IPv6 address in `[ ]` (no `user@`, `?`, `#`), the port 1–65535, the
   path letters, digits, `-` and `_` (no dot segments, escapes, queries or
-  empty segments); an address ending in `/api` is refused with a hint.
+  empty segments); an address with `/api` in it is refused with a hint.
 - **Home Assistant: choose sensors in the web app instead of listing
   them** (`docs/HOME_ASSISTANT.md`): `gc_ha_server` reads all states in one
   request and finds the sensors it can use by Home Assistant's device class

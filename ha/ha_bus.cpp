@@ -2,7 +2,6 @@
 #include "ha_bus.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <climits>
 #include <cstdint>
@@ -352,8 +351,8 @@ std::string Address::url() const {
 
 std::optional<Address> parseAddress(std::string url, std::string& err) {
   const auto fail = [&](const std::string& why) {
-    err = why.empty() ? "\"url\" must be http://host:port or https://host:port, optionally followed by a path such as /core "
-                        "(letters, digits, - and _)"
+    err = why.empty() ? "\"url\" must be http://host:port or https://host:port (a name of letters, digits, - _ and ., an IPv4 "
+                        "address or [IPv6]), optionally followed by a path such as /core (letters, digits, - and _)"
                       : why;
     return std::optional<Address>();
   };
@@ -372,12 +371,13 @@ std::optional<Address> parseAddress(std::string url, std::string& err) {
     if (close == std::string::npos) return fail("");
     a.host = authority.substr(1, close - 1);
     rest = authority.substr(close + 1);
-    if (a.host.empty() || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiHex(c) || c == ':'; })) return fail("");
+    if (a.host.find(':') == std::string::npos || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiHex(c) || c == ':'; }))
+      return fail("");  // an IPv6 address has colons; [cafe] would be read as a name
   } else {
     const size_t colon = authority.find(':');
     a.host = authority.substr(0, colon);
     rest = colon == std::string::npos ? "" : authority.substr(colon);
-    if (a.host.empty() || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiAlnum(c) || c == '-' || c == '.'; }))
+    if (a.host.empty() || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiAlnum(c) || c == '-' || c == '_' || c == '.'; }))
       return fail("");  // also no '@', '?', '#' or spaces: no host hidden behind another
   }
   a.port = a.tls ? 443 : 80;
@@ -393,8 +393,13 @@ std::optional<Address> parseAddress(std::string url, std::string& err) {
     const char c = a.base[i];
     if (!(asciiAlnum(c) || c == '-' || c == '_' || (c == '/' && (i + 1 >= a.base.size() || a.base[i + 1] != '/')))) return fail("");
   }
-  if (a.base == "/api" || (a.base.size() > 4 && a.base.compare(a.base.size() - 4, 4, "/api") == 0))
-    return fail("\"url\" ends in /api: leave it out, the hub adds /api/states itself");
+  for (size_t from = 0; from < a.base.size();) {  // a segment "api" in any case: the address was pasted with the API in it
+    const size_t to = std::min(a.base.find('/', from + 1), a.base.size());
+    std::string seg = a.base.substr(from + 1, to - from - 1);
+    std::transform(seg.begin(), seg.end(), seg.begin(), [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; });
+    if (seg == "api") return fail("\"url\" contains /api: leave it out, the hub adds /api/states itself");
+    from = to;
+  }
   err.clear();
   return a;
 }

@@ -34,7 +34,7 @@ class Poller {
 
  private:
   HaBus& bus_;
-  std::string url_, token_;
+  std::string token_;
   std::optional<Address> address_;  // checked as the mapping is; none: the address is not used
   std::function<gc::Ms()> nowMs_;
   std::atomic<bool> stopping_{false};  // set by stop(), read by the polling thread

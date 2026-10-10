@@ -16,9 +16,9 @@ std::int64_t epochMs() {
 }  // namespace
 
 Poller::Poller(HaBus& bus, std::string url, std::string token, std::function<gc::Ms()> nowMs)
-    : bus_(bus), url_(std::move(url)), token_(std::move(token)), nowMs_(std::move(nowMs)) {
+    : bus_(bus), token_(std::move(token)), nowMs_(std::move(nowMs)) {
   std::string err;
-  address_ = parseAddress(url_, err);  // the same check as the mapping's, whoever passes the address in
+  address_ = parseAddress(std::move(url), err);  // the same check as the mapping's, whoever passes the address in
 }
 
 Poller::~Poller() { stop(); }
@@ -32,11 +32,16 @@ std::string Poller::pollOnce() {
     return "https needs a build with OpenSSL; use http:// in your own network";
   }
 #endif
+  if (!address_) {
+    bus_.lostAll();
+    bus_.setConnection("unreachable");
+    return "the Home Assistant address is not valid";
+  }
   // Built from the checked parts, so the library reads the same host and port
-  Address origin = address_ ? *address_ : Address();
+  Address origin = *address_;
   origin.base.clear();
   httplib::Client cli(origin.url());
-  if (!address_ || !cli.is_valid()) {
+  if (!cli.is_valid()) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
     return "the Home Assistant address is not valid";
@@ -65,7 +70,8 @@ std::string Poller::pollOnce() {
   if (res->status != 200) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
-    return "Home Assistant answered HTTP " + std::to_string(res->status);
+    return "Home Assistant answered HTTP " + std::to_string(res->status) + " for " + address_->base + "/api/states" +
+           (res->status == 404 && !address_->base.empty() ? "; check the path in url" : "");
   }
   const gc::json j = parseStates(res->body);
   if (!j.is_array()) {

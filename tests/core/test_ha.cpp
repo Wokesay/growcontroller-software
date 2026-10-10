@@ -119,7 +119,8 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
                                                       {"http://192.168.1.20:8123/core", "http://192.168.1.20:8123/core"},
                                                       {"http://ha/my-ha_1/Core", "http://ha/my-ha_1/Core"},
                                                       {"http://[::1]:8123/core/", "http://[::1]:8123/core"},
-                                                      {"http://ha/core///", "http://ha/core"}};
+                                                      {"http://ha/core///", "http://ha/core"},
+                                                      {"http://home_assistant:8123", "http://home_assistant:8123"}};
   for (const auto& [url, normal] : kept) {
     CAPTURE(url);
     CHECK(ha::parseMapping({{"url", url}}, err).url == normal);
@@ -139,14 +140,17 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
                           "http://a:8123@b/core", "http://user@evil/core", "http://user:pw@ha/core", "http://ha?x/core", "http://ha#x/core",
                           "http://ha#@192.0.2.10/core", "http://ha:8123x", "http://:8123", "http://:8123/core", "http://ha\r\nX/core",
                           "http://[::1]x/core", "http://[]/core", "http:///core", "https:///core", "http://ha:0", "http://ha:65536",
-                          "http://ha:123456", "http://ha /core", "HTTP://ha"}) {
+                          "http://ha:123456", "http://ha /core", "HTTP://ha", "http://[cafe]/core", "http://[1234]/core"}) {
     CAPTURE(url);
     CHECK(refused({{"url", url}}));
   }
-  // The API address as Home Assistant's docs give it: refused with a hint, not a 404 later
-  ha::parseMapping({{"url", "http://192.168.1.20:8123/api"}}, err);
-  CHECK(err.find("/api") != std::string::npos);
-  CHECK(refused({{"url", "http://supervisor/core/api/"}}));
+  // The API address as Home Assistant's docs give it, or a pasted endpoint: refused with a hint, not a 404 later
+  for (const char* url : {"http://192.168.1.20:8123/api", "http://supervisor/core/api/", "http://ha:8123/api/states", "http://ha/API", "http://ha/api/x"}) {
+    CAPTURE(url);
+    ha::parseMapping({{"url", url}}, err);
+    CHECK(err.find("/api") != std::string::npos);
+  }
+  CHECK(ha::parseMapping({{"url", "http://ha/myapi"}}, err).url == "http://ha/myapi");
   // Without entities the user picks them in the web app
   CHECK(ha::parseMapping({{"url", "http://ha:8123"}}, err).entities.empty());
   CHECK(err.empty());
