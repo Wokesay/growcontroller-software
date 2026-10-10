@@ -84,7 +84,8 @@ TEST_CASE("Storage: history and events come back after a hard stop, from the sna
   const gc::Epoch end = s.hub().now();
   const std::string range = "&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30);
   const json before = c.ok("GET", "/api/v1/history?series=tank.ph,tank.ec" + range);
-  const json coarse = c.ok("GET", "/api/v1/history?points=10&series=tank.ph" + range);  // the coarse tiers, open slots included
+  const std::string week = "&from=" + std::to_string(start - 8 * 86400) + "&to=" + std::to_string(end - 30);
+  const json coarse = c.ok("GET", "/api/v1/history?points=4000&series=tank.ph" + week);  // older than a week: the 15 min tier
   const json events = c.ok("GET", "/api/v1/events?limit=5");
   // A hard stop: the first simulation never saves again; a second one starts from what is on disk
   sim::Simulation again(onCard(dir, end + 1));
@@ -95,7 +96,11 @@ TEST_CASE("Storage: history and events come back after a hard stop, from the sna
   REQUIRE(before["series"].size() == 2);
   CHECK(before["series"][0]["t"].size() > 100);  // half an hour in 10 s steps
   CHECK(after["series"] == before["series"]);
-  CHECK(c2.ok("GET", "/api/v1/history?points=10&series=tank.ph" + range)["series"] == coarse["series"]);
+  CHECK(coarse["series"][0]["stepS"] == 900);
+  json avg = coarse["series"][0]["avg"], avgAfter = c2.ok("GET", "/api/v1/history?points=4000&series=tank.ph" + week)["series"][0]["avg"];
+  avg.erase(avg.size() - 1);  // the open slot takes the samples after the restart
+  avgAfter.erase(avgAfter.size() - 1);
+  CHECK(avgAfter == avg);
   const json kept = c2.ok("GET", "/api/v1/events?limit=50&to=4000000000");
   bool stopKept = false;
   for (const auto& e : kept["events"])
@@ -193,4 +198,82 @@ TEST_CASE("Storage: a new scenario starts without the old journals (#68)") {
   for (const auto& e : events["events"]) oldStop = oldStop || e["title"]["key"] == "ev.stop";
   CHECK_FALSE(oldStop);
   CHECK(fresh.ok("GET", "/api/v1/history?series=tank.ph")["series"][0]["t"].empty());
+}
+
+namespace {
+size_t countKey(const json& events, const std::string& key) {
+  size_t n = 0;
+  for (const auto& e : events["events"]) n += e["title"]["key"] == key ? 1 : 0;
+  return n;
+}
+}  // namespace
+
+TEST_CASE("Storage: one file that cannot be written raises one alarm, cleared only once it is written (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  fs::create_directories(dir.path / "config.json.tmp");  // the configuration cannot be written, everything else can
+  c.ok("PATCH", "/api/v1/devices/PHEC-3F2A91", {{"name", "Tank probe renamed"}});
+  for (int i = 0; i < 120; ++i) s.step(1000);  // state and journals are written meanwhile
+  json logged = s.hub().events(0, 4000000000, "", 500);
+  CHECK(countKey(logged, "ev.storage_failed") == 1);
+  CHECK(countKey(logged, "ev.storage_ok") == 0);
+  // Space again: the change made meanwhile is written without a second change
+  fs::remove_all(dir.path / "config.json.tmp");
+  for (int i = 0; i < 30; ++i) s.step(1000);
+  logged = s.hub().events(0, 4000000000, "", 500);
+  CHECK(countKey(logged, "ev.storage_ok") == 1);
+  CHECK(onDisk(dir.path / "config.json").find("Tank probe renamed") != std::string::npos);
+  sim::Simulation again(onCard(dir, s.hub().now() + 1));  // a hard stop now keeps the name
+  CHECK(again.hub().config().device("PHEC-3F2A91")->name == "Tank probe renamed");
+}
+
+TEST_CASE("Storage: a journal append that fails is repaired by a snapshot, nothing after it is lost (#68)") {
+  TempDir dir;
+  const gc::Epoch start = 1790000000;
+  sim::Simulation s(onCard(dir, start));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // The history journal cannot be appended to for a while (a link to a folder stands in for a full card)
+  fs::remove(dir.path / "history.log");
+  fs::create_directories(dir.path / "blocked");
+  fs::create_directory_symlink(dir.path / "blocked", dir.path / "history.log");
+  for (int i = 0; i < 120; ++i) s.step(1000);
+  CHECK_FALSE(fs::is_symlink(dir.path / "history.log"));  // replaced by the snapshot the hub retried
+  for (int i = 0; i < 600; ++i) s.step(1000);
+  const gc::Epoch end = s.hub().now();
+  const std::string range = "&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30);
+  const json before = c.ok("GET", "/api/v1/history?series=tank.ph" + range);
+  sim::Simulation again(onCard(dir, end + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  CHECK(before["series"][0]["t"].size() > 60);
+  CHECK(c2.ok("GET", "/api/v1/history?series=tank.ph" + range)["series"] == before["series"]);
+}
+
+TEST_CASE("Storage: a password change that cannot be saved keeps the old password and the session (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  fs::create_directories(dir.path / "auth.json.tmp");
+  auto [st, body] = c.call("PUT", "/api/v1/auth/password", {{"old", "demo-passwort"}, {"new", "ein-neues-passwort"}});
+  CHECK(st == 500);
+  CHECK(body["error"]["key"] == "store.failed");
+  CHECK(c.ok("GET", "/api/v1/auth/session")["authenticated"] == true);  // still signed in
+  test::Client other{s};
+  CHECK(other.call("POST", "/api/v1/auth/login", {{"password", "ein-neues-passwort"}}).first == 401);
+  CHECK(other.call("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}}).first == 200);
+}
+
+TEST_CASE("Storage: in the simulator a snapshot that fails at the end of a step keeps its journal (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("POST", "/api/v1/stop");
+  fs::create_directories(dir.path / "events.json.tmp");  // the daily snapshot of the events cannot be written
+  s.fastForward(25);
+  CHECK(onDisk(dir.path / "events.log").find("\"ev.stop\"") != std::string::npos);  // still in the journal
 }

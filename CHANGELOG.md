@@ -376,7 +376,9 @@ listed in every release under "Security".
   history and events come back from the snapshot plus the journal; a
   record torn by a power loss is never read as a value. When the data
   folder takes nothing, the hub logs one alarm instead of going on
-  silently in memory.
+  silently in memory, and writes the files again every 10 s until they
+  are on disk; the Home Assistant server does not start with a data
+  folder it cannot write.
 - **Escape closes a window right after it opens:** windows listened for
   the key only after the next frame, so an Escape pressed at once was lost.
 - **Recipes from a template keep the language of the page** (#32): a

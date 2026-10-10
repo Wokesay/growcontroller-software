@@ -253,7 +253,9 @@ time is no value.
   (`docs/HISTORY.md`). An idle server hands about 90 KB of data an hour to
   the disk, about 2 MB an hour at the file system, so an SD card is fine.
   A hard power cut loses up to about 30 s of history and events (appended
-  without `fsync`), never a STOP or a password.
+  without `fsync`), never a STOP or a password. The server does not start
+  with a data folder it cannot write; a full card is said as an alarm in
+  the event log, and the files are written again once there is space.
 - No switching yet. Dosing through Home Assistant needs pumps that stop on
   their own (a run time on the device, for example ESPHome `ezo_pmp` or a
   script with a maximum on-time), because a lost "off" over Wi-Fi must

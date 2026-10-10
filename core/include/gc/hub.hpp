@@ -138,10 +138,12 @@ class Hub {
   void saveSnapshot();  // history and events whole; empties their journals
   void saveEventsSnapshot();
   void saveHistorySnapshot();
-  // Writes through the storage; a failed write is said once as an alarm (#68).
-  bool put(const std::string& name, const std::string& data);
-  bool add(const std::string& name, const std::string& data);
+  // Writes through the storage; a failed write is said once as an alarm and
+  // written again from what the hub holds (#68).
+  bool writeFile(const std::string& name, const std::string& data);
+  bool appendFile(const std::string& name, const std::string& data);
   bool stored(bool ok, const std::string& name);
+  void retryUnsaved();
   void sampleHistory(Epoch epoch);
   void tickImpl();
   void tickJob(Ctx& c);
@@ -199,7 +201,8 @@ class Hub {
   bool stateDirty_ = false;
   std::uint64_t savedEventId_ = 0;
   std::uint64_t journaledEvents_ = 0;  // in the events journal since its snapshot
-  bool storageFailing_ = false;
+  std::set<std::string> unsaved_;      // files whose last write failed
+  Epoch lastRetry_ = 0;
   int idSeq_ = 0;
 };
 

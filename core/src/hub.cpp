@@ -160,7 +160,7 @@ void Hub::boot() {
     if (broken) {
       // Mit der letzten guten Konfiguration ist hier nichts mehr zu retten:
       // Werkseinstellung, alle Aktoren aus, laut melden (Vorschlag architekt).
-      put("config.broken.json", *s);
+      writeFile("config.broken.json", *s);
       cfg_ = Config{};
       log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", *broken}}));
     }
@@ -180,7 +180,7 @@ void Hub::boot() {
     if (broken) {
       // Whether an emergency stop was active is unknown: keep everything
       // stopped until someone resumes (fail-safe, PD-076).
-      put("state.broken.json", *stateRaw);
+      writeFile("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
       rt_.stopped = true;
       log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", *broken}}));
@@ -193,7 +193,8 @@ void Hub::boot() {
   }
   if (credentialsLost())
     log_.add(bootEpoch_, "system", "alarm", say("ev.credentials_lost"), say("ev.credentials_lost.text"));
-  if (auto s = store_.read(kHistoryFile)) history_.load(*s);
+  if (auto s = store_.read(kHistoryFile))
+    if (!history_.load(*s)) writeFile("history.broken.bin", *s);  // kept: the snapshot at the end of boot replaces it
   if (auto s = store_.read(kHistoryLog)) {
     std::set<std::string> ids = {"tank.volume"};  // only series the hub records
     for (const auto& [roleId, role] : cat_.roles)
@@ -228,13 +229,13 @@ void Hub::boot() {
       log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"), say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
       j["state"] = "aborted";
       j["message"] = say("job.reboot");
-      put(kJobFile, j.dump());
+      writeFile(kJobFile, j.dump());
     }
   }
   log_.add(bootEpoch_, "system", "info", say("ev.started"), say("ev.started.text", {{"version", embedded::kVersion}}));
   saveState();  // the boot count and the stop are durable from the start
-  // Snapshots before anything is appended: a journal torn by a power loss
-  // is replaced, so nothing written after it is lost or misread.
+  // Snapshots before the first sample is appended: a journal torn by a
+  // power loss is replaced, so nothing written after it is lost or misread.
   saveSnapshot();
   lastSnapshot_ = clock_.epoch();
 }
@@ -248,29 +249,46 @@ void Hub::flush() {
 
 bool Hub::saveAuth() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  return !auth_.hasPassword() || put(kAuthFile, auth_.toJson().dump());
+  return !auth_.hasPassword() || writeFile(kAuthFile, auth_.toJson().dump());
 }
 
-bool Hub::put(const std::string& name, const std::string& data) { return stored(store_.write(name, data), name); }
-bool Hub::add(const std::string& name, const std::string& data) { return stored(store_.append(name, data), name); }
+bool Hub::writeFile(const std::string& name, const std::string& data) { return stored(store_.write(name, data), name); }
+bool Hub::appendFile(const std::string& name, const std::string& data) { return stored(store_.append(name, data), name); }
 
 bool Hub::stored(bool ok, const std::string& name) {
-  // Said once, not on every write; the hub keeps running in memory and tries again.
-  if (ok && storageFailing_) {
-    storageFailing_ = false;
-    log_.add(clock_.epoch(), "system", "info", say("ev.storage_ok"), say("ev.storage_ok.text"));
-  } else if (!ok && !storageFailing_) {
-    storageFailing_ = true;
-    log_.add(clock_.epoch(), "system", "alarm", say("ev.storage_failed"), say("ev.storage_failed.text", {{"file", name}}));
+  // One alarm while any file is not on disk; "saved again" only once every
+  // one of them has been written. The hub keeps running in memory meanwhile.
+  if (ok) {
+    if (unsaved_.erase(name) && unsaved_.empty())
+      log_.add(clock_.epoch(), "system", "info", say("ev.storage_ok"), say("ev.storage_ok.text"));
+    return true;
   }
-  return ok;
+  if (unsaved_.empty())
+    log_.add(clock_.epoch(), "system", "alarm", say("ev.storage_failed"), say("ev.storage_failed.text", {{"file", name}}));
+  unsaved_.insert(name);
+  return false;
+}
+
+void Hub::retryUnsaved() {
+  // What the hub holds is written again whole, so a change made while the
+  // card was full is not lost, and a journal with a torn append is replaced.
+  const std::set<std::string> names = unsaved_;  // retrying changes the set
+  for (const std::string& name : names) {
+    if (name == kConfigFile) writeFile(kConfigFile, json(cfg_).dump(1));  // the same revision, written again
+    else if (name == kStateFile) saveState();
+    else if (name == kAuthFile) saveAuth();
+    else if (name == kJobFile && job_) saveJob();
+    else if (name == kEventsFile || name == kEventsLog) saveEventsSnapshot();
+    else if (name == kHistoryFile || name == kHistoryLog) saveHistorySnapshot();
+    else stored(true, name);  // a copy of a broken file cannot be made again
+  }
 }
 
 void Hub::saveEvents() {
   const std::uint64_t last = log_.lastId();
-  if (last == savedEventId_) return;
+  if (last == savedEventId_ || unsaved_.count(kEventsLog)) return;  // a failed journal is replaced by a snapshot
   const std::uint64_t count = last - savedEventId_;
-  if (!add(kEventsLog, log_.journalSince(savedEventId_))) return;  // tried again with the next ones
+  if (!appendFile(kEventsLog, log_.journalSince(savedEventId_))) return;  // tried again with the next ones
   savedEventId_ = last;
   journaledEvents_ += count;
   if (journaledEvents_ >= kJournalMaxEvents) saveEventsSnapshot();
@@ -285,21 +303,21 @@ void Hub::saveSnapshot() {
 // is on disk: a journal that outlives its snapshot (power loss in between)
 // is skipped when read, not counted twice.
 void Hub::saveEventsSnapshot() {
-  if (!put(kEventsFile, log_.toJson().dump())) {
+  if (!writeFile(kEventsFile, log_.toJson().dump())) {
     journaledEvents_ = kJournalMaxEvents / 2;  // the journal keeps everything; tried again later, not on every event
     return;
   }
   savedEventId_ = log_.lastId();
-  journaledEvents_ = put(kEventsLog, "") ? 0 : kJournalMaxEvents / 2;
+  journaledEvents_ = writeFile(kEventsLog, "") ? 0 : kJournalMaxEvents / 2;
 }
 
 void Hub::saveHistorySnapshot() {
-  if (put(kHistoryFile, history_.dump())) put(kHistoryLog, "");
+  if (writeFile(kHistoryFile, history_.dump())) writeFile(kHistoryLog, "");
 }
 
 void Hub::saveConfig(const std::optional<Msg>& what) {
   cfg_.revision++;
-  put(kConfigFile, json(cfg_).dump(1));
+  writeFile(kConfigFile, json(cfg_).dump(1));
   if (what)
     log_.add(clock_.epoch(), "config", "info", *what, say("ev.config.text", {{"rev", cfg_.revision}}), {{"revision", cfg_.revision}});
   saveEvents();
@@ -307,12 +325,12 @@ void Hub::saveConfig(const std::optional<Msg>& what) {
 
 void Hub::saveState() {
   rt_.clock = clock_.stamp();
-  put(kStateFile, json(rt_).dump());
+  writeFile(kStateFile, json(rt_).dump());
   stateDirty_ = false;
 }
 
 void Hub::saveJob() {
-  if (job_) put(kJobFile, json(*job_).dump());
+  if (job_) writeFile(kJobFile, json(*job_).dump());
 }
 
 // ------------------------------------------------------------------ Takt
@@ -456,7 +474,7 @@ void Hub::watchClock(Ms now) {
 // The wall clock jumped: deadlines in wall time keep their distance; jump
 // locks and maintenance never last longer than they can (RAT-044).
 void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
-  for (Epoch* t : {&lastSample_, &lastWatch_, &lastStateSave_, &lastSnapshot_, &bootEpoch_}) *t += jump;
+  for (Epoch* t : {&lastSample_, &lastWatch_, &lastStateSave_, &lastSnapshot_, &lastRetry_, &bootEpoch_}) *t += jump;
   if (watch_.evaluatedAt > 0) watch_.evaluatedAt += jump;
   if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
   if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
@@ -579,9 +597,13 @@ void Hub::tickImpl() {
     saveState();
   }
   saveEvents();
-  if (epoch - lastSnapshot_ >= kSnapshotS) {  // also once after the start, which empties the journals
+  if (epoch - lastSnapshot_ >= kSnapshotS) {  // once a day; the first one comes from boot
     lastSnapshot_ = epoch;
     saveSnapshot();
+  }
+  if (!unsaved_.empty() && epoch - lastRetry_ >= 10) {
+    lastRetry_ = epoch;
+    retryUnsaved();
   }
 }
 
@@ -599,7 +621,8 @@ void Hub::sampleHistory(Epoch epoch) {
   if (isNum(v)) samples.emplace_back("tank.volume", v);
   if (samples.empty()) return;
   for (const auto& [id, value] : samples) history_.add(id, epoch, value);
-  add(kHistoryLog, History::record(epoch, samples));
+  // Not behind a failed append: the snapshot that replaces the journal holds these samples
+  if (!unsaved_.count(kHistoryLog)) appendFile(kHistoryLog, History::record(epoch, samples));
 }
 
 // ------------------------------------------------------------------ Lesen

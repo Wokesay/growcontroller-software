@@ -189,7 +189,7 @@ export const msgDe: Record<string, string> = {
   "ev.storage_failed.text": "Der Hub kann {file} nicht in seinen Datenordner schreiben (voll oder schreibgeschützt). Er läuft weiter, aber Änderungen gehen bei einem Neustart verloren. Mach Platz frei.",
   "ev.storage_ok": "Daten werden wieder gespeichert",
   "ev.storage_ok.text": "Der Hub kann wieder in seinen Datenordner schreiben.",
-  "store.failed": "Nicht gespeichert: Der Hub kann nicht in seinen Datenordner schreiben. Prüf den freien Platz.",
+  "store.failed": "Nicht gespeichert: Der Hub kann nicht in seinen Datenordner schreiben (voll oder schreibgeschützt).",
   "ev.tick_fault": "Interner Fehler – alles aus außer den Lüftern",
   "ev.tick_fault.text": "Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet; die Lüfter laufen weiter: {reason}",
   "ev.clock.lost": "Uhrzeit nicht mehr gesichert",

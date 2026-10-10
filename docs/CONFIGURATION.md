@@ -94,7 +94,8 @@ Stored separately:
   manual measurements. It changes all the time; that needs no new
   configuration revision.
 - `auth.json`: hash and salt only.
-- `events.json` and `history.bin` (snapshots, once a day) with the journals
+- `events.json` and `history.bin` (snapshots: at every start, once a day,
+  and early when the event journal reaches 5000 events) with the journals
   `events.log` and `history.log` (appended as events and samples come;
   `docs/HISTORY.md`).
 
@@ -106,8 +107,12 @@ best effort) and survive a power cut right after it. Other changes to the
 run-time state (stock, a latch acknowledged, a manual measurement) follow
 with the next tick, within a second. Files are created for the owner only.
 If the data folder takes nothing (full, not writable), the hub keeps
-running, logs one alarm "Data is not being saved", tries again with every
-write, and refuses a new password with "Not saved" instead of pretending.
+running and logs one alarm "Data is not being saved". Every 10 s it writes
+the files that failed again from what it holds (a configuration changed
+meanwhile included; a journal through a new snapshot) and logs "Data is
+being saved again" once all of them are on disk. A new password is
+refused with "Not saved" instead of pretending. The Home Assistant server
+does not start with a data folder it cannot write.
 
 **Versioning:**
 

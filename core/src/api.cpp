@@ -132,12 +132,13 @@ ApiResponse Api::route(const ApiRequest& req) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     if (hub_.credentialsLost())
       return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
+    const Auth before = hub_.auth();
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
     if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
     // auth.json first, on disk; only then the lock against a second setup (#68).
     // Not saved: nothing is set, so setup stays possible once the card takes it.
     if (!hub_.saveAuth()) {
-      hub_.auth().load(json::object());
+      hub_.auth() = before;
       return fromResult(Result::fail(500, say("store.failed")));
     }
     hub_.markPasswordSet();
@@ -174,11 +175,11 @@ ApiResponse Api::route(const ApiRequest& req) {
 
   if (is("PUT", {"auth", "password"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
-    const json before = hub_.auth().toJson();
+    const Auth before = hub_.auth();
     Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"));
     if (!e.key.empty()) return fail(422, e.key, e.text);
-    if (!hub_.saveAuth()) {  // the old password stays, in memory as on disk
-      hub_.auth().load(before);
+    if (!hub_.saveAuth()) {  // the old password and the sessions stay, in memory as on disk
+      hub_.auth() = before;
       return fromResult(Result::fail(500, say("store.failed")));
     }
     hub_.logEvent("auth", "notice", say("ev.auth.password_changed"), say("ev.auth.password_changed.text"));

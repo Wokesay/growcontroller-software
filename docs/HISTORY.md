@@ -44,6 +44,9 @@ a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
   history (about 4.6 MB) every 10 minutes.
 - A version from before the journals ignores them: going back loses up
   to a day of history and events.
+- The simulator holds its writes only while fast-forwarding (the 48 h
+  prefill, "advance"): each file goes to disk once at the end, and a
+  journal is never emptied behind its failed snapshot.
 
 Not for the device yet: its 2 MB storage partition cannot hold the
 snapshot of several series; there the ring buffer below is the plan.

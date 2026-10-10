@@ -23,24 +23,29 @@ namespace sim {
 //             then the folder (Linux; best effort on macOS and Windows).
 //   append(): added to the end at once, without fsync (journals: a torn end
 //             is skipped when read).
-//   hold():   while held (inside one simulator step), writes stay in memory
-//             and go to disk once each on release, in the order first written.
-// A failed write returns false and is tried again with the next one; files
-// are created for the owner only (0600, folder 0700).
+//   hold():   while held (the simulator fast-forwarding), writes stay in memory
+//             and go to disk once each on release, in the order first written;
+//             a file is not written behind a failed one of the same stem (no
+//             journal emptied behind its failed snapshot). Returns false then.
+// A failed write returns false (the hub writes it again); files are for the
+// owner only (0600, a new folder 0700). A folder that cannot be created
+// means memory only, said once.
 class FileStorage : public gc::IStorage {
  public:
   explicit FileStorage(std::string dir) : dir_(std::move(dir)) {}
   ~FileStorage() override;
+  // The folder exists and takes a file; the hub's own files are made the owner's only.
+  bool ready();
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
   bool append(const std::string& name, const std::string& data) override;
-  void hold(bool on);
+  bool hold(bool on);  // on release: false if something could not be written
   std::uint64_t bytesWritten() const;  // bytes handed to the disk
 
  private:
   std::optional<std::string> readLocked(const std::string& name);
   bool toDisk(const std::string& name, const std::string& data, bool atEnd);
-  void release();
+  bool release();
   std::string dir_;
   bool noFolder_ = false;  // the folder cannot be created: memory only, said once
   bool failing_ = false;   // the last write failed: said once, said again when it works

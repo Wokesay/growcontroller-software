@@ -160,6 +160,10 @@ int main(int argc, char** argv) {
   const gc::Catalog cat = ha::catalog();
   HostClock clock;
   sim::FileStorage store(data);
+  if (!store.ready()) {  // a password set here must survive a restart (#68)
+    std::cerr << "The data folder " << data << " cannot be written. Choose a writable one with --data.\n";
+    return 2;
+  }
   ha::HaBus bus(mapping.entities);
   gc::Hub hub(cat, bus, store, clock, randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
