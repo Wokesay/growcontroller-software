@@ -13,7 +13,7 @@ tools/arch_check.sh
 end
 
 group "CI and release scripts, workflow pins"
-node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs
 end
 
 group "Text keys of the web app"
@@ -30,6 +30,7 @@ group "Core, simulator and tests (Debug, AddressSanitizer, UBSan)"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGC_SANITIZE=ON
 cmake --build build
 ./build/gc_tests
+node --test tools/ha_server.test.mjs
 end
 
 group "Web app (type check, build, size budget)"

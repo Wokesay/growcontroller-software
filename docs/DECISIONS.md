@@ -507,6 +507,60 @@ records it.
   wait for "mergen" (SD-023).
 
 
+## SD-034: The Home Assistant trial as an app with a ready-made image
+
+Decided by the project owner on 2026-10-10 in the software session
+("GitHub baut vorab"). The trial stays read-only and a trial (PD-038: a
+Raspberry Pi never runs the control); whether the product goes the Home
+Assistant way is still a product question.
+
+- The read-only Home Assistant trial installs as a Home Assistant app
+  (formerly add-on) from this repository: `repository.yaml` at the root,
+  the app in `ha/app/`.
+- GitHub builds the image ahead of time; Home Assistant downloads it
+  instead of building it on the Raspberry Pi. The image is
+  `ghcr.io/wokesay/growcontroller-ha` with the version as its tag, for
+  `amd64` and `aarch64` under one name. It holds only the static
+  `gc_ha_server`, the web app and the license texts (`FROM scratch`).
+- Only GitHub's own actions (SD-027): the image is built with the plain
+  `docker` command, on a runner of each architecture, not with Home
+  Assistant's builder actions. `app.yml` builds and starts it without
+  write access, on every code change and for a release; only
+  `release.yml`'s `publish` pushes it to ghcr.io, for a tag `vX.Y.Z`,
+  after checking it against the checksum the build gave, and attests it.
+- `gc_ha_server --app` takes Home Assistant's address and token from the
+  Supervisor (`http://supervisor/core`, `SUPERVISOR_TOKEN`); nothing is
+  configured and no token is made by hand. The app asks only for
+  `homeassistant_api` and one port; any further right in `config.yaml`
+  needs a review (`tools/app.test.mjs`).
+- The web app is served on port 8099 of the Home Assistant host, plain
+  HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
+  a follow-up.
+- The project owner makes the package public once, after the first
+  release with the app; releases still wait for the owner's "mergen" and
+  tag (SD-023, SD-027).
+- Accepted by the project owner on 2026-10-10 for the experimental phase:
+  any workflow of the repository can be given `packages: write` and could
+  overwrite the published image, outside the tag-gated release job, so
+  everyone with write access to the repository could. No separate release
+  credential for now; this is looked at again before the app leaves
+  `stage: experimental` (`docs/SECURITY_MODEL.md`).
+
+Notes from the implementation (Claude, after the reviews of PR #77; they
+apply the rules above and add no new ones):
+
+- `ha/app/config.yaml` on `main` is the app's distribution manifest:
+  every installed app compares itself with its version. A version change
+  there is therefore part of a release and, like the release, waits for
+  "mergen" (SD-023). This is a process rule; no GitHub rule enforces it.
+- The release workflow's `check` job rehearses the push in every dry run
+  against a throwaway `registry:2` service on the runner. That image is
+  third-party code, not an action, so SD-027 does not cover it: it is
+  pinned by digest, gets no token, runs only in the read-only job and is
+  updated by hand. The smoke test's stand-in for the Supervisor is the
+  build's own pinned Alpine base image.
+
+
 ---
 
 ## Drafts (waiting for "entschieden")

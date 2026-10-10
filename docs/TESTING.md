@@ -1,6 +1,6 @@
 # Test strategy
 
-As of 2026-10-07. Goal: every domain rule (see `docs/RATIONALE.md`) has a
+As of 2026-10-10. Goal: every domain rule (see `docs/RATIONALE.md`) has a
 test. Every visible function runs end to end in the browser at least once.
 
 ## Levels
@@ -11,7 +11,9 @@ test. Every visible function runs end to end in the browser at least once.
 | Unit | doctest (C++) | `tests/core/test_*.cpp` | 194 cases | catalog, configuration and migration, fixed limits (R7), phase parameters, sensor truth, curve, history, events, their journals (snapshot plus journal, torn end, a torn record followed by a whole one, only known series and plausible times, never counted twice), mix planning, resolver, watchdog, SHA-256/PBKDF2, login, sockets and gateway (`test_net`), room climate and VPD (`test_climate`), hub messages with keys and arguments (`test_messages`), Home Assistant spike: states, units, timestamps, read-only, finding and picking sensors in one step, poller against a stand-in Home Assistant, also below a path as in an add-on, the address checked as a whole (host, port, path) (`test_ha`), storage on an SD card: password, configuration and STOP on disk when the call returns, bytes written while idle, history and events after a hard stop and after a day in one go, failed logins cannot grow the event journal, setup when the password file cannot be written, a failed snapshot keeps its journal (also at the end of a fast-forward), one alarm while a file fails and the change written once there is space, a failed journal append repaired by a snapshot, a failed password change keeps the session, a snapshot that does not fit leaves no temporary file and a STOP still reaches the disk, a simulator in memory only keeps everything through a fast-forward and a power cut, a clean shutdown right after a full card keeps the history, a new scenario without the old journals (`test_storage`) |
 | API contract | doctest against the core | `tests/core/test_api.cpp` | 21 cases | access, error shapes, fields the web app reads, no secrets, origin check, import validation, lost password |
 | Scenario | doctest + twin | `tests/core/test_scenarios.cpp` | 20 cases | stage 0 set up by hand, calibration, amounts and A:B ±3 %, pair fault with catch-up, power cut, mis-plug, control to target, EC gate, jump lock, dry run, inlet emergency cut-off, emergency stop, abort books consumption, cap pulled off, silent block, job IDs after a restart, calibration result and emergency stop as messages |
-| CI and release scripts | Node | `tools/ci_changes.test.mjs`, `tools/workflows.test.mjs`, `tools/sbom_cpp.test.mjs` | 14 tests | docs-only changes skip the heavy CI jobs, everything else runs them; `ci-ok` waits for every job (SD-030); actions are GitHub's own and pinned by commit SHA; the C++ SBOM matches `cmake/deps.cmake` (#29) |
+| CI and release scripts | Node | `tools/ci_changes.test.mjs`, `tools/workflows.test.mjs`, `tools/sbom_cpp.test.mjs`, `tools/app.test.mjs` | 23 tests | docs-only changes skip the heavy CI jobs, everything else runs them; `ci-ok` waits for every job (SD-030); actions are GitHub's own and pinned by commit SHA; the C++ SBOM matches `cmake/deps.cmake` (#29); the Home Assistant app installs the image of this release, asks for nothing but Home Assistant's API and one port, is the only app config in the repository, matches `--app` and the staged Dockerfile; its image is pushed only by the publishing job, with the same steps the dry run rehearses; steps fail on a failing command in a pipe (SD-034) |
+| Home Assistant server options | Node against the built server | `tools/ha_server.test.mjs` | 4 tests | `--app` refuses a mapping and a token file, takes the token only from `SUPERVISOR_TOKEN` and writes nothing without it, is not switched on by an option's value, honours `--data`, `--host`, `--web` and `--port`, stops cleanly, private files |
+| Home Assistant app image | Docker | `.github/workflows/app.yml` | 2 architectures | built on `amd64` and `aarch64` runners; labels and size; refused without a token or with `--config`; started like the Supervisor starts it next to a stand-in for the Supervisor reached by name: it answers, serves the web app, refuses a foreign host name, survives long paths, asks only `GET /core/api/states` with the token; stops cleanly on SIGTERM; private data folder; license texts and source code link in the image |
 | Text keys | Node | `tools/i18n_keys.test.mjs` | 7 tests | no key in two language files, every area file has the same keys and placeholders in German and English, the hub's messages have a German text with the same placeholders and every `say()` names a key of the table (SD-032), keys the reader cannot parse fail instead of being skipped (#18) |
 | Licenses | reuse, Node | `tools/ci.sh` | REUSE 3.3, npm, 3 parser tests | SPDX information for every file, allowed licenses of all npm packages, runtime packages listed in `THIRD_PARTY_NOTICES.md` (`tools/check_licenses.test.mjs`) |
 | Memory errors | AddressSanitizer + UBSan | `GC_SANITIZE=ON` | all C++ tests | overflows, use-after-free, undefined behaviour |
@@ -32,7 +34,8 @@ E2E=1 tools/ci.sh    # plus Playwright (browser: npx playwright install chromium
 
 The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
 `main`. For a change to code it runs exactly these steps plus E2E, the
-firmware build and the simulator packages for Windows, macOS and Linux.
+firmware build, the simulator packages for Windows, macOS and Linux and
+the Home Assistant app image.
 For a docs-only change its first job `changes` (`tools/ci_changes.mjs`)
 skips these heavy jobs, and only the quick checks run
 (`.github/workflows/checks.yml`: architecture rules, the CI and release

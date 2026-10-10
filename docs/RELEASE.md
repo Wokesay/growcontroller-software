@@ -10,7 +10,8 @@ As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
   proposal: SemVer with the channel in the name and a title that names the
   content.
 - **SemVer** `MAJOR.MINOR.PATCH[-beta.N]` (draft E12). The version is in
-  `VERSION`, `web/package.json` and in the tag `vX.Y.Z`.
+  `VERSION`, `web/package.json`, `ha/app/config.yaml` and in the tag
+  `vX.Y.Z`.
 - **MAJOR:** a break in configuration, API or bus protocol. Integrators and
   bus devices need this signal.
 - **PATCH:** only bug and security fixes. This way security updates come
@@ -45,22 +46,37 @@ entry under `[Unreleased]`.
 
 ## Release process
 
-1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION` and
-   `web/package.json`, PR, review (`reviewer`, `release`, and `security`
-   for security topics), CI green.
+1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION`,
+   `web/package.json` and `ha/app/config.yaml`, PR, review (`reviewer`,
+   `release`, and `security` for security topics), CI green. Tag right
+   after the merge: Home Assistant's app store reads `config.yaml` from
+   `main` and offers the new version before its image exists.
 2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
    repository admin can set `v*` tags, SD-027). The workflow
    `release.yml` (#29):
-   - `verify`: the tag matches `VERSION` and points at a commit on
-     `main`.
+   - `verify`: the tag matches `VERSION` (and `web/package.json` and
+     `ha/app/config.yaml` match it) and points at a commit on `main`.
    - `packages` and `build`, without write access and without a cache:
      the simulator for three platforms, the web app, the license notices,
      two SBOMs (CycloneDX: web app from npm, C++ libraries from
      `cmake/deps.cmake`), `SHA256SUMS` and the release notes from the
      changelog section.
+   - `app-amd64` and `app-aarch64` (`app.yml`, SD-034), without write
+     access and without a cache: the Home Assistant app image, each on a
+     runner of its architecture, started and checked next to a stand-in
+     for the Supervisor, saved with its checksum.
+   - `check`, read-only and in every dry run too: the files and app
+     images match their checksums, and the app image goes through
+     `publish`'s own push steps into a registry on the runner, so the
+     first tag is not their first run.
    - `publish`, the only job that can write: checks the files against
-     `SHA256SUMS`, attests their build provenance and creates the GitHub
-     release. It runs no npm and builds nothing.
+     `SHA256SUMS` and the app images against their checksums and labels,
+     checks that the tag still points at the built commit, attests the
+     files' build provenance, pushes the app image
+     (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`, one name made from the
+     two pushed images by digest, plus `X.Y.Z-amd64` and
+     `X.Y.Z-aarch64`), attests it, checks the tag once more and creates
+     the GitHub release. It runs no npm and builds nothing.
    - Pre-releases (`-beta`, `-proto`) are marked as pre-release.
    - A pull request that changes the release machinery runs everything
      except `publish` as a dry run.
@@ -77,13 +93,48 @@ entry under `[Unreleased]`.
        --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
      ```
 
+   - The app image is checked the same way:
+
+     ```bash
+     gh attestation verify oci://ghcr.io/wokesay/growcontroller-ha:X.Y.Z \
+       --repo Wokesay/growcontroller-software \
+       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+       --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
+     ```
+
+   - **Once, after the first release with the app:** the project owner
+     makes the package public (GitHub profile → Packages →
+     `growcontroller-ha` → Package settings → Change visibility →
+     Public). Home Assistant downloads it without a login. A public
+     package cannot be made private again. Under Package settings →
+     Manage Actions access, only this repository should be listed.
+   - **Accepting a release with the app:** `docker buildx imagetools
+     inspect ghcr.io/wokesay/growcontroller-ha:X.Y.Z` lists linux/amd64
+     and linux/arm64; on a real Home Assistant (a Raspberry Pi and, where
+     possible, a PC) the app shows in the store, installs, opens its web
+     UI, sets a password, reads sensors, keeps its data through a restart
+     and an update from the previous version, and is in a backup.
+   - Merge a version change to `ha/app/config.yaml` only together with
+     the release: `config.yaml` on `main` is what every installed app
+     compares itself with (SD-034).
    - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
      the statically linked compiler runtimes; the web app embedded in the
-     simulator is in the web SBOM. Dependabot does not cover
-     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
-     are updated by hand.
+     simulator is in the web SBOM. The app image has no SBOM of its own
+     yet (#81): it holds the same server code, the web app, and musl and the
+     GCC runtime from Alpine 3.22, whose exact package versions the image
+     names in `/licenses/BUILD_PACKAGES.txt`; image scanners see none of
+     them in a static binary. The Alpine packages of the build are not
+     pinned: each build takes the current ones of Alpine 3.22 (supported
+     until 2027-05). Security fixes for musl, the GCC runtime,
+     cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
+     the app's base image (pinned by digest; `tools/app.test.mjs` keeps
+     the smoke test's stand-in on the same digest, so such an update
+     fails until both match); it does not cover `cmake/deps.cmake`, the
+     `espressif/idf` container, the `registry:2` service of the `check`
+     job and `reuse`; they are updated by hand.
    - If `publish` fails after the release was created, delete the
-     unfinished release (not the tag) and run the job again.
+     unfinished release (not the tag) and run the job again. A second run
+     pushes the same app image again.
    - Simulator downloads belong only to Beta releases, not to Stable
      (PD-036); `release.yml` does not yet tell the channels apart (#19).
 3. **Firmware** (once `firmware/` builds):

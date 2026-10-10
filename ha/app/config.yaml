@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# growcontroller as a Home Assistant app, formerly add-on (SD-034,
+# docs/HOME_ASSISTANT.md). version is the release in VERSION: Home
+# Assistant pulls the image with that tag, which release.yml publishes for
+# the tag vVERSION. The app asks for no more than it needs: Home
+# Assistant's API through the Supervisor and one port, nothing of the host.
+# tools/app.test.mjs refuses any other key.
+name: growcontroller
+version: "0.1.0-proto.1"
+slug: growcontroller
+description: growcontroller's web app for your grow, with the sensors from Home Assistant (read-only, switches nothing)
+url: https://github.com/Wokesay/growcontroller-software/blob/main/docs/HOME_ASSISTANT.md
+stage: experimental
+arch:
+  - aarch64
+  - amd64
+image: ghcr.io/wokesay/growcontroller-ha
+startup: application
+boot: auto
+homeassistant_api: true
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: growcontroller web app (plain HTTP, for your own network)
+webui: http://[HOST]:[PORT:8099]/
+watchdog: http://[HOST]:[PORT:8099]/api/v1/info

@@ -30,7 +30,41 @@ missing value is never 0). Nobody has to write a list of entity IDs.
   fault (RAT-059); a sensor that falls silent goes stale. Temperature,
   humidity and CO2 need no calibration and are valid readings.
 
-## Run it
+## As a Home Assistant app
+
+On Home Assistant OS or Supervised (a Raspberry Pi 4 or 5 with a 64-bit
+system, or a PC) it installs from Home Assistant's app store, formerly
+the add-on store (SD-034):
+
+1. Switch on **Advanced mode** in your Home Assistant profile: the app is
+   marked experimental (`stage` in `ha/app/config.yaml`), and the store
+   lists such apps only in advanced mode.
+2. **Settings → Apps → store → ⋮ → Repositories**, add
+   `https://github.com/Wokesay/growcontroller-software`.
+3. Install **growcontroller**, start it, **Open web UI** (port 8099). Open
+   it by Home Assistant's IP address or `homeassistant.local`: any other
+   name (a bare `homeassistant`, an own domain, the Home Assistant Cloud
+   address) is refused, the protection against DNS rebinding below.
+4. **Set the password right away:** until then anyone in the network who
+   opens the page first can set it. Then choose the sensors in Devices ›
+   Assignment (step 6 below).
+
+Nothing is configured and no token is made: `gc_ha_server --app` reaches
+Home Assistant at `http://supervisor/core` with the Supervisor's token
+(`SUPERVISOR_TOKEN`, granted by `homeassistant_api` in
+`ha/app/config.yaml`), keeps its data in the app's folder (`/data/hub`,
+part of Home Assistant's backups) and serves the web app on port 8099 of
+the Home Assistant host. Home Assistant downloads a ready-made image of a
+few MB (`ghcr.io/wokesay/growcontroller-ha`, built and published by the
+release workflow for the version in `ha/app/config.yaml`,
+`docs/RELEASE.md`). The image is `FROM scratch`: the static server, the
+web app and the license texts, no shell. The app's own documentation in
+the store is `ha/app/DOCS.md`. The keys of `config.yaml` and the image
+labels follow Home Assistant's developer documentation for apps
+(<https://developers.home-assistant.io/docs/apps/configuration>, retrieved
+2026-10-10).
+
+## Run it on a computer of your own
 
 1. Build the software (`README.md`, "Build it yourself") and the web app.
 2. In Home Assistant create a user for this trial **without admin rights**,
@@ -50,10 +84,10 @@ missing value is never 0). Nobody has to write a list of entity IDs.
    token goes to whatever answers for that name, and `.local` names can be
    answered by any device in the network. The address may carry a plain
    path in front of Home Assistant's API (letters, digits, `-`, `_`), as an
-   add-on reaches it: `{"url": "http://supervisor/core"}` reads
-   `http://supervisor/core/api/states`. The name `supervisor` is meant only
-   inside an add-on, where the Supervisor's own network answers it and its
-   token is used; elsewhere use the IP. Leave out `/api` (the hub adds
+   app reaches it: `{"url": "http://supervisor/core"}` reads
+   `http://supervisor/core/api/states`. The name `supervisor` answers only
+   inside a Home Assistant app, which uses `--app` instead (above);
+   elsewhere use the IP. Leave out `/api` (the hub adds
    `/api/states`). The host must be a plain name, an IPv4 address or an
    IPv6 address in `[ ]`: no `user@`, `?` or `#`, so the token goes only to
    the host you read in the address. If you prefer, the file can also
@@ -244,6 +278,28 @@ time is no value.
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.
 - `ha/main.cpp`: the server (`gc_ha_server`), following the simulator's.
+  `--app` sets what the app needs (above) and refuses `--config` and
+  `--token-file`; the Supervisor's token is read from the environment and
+  removed from it (also under its old name `HASSIO_TOKEN`), like
+  `GC_HA_TOKEN`, so nothing the server starts would inherit it. The
+  process's own start environment (`/proc/<pid>/environ`) and the
+  container's settings still hold it. `tools/ha_server.test.mjs` runs
+  these options.
+- `ha/app/`: the app (`config.yaml`, `Dockerfile`, store texts);
+  `repository.yaml` at the root makes the repository an app repository.
+  The image is built in stages: the web app with its npm packages, the
+  server without node (static-pie against musl, 1 MiB thread stacks), the
+  license texts, and the final image with nothing but their results.
+  `.github/workflows/app.yml` builds it for `amd64` and `aarch64`, each on
+  its own architecture, and starts it like the Supervisor (a token in the
+  environment, no arguments) next to a stand-in for the Supervisor reached
+  by name: labels and size, refused without a token or with `--config`, it
+  answers, serves the web app, refuses a foreign host name, survives long
+  paths, asks the stand-in only `GET /core/api/states` with the token,
+  stops cleanly on SIGTERM, keeps a private data folder, and carries the
+  license texts and the source code link. This runs on every code change
+  and for a release; `tools/app.test.mjs` keeps `config.yaml`, the server,
+  the Dockerfile and the release workflow in step.
 - `web/src/ha.tsx`: the picker in Devices › Assignment and the overview's
   notice on a Home Assistant hub.
 
@@ -272,5 +328,31 @@ time is no value.
   them. That is the next design step, after a product decision.
 - The HTTP code of `ha/main.cpp` follows `sim/main.cpp`; a shared module
   is a follow-up.
-- Packaging as a Home Assistant add-on comes later, if the product goes
-  this way.
+- **The app's web app is plain HTTP on port 8099 of the Home Assistant
+  host,** reachable by every device in your network (and, with a router
+  that opens the host over IPv6, from outside); the growcontroller
+  password travels in the clear there. Until the password is set, whoever
+  in the network comes first sets it; the app's documentation says to set
+  it right away. Clearing the port hides the web app from the network,
+  not from Home Assistant's internal network. Home Assistant's ingress
+  (its own login and HTTPS) would need the web app to work below a path;
+  that is a follow-up, like a one-time setup code in the app's log (#79).
+- **The Supervisor's token is not read-only:** Home Assistant has no
+  read-only access for apps; the Supervisor passes every call except its
+  own API on to Home Assistant as its administrator. growcontroller sends
+  only `GET /api/states` (tested), but a flaw in its web server could give
+  an attacker in the network control of Home Assistant. The image has no
+  shell and the app no other rights (`tools/app.test.mjs` refuses any
+  other key in `config.yaml`). The server runs as root in the container
+  with Docker's default capabilities; dropping them and an AppArmor
+  profile are follow-ups (#80).
+- The session cookie is not tied to the port: the browser also sends it
+  to Home Assistant and other apps under the same host name. It is
+  HttpOnly and only valid for growcontroller.
+- If the Supervisor ever refuses the token, reading stops until the app
+  is restarted, while the app keeps answering (so its watchdog sees no
+  fault), and the web app's hint speaks of a token file. A follow-up
+  (#78).
+- The app store reads `ha/app/config.yaml` from `main`: between merging a
+  new version and the release workflow's end, Home Assistant offers a
+  version whose image is not there yet, and an install fails until it is.

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The Home Assistant app image is built from the repository root
+# (ha/app/Dockerfile). Only the sources it needs go into the build, never
+# local data folders, tokens or build output, so they are listed one by one.
+*
+!CMakeLists.txt
+!VERSION
+!CHANGELOG.md
+!LICENSE
+!cmake
+!catalog
+!core
+!sim
+!ha
+!tools/third_party.mjs
+!tools/licenses
+!web
+web/node_modules
+web/dist
+web/.env*
+web/test-results
+web/playwright-report

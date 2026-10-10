@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Dependency updates (#29). Actions stay pinned by commit SHA; Dependabot
-# updates the SHA and the version comment (tools/workflows.test.mjs).
+# Dependency updates (#29). Actions stay pinned by commit SHA, the Home
+# Assistant app's base image by digest; Dependabot updates the SHA and the
+# version comment (tools/workflows.test.mjs) and the digest.
 # cooldown: a new release waits a week before it is proposed, so a hijacked
 # release is more likely noticed first.
 version: 2
@@ -23,3 +24,10 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+  # Base image of the Home Assistant app (SD-034), pinned by digest
+  - package-ecosystem: docker
+    directory: /ha/app
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
