@@ -336,7 +336,7 @@ time is no value.
   it right away. Clearing the port hides the web app from the network,
   not from Home Assistant's internal network. Home Assistant's ingress
   (its own login and HTTPS) would need the web app to work below a path;
-  that is a follow-up, like a one-time setup code in the app's log.
+  that is a follow-up, like a one-time setup code in the app's log (#79).
 - **The Supervisor's token is not read-only:** Home Assistant has no
   read-only access for apps; the Supervisor passes every call except its
   own API on to Home Assistant as its administrator. growcontroller sends
@@ -345,13 +345,14 @@ time is no value.
   shell and the app no other rights (`tools/app.test.mjs` refuses any
   other key in `config.yaml`). The server runs as root in the container
   with Docker's default capabilities; dropping them and an AppArmor
-  profile are follow-ups.
+  profile are follow-ups (#80).
 - The session cookie is not tied to the port: the browser also sends it
   to Home Assistant and other apps under the same host name. It is
   HttpOnly and only valid for growcontroller.
 - If the Supervisor ever refuses the token, reading stops until the app
   is restarted, while the app keeps answering (so its watchdog sees no
-  fault), and the web app's hint speaks of a token file. A follow-up.
+  fault), and the web app's hint speaks of a token file. A follow-up
+  (#78).
 - The app store reads `ha/app/config.yaml` from `main`: between merging a
   new version and the release workflow's end, Home Assistant offers a
   version whose image is not there yet, and an install fails until it is.

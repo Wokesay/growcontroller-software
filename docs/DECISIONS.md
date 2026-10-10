@@ -539,6 +539,12 @@ Assistant way is still a product question.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
   tag (SD-023, SD-027).
+- Accepted by the project owner on 2026-10-10 for the experimental phase:
+  any workflow of the repository can be given `packages: write` and could
+  overwrite the published image, outside the tag-gated release job, so
+  everyone with write access to the repository could. No separate release
+  credential for now; this is looked at again before the app leaves
+  `stage: experimental` (`docs/SECURITY_MODEL.md`).
 
 Notes from the implementation (Claude, after the reviews of PR #77; they
 apply the rules above and add no new ones):

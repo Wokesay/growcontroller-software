@@ -120,7 +120,7 @@ entry under `[Unreleased]`.
    - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
      the statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
-     yet: it holds the same server code, the web app, and musl and the
+     yet (#81): it holds the same server code, the web app, and musl and the
      GCC runtime from Alpine 3.22, whose exact package versions the image
      names in `/licenses/BUILD_PACKAGES.txt`; image scanners see none of
      them in a static binary. The Alpine packages of the build are not
