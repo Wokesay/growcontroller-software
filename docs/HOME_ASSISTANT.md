@@ -18,7 +18,8 @@ missing value is never 0). Nobody has to write a list of entity IDs.
 
 - It switches nothing. Every run of a pump and every switch command is
   refused, so dosing, refill, circulation and the climate outputs stay off.
-  It sends Home Assistant nothing but `GET /api/states` (tested).
+  It sends Home Assistant nothing but `GET /api/states` (below the path in
+  the address, if it has one; tested).
 - pH, EC and level are shown but are **no values for control**: they were
   calibrated outside the hub, and the hub has not checked that calibration
   (RAT-025). Their tiles say "nur Anzeige" (display only) and "Außerhalb
@@ -47,7 +48,15 @@ missing value is never 0). Nobody has to write a list of entity IDs.
 
    Use the IP address of Home Assistant, not `homeassistant.local`: the
    token goes to whatever answers for that name, and `.local` names can be
-   answered by any device in the network. If you prefer, the file can also
+   answered by any device in the network. The address may carry a plain
+   path in front of Home Assistant's API (letters, digits, `-`, `_`), as an
+   add-on reaches it: `{"url": "http://supervisor/core"}` reads
+   `http://supervisor/core/api/states`. The name `supervisor` is meant only
+   inside an add-on, where the Supervisor's own network answers it and its
+   token is used; elsewhere use the IP. Leave out `/api` (the hub adds
+   `/api/states`). The host must be a plain name, an IPv4 address or an
+   IPv6 address in `[ ]`: no `user@`, `?` or `#`, so the token goes only to
+   the host you read in the address. If you prefer, the file can also
    list the entities (`"entities": [{"entity": "sensor.grow_ph",
    "measures": "ph"}]`, `measures` one of `ph`, `ec`, `water_temp`,
    `level`, `air_temp`, `humidity`, `co2`); they are then used from the
@@ -180,7 +189,7 @@ time is no value.
   shows such pH, EC and level values but keeps them unusable for control;
   the resolver says so instead of asking for a calibration, and the hub
   refuses its own calibration for such devices.
-- `ha/ha_client.*`: reads all states in one request (`GET /api/states`)
+- `ha/ha_client.*`: reads all states in one request (`GET <path>/api/states`)
   with the token in its own thread, so the hub's tick never waits for the
   network. An answer is at most 16 MB and 10 s; redirects are not
   followed, so the token never goes to another host. A refused token

@@ -338,6 +338,72 @@ gc::json entitiesJson(const std::vector<Entity>& entities) {
   return out;
 }
 
+namespace {
+bool asciiAlnum(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
+bool asciiHex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+}  // namespace
+
+std::string Address::url() const {
+  const bool v6 = host.find(':') != std::string::npos;
+  const bool usual = port == (tls ? 443 : 80);
+  return std::string(tls ? "https://" : "http://") + (v6 ? "[" + host + "]" : host) + (usual ? "" : ":" + std::to_string(port)) + base;
+}
+
+std::optional<Address> parseAddress(std::string url, std::string& err) {
+  const auto fail = [&](const std::string& why) {
+    err = why.empty() ? "\"url\" must be http://host:port or https://host:port (a name of letters, digits, - _ and ., an IPv4 "
+                        "address or [IPv6]), optionally followed by a path such as /core (letters, digits, - and _)"
+                      : why;
+    return std::optional<Address>();
+  };
+  while (!url.empty() && url.back() == '/') url.pop_back();
+  Address a;
+  size_t at = 0;
+  if (url.rfind("http://", 0) == 0) at = 7;
+  else if (url.rfind("https://", 0) == 0) at = 8, a.tls = true;
+  else return fail("");
+  const size_t slash = url.find('/', at);
+  const std::string authority = url.substr(at, slash == std::string::npos ? std::string::npos : slash - at);
+  a.base = slash == std::string::npos ? "" : url.substr(slash);
+  std::string rest;
+  if (!authority.empty() && authority[0] == '[') {  // [IPv6]
+    const size_t close = authority.find(']');
+    if (close == std::string::npos) return fail("");
+    a.host = authority.substr(1, close - 1);
+    rest = authority.substr(close + 1);
+    if (a.host.find(':') == std::string::npos || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiHex(c) || c == ':'; }))
+      return fail("");  // an IPv6 address has colons; [cafe] would be read as a name
+  } else {
+    const size_t colon = authority.find(':');
+    a.host = authority.substr(0, colon);
+    rest = colon == std::string::npos ? "" : authority.substr(colon);
+    if (a.host.empty() || !std::all_of(a.host.begin(), a.host.end(), [](char c) { return asciiAlnum(c) || c == '-' || c == '_' || c == '.'; }))
+      return fail("");  // also no '@', '?', '#' or spaces: no host hidden behind another
+  }
+  a.port = a.tls ? 443 : 80;
+  if (!rest.empty()) {
+    const std::string digits = rest.substr(1);
+    if (rest[0] != ':' || digits.empty() || digits.size() > 5 || !std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; }))
+      return fail("");
+    a.port = std::stoi(digits);
+    if (a.port < 1 || a.port > 65535) return fail("");
+  }
+  // The path: letters, digits, - _ and single slashes; no dot segments, escapes or queries
+  for (size_t i = 0; i < a.base.size(); ++i) {
+    const char c = a.base[i];
+    if (!(asciiAlnum(c) || c == '-' || c == '_' || (c == '/' && (i + 1 >= a.base.size() || a.base[i + 1] != '/')))) return fail("");
+  }
+  for (size_t from = 0; from < a.base.size();) {  // a segment "api" in any case: the address was pasted with the API in it
+    const size_t to = std::min(a.base.find('/', from + 1), a.base.size());
+    std::string seg = a.base.substr(from + 1, to - from - 1);
+    std::transform(seg.begin(), seg.end(), seg.begin(), [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; });
+    if (seg == "api") return fail("\"url\" contains /api: leave it out, the hub adds /api/states itself");
+    from = to;
+  }
+  err.clear();
+  return a;
+}
+
 Mapping parseMapping(const gc::json& j, std::string& err) {
   Mapping m;
   err.clear();
@@ -345,14 +411,10 @@ Mapping parseMapping(const gc::json& j, std::string& err) {
     err = "the mapping must be a JSON object";
     return m;
   }
-  // http(s)://host[:port] without a path: the API paths are added to it.
-  m.url = gc::jstr(j, "url");
-  while (!m.url.empty() && m.url.back() == '/') m.url.pop_back();
-  const size_t scheme = m.url.rfind("http://", 0) == 0 ? 7 : m.url.rfind("https://", 0) == 0 ? 8 : 0;
-  if (scheme == 0 || m.url.size() == scheme || m.url.find('/', scheme) != std::string::npos) {
-    err = "\"url\" must be http://host:port or https://host:port, without a path";
-    return m;
-  }
+  // An add-on reaches Home Assistant at http://supervisor/core/api/…
+  const auto address = parseAddress(gc::jstr(j, "url"), err);
+  if (!address) return m;
+  m.url = address->url();
   if (j.contains("entities")) m.entities = parseEntities(j["entities"], err);
   return m;
 }

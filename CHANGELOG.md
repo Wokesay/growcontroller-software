@@ -8,6 +8,14 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant address with a path** (`docs/HOME_ASSISTANT.md`): the
+  mapping file's `url` may carry a plain path in front of the API, such as
+  `http://supervisor/core`, which is how a Home Assistant add-on reaches
+  Home Assistant. The whole address is checked once and the connection is
+  made from its checked parts: the host is a plain name, an IPv4 address or
+  an IPv6 address in `[ ]` (no `user@`, `?`, `#`), the port 1–65535, the
+  path letters, digits, `-` and `_` (no dot segments, escapes, queries or
+  empty segments); an address with `/api` in it is refused with a hint.
 - **Home Assistant: choose sensors in the web app instead of listing
   them** (`docs/HOME_ASSISTANT.md`): `gc_ha_server` reads all states in one
   request and finds the sensors it can use by Home Assistant's device class
