@@ -14,9 +14,10 @@ step by step light, climate and irrigation. The software runs on the hub
 (ESP32-S3) and brings its own web app – no cloud, no account, no Home
 Assistant required.
 
-> **Status: prototype `0.1.0-proto.1`.** Core, simulator and web app run;
-> the port to the ESP32-S3 follows (`firmware/README.md`). Do not use it
-> with real hardware.
+> **Status: prototype `0.1.0-proto.2`.** Core, simulator and web app run;
+> the port to the ESP32-S3 follows (`firmware/README.md`). The Home
+> Assistant app only reads sensors and switches nothing. Do not use it to
+> control real hardware.
 
 > **Safety.** This is experimental prototype software, not a finished or
 > certified product (no CE marking). Do not use it to control real pumps,
@@ -26,17 +27,22 @@ Assistant required.
 
 ## Try it without installing
 
-From the next release on, **Releases** offers the simulator for Windows,
-macOS and Linux: one file, unpack, double-click. The browser opens the
+**Releases** offers the simulator for Windows, macOS and Linux: one file,
+unpack, double-click. The browser opens the
 demo (password `demo-passwort`). Notes on Windows SmartScreen and macOS
 are in `README.txt` inside the package. Use only packages from
 Releases: CI runs also store packages as artifacts, but those of pull
 requests are built from code nobody has reviewed yet.
 
+With Home Assistant (OS or Supervised), growcontroller also installs as
+an app that reads your sensors and switches nothing:
+[`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md).
+
 ## Build it yourself (no hardware needed)
 
 Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22; for
-`tools/ci.sh` also [reuse](https://reuse.software/) (`pipx install reuse==6.2.0`).
+`tools/ci.sh` also [reuse](https://reuse.software/) (`pipx install reuse==6.2.0`;
+CI installs `tools/requirements-reuse.txt` with its hashes).
 
 ```bash
 tools/dev.sh

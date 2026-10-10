@@ -31,3 +31,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+  # reuse for the license check, pinned with hashes (#29)
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
