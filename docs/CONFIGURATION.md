@@ -94,7 +94,15 @@ Stored separately:
   manual measurements. It changes all the time; that needs no new
   configuration revision.
 - `auth.json`: hash and salt only.
-- `events.json`, `history.bin`.
+- `events.json` and `history.bin` (snapshots, once a day) with the journals
+  `events.log` and `history.log` (appended as events and samples come;
+  `docs/HISTORY.md`).
+
+Writing (#68): `config.json`, `state.json`, `auth.json` and `job.json` are
+written whole and atomically (temporary file, then rename) and are on disk
+when the change returns; on a computer with `fsync` for the file and its
+folder. A STOP, a new password and a configuration change survive a power
+cut right after the click.
 
 **Versioning:**
 

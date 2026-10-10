@@ -34,6 +34,10 @@ class EventLog {
   Epoch newestTs() const;  // 0 without events
   json toJson() const;
   void load(const json& j);
+  // Storage (#68): a daily snapshot (toJson) plus a journal, one event per line.
+  std::string journalSince(std::uint64_t afterId) const;  // lines for the events newer than afterId
+  // Adds the journal's events newer than what is held; a torn or damaged line is skipped.
+  size_t replay(const std::string& journal);
 
  private:
   size_t cap_;

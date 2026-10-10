@@ -247,10 +247,12 @@ time is no value.
   system keeps the time synced).
 - The data folder holds the hub's password hash; keep it private
   (`chmod 700`).
-- **Not on an SD card yet:** the server writes its files every 10 s, the
-  history included; QA measured about 14 MB per 30 s. A hard power cut or
-  kill loses what changed in the last 10 s, a password just set included.
-  Fewer and smaller writes are a follow-up.
+- **Writes to the data folder (#68):** a password, a configuration change,
+  a picked sensor and a STOP are on disk when the call returns. History and
+  events are appended, and written whole only once after the start and
+  once a day (`docs/HISTORY.md`). An idle server writes well under 1 MB an
+  hour (tested), so an SD card is fine; a hard power cut loses at most the
+  last few seconds of history.
 - No switching yet. Dosing through Home Assistant needs pumps that stop on
   their own (a run time on the device, for example ESPHome `ezo_pmp` or a
   script with a maximum on-time), because a lost "off" over Wi-Fi must

@@ -50,4 +50,11 @@ bool EspStorage::write(const std::string& name, const std::string& data) {
   return std::rename(tmp.c_str(), pathOf(name).c_str()) == 0;
 }
 
+bool EspStorage::append(const std::string& name, const std::string& data) {
+  FILE* f = std::fopen(pathOf(name).c_str(), "ab");
+  if (!f) return false;
+  bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
+  return std::fclose(f) == 0 && ok;
+}
+
 }  // namespace gcfw

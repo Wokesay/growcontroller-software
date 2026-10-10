@@ -52,7 +52,8 @@ class Hub {
   void setPlatform(json p) { platform_ = std::move(p); }
   void boot();
   void tick();
-  void flush();  // alles Ungespeicherte sichern
+  void flush();     // alles Ungespeicherte sichern (password, state, new events)
+  void saveAuth();  // the password file, on disk when it returns
 
   std::recursive_mutex& mutex() { return mtx_; }
   const Catalog& catalog() const { return cat_; }
@@ -133,6 +134,8 @@ class Hub {
   void shiftDeadlines(Epoch jump, Epoch epoch);
   void saveState();
   void saveJob();
+  void saveEvents();    // appends the new events to the journal
+  void saveSnapshot();  // history and events whole; empties their journals
   void sampleHistory(Epoch epoch);
   void tickImpl();
   void tickJob(Ctx& c);
@@ -183,7 +186,7 @@ class Hub {
   Epoch maintenanceUntil_ = 0;
   Epoch bootEpoch_ = 0;
   Ms bootMs_ = 0;
-  Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastHistorySave_ = 0;
+  Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastSnapshot_ = 0;
   Epoch lastTickEpoch_ = 0;
   Ms lastTickMs_ = 0;
   bool unsecuredReported_ = false;

@@ -3,6 +3,8 @@
 // Wird vom Host-Server (main.cpp) und von den Szenario-Tests genutzt.
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -15,21 +17,35 @@
 
 namespace sim {
 
-// Dateiablage mit Schreibpuffer: write() landet sofort im Speicher, flush()
-// schreibt atomar auf die Platte (tmp + rename). Ohne Ordner nur im Speicher.
+// Dateiablage (#68). Ohne Ordner nur im Speicher.
+//   write():  on disk when it returns – temp file, fsync, rename, then the folder.
+//   append(): added to the end at once, without fsync (journals: a torn end is
+//             skipped when read).
+//   hold():   while held (the simulator running faster than real time),
+//             writes stay in memory and go to disk once each on release.
 class FileStorage : public gc::IStorage {
  public:
   explicit FileStorage(std::string dir) : dir_(std::move(dir)) {}
+  ~FileStorage() override;
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
-  void flush();
+  bool append(const std::string& name, const std::string& data) override;
+  void hold(bool on);
+  std::uint64_t bytesWritten() const;  // bytes handed to the disk
 
  private:
+  bool memoryOnly() const { return dir_.empty() || memoryOnly_; }
+  std::optional<std::string> readLocked(const std::string& name);
+  bool toDisk(const std::string& name, const std::string& data, bool atEnd);
+  void release();
   std::string dir_;
   bool memoryOnly_ = false;  // Ordner nicht beschreibbar: lesen ja, schreiben nein
+  int holds_ = 0;
   std::map<std::string, std::string> cache_;
-  std::set<std::string> dirty_;
-  std::mutex m_;
+  std::set<std::string> dirty_;                 // written while held
+  std::map<std::string, std::string> pending_;  // appended while held
+  std::uint64_t written_ = 0;
+  mutable std::mutex m_;
 };
 
 struct Options {

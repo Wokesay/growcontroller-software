@@ -326,7 +326,6 @@ int main(int argc, char** argv) {
         flushCounter = 0;
         std::lock_guard<std::recursive_mutex> l(simulation.mutex());
         simulation.storage().write("world.json", simulation.world().save().dump());
-        simulation.storage().flush();
       }
     }
     svr.stop();

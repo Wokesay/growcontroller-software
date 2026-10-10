@@ -10,6 +10,13 @@
 #include <random>
 #include <sstream>
 
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace sim {
 
 namespace fs = std::filesystem;
@@ -17,8 +24,56 @@ using gc::json;
 
 // ------------------------------------------------------------------ Ablage
 
+namespace {
+
+// On disk when it returns: a power loss leaves the old file or the new one.
+std::error_code replaceFile(const fs::path& target, const std::string& data) {
+  const fs::path tmp = target.string() + ".tmp";
+  std::FILE* f = std::fopen(tmp.string().c_str(), "wb");
+  if (!f) return std::make_error_code(std::errc::io_error);
+  bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size() && std::fflush(f) == 0;
+#ifdef _WIN32
+  ok = ok && _commit(_fileno(f)) == 0;
+#else
+  ok = ok && ::fsync(fileno(f)) == 0;
+#endif
+  ok = std::fclose(f) == 0 && ok;
+  if (!ok) return std::make_error_code(std::errc::io_error);
+  std::error_code ec;
+  fs::rename(tmp, target, ec);  // atomar ersetzen
+#ifndef _WIN32
+  if (!ec) {  // the rename itself is on disk only with the folder
+    int dir = ::open(target.parent_path().string().c_str(), O_RDONLY);
+    if (dir >= 0) {
+      ::fsync(dir);
+      ::close(dir);
+    }
+  }
+#endif
+  return ec;
+}
+
+std::error_code appendFile(const fs::path& target, const std::string& data) {
+  std::FILE* f = std::fopen(target.string().c_str(), "ab");
+  if (!f) return std::make_error_code(std::errc::io_error);
+  bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
+  ok = std::fclose(f) == 0 && ok;
+  return ok ? std::error_code() : std::make_error_code(std::errc::io_error);
+}
+
+}  // namespace
+
+FileStorage::~FileStorage() {
+  std::lock_guard<std::mutex> l(m_);
+  release();
+}
+
 std::optional<std::string> FileStorage::read(const std::string& name) {
   std::lock_guard<std::mutex> l(m_);
+  return readLocked(name);
+}
+
+std::optional<std::string> FileStorage::readLocked(const std::string& name) {
   auto it = cache_.find(name);
   if (it != cache_.end()) return it->second;
   if (dir_.empty()) return std::nullopt;
@@ -33,35 +88,64 @@ std::optional<std::string> FileStorage::read(const std::string& name) {
 bool FileStorage::write(const std::string& name, const std::string& data) {
   std::lock_guard<std::mutex> l(m_);
   cache_[name] = data;
-  dirty_.insert(name);
-  return true;
+  pending_.erase(name);  // the whole file replaces what was to be appended
+  if (memoryOnly()) return true;
+  if (holds_ > 0) {
+    dirty_.insert(name);
+    return true;
+  }
+  return toDisk(name, data, false);
 }
 
-void FileStorage::flush() {
+bool FileStorage::append(const std::string& name, const std::string& data) {
   std::lock_guard<std::mutex> l(m_);
-  if (dir_.empty() || memoryOnly_) {
-    dirty_.clear();
+  readLocked(name);  // reads stay right: the cache holds the whole file
+  cache_[name] += data;
+  if (memoryOnly()) return true;
+  if (holds_ > 0) {
+    if (!dirty_.count(name)) pending_[name] += data;  // a dirty file goes whole, with this in it
+    return true;
+  }
+  return toDisk(name, data, true);
+}
+
+void FileStorage::hold(bool on) {
+  std::lock_guard<std::mutex> l(m_);
+  if (on) {
+    ++holds_;
     return;
   }
+  if (holds_ > 0 && --holds_ == 0) release();
+}
+
+std::uint64_t FileStorage::bytesWritten() const {
+  std::lock_guard<std::mutex> l(m_);
+  return written_;
+}
+
+void FileStorage::release() {
+  holds_ = 0;
+  for (const auto& name : dirty_)
+    if (!memoryOnly()) toDisk(name, cache_[name], false);
+  for (const auto& [name, data] : pending_)
+    if (!memoryOnly()) toDisk(name, data, true);
+  dirty_.clear();
+  pending_.clear();
+}
+
+bool FileStorage::toDisk(const std::string& name, const std::string& data, bool atEnd) {
   // Nicht beschreibbarer Ordner (z. B. Programm in einem geschützten
   // Verzeichnis): einmal melden, dann nur im Speicher weiterlaufen.
   std::error_code ec;
   fs::create_directories(dir_, ec);
-  for (const auto& name : dirty_) {
-    if (ec) break;
-    fs::path tmp = fs::path(dir_) / (name + ".tmp");
-    {
-      std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-      f << cache_[name];
-      if (!f) ec = std::make_error_code(std::errc::io_error);
-    }
-    if (!ec) fs::rename(tmp, fs::path(dir_) / name, ec);  // atomar ersetzen
-  }
-  dirty_.clear();
+  if (!ec) ec = atEnd ? appendFile(fs::path(dir_) / name, data) : replaceFile(fs::path(dir_) / name, data);
   if (ec) {
     std::cerr << "Daten können nicht gespeichert werden (" << dir_ << ": " << ec.message() << "). Der Simulator läuft nur im Speicher weiter.\n";
     memoryOnly_ = true;
+    return false;
   }
+  written_ += data.size();
+  return true;
 }
 
 // ------------------------------------------------------------------ Simulation
@@ -87,10 +171,7 @@ Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::b
 
 Simulation::~Simulation() {
   if (hub_) hub_->flush();
-  if (store_) {
-    store_->write("world.json", world_.save().dump());
-    store_->flush();
-  }
+  if (store_) store_->write("world.json", world_.save().dump());
 }
 
 void Simulation::createHub() {
@@ -128,7 +209,6 @@ void Simulation::build(bool fresh) {
   }
   store_->write("world.json", world_.save().dump());
   hub_->flush();
-  store_->flush();
 }
 
 void Simulation::setupWorld(const std::string& name) {
@@ -229,8 +309,18 @@ void Simulation::configureDemo() {
   h.completeSetup();
 }
 
+namespace {
+// Faster than real time, each file goes to disk once per step instead of on every tick.
+struct Held {
+  FileStorage& store;
+  explicit Held(FileStorage& s) : store(s) { store.hold(true); }
+  ~Held() { store.hold(false); }
+};
+}  // namespace
+
 void Simulation::step(gc::Ms dt) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  Held held(*store_);
   while (dt > 0) {
     gc::Ms d = std::min<gc::Ms>(1000, dt);
     clock_->advance(d);
@@ -241,6 +331,7 @@ void Simulation::step(gc::Ms dt) {
 
 void Simulation::fastForward(double hours, gc::Ms tick) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  Held held(*store_);
   gc::Ms total = static_cast<gc::Ms>(hours * 3600.0 * 1000.0);
   gc::Ms jumpAt = total * 5 / 8;  // eine Sprungsperre in den Verlauf legen
   for (gc::Ms t = 0; t < total; t += tick) {
@@ -281,7 +372,7 @@ void Simulation::loadScenario(const std::string& name) {
     // Nur die eigenen Dateien löschen, nie den ganzen Ordner.
     std::error_code ec;
     for (const char* f : {"config.json", "config.broken.json", "state.json", "state.broken.json", "auth.json", "events.json",
-                          "history.bin", "job.json", "world.json"})
+                          "events.log", "history.bin", "history.log", "job.json", "world.json"})
       for (const std::string& file : {std::string(f), std::string(f) + ".tmp"})
         fs::remove(fs::path(opts_.dataDir) / file, ec);
   }

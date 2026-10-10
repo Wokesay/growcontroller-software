@@ -9,6 +9,8 @@ namespace gc {
 
 namespace {
 constexpr const char* kMagic = "GCH1";
+constexpr const char* kTimeTag = "GCT1";  // after the series: the newest sample's time (older files lack it)
+constexpr size_t kMaxIdLen = 255, kMaxPerRecord = 1024;
 
 template <typename T>
 void put(std::string& out, const T& v) {
@@ -174,7 +176,61 @@ bool Series::load(const char*& p, const char* end) {
   return true;
 }
 
-void History::add(const std::string& id, Epoch t, double v) { series_[id].add(t, v); }
+void History::add(const std::string& id, Epoch t, double v) {
+  series_[id].add(t, v);
+  lastT_ = std::max(lastT_, t);
+}
+
+std::string History::record(Epoch t, const std::vector<std::pair<std::string, double>>& samples) {
+  // [u32 length][i64 t][u16 n] n × [u16 id length][id][f64 value]
+  std::string body;
+  put(body, static_cast<std::int64_t>(t));
+  const auto n = static_cast<std::uint16_t>(std::min(samples.size(), kMaxPerRecord));
+  put(body, n);
+  for (size_t i = 0; i < n; ++i) {
+    const std::string id = samples[i].first.substr(0, kMaxIdLen);
+    put(body, static_cast<std::uint16_t>(id.size()));
+    body += id;
+    put(body, samples[i].second);
+  }
+  std::string out;
+  put(out, static_cast<std::uint32_t>(body.size()));
+  return out + body;
+}
+
+size_t History::replay(const std::string& journal) {
+  const Epoch after = lastT_;  // the snapshot already holds everything up to here
+  const char* p = journal.data();
+  const char* end = p + journal.size();
+  size_t added = 0;
+  while (p < end) {
+    std::uint32_t len = 0;
+    if (!get(p, end, len) || static_cast<size_t>(end - p) < len) break;  // torn end
+    const char* q = p;
+    const char* rend = p + len;
+    p = rend;
+    std::int64_t t = 0;
+    std::uint16_t n = 0;
+    if (!get(q, rend, t) || !get(q, rend, n)) break;
+    std::vector<std::pair<std::string, double>> samples;
+    bool ok = true;
+    for (std::uint16_t i = 0; i < n && ok; ++i) {
+      std::uint16_t idLen = 0;
+      double v = 0;
+      ok = get(q, rend, idLen) && idLen <= kMaxIdLen && static_cast<size_t>(rend - q) >= idLen;
+      if (!ok) break;
+      std::string id(q, idLen);
+      q += idLen;
+      ok = get(q, rend, v) && !id.empty();
+      if (ok) samples.emplace_back(std::move(id), v);
+    }
+    if (!ok || q != rend) break;  // damaged: nothing after it is trusted
+    if (t <= after) continue;
+    for (const auto& [id, v] : samples) add(id, t, v);
+    ++added;
+  }
+  return added;
+}
 
 SeriesPoints History::query(const std::string& id, Epoch from, Epoch to, size_t maxPoints) const {
   auto it = series_.find(id);
@@ -198,6 +254,8 @@ std::string History::dump() const {
     out += id;
     s.dump(out);
   }
+  out += kTimeTag;
+  put(out, static_cast<std::int64_t>(lastT_));
   return out;
 }
 
@@ -216,7 +274,13 @@ bool History::load(const std::string& data) {
     p += len;
     if (!loaded[id].load(p, end)) return false;
   }
+  std::int64_t last = 0;
+  if (end - p >= 4 && std::memcmp(p, kTimeTag, 4) == 0) {
+    p += 4;
+    if (!get(p, end, last)) last = 0;
+  }
   series_ = std::move(loaded);
+  lastT_ = last;
   return true;
 }
 

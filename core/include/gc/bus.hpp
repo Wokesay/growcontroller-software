@@ -103,18 +103,23 @@ class INetBus {
 };
 
 // Ablage für Konfiguration und Zustand (Gerät: LittleFS/NVS, Host: Dateien).
-// write() muss atomar sein (erst Kopie schreiben, dann umbenennen).
+// write() muss atomar sein (erst Kopie schreiben, dann umbenennen) and is on
+// disk when it returns (#68). append() adds to the end of a journal; a torn
+// end after a power loss is allowed, the reader skips it.
 class IStorage {
  public:
   virtual ~IStorage() = default;
   virtual std::optional<std::string> read(const std::string& name) = 0;
   virtual bool write(const std::string& name, const std::string& data) = 0;
+  // Without a real append the whole file is rewritten; storages that can append override this.
+  virtual bool append(const std::string& name, const std::string& data) { return write(name, read(name).value_or("") + data); }
 };
 
 class MemoryStorage : public IStorage {
  public:
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
+  bool append(const std::string& name, const std::string& data) override;
 
  private:
   std::vector<std::pair<std::string, std::string>> files_;

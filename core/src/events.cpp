@@ -64,27 +64,57 @@ json EventLog::toJson() const {
   return {{"next", next_}, {"events", arr}};
 }
 
+namespace {
+// Fremde Datei: nur geprüft lesen, kaputte Einträge überspringen (kein Absturz beim Start).
+bool eventFromJson(const json& e, Event& ev) {
+  if (!e.is_object()) return false;
+  double id = jnum(e, "id", 0), ts = jnum(e, "ts", 0);
+  ev.id = isNum(id) && id >= 0 && id < 9e15 ? static_cast<std::uint64_t>(id) : 0;
+  // A time outside any plausible range (a broken file) is not carried
+  // over: it would anchor the clock after a restart (PD-069).
+  ev.ts = isNum(ts) && ts >= 0 && ts <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(ts) : 0;
+  ev.type = jstr(e, "type");
+  ev.severity = jstr(e, "severity");
+  ev.title = msgFromJson(e, "title");
+  ev.text = msgFromJson(e, "text");
+  ev.data = e.contains("data") && e["data"].is_object() ? e["data"] : json::object();
+  return true;
+}
+}  // namespace
+
 void EventLog::load(const json& j) {
   events_.clear();
-  // Fremde Datei: nur geprüft lesen, kaputte Einträge überspringen (kein Absturz beim Start).
   double next = jnum(j, "next", 1);
   next_ = isNum(next) && next >= 1 ? static_cast<std::uint64_t>(next) : 1;
   const json events = j.is_object() && j.contains("events") && j["events"].is_array() ? j["events"] : json::array();
   for (const auto& e : events) {
-    if (!e.is_object()) continue;
     Event ev;
-    double id = jnum(e, "id", 0), ts = jnum(e, "ts", 0);
-    ev.id = isNum(id) && id >= 0 && id < 9e15 ? static_cast<std::uint64_t>(id) : 0;
-    // A time outside any plausible range (a broken file) is not carried
-    // over: it would anchor the clock after a restart (PD-069).
-    ev.ts = isNum(ts) && ts >= 0 && ts <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(ts) : 0;
-    ev.type = jstr(e, "type");
-    ev.severity = jstr(e, "severity");
-    ev.title = msgFromJson(e, "title");
-    ev.text = msgFromJson(e, "text");
-    ev.data = e.contains("data") && e["data"].is_object() ? e["data"] : json::object();
-    events_.push_back(ev);
+    if (eventFromJson(e, ev)) events_.push_back(ev);
   }
+}
+
+std::string EventLog::journalSince(std::uint64_t afterId) const {
+  std::string out;
+  for (const auto& e : events_)
+    if (e.id > afterId) out += json(e).dump() + "\n";
+  return out;
+}
+
+size_t EventLog::replay(const std::string& journal) {
+  size_t added = 0, pos = 0;
+  while (pos < journal.size()) {
+    size_t nl = journal.find('\n', pos);
+    const bool torn = nl == std::string::npos;  // the last line was cut by a power loss
+    const json e = json::parse(journal.substr(pos, torn ? std::string::npos : nl - pos), nullptr, false);
+    pos = torn ? journal.size() : nl + 1;
+    Event ev;
+    if (torn || !eventFromJson(e, ev) || ev.id < next_) continue;  // already in the snapshot
+    next_ = ev.id + 1;
+    events_.push_back(std::move(ev));
+    while (events_.size() > cap_) events_.pop_front();
+    ++added;
+  }
+  return added;
 }
 
 }  // namespace gc

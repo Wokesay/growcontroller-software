@@ -32,6 +32,16 @@ bool MemoryStorage::write(const std::string& name, const std::string& data) {
   return true;
 }
 
+bool MemoryStorage::append(const std::string& name, const std::string& data) {
+  for (auto& [n, d] : files_)
+    if (n == name) {
+      d += data;
+      return true;
+    }
+  files_.emplace_back(name, data);
+  return true;
+}
+
 bool sameSafety(const SwitchSafety& a, const SwitchSafety& b) {
   auto same = [](double x, double y) { return (std::isnan(x) && std::isnan(y)) || (!std::isnan(x) && !std::isnan(y) && std::fabs(x - y) < 0.5); };
   return a.powerOn == b.powerOn && same(a.autoOffS, b.autoOffS) && same(a.powerLimitW, b.powerLimitW);

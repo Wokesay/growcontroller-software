@@ -139,7 +139,8 @@ if(GC_BUILD_TESTS)
     tests/core/test_net.cpp
     tests/core/test_climate.cpp
     tests/core/test_messages.cpp
-    tests/core/test_ha.cpp)
+    tests/core/test_ha.cpp
+    tests/core/test_storage.cpp)
   target_link_libraries(gc_tests PRIVATE gc_sim gc_ha_net)
   if(NOT MSVC)
     target_compile_options(gc_tests PRIVATE -Wall -Wextra)

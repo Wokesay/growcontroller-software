@@ -358,6 +358,15 @@ listed in every release under "Security".
 - Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
 ### Fixed
+- **What you change is saved at once, and far less is written** (#68):
+  a password, a configuration change, a picked sensor and a STOP are on
+  disk when the click returns (written atomically, with `fsync` on a
+  computer); before, the simulator and the Home Assistant server saved
+  every 10 s, so a power cut could undo them. History and events are now
+  appended as they come and written whole only after the start and once a
+  day (`docs/HISTORY.md`); an idle hub wrote about 55 MB in two hours and
+  now writes under 0.2 MB, so an SD card lasts. After a restart history
+  and events come back from the snapshot plus the journal.
 - **Escape closes a window right after it opens:** windows listened for
   the key only after the next frame, so an Escape pressed at once was lost.
 - **Recipes from a template keep the language of the page** (#32): a

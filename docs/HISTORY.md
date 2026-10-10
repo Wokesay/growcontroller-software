@@ -20,6 +20,18 @@ As of 2026-10-06. Proposal by `software`, implemented in the prototype
 - **Series:** every role with `series: true` (pH, EC, water temperature,
   level, climate) and the known tank volume.
 
+**On a computer** (simulator, Home Assistant server; #68): the history is
+a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
+(`history.log`) with one record per sampling round, appended every 10 s.
+The snapshot is written once after the start and then once a day, and
+empties the journal. After a restart the hub reads the snapshot and then
+the journal records newer than the snapshot, so a journal that survived
+its snapshot (power loss in between) is not counted twice; a torn record
+at the end is skipped. The event log works the same way (`events.json`
+plus `events.log`, one event per line, replayed by id). An idle hub with
+the demo setup writes about 90 KB an hour this way (tested), instead of
+the whole history (about 4.6 MB) every 10 minutes.
+
 **On the hub** (proposal by `software`, not implemented yet):
 
 - The series go into a dedicated flash partition as a ring buffer: append

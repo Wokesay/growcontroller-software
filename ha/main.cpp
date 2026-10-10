@@ -248,12 +248,8 @@ int main(int argc, char** argv) {
     const gc::ApiRequest areq = toApi(req);
     if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));  // before any lock or write
     std::lock_guard<std::mutex> one(assigning);
+    // The hub's configuration is on disk when the pick returns (#68)
     gc::Result r = ha::assignRoute(api, hub, bus, areq, [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
-    {  // on disk now, not with the next flush, whatever the result changed
-      std::lock_guard<std::recursive_mutex> l(hub.mutex());
-      hub.flush();
-      store.flush();
-    }
     if (r.status == 200) r.body = {{"ok", true}};
     reply(res, r);
   });
@@ -275,17 +271,13 @@ int main(int argc, char** argv) {
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);
   poller.start(std::chrono::seconds(everyS));
+  // The hub writes what it changes as it goes (#68): small files whole,
+  // history and events appended, both whole once a day.
   std::thread loop([&] {
-    int flushCounter = 0;
     while (g_running) {
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       std::lock_guard<std::recursive_mutex> l(hub.mutex());
       hub.tick();
-      if (++flushCounter >= 50) {  // every 10 s
-        flushCounter = 0;
-        hub.flush();
-        store.flush();
-      }
     }
     svr.stop();
   });
@@ -300,7 +292,6 @@ int main(int argc, char** argv) {
     std::lock_guard<std::recursive_mutex> l(hub.mutex());
     hub.flush();
   }
-  store.flush();
   poller.stop();
   return 0;
 }
