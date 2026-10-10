@@ -35,7 +35,7 @@ class Poller {
  private:
   HaBus& bus_;
   std::string url_, token_;
-  std::string origin_, base_;  // http(s)://host[:port] and the path in front of the API ("" or e.g. "/core")
+  std::optional<Address> address_;  // checked as the mapping is; none: the address is not used
   std::function<gc::Ms()> nowMs_;
   std::atomic<bool> stopping_{false};  // set by stop(), read by the polling thread
   std::atomic<bool> rejected_{false};

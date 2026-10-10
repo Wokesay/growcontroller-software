@@ -17,11 +17,8 @@ std::int64_t epochMs() {
 
 Poller::Poller(HaBus& bus, std::string url, std::string token, std::function<gc::Ms()> nowMs)
     : bus_(bus), url_(std::move(url)), token_(std::move(token)), nowMs_(std::move(nowMs)) {
-  const size_t scheme = url_.find("://");
-  const size_t slash = scheme == std::string::npos ? std::string::npos : url_.find('/', scheme + 3);
-  origin_ = url_.substr(0, slash);
-  base_ = slash == std::string::npos ? "" : url_.substr(slash);
-  while (!base_.empty() && base_.back() == '/') base_.pop_back();
+  std::string err;
+  address_ = parseAddress(url_, err);  // the same check as the mapping's, whoever passes the address in
 }
 
 Poller::~Poller() { stop(); }
@@ -29,14 +26,17 @@ Poller::~Poller() { stop(); }
 std::string Poller::pollOnce() {
   if (stopping_) return "";
 #if !defined(CPPHTTPLIB_OPENSSL_SUPPORT) && !defined(CPPHTTPLIB_SSL_ENABLED)
-  if (url_.rfind("https://", 0) == 0) {
+  if (address_ && address_->tls) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
     return "https needs a build with OpenSSL; use http:// in your own network";
   }
 #endif
-  httplib::Client cli(origin_);
-  if (!cli.is_valid()) {
+  // Built from the checked parts, so the library reads the same host and port
+  Address origin = address_ ? *address_ : Address();
+  origin.base.clear();
+  httplib::Client cli(origin.url());
+  if (!address_ || !cli.is_valid()) {
     bus_.lostAll();
     bus_.setConnection("unreachable");
     return "the Home Assistant address is not valid";
@@ -50,7 +50,7 @@ std::string Poller::pollOnce() {
   // All states in one request: the selected entities and the candidates the
   // user can pick from. Everything else in it is dropped by the bus.
   const httplib::Headers headers = {{"Authorization", "Bearer " + token_}};
-  auto res = cli.Get(base_ + "/api/states", headers);
+  auto res = cli.Get(address_->base + "/api/states", headers);
   if (!res) {
     bus_.lostAll();
     bus_.setConnection("unreachable");

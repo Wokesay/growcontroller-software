@@ -31,6 +31,19 @@ struct Entity {
 
 // The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph"}]};
 // "entities" may be left out, the user then selects in the web app.
+// Home Assistant's address, checked once (#76): the token goes only to the
+// host a person reads in it. http(s)://host[:port][/path], the host a name
+// or IPv4 address (letters, digits, '-', '.') or an IPv6 address in [ ];
+// the path letters, digits, '-' and '_' in front of Home Assistant's /api.
+struct Address {
+  bool tls = false;
+  std::string host;  // an IPv6 address without its brackets
+  int port = 0;
+  std::string base;  // "" or a path such as "/core"
+  std::string url() const;  // the address again, normalised
+};
+std::optional<Address> parseAddress(std::string url, std::string& err);
+
 struct Mapping {
   std::string url;
   std::vector<Entity> entities;

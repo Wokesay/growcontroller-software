@@ -115,10 +115,38 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
   CHECK(refused({{"entities", one}}));                                       // no address
   CHECK(refused({{"url", "ws://ha:8123"}, {"entities", one}}));              // not http(s)
   // A path in front of the API, as the Supervisor gives an add-on (http://supervisor/core/api/…)
-  CHECK(ha::parseMapping({{"url", "http://supervisor/core/"}}, err).url == "http://supervisor/core");
-  CHECK(err.empty());
-  for (const char* url : {"http://ha/../api", "http://ha/a?b=1", "http://ha/a#x", "http://ha/a b", "http://ha//core", "http://ha/a/./b", "http://ha/%2e%2e"})
+  const std::pair<const char*, const char*> kept[] = {{"http://supervisor/core/", "http://supervisor/core"},
+                                                      {"http://192.168.1.20:8123/core", "http://192.168.1.20:8123/core"},
+                                                      {"http://ha/my-ha_1/Core", "http://ha/my-ha_1/Core"},
+                                                      {"http://[::1]:8123/core/", "http://[::1]:8123/core"},
+                                                      {"http://ha/core///", "http://ha/core"}};
+  for (const auto& [url, normal] : kept) {
+    CAPTURE(url);
+    CHECK(ha::parseMapping({{"url", url}}, err).url == normal);
+    CHECK(err.empty());
+  }
+  std::string why;
+  const auto a = ha::parseAddress("http://[::1]:8123/core", why);
+  REQUIRE(a);
+  CHECK(a->host == "::1");
+  CHECK(a->port == 8123);
+  CHECK(a->base == "/core");
+  CHECK_FALSE(a->tls);
+  CHECK(ha::parseAddress("https://ha", why)->port == 443);
+  // The host part too: the token goes only to the host a person reads in the address
+  for (const char* url : {"http://ha/../api", "http://ha/a?b=1", "http://ha/a#x", "http://ha/a b", "http://ha//core", "http://ha/a/./b",
+                          "http://ha/%2e%2e", "http://ha/core/..", "http://ha/core.v1", "http://ha/c\xc3\xb6re", "http://ha/a//b",
+                          "http://a:8123@b/core", "http://user@evil/core", "http://user:pw@ha/core", "http://ha?x/core", "http://ha#x/core",
+                          "http://ha#@192.0.2.10/core", "http://ha:8123x", "http://:8123", "http://:8123/core", "http://ha\r\nX/core",
+                          "http://[::1]x/core", "http://[]/core", "http:///core", "https:///core", "http://ha:0", "http://ha:65536",
+                          "http://ha:123456", "http://ha /core", "HTTP://ha"}) {
+    CAPTURE(url);
     CHECK(refused({{"url", url}}));
+  }
+  // The API address as Home Assistant's docs give it: refused with a hint, not a 404 later
+  ha::parseMapping({{"url", "http://192.168.1.20:8123/api"}}, err);
+  CHECK(err.find("/api") != std::string::npos);
+  CHECK(refused({{"url", "http://supervisor/core/api/"}}));
   // Without entities the user picks them in the web app
   CHECK(ha::parseMapping({{"url", "http://ha:8123"}}, err).entities.empty());
   CHECK(err.empty());
@@ -642,9 +670,14 @@ TEST_CASE("Home Assistant: an address with a path is read below it, as in an add
   });
   REQUIRE(ha.port > 0);
   ha::HaBus bus({{"sensor.grow_ph", "ph"}});
-  ha::Poller p(bus, ha.url() + "/core", "secret", [] { return gc::Ms{900000}; });
+  ha::Poller p(bus, ha.url() + "/core/", "secret", [] { return gc::Ms{900000}; });
   CHECK(p.pollOnce().empty());
   CHECK(bus.candidatesJson()["connection"] == "ok");
+  // An address the mapping would refuse is not used, whatever passes it in
+  ha::HaBus other({{"sensor.grow_ph", "ph"}});
+  ha::Poller bad(other, "http://evil@127.0.0.1:" + std::to_string(ha.port) + "/core", "secret", [] { return gc::Ms{0}; });
+  CHECK(bad.pollOnce() == "the Home Assistant address is not valid");
+  CHECK(other.candidatesJson()["connection"] == "unreachable");
   ha.stop();
   REQUIRE(ha.requests.size() == 1);
   CHECK(ha.requests[0] == "GET /core/api/states");
