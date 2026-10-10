@@ -175,6 +175,10 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **A new password is on disk when the call returns** (#68): before, the
+  simulator and the Home Assistant server wrote `auth.json` only with the
+  next save every 10 s, so a power cut right after the first setup could
+  open the setup to the network again.
 - **Home Assistant trial reads only what it needs:** Home Assistant's
   state list is read event by event and only sensors, with a few fields
   each, are built, so people, locations and other entities are never kept;
