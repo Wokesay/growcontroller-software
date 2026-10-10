@@ -225,6 +225,13 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
   await page.getByRole("button", { name: "Sensor wählen: Lufttemperatur" }).click();
   await expect(picker.getByRole("button", { name: /Zelt Temperatur/ })).toBeEnabled();
   await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  // Escape closes a window as soon as it is visible, not only a frame later
+  for (let i = 0; i < 5; i++) {
+    await page.getByRole("button", { name: "Sensor wählen: EC im Tank" }).click();
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+  }
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
@@ -272,7 +279,7 @@ test("Home Assistant: if the hub delivers no sensor list, the assigned sensors s
   await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => route.fulfill({ status: 500, json: { error: "x" } }));
   await newPassword(page);
   await page.goto("/#/geraete?tab=zuordnung");
-  await expect(page.getByText("Der Hub liefert gerade keine Sensorliste. Deine Zuordnungen bleiben gespeichert.")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText("Der Hub liefert gerade keine Sensorliste. Die Seite versucht es weiter, deine Zuordnungen bleiben gespeichert.")).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId("ha-role-zone.air_temp")).toContainText("Zelt Temperatur");
   await expect(page.getByText("Der Hub fragt Home Assistant nach Sensoren …")).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });

@@ -358,6 +358,8 @@ listed in every release under "Security".
 - Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
 ### Fixed
+- **Escape closes a window right after it opens:** windows listened for
+  the key only after the next frame, so an Escape pressed at once was lost.
 - **Recipes from a template keep the language of the page** (#32): a
   recipe created from a template was always stored with the German name
   and note, also in English. The recipes page now sends its language

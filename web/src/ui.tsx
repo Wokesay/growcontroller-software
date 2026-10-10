@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
 import { Component, type ComponentChildren, type JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
 import { lang, t, type TextKey } from "./i18n";
@@ -228,10 +228,11 @@ export function Seg<T extends string>(p: { value: T; options: [T, string][]; onC
 }
 
 export function Modal(p: { title: ComponentChildren; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren; wide?: boolean }) {
-  // Escape calls the current onClose, not the one from the first render.
+  // Escape calls the current onClose, not the one from the first render. The key is
+  // listened for as soon as the window is in the page, not only after the next frame.
   const onClose = useRef(p.onClose);
   onClose.current = p.onClose;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose.current();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
