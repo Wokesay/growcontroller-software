@@ -9,7 +9,7 @@
 # the server's sources, so a bad build package cannot change the server.
 
 # The web app. The commit is for its source code link (AGPL-3.0 §13).
-FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS web
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS web
 RUN apk add --no-cache nodejs npm
 WORKDIR /src
 COPY web/ web/
@@ -19,7 +19,7 @@ RUN cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build
 
 # The server, without node. The release (= VERSION and the version in
 # config.yaml) and the architecture Home Assistant knows it by are checked.
-FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS server
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS server
 RUN apk add --no-cache build-base cmake ninja linux-headers
 WORKDIR /src
 COPY CMakeLists.txt VERSION CHANGELOG.md ./
@@ -53,7 +53,7 @@ RUN apk list -I musl | grep -q '^musl-1\.2\.5-r' || { echo "musl is not 1.2.5: u
  && test "$(wc -l < build/packages.txt)" = 6
 
 # The license texts: ours, the web app's packages, the C++ headers, musl.
-FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS licenses
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS licenses
 RUN apk add --no-cache nodejs
 WORKDIR /src
 COPY LICENSE ./
