@@ -52,7 +52,10 @@ class Hub {
   void setPlatform(json p) { platform_ = std::move(p); }
   void boot();
   void tick();
-  void flush();  // alles Ungespeicherte sichern
+  void flush();     // saves what is not on disk yet: password, state, new events
+  bool saveAuth();  // the password file, on disk when it returns true
+  // A write the storage could not finish (the simulator's fast-forward): said and written again.
+  void storageFailed(const std::string& name);
 
   std::recursive_mutex& mutex() { return mtx_; }
   const Catalog& catalog() const { return cat_; }
@@ -133,6 +136,17 @@ class Hub {
   void shiftDeadlines(Epoch jump, Epoch epoch);
   void saveState();
   void saveJob();
+  void saveEvents();    // appends the new events to the journal
+  void saveSnapshot();  // history and events whole; empties their journals
+  void saveEventsSnapshot();
+  void saveHistorySnapshot();
+  // Writes through the storage; a failed write is said once as an alarm and
+  // written again from what the hub holds (#68).
+  bool writeFile(const std::string& name, const std::string& data);
+  bool appendFile(const std::string& name, const std::string& data);
+  bool stored(bool ok, const std::string& name);
+  void retryUnsaved(Epoch epoch);
+  bool writeJob(const std::string& data);
   void sampleHistory(Epoch epoch);
   void tickImpl();
   void tickJob(Ctx& c);
@@ -183,12 +197,16 @@ class Hub {
   Epoch maintenanceUntil_ = 0;
   Epoch bootEpoch_ = 0;
   Ms bootMs_ = 0;
-  Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastHistorySave_ = 0;
+  Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastSnapshot_ = 0;
   Epoch lastTickEpoch_ = 0;
   Ms lastTickMs_ = 0;
   bool unsecuredReported_ = false;
   bool stateDirty_ = false;
   std::uint64_t savedEventId_ = 0;
+  std::uint64_t journaledEvents_ = 0;  // in the events journal since its snapshot
+  std::set<std::string> unsaved_;      // files whose last write failed
+  Epoch lastRetry_ = 0, snapshotRetryAt_ = 0, snapshotBackoffS_ = 10;
+  std::string jobOnDisk_;  // what job.json should hold
   int idSeq_ = 0;
 };
 

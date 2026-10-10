@@ -1,6 +1,6 @@
 # History, events, export
 
-As of 2026-10-06. Proposal by `software`, implemented in the prototype
+As of 2026-10-10. Proposal by `software`, implemented in the prototype
 (`history.*`, `events.*`).
 
 ## Series in three tiers
@@ -19,6 +19,39 @@ As of 2026-10-06. Proposal by `software`, implemented in the prototype
   history. An invalid value becomes a gap, not a wrong point.
 - **Series:** every role with `series: true` (pH, EC, water temperature,
   level, climate) and the known tank volume.
+
+**On a computer** (simulator, Home Assistant server; #68): the history is
+a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
+(`history.log`) with one record per sampling round, appended every 10 s.
+
+- The snapshot is written at every start, before anything is appended,
+  and then once a day; it empties the journal, but only once it is on
+  disk itself.
+- After a restart the hub reads the snapshot and then the journal: per
+  series only samples newer than that series in the snapshot, only the
+  catalog's series, only plausible times. A journal that survived its
+  snapshot (power loss in between) is not counted twice.
+- Each record carries a checksum: a record torn by a power loss ends the
+  replay and is never read as values; the snapshot at the start then
+  replaces the journal.
+- The event log works the same way (`events.json` plus `events.log`, one
+  event per line, replayed by id). The journal never holds more events
+  than the log keeps (5000); then a snapshot is taken early, so failed
+  logins cannot fill the card.
+- An idle hub with the demo setup hands about 90 KB of data an hour to
+  the disk this way (tested below 0.4 MB in two hours); with the file
+  system's 4 KB pages that is about 2 MB an hour. Before it was the whole
+  history (about 4.6 MB) every 10 minutes.
+- A version from before the journals ignores them: going back loses up
+  to a day of history and events.
+- The simulator holds its writes only while fast-forwarding (the 48 h
+  prefill, "advance"): each file goes to disk once at the end, and a
+  journal is never emptied behind its failed snapshot; what failed is
+  given to the hub, which writes it again. Without a data folder (or one
+  that cannot be created) everything stays in memory.
+
+Not for the device yet: its 2 MB storage partition cannot hold the
+snapshot of several series; there the ring buffer below is the plan.
 
 **On the hub** (proposal by `software`, not implemented yet):
 

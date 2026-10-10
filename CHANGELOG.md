@@ -175,6 +175,13 @@ listed in every release under "Security".
   per browser.
 
 ### Security
+- **A new password is on disk when the call returns** (#68): before, the
+  simulator and the Home Assistant server wrote `auth.json` only with the
+  next save every 10 s, so a power cut right after the first setup could
+  open the setup to the network again. If it cannot be written, setup and
+  password change answer "Not saved" and change nothing. Data files are
+  created for the owner only, and the event journal never grows past the
+  5000 events the log keeps, so failed logins cannot fill the card.
 - **Home Assistant trial reads only what it needs:** Home Assistant's
   state list is read event by event and only sensors, with a few fields
   each, are built, so people, locations and other entities are never kept;
@@ -358,6 +365,21 @@ listed in every release under "Security".
 - Messages say "minimum level", "Port n" and "Pump n on the dosing block".
 
 ### Fixed
+- **What you change is saved at once, and far less is written** (#68):
+  a password, a configuration change, a picked sensor and a STOP are on
+  disk when the click returns (written atomically, with `fsync` on a
+  computer); before, the simulator and the Home Assistant server saved
+  every 10 s, so a power cut could undo them. History and events are now
+  appended as they come and written whole only after the start and once a
+  day (`docs/HISTORY.md`); an idle hub wrote about 55 MB in two hours and
+  now hands about 0.2 MB to the disk, so an SD card lasts. After a restart
+  history and events come back from the snapshot plus the journal; a
+  record torn by a power loss is never read as a value. When the data
+  folder takes nothing, the hub logs one alarm instead of going on
+  silently in memory, and writes the files again until they are on disk,
+  the STOP first; a failed write leaves no temporary file that would fill
+  the card. The Home Assistant server does not start with a data folder
+  it cannot write.
 - **Escape closes a window right after it opens:** windows listened for
   the key only after the next frame, so an Escape pressed at once was lost.
 - **Recipes from a template keep the language of the page** (#32): a

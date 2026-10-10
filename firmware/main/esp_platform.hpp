@@ -33,6 +33,7 @@ class EspStorage : public gc::IStorage {
   bool mount();
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
+  bool append(const std::string& name, const std::string& data) override;  // journals (#68)
 };
 
 // Bus des Hubs. Stand Gerüst: nur die zwei 12-V-Ausgänge. Modbus je Port mit

@@ -3,10 +3,13 @@
 // Wird vom Host-Server (main.cpp) und von den Szenario-Tests genutzt.
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "gc/api.hpp"
 #include "netbus.hpp"
@@ -15,21 +18,46 @@
 
 namespace sim {
 
-// Dateiablage mit Schreibpuffer: write() landet sofort im Speicher, flush()
-// schreibt atomar auf die Platte (tmp + rename). Ohne Ordner nur im Speicher.
+// Files in a data folder (#68); without a folder in memory only.
+//   write():  on disk when it returns true – temporary file, fsync, rename,
+//             then the folder (Linux; best effort on macOS and Windows).
+//   append(): added to the end at once, without fsync (journals: a torn end
+//             is skipped when read).
+//   hold():   while held (the simulator fast-forwarding), writes stay in memory
+//             and go to disk once each on release, in the order first written;
+//             a file is not written behind a failed one of the same stem (no
+//             journal emptied behind its failed snapshot). The release
+//             returns the files that did not reach the disk.
+// A failed write returns false (the hub writes it again); files are for the
+// owner only (0600, a new folder 0700). A folder that cannot be created
+// means memory only, said once.
 class FileStorage : public gc::IStorage {
  public:
   explicit FileStorage(std::string dir) : dir_(std::move(dir)) {}
+  ~FileStorage() override;
+  // The folder exists and takes a file; the hub's own files are made the owner's only.
+  bool ready();
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
-  void flush();
+  bool append(const std::string& name, const std::string& data) override;
+  std::vector<std::string> hold(bool on);
+  std::uint64_t bytesWritten() const;  // bytes handed to the disk
 
  private:
+  bool onDisk() const { return !dir_.empty() && !noFolder_; }
+  std::optional<std::string> readLocked(const std::string& name);
+  bool toDisk(const std::string& name, const std::string& data, bool atEnd);
+  std::vector<std::string> release();
   std::string dir_;
-  bool memoryOnly_ = false;  // Ordner nicht beschreibbar: lesen ja, schreiben nein
+  bool noFolder_ = false;          // the folder cannot be created at the start: memory only, said once
+  bool used_ = false;              // files were written: a folder that goes away later is a failure
+  std::set<std::string> failing_;  // files whose last write failed: each said once, and again when it works
+  int holds_ = 0;
   std::map<std::string, std::string> cache_;
-  std::set<std::string> dirty_;
-  std::mutex m_;
+  std::vector<std::string> dirty_;              // written while held, in order
+  std::map<std::string, std::string> pending_;  // appended while held
+  std::uint64_t written_ = 0;
+  mutable std::mutex m_;
 };
 
 struct Options {

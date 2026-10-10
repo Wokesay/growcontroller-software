@@ -395,11 +395,11 @@ TEST_CASE("Ablage: nicht beschreibbarer Datenordner bricht den Simulator nicht a
   auto blocker = base / "datei";
   { std::ofstream(blocker) << "x"; }
   sim::FileStorage st((blocker / "daten").string());
-  st.write("config.json", "{}");
-  CHECK_NOTHROW(st.flush());
+  CHECK_NOTHROW(st.write("config.json", "{}"));
   CHECK(st.read("config.json") == std::optional<std::string>("{}"));  // im Speicher weiter
-  st.write("config.json", "{\"a\":1}");
-  CHECK_NOTHROW(st.flush());
+  CHECK_NOTHROW(st.write("config.json", "{\"a\":1}"));
+  CHECK_NOTHROW(st.append("history.log", "x"));
+  CHECK(st.read("config.json") == std::optional<std::string>("{\"a\":1}"));
   std::filesystem::remove_all(base);
 }
 
