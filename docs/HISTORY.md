@@ -46,7 +46,9 @@ a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
   to a day of history and events.
 - The simulator holds its writes only while fast-forwarding (the 48 h
   prefill, "advance"): each file goes to disk once at the end, and a
-  journal is never emptied behind its failed snapshot.
+  journal is never emptied behind its failed snapshot; what failed is
+  given to the hub, which writes it again. Without a data folder (or one
+  that cannot be created) everything stays in memory.
 
 Not for the device yet: its 2 MB storage partition cannot hold the
 snapshot of several series; there the ring buffer below is the plan.

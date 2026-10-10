@@ -277,3 +277,68 @@ TEST_CASE("Storage: in the simulator a snapshot that fails at the end of a step 
   s.fastForward(25);
   CHECK(onDisk(dir.path / "events.log").find("\"ev.stop\"") != std::string::npos);  // still in the journal
 }
+
+TEST_CASE("Storage: a simulator in memory only keeps everything through a fast-forward and a power cut (#68)") {
+  for (const bool noFolder : {false, true}) {
+    CAPTURE(noFolder);
+    TempDir dir;
+    sim::Options o = test::opts("demo");
+    if (noFolder) {  // a folder under a file can never be created: memory only, said once
+      { std::ofstream(dir.path / "file") << "x"; }
+      o.dataDir = (dir.path / "file" / "data").string();
+    }
+    sim::Simulation s(o);
+    test::Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.fastForward(1);
+    s.reboot();
+    test::Client after{s};
+    after.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    CHECK(s.hub().config().device("PHEC-3F2A91") != nullptr);
+    CHECK(after.ok("GET", "/api/v1/history?series=tank.ph")["series"][0]["t"].size() > 100);
+  }
+}
+
+TEST_CASE("Storage: a first setup that failed does not keep the alarm once the card takes files again (#68)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  sim::Simulation s(o);
+  test::Client c{s};
+  fs::create_directories(dir.path / "auth.json.tmp");
+  CHECK(c.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}}).first == 500);
+  fs::remove_all(dir.path / "auth.json.tmp");
+  for (int i = 0; i < 30; ++i) s.step(1000);
+  CHECK(countKey(s.hub().events(0, 4000000000, "", 100), "ev.storage_ok") == 1);
+}
+
+#ifdef __linux__
+#include <csignal>
+#include <sys/resource.h>
+
+TEST_CASE("Storage: a snapshot that does not fit leaves no temporary file, and a STOP still reaches the disk (#68)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // The history journal fails, so the hub retries it through a snapshot that cannot fit
+  fs::remove(dir.path / "history.log");
+  fs::create_directories(dir.path / "blocked");
+  fs::create_directory_symlink(dir.path / "blocked", dir.path / "history.log");
+  struct Limit {  // no file over 1 MB, like a card with 1 MB left; the history snapshot is about 4.6 MB
+    rlimit before{};
+    Limit() {
+      std::signal(SIGXFSZ, SIG_IGN);
+      getrlimit(RLIMIT_FSIZE, &before);
+      rlimit small = before;
+      small.rlim_cur = 1 << 20;
+      setrlimit(RLIMIT_FSIZE, &small);
+    }
+    ~Limit() { setrlimit(RLIMIT_FSIZE, &before); }
+  } limit;
+  for (int i = 0; i < 30; ++i) s.step(1000);
+  CHECK_FALSE(fs::exists(dir.path / "history.bin.tmp"));  // a failed snapshot does not keep the space
+  c.ok("POST", "/api/v1/stop");
+  CHECK(gc::jbool(json::parse(onDisk(dir.path / "state.json"), nullptr, false), "stopped", false));
+}
+#endif

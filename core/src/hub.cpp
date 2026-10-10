@@ -229,7 +229,7 @@ void Hub::boot() {
       log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"), say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
       j["state"] = "aborted";
       j["message"] = say("job.reboot");
-      writeFile(kJobFile, j.dump());
+      writeJob(j.dump());
     }
   }
   log_.add(bootEpoch_, "system", "info", say("ev.started"), say("ev.started.text", {{"version", embedded::kVersion}}));
@@ -249,7 +249,18 @@ void Hub::flush() {
 
 bool Hub::saveAuth() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  return !auth_.hasPassword() || writeFile(kAuthFile, auth_.toJson().dump());
+  if (auth_.hasPassword()) return writeFile(kAuthFile, auth_.toJson().dump());
+  return stored(true, kAuthFile);  // nothing to save (a setup that was rolled back)
+}
+
+void Hub::storageFailed(const std::string& name) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  stored(false, name);
+}
+
+bool Hub::writeJob(const std::string& data) {
+  jobOnDisk_ = data;  // written again from here if it fails, also once the job has ended
+  return writeFile(kJobFile, data);
 }
 
 bool Hub::writeFile(const std::string& name, const std::string& data) { return stored(store_.write(name, data), name); }
@@ -269,29 +280,39 @@ bool Hub::stored(bool ok, const std::string& name) {
   return false;
 }
 
-void Hub::retryUnsaved() {
+void Hub::retryUnsaved(Epoch epoch) {
   // What the hub holds is written again whole, so a change made while the
   // card was full is not lost, and a journal with a torn append is replaced.
+  // The small files first (a STOP must fit); the large snapshots less and
+  // less often while they keep failing (10 s, doubling up to 10 min).
   const std::set<std::string> names = unsaved_;  // retrying changes the set
-  for (const std::string& name : names) {
-    if (name == kConfigFile) writeFile(kConfigFile, json(cfg_).dump(1));  // the same revision, written again
-    else if (name == kStateFile) saveState();
-    else if (name == kAuthFile) saveAuth();
-    else if (name == kJobFile && job_) saveJob();
-    else if (name == kEventsFile || name == kEventsLog) saveEventsSnapshot();
-    else if (name == kHistoryFile || name == kHistoryLog) saveHistorySnapshot();
-    else stored(true, name);  // a copy of a broken file cannot be made again
-  }
+  const auto has = [&](const char* n) { return names.count(n) > 0; };
+  if (has(kStateFile)) saveState();
+  if (has(kAuthFile)) saveAuth();
+  if (has(kConfigFile)) writeFile(kConfigFile, json(cfg_).dump(1));  // the same revision, written again
+  if (has(kJobFile)) jobOnDisk_.empty() ? stored(true, kJobFile) : writeJob(jobOnDisk_);
+  for (const std::string& name : names)  // a copy of a broken file cannot be made again
+    if (name.find(".broken.") != std::string::npos) stored(true, name);
+  const bool events = has(kEventsFile) || has(kEventsLog), history = has(kHistoryFile) || has(kHistoryLog);
+  if ((!events && !history) || epoch < snapshotRetryAt_) return;
+  if (events) saveEventsSnapshot();
+  if (history) saveHistorySnapshot();
+  const bool stillFailing = unsaved_.count(kEventsFile) || unsaved_.count(kEventsLog) || unsaved_.count(kHistoryFile) || unsaved_.count(kHistoryLog);
+  snapshotBackoffS_ = stillFailing ? std::min<Epoch>(snapshotBackoffS_ * 2, 600) : 10;
+  snapshotRetryAt_ = epoch + snapshotBackoffS_;
 }
 
 void Hub::saveEvents() {
   const std::uint64_t last = log_.lastId();
   if (last == savedEventId_ || unsaved_.count(kEventsLog)) return;  // a failed journal is replaced by a snapshot
   const std::uint64_t count = last - savedEventId_;
-  if (!appendFile(kEventsLog, log_.journalSince(savedEventId_))) return;  // tried again with the next ones
+  // Snapshots keep failing while appends work: the journal stops growing,
+  // the snapshot that works at last takes these events.
+  if (journaledEvents_ + count > 2 * kJournalMaxEvents) return;
+  if (!appendFile(kEventsLog, log_.journalSince(savedEventId_))) return;  // replaced by a snapshot then
   savedEventId_ = last;
   journaledEvents_ += count;
-  if (journaledEvents_ >= kJournalMaxEvents) saveEventsSnapshot();
+  if (journaledEvents_ >= kJournalMaxEvents && !unsaved_.count(kEventsFile)) saveEventsSnapshot();  // a failing one is retried with a pause
 }
 
 void Hub::saveSnapshot() {
@@ -303,12 +324,9 @@ void Hub::saveSnapshot() {
 // is on disk: a journal that outlives its snapshot (power loss in between)
 // is skipped when read, not counted twice.
 void Hub::saveEventsSnapshot() {
-  if (!writeFile(kEventsFile, log_.toJson().dump())) {
-    journaledEvents_ = kJournalMaxEvents / 2;  // the journal keeps everything; tried again later, not on every event
-    return;
-  }
+  if (!writeFile(kEventsFile, log_.toJson().dump())) return;  // the journal keeps everything until one works
   savedEventId_ = log_.lastId();
-  journaledEvents_ = writeFile(kEventsLog, "") ? 0 : kJournalMaxEvents / 2;
+  if (writeFile(kEventsLog, "")) journaledEvents_ = 0;
 }
 
 void Hub::saveHistorySnapshot() {
@@ -330,7 +348,7 @@ void Hub::saveState() {
 }
 
 void Hub::saveJob() {
-  if (job_) writeFile(kJobFile, json(*job_).dump());
+  if (job_) writeJob(json(*job_).dump());
 }
 
 // ------------------------------------------------------------------ Takt
@@ -474,7 +492,7 @@ void Hub::watchClock(Ms now) {
 // The wall clock jumped: deadlines in wall time keep their distance; jump
 // locks and maintenance never last longer than they can (RAT-044).
 void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
-  for (Epoch* t : {&lastSample_, &lastWatch_, &lastStateSave_, &lastSnapshot_, &lastRetry_, &bootEpoch_}) *t += jump;
+  for (Epoch* t : {&lastSample_, &lastWatch_, &lastStateSave_, &lastSnapshot_, &lastRetry_, &snapshotRetryAt_, &bootEpoch_}) *t += jump;
   if (watch_.evaluatedAt > 0) watch_.evaluatedAt += jump;
   if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
   if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
@@ -603,7 +621,7 @@ void Hub::tickImpl() {
   }
   if (!unsaved_.empty() && epoch - lastRetry_ >= 10) {
     lastRetry_ = epoch;
-    retryUnsaved();
+    retryUnsaved(epoch);
   }
 }
 

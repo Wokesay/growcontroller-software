@@ -54,6 +54,8 @@ class Hub {
   void tick();
   void flush();     // saves what is not on disk yet: password, state, new events
   bool saveAuth();  // the password file, on disk when it returns true
+  // A write the storage could not finish (the simulator's fast-forward): said and written again.
+  void storageFailed(const std::string& name);
 
   std::recursive_mutex& mutex() { return mtx_; }
   const Catalog& catalog() const { return cat_; }
@@ -143,7 +145,8 @@ class Hub {
   bool writeFile(const std::string& name, const std::string& data);
   bool appendFile(const std::string& name, const std::string& data);
   bool stored(bool ok, const std::string& name);
-  void retryUnsaved();
+  void retryUnsaved(Epoch epoch);
+  bool writeJob(const std::string& data);
   void sampleHistory(Epoch epoch);
   void tickImpl();
   void tickJob(Ctx& c);
@@ -202,7 +205,8 @@ class Hub {
   std::uint64_t savedEventId_ = 0;
   std::uint64_t journaledEvents_ = 0;  // in the events journal since its snapshot
   std::set<std::string> unsaved_;      // files whose last write failed
-  Epoch lastRetry_ = 0;
+  Epoch lastRetry_ = 0, snapshotRetryAt_ = 0, snapshotBackoffS_ = 10;
+  std::string jobOnDisk_;  // what job.json should hold
   int idSeq_ = 0;
 };
 

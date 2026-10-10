@@ -45,7 +45,10 @@ bool EspStorage::write(const std::string& name, const std::string& data) {
   if (!f) return false;
   bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
   ok = std::fclose(f) == 0 && ok;
-  if (!ok) return false;
+  if (!ok) {  // a failed write does not keep the space
+    std::remove(tmp.c_str());
+    return false;
+  }
   std::remove(pathOf(name).c_str());
   return std::rename(tmp.c_str(), pathOf(name).c_str()) == 0;
 }

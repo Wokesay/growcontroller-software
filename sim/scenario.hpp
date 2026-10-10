@@ -26,7 +26,8 @@ namespace sim {
 //   hold():   while held (the simulator fast-forwarding), writes stay in memory
 //             and go to disk once each on release, in the order first written;
 //             a file is not written behind a failed one of the same stem (no
-//             journal emptied behind its failed snapshot). Returns false then.
+//             journal emptied behind its failed snapshot). The release
+//             returns the files that did not reach the disk.
 // A failed write returns false (the hub writes it again); files are for the
 // owner only (0600, a new folder 0700). A folder that cannot be created
 // means memory only, said once.
@@ -39,16 +40,17 @@ class FileStorage : public gc::IStorage {
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
   bool append(const std::string& name, const std::string& data) override;
-  bool hold(bool on);  // on release: false if something could not be written
+  std::vector<std::string> hold(bool on);
   std::uint64_t bytesWritten() const;  // bytes handed to the disk
 
  private:
+  bool onDisk() const { return !dir_.empty() && !noFolder_; }
   std::optional<std::string> readLocked(const std::string& name);
   bool toDisk(const std::string& name, const std::string& data, bool atEnd);
-  bool release();
+  std::vector<std::string> release();
   std::string dir_;
-  bool noFolder_ = false;  // the folder cannot be created: memory only, said once
-  bool failing_ = false;   // the last write failed: said once, said again when it works
+  bool noFolder_ = false;          // the folder cannot be created: memory only, said once
+  std::set<std::string> failing_;  // files whose last write failed: each said once, and again when it works
   int holds_ = 0;
   std::map<std::string, std::string> cache_;
   std::vector<std::string> dirty_;              // written while held, in order
