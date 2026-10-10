@@ -526,8 +526,8 @@ Assistant way is still a product question.
   `docker` command, on a runner of each architecture, not with Home
   Assistant's builder actions. `app.yml` builds and starts it without
   write access, on every code change and for a release; only
-  `release.yml`'s `publish` pushes it, for a tag `vX.Y.Z`, after checking
-  it against the checksum the build gave, and attests it.
+  `release.yml`'s `publish` pushes it to ghcr.io, for a tag `vX.Y.Z`,
+  after checking it against the checksum the build gave, and attests it.
 - `gc_ha_server --app` takes Home Assistant's address and token from the
   Supervisor (`http://supervisor/core`, `SUPERVISOR_TOKEN`); nothing is
   configured and no token is made by hand. The app asks only for
@@ -536,15 +536,23 @@ Assistant way is still a product question.
 - The web app is served on port 8099 of the Home Assistant host, plain
   HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
   a follow-up.
-- `ha/app/config.yaml` on `main` is the app's distribution manifest:
-  every installed app compares itself with its version. A version change
-  there is a release step and waits for the owner's "mergen" like the
-  release.
-- The image is built in stages, so the web app's npm packages never see
-  the server's sources.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
   tag (SD-023, SD-027).
+
+Notes from the implementation (Claude, after the reviews of PR #77; they
+apply the rules above and add no new ones):
+
+- `ha/app/config.yaml` on `main` is the app's distribution manifest:
+  every installed app compares itself with its version. A version change
+  there is therefore part of a release and, like the release, waits for
+  "mergen" (SD-023). This is a process rule; no GitHub rule enforces it.
+- The release workflow's `check` job rehearses the push in every dry run
+  against a throwaway `registry:2` service on the runner. That image is
+  third-party code, not an action, so SD-027 does not cover it: it is
+  pinned by digest, gets no token, runs only in the read-only job and is
+  updated by hand. The smoke test's stand-in for the Supervisor is the
+  build's own pinned Alpine base image.
 
 
 ---

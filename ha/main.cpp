@@ -15,6 +15,7 @@
 #include <random>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 #include <httplib.h>
 
@@ -166,7 +167,9 @@ int main(int argc, char** argv) {
   std::string token = tokenFile.empty() ? (std::getenv(tokenVar) ? std::getenv(tokenVar) : "") : readFile(tokenFile);
   // Not passed on to anything this process starts. The Supervisor also sets
   // the same token under its old name.
-  for (const char* var : {tokenVar, app ? "HASSIO_TOKEN" : tokenVar}) {
+  std::vector<const char*> clear = {tokenVar};
+  if (app) clear.push_back("HASSIO_TOKEN");
+  for (const char* var : clear) {
 #ifdef _WIN32
     _putenv_s(var, "");
 #else

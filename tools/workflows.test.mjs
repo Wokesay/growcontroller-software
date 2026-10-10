@@ -88,7 +88,7 @@ test("the publishing job builds nothing and the release build uses no cache", ()
   assert.match(packages, /cache: \$\{\{ !inputs\.release && 'npm' \|\| '' \}\}/);
 });
 
-test("the app image is built without write access and only pushed by publish", () => {
+test("the app image is built without write access and pushed to a real registry only by publish", () => {
   // SD-034: app.yml builds and smoke tests, release.yml's publish pushes.
   const app = readFileSync(join(dir, "app.yml"), "utf8");
   assert.doesNotMatch(app, /docker (login|push)|imagetools create|--push\b|type=registry|--cache-(from|to)|:\s*write\b/);

@@ -111,10 +111,16 @@ test("the server's --app mode and the image match the app", () => {
   // the image with nothing but their results.
   const stages = [...docker.matchAll(/^FROM (\S+)(?: AS (\w+))?$/gm)].map((m) => [m[1], m[2]]);
   assert.deepEqual(stages.map(([, name]) => name), ["web", "server", "licenses", undefined]);
-  for (const [from, name] of stages.slice(0, 3)) assert.match(from, /^alpine:[\d.]+@sha256:[0-9a-f]{64}$/, `${name}: pinned by digest`);
+  const base = stages[0][0];
+  assert.match(base, /^alpine:[\d.]+@sha256:[0-9a-f]{64}$/, "pinned by digest");
+  for (const [from, name] of stages.slice(1, 3)) assert.equal(from, base, `${name}: the same base image`);
   assert.equal(stages[3][0], "scratch");
+  // The Supervisor's stand-in in the smoke test is that base image too, so
+  // Dependabot's update of the Dockerfile shows up here.
+  assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${base.replace(/[.]/g, "\\.")}$`, "m"));
   const server = docker.slice(docker.indexOf(" AS server"), docker.indexOf(" AS licenses"));
-  assert.doesNotMatch(server, /nodejs|npm|COPY (\.|web|tools)\b|--from=web/, "the server stage gets no node and no web packages");
+  assert.doesNotMatch(server, /nodejs|npm|--from=web/, "the server stage gets no node and no web packages");
+  assert.doesNotMatch(server, /^COPY (?:--\S+ )*(?:\.|web\/?|tools\/?)\s/m, "nor the whole tree, web/ or tools/");
   const image = docker.slice(docker.indexOf("FROM scratch"));
   assert.deepEqual([...image.matchAll(/^COPY (.*)$/gm)].map((m) => m[1]), [
     "--from=server /src/build/gc_ha_server /gc_ha_server",

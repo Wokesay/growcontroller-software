@@ -127,9 +127,11 @@ entry under `[Unreleased]`.
      pinned: each build takes the current ones of Alpine 3.22 (supported
      until 2027-05). Security fixes for musl, the GCC runtime,
      cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
-     the app's base image (pinned by digest); it does not cover
-     `cmake/deps.cmake`, the `espressif/idf` container and `reuse`; they
-     are updated by hand.
+     the app's base image (pinned by digest; `tools/app.test.mjs` keeps
+     the smoke test's stand-in on the same digest, so such an update
+     fails until both match); it does not cover `cmake/deps.cmake`, the
+     `espressif/idf` container, the `registry:2` service of the `check`
+     job and `reuse`; they are updated by hand.
    - If `publish` fails after the release was created, delete the
      unfinished release (not the tag) and run the job again. A second run
      pushes the same app image again.

@@ -88,22 +88,27 @@ jobs:
           grep -q '<div id="app"' index.html
           code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: example.com' http://127.0.0.1:8099/api/v1/info)
           if [ "$code" != 403 ]; then echo "::error::A foreign host name got $code, not 403"; exit 1; fi
-          # Long paths (the web server matches them with recursive regular
-          # expressions on musl's thread stacks) leave the app running.
-          long=$(printf 'a%.0s' $(seq 1 250))
-          curl -s -o /dev/null "http://127.0.0.1:8099/$long" || true
-          curl -s -o /dev/null "http://127.0.0.1:8099/api/v1/$long" || true
+          # The longest paths the web server still matches with its recursive
+          # regular expressions (256 characters, on musl's thread stacks)
+          # leave the app running.
+          curl -s -o /dev/null "http://127.0.0.1:8099/$(printf 'a%.0s' $(seq 1 255))" || true
+          curl -s -o /dev/null "http://127.0.0.1:8099/api/v1/$(printf 'a%.0s' $(seq 1 248))" || true
           curl -fsS http://127.0.0.1:8099/api/v1/info -o /dev/null || { docker logs app; echo "::error::A long path took the app down"; exit 1; }
-          # It reached the Supervisor by name with its token, read only the states.
+          # It reached the Supervisor by name with its token, read only the
+          # states, and reported no problem with them (a good read logs
+          # nothing). Read from files: under pipefail an early-ending grep
+          # in a pipe could hide a match.
           sleep 6
-          docker logs app
-          docker exec supervisor cat /tmp/requests | tee requests.txt
+          docker logs app > app.log 2>&1
+          cat app.log
+          docker exec supervisor cat /tmp/requests > requests.txt
+          cat requests.txt
           grep -q '^GET /core/api/states HTTP/1.1' requests.txt
           grep -q '^Authorization: Bearer smoke-test' requests.txt
-          if grep -E '^[A-Z]+ ' requests.txt | grep -vq '^GET /core/api/states HTTP/1.1'; then
-            echo "::error::The app asked the Supervisor for more than the states"; exit 1
-          fi
-          if docker logs app 2>&1 | grep -q 'not reachable'; then echo "::error::The app did not reach the stand-in"; exit 1; fi
+          grep -E '^[A-Z]+ ' requests.txt | grep -v '^GET /core/api/states HTTP/1.1' > other.txt || true
+          if [ -s other.txt ]; then echo "::error::The app asked the Supervisor for more than the states"; exit 1; fi
+          grep '^Home Assistant: ' app.log | grep -v 'no Date header' > problems.txt || true
+          if [ -s problems.txt ]; then echo "::error::The app reported a problem with the stand-in"; exit 1; fi
           # Stopped as the Supervisor stops it; the data folder is private.
           docker stop -t 10 app
           code=$(docker inspect app --format '{{.State.ExitCode}}')

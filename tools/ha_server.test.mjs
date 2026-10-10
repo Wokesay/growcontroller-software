@@ -46,10 +46,17 @@ function info(port) {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => resolve(res.statusCode === 200 ? JSON.parse(body) : null));
-    }).on("error", () => resolve(null));
+    })
+      .on("timeout", function () {
+        this.destroy(); // a server that accepts but never answers
+      })
+      .on("error", () => resolve(null));
   });
 }
 
+// tools/ci.sh builds the server first: in CI a missing one is a failure,
+// not a skip.
+if (process.env.CI && !existsSync(bin)) throw new Error(`${bin} is not built`);
 const skip = !existsSync(bin) ? `${bin} is not built` : process.platform === "win32" ? "POSIX only" : false;
 
 test("--app refuses a mapping file and a token file", { skip }, () => {
@@ -109,6 +116,7 @@ test("--app starts with the Supervisor's token and honours --data, --host, --web
     child.kill("SIGTERM");
   }
   assert.deepEqual(await ended, { code: 0, signal: null }, out);
+  assert.equal(statSync(data).mode & 0o777, 0o700, "the data folder");
   const files = readdirSync(data);
   assert.ok(files.length > 0, "the hub wrote its data folder");
   for (const f of files) assert.equal(statSync(join(data, f)).mode & 0o777, 0o600, f);
