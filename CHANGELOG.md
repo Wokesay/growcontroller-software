@@ -7,6 +7,27 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+## [0.1.0-proto.2] – 2026-10-10
+
+Second prototype and the first published release: simulator downloads for
+Windows, macOS and Linux, and a Home Assistant app that only reads
+sensors. Control runs only in the simulator; the firmware for the
+ESP32-S3 is a skeleton without a bus. No compatibility promises.
+
+- **New:** try it without hardware with the simulator download; a Home
+  Assistant app that shows your sensors (it only reads and switches
+  nothing); the app in English too (some device messages are still
+  German); Climate, Light and Irrigation pages with readings and switching
+  by hand; setup in five steps with recipe templates.
+- **Fixed:** your changes are saved at once, and far less is written to
+  the memory card; a damaged entry in the event list can no longer break
+  the app.
+- **Please note:** this is a prototype; do not connect it to real pumps or
+  plugs. The Home Assistant app is experimental: switch on advanced mode
+  in your Home Assistant profile to find it, open it by IP address or
+  `homeassistant.local`, and set its password right away. Its connection
+  is not encrypted, so use it only in your own network.
+
 ### Added
 - **growcontroller as a Home Assistant app** (SD-034,
   `docs/HOME_ASSISTANT.md`): switch on advanced mode in your Home Assistant
@@ -69,10 +90,11 @@ listed in every release under "Security".
   catalog marks such roles with `afterPowerLoss: "on"`; the core accepts
   it only for the exhaust and the circulation fan, as continuous loads
   without a maximum run time. Fan sockets bound with an older version
-  report "Schutzeinstellung weicht ab" and need to be assigned again.
+  report "The plug's safety setting is missing or differs" and need to be
+  assigned again.
 - **The emergency stop survives a restart** (PD-076, SD-028): it is kept
   in the run-time state; after a power loss or restart everything stays
-  off, fans included, and the hub reports "Not-Halt besteht weiter" until
+  off, fans included, and the hub reports "Emergency stop still active" until
   someone resumes. During the stop the fan sockets are set to "off after
   power loss"; resume restores their setting.
 - **Internal error keeps the fans running** (PD-077): the safe state after
@@ -82,10 +104,9 @@ listed in every release under "Security".
   network time sync). It saves its time and an operating time with its
   run-time state. Without a secured time after a start it continues from
   the saved time (a newer event moves it forward by at most 1 h) and
-  reports "Uhrzeit
-  nicht gesichert" after 2 min; when the time is secured later it reports
-  the jump. `GET /api/v1/state` shows `time` (`secured`, `source`,
-  `operatingS`). Intervals within one start use operating time; across a
+  reports "Clock not synced" after 2 min; when the time is secured later
+  it reports the jump. `GET /api/v1/state` shows `time` (`secured`,
+  `source`, `operatingS`). Intervals within one start use operating time; across a
   restart they use wall time only if both moments were secured, otherwise
   operating time, so an outage never stretches them (prepared for the
   dosing intervals that follow). A clock step keeps the remaining time of
@@ -148,8 +169,7 @@ listed in every release under "Security".
   parts in `missing` and rejects one bottle for two parts; a pair from the
   template carries over to bottles without a pair of their own, as "AB2"
   and so on if the name is already taken. The manufacturer source is also
-  available in English (`sourceEn`). The previous templates `athena_pro_veg`
-  and `ab_basic` are dropped.
+  available in English (`sourceEn`).
 - **Growing area (schema v2):** setup asks where the plants are (room,
   tent, greenhouse), with a name of your own. In the data model this is a
   zone with its own roles (`zone.*`, previously `tent.*` on the tank); the
@@ -195,11 +215,18 @@ listed in every release under "Security".
   rejects switching commands and keeps its state; the device's auto-off and
   power loss still take effect. The simulator counts the switch-ons per
   outlet (`switchOns`), so tests reliably detect short pulses.
-- **German and English:** setup, navigation, app shell, numbers and dates;
-  more pages follow. The language is stored on the hub and can be chosen
-  per browser.
+- **German and English:** every page in both languages (see "The app's
+  texts move into the language tables" and "The hub speaks English with
+  keys" below). The language is stored on the hub and can be chosen per
+  browser.
 
 ### Security
+No published version is affected: this is the first release published
+from this repository (0.1.0-proto.1 was never published as a download or
+an image), and no GHSA or CVE was issued. The first entry also fixes
+builds of 0.1.0-proto.1 from source; the others harden what is new in
+this release.
+
 - **A new password is on disk when the call returns** (#68): before, the
   simulator and the Home Assistant server wrote `auth.json` only with the
   next save every 10 s, so a power cut right after the first setup could
@@ -227,11 +254,16 @@ listed in every release under "Security".
   access and without a cache; the publishing job only checks the files
   against their checksums, attests their build provenance (check with
   `gh attestation verify` naming the release workflow and tag, see
-  `docs/RELEASE.md`) and creates the release. A second SBOM lists
+  `docs/RELEASE.md`), pushes and attests the Home Assistant app image and
+  creates the release. A second SBOM lists
   the C++ libraries of the simulator. All actions are pinned by commit SHA
   and updated by Dependabot after a 7-day cooldown; a test keeps them
   GitHub's own and pinned. Pull requests that change the release
-  machinery run the release as a dry run.
+  machinery run the release as a dry run. The ESP-IDF build image is
+  pinned by digest, and CI installs `reuse` only from requirements files
+  with hashes (`tools/requirements-reuse*.txt`, kept current by
+  Dependabot): every dependency as a wheel, `reuse` itself built from its
+  hashed source with its hashed build backend.
 - **Safety profiles in the actuator gateway** for sockets and 12 V
   outputs: `dauer` (continuous), `puls` (pulse), `kompressor`
   (compressor).
@@ -251,13 +283,13 @@ listed in every release under "Security".
   - Humidifier: if a humidity sensor is assigned, only with a valid value
     below 85 % (assumption).
   - Reassigning or removing first switches the old output off; if that
-    fails, the event log shows "Off not confirmed".
+    fails, the event log shows "may still be on".
   - Protective cut-offs (dry run of the circulation pump, inlet emergency
     limit, irrigation pump, maximum run time): if switching off fails, the
-    hub reports "Off not confirmed" instead of "off", once per reason; the
+    hub reports "may still be on" instead of "off", once per reason; the
     inlet distinguishes level, emergency limit and open time. The hub keeps
-    trying as long as the reason or the latch persists, and reports "Off
-    confirmed" as soon as the output reads as off. Before, the log said
+    trying as long as the reason or the latch persists, and reports "now
+    off" as soon as the output reads as off. Before, the log said
     "off", and for the circulation pump and the inlet it added a new entry
     on every cycle.
   - If the circulation pump runs or the inlet is open although the latch
@@ -269,7 +301,7 @@ listed in every release under "Security".
     ends the retries at the maximum run time (open; fallback: auto-off in
     the device).
   - Unassigning a role: if the output does not switch off, the log shows
-    "Off not confirmed" (as with reassigning).
+    "may still be on" (as with reassigning).
   - Emergency stop and restart switch off all switched roles; circulation
     fan and exhaust fan do not run on (Rationale: RAT-036).
   - Heaters are not available as a role yet: only once the latching
@@ -289,7 +321,7 @@ listed in every release under "Security".
   passing check now reads "1 Prüfung" instead of "1 Prüfungen". Events,
   job messages and errors follow the same way: the history stores key
   and values, so it switches language too; older events keep their text.
-  The remaining hub texts follow. For API clients: `watchdog.headline` and each item's
+  For API clients: `watchdog.headline` and each item's
   `label` and `text` in `/state`, and each event's `title` and `text`
   in `/events`, are now `{key, text, args}` instead of a string; a few line keys are new (`ph.start`, `circ.on_dosing`,
   `circ.on_always`, `circ.on_interval`, `circ.latched`, `circ.off`).
@@ -310,7 +342,7 @@ listed in every release under "Security".
   tubing when the rate changed clearly, and then offers to calibrate
   again; after a failed run, closing the window cancels the run. A pump
   that reports a stored rate of 0 no longer counts as a previous rate.
-  The actuator gateway and the doser follow: why an output or pump may
+  The actuator gateway and the doser too: why an output or pump may
   not run (`act.*`), how a dose ended (`dose.*`), switch-off reports and
   protective cut-offs carry keys, so dose events, "may still be on" and
   dry-run or inlet cut-offs read in the page language; details a device
@@ -325,18 +357,15 @@ listed in every release under "Security".
   split into `act.irrigation.min_missing` and `act.irrigation.low`.
 - **The app's texts move into the language tables** (#18): every page,
   the shared widgets and the simulator panel show their own texts in
-  English when English is chosen; the hub's messages follow later. Numbers use
+  English when English is chosen, and so do the hub's messages (above).
+  Numbers use
   a decimal point on an English page and a comma on a German one, also
   in input fields and range hints, and a field shows its value again
   when the language changes (PD-035). The issue that "Report a problem"
   prepares is always in English, as the repository is (PD-034). German
-  stays the default until the hub's messages are done. The buttons that
+  stays the default for a new hub. The buttons that
   reorder a recipe now name the bottle for screen readers, and in English
   releasing a latch reads "Release" everywhere.
-- **No collection box** (PD-078, SD-031): every sensor head and the
-  dosing block hang directly on a hub port. The device issue form no longer offers the
-  collection box, the catalog attaches the climate and CO2 heads to a hub
-  port, and the docs no longer list it as a connection.
 - **Merging gateway changes** (SD-033): a technical change to the
   actuator gateway or to protective cut-offs that changes no logic is
   merged once `reviewer`, `qa` and `security` accept it; logic changes
@@ -377,7 +406,8 @@ listed in every release under "Security".
 - Decisions: E1, E2, E7, E8 and E9 are decided as PD-013 to PD-017 in the
   product repository; the plant automation concept refers to PD-018 to
   PD-021 (scope and languages, sockets, power loss, pH/EC heads). The
-  behaviour after a power loss (PD-020) is not implemented yet.
+  behaviour after a power loss (PD-020) is implemented in part: fans keep
+  their state (PD-050); light and irrigation follow.
 - Embedded texts (catalog, changelog) as byte arrays, so the core also
   compiles with MSVC.
 - Catalog version 2 (roles `zone.*`, separate pH and EC heads),
@@ -430,10 +460,20 @@ listed in every release under "Security".
   folder that is not writable is remembered ("in memory only") instead of
   forgotten; the packaging script also detects Windows when run locally.
 
+### Removed
+- **No collection box** (PD-078, SD-031): every sensor head and the
+  dosing block hang directly on a hub port. The device issue form no
+  longer offers the collection box, the catalog attaches the climate and
+  CO2 heads to a hub port, and the docs no longer list it as a
+  connection.
+- The recipe templates `athena_pro_veg` and `ab_basic` (replaced by the
+  templates from the manufacturer chart, see "Recipe templates" above).
+
 ## [0.1.0-proto.1] – 2026-10-06
 
-First prototype. Runs in the simulator; the firmware for the ESP32-S3 is a
-skeleton without a bus. No compatibility promises.
+First prototype (not published as a release). Runs in the simulator; the
+firmware for the ESP32-S3 is a skeleton without a bus. No compatibility
+promises.
 
 ### Added
 - **Core (C++17, platform-neutral):** catalog with capabilities, device

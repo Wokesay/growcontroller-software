@@ -29,15 +29,22 @@ jobs:
         with:
           node-version: 22
       - name: Tools
-        run: pipx install reuse==6.2.0
+        run: |
+          # reuse and everything it needs only with the hashes in tools/ (#29):
+          # wheels only, except reuse itself, built from its hashed source with
+          # the hashed backend, never with one fetched on the side
+          python3 -m venv "$RUNNER_TEMP/reuse"
+          "$RUNNER_TEMP/reuse/bin/pip" install --require-hashes --no-deps --only-binary :all: -r tools/requirements-reuse-build.txt
+          "$RUNNER_TEMP/reuse/bin/pip" install --require-hashes --no-deps --no-build-isolation --only-binary :all: --no-binary reuse -r tools/requirements-reuse.txt
+          echo "REUSE=$RUNNER_TEMP/reuse/bin/reuse" >> "$GITHUB_ENV"
       - name: Architecture rules
         run: tools/arch_check.sh
       - name: CI and release scripts, workflow pins
-        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs
+        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs
       - name: Text keys of the web app
         run: node --test tools/i18n_keys.test.mjs
       - name: Licenses (REUSE, npm dependencies)
         run: |
-          reuse lint
+          "$REUSE" lint
           node --test tools/check_licenses.test.mjs
           node tools/check_licenses.mjs

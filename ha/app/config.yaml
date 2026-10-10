@@ -6,7 +6,7 @@
 # Assistant's API through the Supervisor and one port, nothing of the host.
 # tools/app.test.mjs refuses any other key.
 name: growcontroller
-version: "0.1.0-proto.1"
+version: "0.1.0-proto.2"
 slug: growcontroller
 description: growcontroller's web app for your grow, with the sensors from Home Assistant (read-only, switches nothing)
 url: https://github.com/Wokesay/growcontroller-software/blob/main/docs/HOME_ASSISTANT.md

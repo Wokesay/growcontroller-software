@@ -24,7 +24,7 @@ body:
     attributes:
       label: Software version
       description: Settings › Display and info
-      placeholder: 0.1.0-proto.1
+      placeholder: 0.1.0-proto.2
     validations:
       required: true
   - type: input

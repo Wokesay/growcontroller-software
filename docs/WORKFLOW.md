@@ -57,12 +57,14 @@ only the sync workflow may write there.
    `anthropics/claude-code-action` on the Actions allow list, pinned by
    commit SHA, because only actions created by GitHub are allowed
    (SD-027).
-3. **Before the first public release tag:** the rest of the release
-   hardening (#29): immutable releases after a test pre-release, the
-   `espressif/idf` container by digest, `reuse` from a hashed
-   requirements file, the triage template. Done: read-only build jobs,
-   tag on `main`, actions pinned by SHA with Dependabot, provenance,
-   C++ SBOM.
+3. **Release hardening (#29):** done before the first release tag:
+   read-only build jobs, tag on `main`, actions pinned by SHA with
+   Dependabot, provenance, C++ SBOM, the `espressif/idf` container by
+   digest, `reuse` from a requirements file with hashes. Left: immutable
+   releases, switched on by the project owner after the first release
+   (`0.1.0-proto.2`, a pre-release, is the test pre-release #29 asks
+   for), and pinning `claude-code-action` before the triage template is
+   activated (item 2).
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 

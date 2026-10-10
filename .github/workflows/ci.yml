@@ -82,7 +82,13 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update && sudo apt-get install -y ninja-build ccache
-          pipx install reuse==6.2.0
+          # reuse and everything it needs only with the hashes in tools/ (#29):
+          # wheels only, except reuse itself, built from its hashed source with
+          # the hashed backend, never with one fetched on the side
+          python3 -m venv "$RUNNER_TEMP/reuse"
+          "$RUNNER_TEMP/reuse/bin/pip" install --require-hashes --no-deps --only-binary :all: -r tools/requirements-reuse-build.txt
+          "$RUNNER_TEMP/reuse/bin/pip" install --require-hashes --no-deps --no-build-isolation --only-binary :all: --no-binary reuse -r tools/requirements-reuse.txt
+          echo "REUSE=$RUNNER_TEMP/reuse/bin/reuse" >> "$GITHUB_ENV"
       # Compiler cache: restored everywhere, saved only on main.
       - name: Restore compiler cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -125,7 +131,8 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    container: espressif/idf:v5.4.1
+    # by digest (#29); a new ESP-IDF image is taken by hand
+    container: espressif/idf:v5.4.1@sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

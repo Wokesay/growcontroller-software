@@ -128,3 +128,29 @@ test("steps fail on a failing command in a pipe and get no secrets passed on", (
     assert.match(readFileSync(join(dir, f), "utf8"), /^defaults:\n {2}run:\n(?: {4}#.*\n)* {4}shell: bash\n/m, f);
   }
 });
+
+test("tools and containers come pinned: reuse by hashes, images by digest", () => {
+  // #29: nothing installed by name alone in the workflows.
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    assert.doesNotMatch(text, /\bpipx (install|run)\b|\buv (pip|tool) install\b/, `${f}: installs by name`);
+    // also `"$RUNNER_TEMP/reuse/bin/pip" install`: a quote may close the path
+    const installs = [...text.matchAll(/\bpip3?(?:\.\d+)?["']?\s+install\b[^\n]*/g)].map((m) => m[0]);
+    for (const line of installs) assert.match(line, /--require-hashes .*--no-deps .*--only-binary :all:/, `${f}: ${line}`);
+    for (const m of text.matchAll(/^\s+(?:container|image): (\S+)/gm)) assert.match(m[1], /@sha256:[0-9a-f]{64}$/, `${f}: ${m[1]}`);
+  }
+  // The two workflows that run reuse install it exactly this way.
+  for (const f of ["ci.yml", "checks.yml"]) {
+    const text = readFileSync(join(dir, f), "utf8");
+    assert.match(text, /pip" install --require-hashes --no-deps --only-binary :all: -r tools\/requirements-reuse-build\.txt\n/, `${f}: the build backend`);
+    assert.match(text, /pip" install --require-hashes --no-deps --no-build-isolation --only-binary :all: --no-binary reuse -r tools\/requirements-reuse\.txt\n/, `${f}: reuse`);
+  }
+  for (const file of ["requirements-reuse.txt", "requirements-reuse-build.txt"]) {
+    const req = readFileSync(join(dir, "..", "..", "tools", file), "utf8");
+    const pinned = [...req.matchAll(/^([a-z0-9._-]+)==/gim)].map((m) => m[1]);
+    const hashed = [...req.matchAll(/^([a-z0-9._-]+)==\S+ \\\n {4}--hash=sha256:[0-9a-f]{64}/gim)].map((m) => m[1]);
+    assert.ok(pinned.length > 0, file);
+    assert.deepEqual(hashed, pinned, `${file}: every package has hashes`);
+    assert.doesNotMatch(req, /^\s*(-e|--index-url|--extra-index-url|--find-links)\b|^\S+ @ /m, `${file}: no other source`);
+  }
+});

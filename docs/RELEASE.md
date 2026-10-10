@@ -129,9 +129,15 @@ entry under `[Unreleased]`.
      cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
      the app's base image (pinned by digest; `tools/app.test.mjs` keeps
      the smoke test's stand-in on the same digest, so such an update
-     fails until both match); it does not cover `cmake/deps.cmake`, the
-     `espressif/idf` container, the `registry:2` service of the `check`
-     job and `reuse`; they are updated by hand.
+     fails until both match) and `reuse` with its dependencies and build
+     backend (`tools/requirements-reuse*.txt`, installed with
+     `--require-hashes`, wheels only except `reuse` itself, which is built
+     from its hashed source without fetching anything else);
+     it does not cover `cmake/deps.cmake`, the `espressif/idf` container
+     (pinned by digest in `ci.yml`) and the `registry:2` service of the
+     `check` job; they are updated by hand. `tools/workflows.test.mjs`
+     refuses a tool installed by name alone or an image without a
+     digest.
    - If `publish` fails after the release was created, delete the
      unfinished release (not the tag) and run the job again. A second run
      pushes the same app image again.
