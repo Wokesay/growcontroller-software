@@ -20,6 +20,13 @@ namespace {
 const char* const kMeasures[] = {"ph", "ec", "water_temp", "level", "air_temp", "humidity", "co2"};
 
 std::string classOf(const std::string& measures) { return "ha_" + measures; }
+// The measures that can come as a raw signal the app calibrates (SD-041), and their class suffix
+const char* const kSignalMeasures[] = {"ph"};
+const std::string kSignalSuffix = "_raw";
+bool signalMeasure(const std::string& m) {
+  return std::any_of(std::begin(kSignalMeasures), std::end(kSignalMeasures), [&](const char* x) { return m == x; });
+}
+bool signalUnit(const std::string& unit) { return unit == "mV" || unit == "V"; }
 
 // Labels as the catalog writes them (the catalog is still German, #18).
 const char* labelOf(const std::string& m) {
@@ -111,6 +118,71 @@ double convert(const std::string& measures, double v, const std::string& unit, s
   return gc::kNaN;
 }
 
+// A raw signal in the hub's raw scale (SD-041): a pH probe's voltage as the pH
+// an ideal probe would read (kNernstMvPerPh), NaN with a fault for any other
+// unit, so a node that starts reporting a calibrated pH never meets the old
+// calibration (RAT-006).
+double signalValue(const std::string& measures, double v, const std::string& unit, std::string& fault) {
+  fault.clear();
+  if (unit.empty()) {
+    fault = "unit missing";
+    return gc::kNaN;
+  }
+  if (measures == "ph" && unit == "mV") return 7.0 - v / kNernstMvPerPh;
+  if (measures == "ph" && unit == "V") return 7.0 - v * 1000.0 / kNernstMvPerPh;
+  fault = "unit " + printable(unit) + " is no raw signal";
+  return gc::kNaN;
+}
+
+// The words of an entity ID or a name, in lower case ("sensor.Tank_pH1" → sensor, tank, ph1).
+std::vector<std::string> wordsOf(const std::string& text) {
+  std::vector<std::string> out;
+  std::string word;
+  for (size_t i = 0; i <= text.size(); ++i) {
+    const char c = i < text.size() ? text[i] : ' ';
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+      word += static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+      continue;
+    }
+    if (!word.empty()) out.push_back(word);
+    word.clear();
+  }
+  return out;
+}
+
+// "ph" as a word ("sensor.tank_ph_mv", "pH Sonde", "ph1"), not inside one
+// ("phone"), and no ORP or redox probe, which also reports a voltage.
+bool saysPh(const std::string& text) {
+  bool ph = false;
+  for (const auto& w : wordsOf(text)) {
+    if (w == "orp" || w == "redox") return false;
+    if (w.size() >= 2 && w.compare(0, 2, "ph") == 0 && std::all_of(w.begin() + 2, w.end(), [](char c) { return c >= '0' && c <= '9'; }))
+      ph = true;
+  }
+  return ph;
+}
+
+// A voltage a pH front end without gain can deliver: none reads more than 5 V
+// (assumption from the ADC inputs such front ends feed). Higher ones (mains, a
+// UPS, a car battery) are no pH signal and are not passed on at all.
+// A missing value ("unknown" right after Home Assistant starts) does not
+// exclude it: only a known one above 5 V does.
+bool signalRange(double v, const std::string& unit) {
+  return !std::isfinite(v) || std::fabs(unit == "V" ? v * 1000.0 : v) <= 5000.0;
+}
+
+// A suggestion as a raw signal (SD-041): a voltage Home Assistant calls pH, or
+// one without a device class or of class voltage whose ID or name says pH. Any
+// other voltage (a battery, the mains) is never suggested; it can still be
+// picked from the other sensors.
+bool phSignal(const gc::json& state) {
+  const gc::json& attrs = attributesOf(state);
+  const std::string dc = gc::jstr(attrs, "device_class"), unit = gc::jstr(attrs, "unit_of_measurement");
+  if (!signalUnit(unit) || !signalRange(numericState(state), unit)) return false;
+  if (dc == "ph") return true;
+  return (dc.empty() || dc == "voltage") && (saysPh(gc::jstr(state, "entity_id")) || saysPh(gc::jstr(attrs, "friendly_name")));
+}
+
 // The device classes of the measurements the hub reads (classify()).
 bool ownDeviceClass(const std::string& dc) {
   return dc == "ph" || dc == "conductivity" || dc == "temperature" || dc == "humidity" || dc == "carbon_dioxide" ||
@@ -146,6 +218,16 @@ std::optional<Candidate> otherOf(const std::string& id, const gc::json& state) {
   c.entityId = id;
   c.name = printable(gc::jstr(attrs, "friendly_name"), 60);
   c.unit = printable(unit, 16);
+  // A voltage can be a pH probe's raw signal (SD-041), also with Home
+  // Assistant's device class voltage, which says exactly that; the app's
+  // calibration refuses one that does not move between the buffers.
+  if (signalUnit(unit) && (!hasClass || dc == "voltage")) {
+    if (!signalRange(v, unit)) return std::nullopt;  // the mains or a battery bank is no pH signal, nor kept
+    c.measures = {"ph"};
+    c.signal = true;
+    c.raw = v;
+    return c;
+  }
   if (hasClass && ownDeviceClass(dc)) {  // e.g. humidity without %: the unit is the reason, or a meter
     const bool meter = (dc == "volume" || dc == "volume_storage") && (sc == "total" || sc == "total_increasing");
     c.problem = meter ? "meter" : unit.empty() ? "unit_missing" : "unit_unsupported";
@@ -376,6 +458,13 @@ std::vector<Entity> parseEntities(const gc::json& j, std::string& err) {
       err = "each entity needs \"entity\" (e.g. sensor.grow_ph) and \"measures\" (ph, ec, water_temp, level, air_temp, humidity, co2)";
       return {};
     }
+    if (e.is_object() && e.contains("signal")) {
+      if (!e["signal"].is_boolean() || (e["signal"].get<bool>() && !signalMeasure(x.measures))) {
+        err = "\"signal\": true is only for a pH probe's voltage (\"measures\": \"ph\")";
+        return {};
+      }
+      x.signal = e["signal"].get<bool>();
+    }
     if (std::any_of(out.begin(), out.end(), [&](const Entity& o) { return o.entityId == x.entityId; })) {
       err = x.entityId + " is listed twice";
       return {};
@@ -387,7 +476,11 @@ std::vector<Entity> parseEntities(const gc::json& j, std::string& err) {
 
 gc::json entitiesJson(const std::vector<Entity>& entities) {
   gc::json out = gc::json::array();
-  for (const auto& e : entities) out.push_back({{"entity", e.entityId}, {"measures", e.measures}});
+  for (const auto& e : entities) {
+    gc::json x = {{"entity", e.entityId}, {"measures", e.measures}};
+    if (e.signal) x["signal"] = true;
+    out.push_back(std::move(x));
+  }
   return out;
 }
 
@@ -480,6 +573,13 @@ gc::Catalog catalog() {
                                       {"attach", "ha"},
                                       {"provides", {std::string("measure.") + m}},
                                       {"text", "Wert aus Home Assistant; kalibriert wird dort."}};
+  for (const char* m : kSignalMeasures)
+    j["deviceClasses"][classOf(m) + kSignalSuffix] = {{"label", std::string(labelOf(m)) + " (Rohwert)"},
+                                                      {"stage", 0},
+                                                      {"attach", "ha"},
+                                                      {"provides", {std::string("measure.") + m}},
+                                                      {"calibrations", {m}},
+                                                      {"text", "Rohwert aus Home Assistant; kalibriert wird hier."}};
   gc::Catalog c = gc::Catalog::fromJson(j);
   // Set in code, not from the catalog data, so the catalog cannot loosen
   // them (R7): calibrated in Home Assistant (RAT-025), and reported when the
@@ -488,8 +588,12 @@ gc::Catalog catalog() {
     c.deviceClasses[classOf(m)].externalCalibration = true;
     c.deviceClasses[classOf(m)].ownReportSchedule = true;
   }
+  // A raw signal is checked by the hub itself (SD-041): not calibrated elsewhere
+  for (const char* m : kSignalMeasures) c.deviceClasses[classOf(m) + kSignalSuffix].ownReportSchedule = true;
   return c;
 }
+
+std::string deviceClassOf(const Entity& e) { return classOf(e.measures) + (e.signal ? kSignalSuffix : ""); }
 
 HaBus::HaBus(std::vector<Entity> entities) : entities_(std::move(entities)) {}
 
@@ -533,7 +637,11 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
       const std::string id = gc::jstr(s, "entity_id");
       if (!validEntityId(id) || byId.count(id)) continue;
       byId[id] = &s;
-      const std::string kind = classify(s);
+      const bool signal = phSignal(s);  // before classify: Home Assistant may call a voltage pH
+      // A voltage Home Assistant calls pH is a signal or nothing, never a pH calibrated there
+      const gc::json& a0 = attributesOf(s);
+      if (!signal && gc::jstr(a0, "device_class") == "ph" && signalUnit(gc::jstr(a0, "unit_of_measurement"))) continue;
+      const std::string kind = signal ? "ph" : classify(s);
       if (kind.empty()) {
         // An other sensor, offered only when someone asks (SD-036)
         if (auto o = otherOf(id, s)) others.push_back(std::move(*o));
@@ -549,11 +657,13 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
       c.entityId = id;
       c.name = printable(gc::jstr(attrs, "friendly_name"), 60);
       c.kind = kind;
+      c.signal = signal;
       c.unit = printable(gc::jstr(attrs, "unit_of_measurement"), 16);
       if (gc::jstr(s, "state") != "unavailable") {
         c.raw = numericState(s);
         std::string fault;
-        c.value = convert(measuresOf(kind).front(), c.raw, gc::jstr(attrs, "unit_of_measurement"), fault);
+        // A signal has no value before the app has calibrated it
+        if (!signal) c.value = convert(measuresOf(kind).front(), c.raw, gc::jstr(attrs, "unit_of_measurement"), fault);
         if (!fault.empty()) c.problem = fault == "unit missing" ? "unit_missing" : "unit_unsupported";
       }
       found.push_back(std::move(c));
@@ -622,9 +732,13 @@ gc::json HaBus::candidatesJson(bool withOthers) const {
                     {"problem", c.problem.empty() ? gc::json(nullptr) : gc::json(c.problem)},
                     {"used", e != entities.end() ? gc::json(e->measures) : gc::json(nullptr)}};
   };
+  auto marked = [](gc::json j, const Candidate& c) {
+    if (c.signal) j["signal"] = true;
+    return j;
+  };
   gc::json list = gc::json::array();
   for (const auto& c : candidates) {
-    gc::json j = entry(c, measuresOf(c.kind));
+    gc::json j = marked(entry(c, measuresOf(c.kind)), c);
     j["kind"] = c.kind;
     list.push_back(std::move(j));
   }
@@ -632,7 +746,7 @@ gc::json HaBus::candidatesJson(bool withOthers) const {
   if (withOthers) {
     gc::json list2 = gc::json::array();
     for (const auto& c : others) {
-      gc::json j = entry(c, c.measures);
+      gc::json j = marked(entry(c, c.measures), c);
       j["deviceClass"] = c.deviceClass;
       list2.push_back(std::move(j));
     }
@@ -646,6 +760,21 @@ std::string HaBus::selectedMeasure(const std::string& entityId) const {
   for (const auto& e : entities_)
     if (e.entityId == entityId) return e.measures;
   return "";
+}
+
+std::optional<bool> HaBus::offeredAsSignal(const std::string& entityId) const {
+  std::lock_guard<std::mutex> l(m_);
+  for (const auto* list : {&candidates_, &others_})
+    for (const auto& c : *list)
+      if (c.entityId == entityId) return c.signal;
+  return std::nullopt;
+}
+
+std::optional<Entity> HaBus::selected(const std::string& entityId) const {
+  std::lock_guard<std::mutex> l(m_);
+  for (const auto& e : entities_)
+    if (e.entityId == entityId) return e;
+  return std::nullopt;
 }
 
 void HaBus::adopt(const Entity& entity) {
@@ -677,10 +806,13 @@ bool HaBus::select(const std::string& entityId, const std::string& measures, gc:
   // A suggestion serves what its kind says, an other sensor what its unit fits (SD-036)
   auto byId = [&](const Candidate& x) { return x.entityId == entityId; };
   std::vector<std::string> can;
+  bool signal = false;
   if (auto c = std::find_if(candidates_.begin(), candidates_.end(), byId); c != candidates_.end()) {
     can = measuresOf(c->kind);
+    signal = c->signal;
   } else if (auto o = std::find_if(others_.begin(), others_.end(), byId); o != others_.end()) {
     can = o->measures;
+    signal = o->signal;
   } else {
     why = gc::say("ha.unknown", {{"entity", entityId}});
     return false;
@@ -689,7 +821,7 @@ bool HaBus::select(const std::string& entityId, const std::string& measures, gc:
     why = gc::say("ha.mismatch", {{"entity", entityId}});
     return false;
   }
-  entities_.push_back({entityId, measures});
+  entities_.push_back({entityId, measures, signal});
   // Its last state is known from the round that offered it: the device is
   // online at once, not only after the next round.
   if (auto r = raw_.find(entityId); r != raw_.end()) updateLocked(entities_.back(), r->second, lastHaNowMs_, lastNowMs_);
@@ -723,7 +855,9 @@ void HaBus::updateLocked(const Entity& entity, const gc::json& state, std::int64
   st.ts = before.reportedAt == st.reportedAt ? before.ts : nowMs - std::max<std::int64_t>(0, haNowMs - st.reportedAt);
   // "unknown", an empty or a non-numeric state is no value, never 0 (R5).
   const double v = numericState(state);
-  if (st.available && std::isfinite(v)) st.value = convert(entity.measures, v, gc::jstr(attributesOf(state), "unit_of_measurement"), st.fault);
+  const std::string unit = gc::jstr(attributesOf(state), "unit_of_measurement");
+  if (st.available && std::isfinite(v))
+    st.value = entity.signal ? signalValue(entity.measures, v, unit, st.fault) : convert(entity.measures, v, unit, st.fault);
   st.name = printable(gc::jstr(attributesOf(state), "friendly_name"), 60);
 }
 
@@ -753,7 +887,7 @@ std::vector<gc::DeviceReport> HaBus::devices() const {
   for (const auto& e : entities_) {
     gc::DeviceReport d;
     d.id = deviceId(e.entityId);
-    d.cls = classOf(e.measures);
+    d.cls = deviceClassOf(e);
     auto it = states_.find(e.entityId);
     d.online = it != states_.end() && it->second.seen && it->second.available;
     if (it != states_.end()) d.fault = it->second.fault;

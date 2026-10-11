@@ -40,6 +40,9 @@ class SensorTruth {
   void expectChange(const std::string& role, Ms until);
 
   const Reading& get(const std::string& role) const;
+  // How old a value of this role may be before it is stale: the catalog's
+  // limit, for a sensor on its own schedule the one learned from its reports (SD-035).
+  Ms limit(const std::string& role) const;
   const std::map<std::string, Reading>& all() const { return readings_; }
 
   // Sättigungsdampfdruck in kPa (FAO-56, Gl. 11) und Luft-VPD (Quelle: RAT-017).

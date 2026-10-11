@@ -579,3 +579,101 @@ test("Home Assistant: the picker says when Home Assistant does not answer, inste
   await expect(page.getByText(/passende Sensoren/)).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("Home Assistant: a pH probe's voltage is suggested first, as a raw value calibrated in the app (SD-038, SD-041)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  const raw = { entity: "sensor.tank_ph_mv", name: "Tank pH Spannung", kind: "ph", measures: ["ph"], value: null, raw: -10, unit: "mV", problem: null, used: null, signal: true };
+  await asHomeAssistant(page, "ok", [...haSensors, raw], [
+    { entity: "sensor.esp_vcc", name: "ESP Versorgung", measures: ["ph"], value: null, raw: 3.3, unit: "V", problem: null, deviceClass: "", used: null, signal: true },
+  ]);
+  const picked: unknown[] = [];
+  await page.route(/\/api\/v1\/ha\/assign(\?|$)/, (route) => {
+    picked.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await page.getByRole("button", { name: "Sensor wählen: pH im Tank" }).click();
+  const picker = page.getByTestId("ha-picker");
+  // First, ahead of the pH calibrated in Home Assistant, with its voltage as Home Assistant reports it
+  const first = picker.getByRole("button").first();
+  await expect(first).toContainText("Tank pH Spannung");
+  await expect(first).toContainText("Empfohlen: Rohwert der Sonde – du kalibrierst ihn hier mit zwei Puffern");
+  await expect(first).toContainText("-10 mV");
+  await expect(picker.getByRole("button", { name: /Growbox pH/ })).not.toContainText("Rohwert");
+  // Any other voltage only under the other sensors, marked the same way
+  await page.getByTestId("ha-show-others").click();
+  await expect(page.getByTestId("ha-others").getByRole("button", { name: /ESP Versorgung/ })).toContainText("Nur wenn das deine pH-Sonde ist");
+  await first.click();
+  await expect(page.getByText("Gespeichert: Tank pH Spannung für pH im Tank. Kalibriere ihn jetzt mit zwei Puffern.")).toBeVisible();
+  expect(picked).toEqual([{ role: "tank.ph", entity: "sensor.tank_ph_mv" }]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: a pH voltage is calibrated from the assignment; each step waits for the sensor's next reading (SD-041)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);
+  const device = "ha.sensor.tank_ph_mv";
+  let session: Record<string, unknown> | null = null;
+  const probes: Record<string, unknown>[] = [];
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());  // the state comes from the polls below
+  await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const cat = await res.json();
+    cat.deviceClasses.ha_ph_raw = { label: "pH aus Home Assistant (Rohwert)", stage: 0, attach: "ha", provides: ["measure.ph"], calibrations: ["ph"] };
+    await route.fulfill({ response: res, json: cat });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [...cfg.devices, { id: device, class: "ha_ph_raw", name: "Tank pH Spannung" }];
+    cfg.tanks[0].roles["tank.ph"] = { device, channel: 0 };
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.devices = [...st.devices, { id: device, class: "ha_ph_raw", classLabel: "pH aus Home Assistant (Rohwert)", name: "Tank pH Spannung", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_ph_mv" }, calibrations: {} }];
+    st.readings["tank.ph"] = { ...st.readings["tank.ph"], value: 7.169, quality: "uncalibrated", usable: false, ageS: 20, reason: { key: "truth.uncalibrated", text: "Nicht kalibriert", args: {} } };
+    st.probeCalibration = session ? { [`${device}:ph`]: session } : {};
+    await route.fulfill({ response: res, json: st });
+  });
+  await page.route(/\/api\/v1\/probe(\?|$)/, (route) => {
+    const body = route.request().postDataJSON();
+    probes.push(body);
+    if (body.action === "start") session = { device, kind: "ph", points: [] };
+    if (body.action === "point" && session) session = { ...session, pending: { since: 1, reference: body.reference } };
+    if (body.action === "cancel") session = null;
+    return route.fulfill({ json: session ?? { ok: true } });
+  });
+  await page.goto("/#/geraete?tab=zuordnung");
+  await page.reload();
+  const row = page.getByTestId("ha-role-tank.ph");
+  // Before its calibration: the voltage it reports, and what to do
+  await expect(row).toContainText("Rohwert -10 mV");
+  await expect(row).toContainText("Tippe auf „Kalibrieren“. Du brauchst Pufferlösung pH 7 und pH 4.");
+  await expect(page.getByTestId("ha-role-tank.ph").getByText("Nicht kalibriert", { exact: true })).toHaveCount(0);  // said once, by the pill
+  await page.getByTestId("ha-calibrate-tank.ph").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("-10 mV");
+  await dialog.getByTestId("probe-take").click();
+  // Waiting for the sensor's next report, with a way out
+  await expect(dialog.getByTestId("probe-pending")).toContainText("Warte auf den nächsten Messwert vom Sensor");
+  await expect(dialog.getByTestId("probe-pending")).toContainText("in der Pufferlösung pH 7,00");
+  await expect(dialog.getByTestId("probe-take")).toHaveCount(0);
+  await expect(dialog.getByTestId("probe-cancel")).toBeFocused();
+  // The hub takes the point from the next report: on to pH 4
+  session = { device, kind: "ph", points: [[7.17, 7]] };
+  await expect(dialog.locator(".ws.cur")).toContainText("Puffer 4,00");
+  await expect(dialog.getByTestId("probe-take")).toBeVisible();
+  // No report in time: said, and the step can be taken again
+  session = { device, kind: "ph", points: [[7.17, 7]], failed: { key: "probe.no_raw", text: "No new reading from the sensor.", args: {} } };
+  await expect(dialog.locator(".banner")).toContainText("Kein neuer Messwert vom Sensor");
+  await expect(dialog.getByTestId("probe-take")).toBeVisible();
+  // Closed: the calibration ends on the hub too
+  await page.keyboard.press("Escape");
+  await expect.poll(() => probes.some((b) => b.action === "cancel")).toBe(true);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

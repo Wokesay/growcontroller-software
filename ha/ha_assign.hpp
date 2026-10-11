@@ -4,8 +4,8 @@
 // under its Home Assistant name and bind the role; only then is the role's
 // former sensor dropped. Taking the sensor away again unbinds the role,
 // removes the device and stops reading it. The picks live in the hub's
-// configuration (devices ha.<entity> of class ha_<measure>); at start they
-// are handed back to the bus.
+// configuration (devices ha.<entity> of class ha_<measure>, ha_ph_raw for a
+// pH probe's voltage, SD-041); at start they are handed back to the bus.
 #pragma once
 
 #include <functional>

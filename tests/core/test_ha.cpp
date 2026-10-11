@@ -1010,3 +1010,589 @@ TEST_CASE("Home Assistant: the poller sends nothing but state reads, whatever th
   REQUIRE_FALSE(ha.requests.empty());
   for (const auto& r : ha.requests) CHECK(r == "GET /api/states");  // one read per round, nothing else
 }
+
+// ---------- Raw values calibrated in the app (SD-038, SD-041)
+
+namespace {
+// A pH probe's voltage at a given pH: its offset at pH 7 and its sensitivity in mV/pH (rising
+// voltage for falling pH, as a glass electrode behaves)
+double electrodeMv(double ph, double offsetMv, double mvPerPh) { return offsetMv + (7.0 - ph) * mvPerPh; }
+std::string fmt(double v) {
+  char buf[32];
+  std::snprintf(buf, sizeof buf, "%.3f", v);
+  return buf;
+}
+}  // namespace
+
+TEST_CASE("Home Assistant: a pH probe's voltage is a raw value; the picker suggests it, other voltages only on request (SD-038, SD-041)") {
+  ha::HaBus bus;
+  bus.updateAll(json::array({
+                    described(state("sensor.tank_ph_mv", "-10", "mV", iso(kNoonMs)), "voltage", "Tank pH Spannung"),
+                    described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"),
+                    described(state("sensor.probe_ph", "0.012", "V", iso(kNoonMs)), "ph", "Sonde"),  // Home Assistant calls it pH, the unit says raw
+                    described(state("sensor.ups_voltage", "230", "V", iso(kNoonMs)), "voltage", "USV Netzspannung"),
+                    described(state("sensor.phone_battery", "3.9", "V", iso(kNoonMs)), "", "Handy Akku"),
+                }),
+                kNoonMs, 1000);
+  auto suggestion = [&](const std::string& id) -> std::optional<ha::Candidate> {
+    for (const auto& c : bus.candidates())
+      if (c.entityId == id) return c;
+    return std::nullopt;
+  };
+  auto other = [&](const std::string& id) -> std::optional<ha::Candidate> {
+    for (const auto& c : bus.others())
+      if (c.entityId == id) return c;
+    return std::nullopt;
+  };
+  // A voltage named pH, or one Home Assistant calls pH: suggested for pH, as a raw signal without a value of its own
+  for (const char* id : {"sensor.tank_ph_mv", "sensor.probe_ph"}) {
+    CAPTURE(id);
+    const auto c = suggestion(id);
+    REQUIRE(c);
+    CHECK(c->kind == "ph");
+    CHECK(c->signal);
+    CHECK(c->problem.empty());
+    CHECK(std::isnan(c->value));  // no pH before the app has calibrated it
+  }
+  CHECK(suggestion("sensor.tank_ph_mv")->raw == doctest::Approx(-10));
+  CHECK(suggestion("sensor.tank_ph_mv")->unit == "mV");
+  CHECK_FALSE(suggestion("sensor.tank_ph")->signal);  // a pH is calibrated in Home Assistant
+  // Any other voltage a front end can deliver is never suggested, but can be picked as a pH signal
+  // from the other sensors; the mains is not passed on at all
+  CHECK_FALSE(other("sensor.ups_voltage"));
+  for (const char* id : {"sensor.phone_battery"}) {
+    CAPTURE(id);
+    CHECK_FALSE(suggestion(id));
+    const auto o = other(id);
+    REQUIRE(o);
+    CHECK(o->signal);
+    CHECK(o->measures == std::vector<std::string>{"ph"});
+    CHECK(o->problem.empty());
+  }
+  const json j = bus.candidatesJson(true);
+  bool seen = false;
+  for (const auto& c : j["candidates"])
+    if (c["entity"] == "sensor.tank_ph_mv") {
+      seen = true;
+      CHECK(c["signal"] == true);
+      CHECK(c["value"].is_null());
+      CHECK(c["raw"].get<double>() == doctest::Approx(-10));
+    } else if (c["entity"] == "sensor.tank_ph") {
+      CHECK_FALSE(c.contains("signal"));  // only where it is one
+    }
+  CHECK(seen);
+  // Picked, it is a device of its own class, with the calibration offered in the app
+  gc::Msg why;
+  REQUIRE(bus.select("sensor.tank_ph_mv", "ph", why));
+  CHECK(bus.devices()[0].cls == "ha_ph_raw");
+  CHECK_FALSE(bus.select("sensor.phone_battery", "water_temp", why));  // a voltage is no temperature
+  CHECK(why.key == "ha.mismatch");
+}
+
+TEST_CASE("Home Assistant: a pH voltage is calibrated in the app with two buffers, then valid; it switches nothing (SD-038, RAT-025, RAT-006)") {
+  const gc::Catalog cat = ha::catalog();
+  const gc::DeviceClassDef* dc = cat.deviceClass("ha_ph_raw");
+  REQUIRE(dc);
+  CHECK(dc->calibrations == std::vector<std::string>{"ph"});
+  CHECK_FALSE(dc->externalCalibration);  // set in code: the hub checks it itself
+  CHECK(dc->ownReportSchedule);
+  CHECK(cat.deviceClass("ha_ph")->externalCalibration);  // a pH from Home Assistant stays display only
+  ha::HaBus bus;
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  const double offset = -10, slope = 57;  // a healthy probe: 96 % of Nernst
+  double mv = electrodeMv(6.1, offset, slope);
+  std::int64_t reportedAt = kNoonMs;
+  auto states = [&] {
+    return json::array({described(state("sensor.tank_ph_mv", fmt(mv), "mV", iso(reportedAt)), "voltage", "Tank pH Spannung")});
+  };
+  auto report = [&](double newMv) {  // a new report from Home Assistant
+    mv = newMv;
+    reportedAt = kNoonMs + clk.ms;
+  };
+  auto tick = [&] {
+    clk.ms += 1000;
+    bus.updateAll(states(), kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  bus.updateAll(states(), kNoonMs + clk.ms, clk.ms);
+  REQUIRE(ha::assign(hub, bus, "tank.ph", "sensor.tank_ph_mv", tick).status == 200);
+  REQUIRE(hub.config().device("ha.sensor.tank_ph_mv"));
+  CHECK(hub.config().device("ha.sensor.tank_ph_mv")->cls == "ha_ph_raw");
+  report(mv);
+  tick();
+  json ph = hub.state()["readings"]["tank.ph"];
+  CHECK(ph["quality"] == "uncalibrated");  // waits for the app's calibration, not "calibrated elsewhere"
+  CHECK(ph["reason"]["key"] == "truth.uncalibrated");
+  // Shown as the pH an ideal probe would read (Nernst, 59.16 mV/pH at 25 °C), marked uncalibrated
+  CHECK(ph["value"].get<double>() == doctest::Approx(7.0 - mv / ha::kNernstMvPerPh).epsilon(1e-6));
+  // The calibration: a point takes the first report after it was asked for, not the last one before
+  auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+    json j = {{"device", "ha.sensor.tank_ph_mv"}, {"kind", "ph"}, {"action", action}};
+    if (std::isfinite(ref)) j["reference"] = ref;
+    return hub.probeCalibration(j);
+  };
+  REQUIRE(probe("start").status == 200);
+  auto session = [&] { return hub.state()["probeCalibration"]["ha.sensor.tank_ph_mv:ph"]; };
+  // The probe goes into the pH 7 buffer; the last report is still from the tank
+  auto asked = probe("point", 7.0);
+  REQUIRE(asked.status == 200);
+  CHECK(asked.body["pending"]["reference"] == 7.0);
+  tick();
+  tick();
+  tick();  // Home Assistant sends the same report again: it is not taken
+  CHECK(session()["points"].empty());
+  CHECK(session().contains("pending"));
+  report(electrodeMv(7.0, offset, slope));
+  tick();
+  REQUIRE(session()["points"].size() == 1);
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["points"][0][0].get<double>() == doctest::Approx(7.0 - offset / ha::kNernstMvPerPh).epsilon(1e-6));
+  CHECK(session()["points"][0][1] == 7.0);
+  REQUIRE(probe("point", 4.0).status == 200);
+  tick();
+  tick();
+  tick();
+  report(electrodeMv(4.0, offset, slope));
+  tick();
+  REQUIRE(session()["points"].size() == 2);
+  const auto done = probe("commit");
+  REQUIRE(done.status == 200);
+  // In the tank again: a valid pH, usable, with nothing switched
+  report(electrodeMv(6.1, offset, slope));
+  tick();
+  ph = hub.state()["readings"]["tank.ph"];
+  CHECK(ph["quality"] == "ok");
+  CHECK(ph["usable"] == true);
+  CHECK(ph["value"].get<double>() == doctest::Approx(6.1).epsilon(1e-4));
+  std::string err;
+  CHECK_FALSE(bus.setSwitch("ha.sensor.tank_ph_mv", 0, true, err));
+  CHECK_FALSE(bus.startRun("ha.sensor.tank_ph_mv", 1000, "job", err));
+  // A point that gets no new report within the sensor's limit is refused, and says so
+  REQUIRE(probe("start").status == 200);
+  REQUIRE(probe("point", 7.0).status == 200);
+  for (int i = 0; i < 11 * 60; ++i) tick();  // the same report for 11 min
+  CHECK(session()["points"].empty());
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["failed"]["key"] == "probe.no_raw");
+  REQUIRE(probe("cancel").status == 200);
+}
+
+TEST_CASE("Home Assistant: the slope band for a pH voltage is 80–125 % of Nernst; an amplified board and swapped buffers are refused (SD-038, RAT-025)") {
+  // Two buffers, pH 7 and pH 4, as the bus hands them to the hub; offset 0
+  auto calibrated = [](double ph7Mv, double ph4Mv) {
+    const json data = {{"points", json::array({json::array({7.0 - ph7Mv / ha::kNernstMvPerPh, 7.0}),
+                                               json::array({7.0 - ph4Mv / ha::kNernstMvPerPh, 4.0})})}};
+    return gc::SensorTruth::calibrate("measure.ph", 7.0, &data).has_value();
+  };
+  auto bySlope = [&](double mvPerPh) { return calibrated(electrodeMv(7, 0, mvPerPh), electrodeMv(4, 0, mvPerPh)); };
+  CHECK_FALSE(bySlope(47.2));  // below 80 % (47.3 mV/pH)
+  CHECK(bySlope(47.5));
+  CHECK(bySlope(59.16));
+  CHECK(bySlope(73.8));
+  CHECK_FALSE(bySlope(74.1));  // above 125 % (74.0 mV/pH)
+  CHECK_FALSE(bySlope(-57));   // falling instead of rising: swapped buffers or an inverting amplifier
+  CHECK_FALSE(calibrated(1500, 2032.44));  // a board with gain 3 (1500 mV at pH 7): needs a rule of its own first
+  CHECK(calibrated(1650, 1650 + 3 * 59.16));  // a front end without gain but with an offset: the offset does not matter
+  CHECK_FALSE(calibrated(0, 25));            // 25 mV apart: less than 0.5 on the raw scale (29.6 mV), whatever the slope
+}
+
+TEST_CASE("Home Assistant: a pH voltage in V reads as in mV; after a unit change it has no value (SD-041, RAT-006)") {
+  ha::HaBus bus({{"sensor.ph_mv", "ph", true}, {"sensor.ph_v", "ph", true}, {"sensor.grow_ph", "ph"}});
+  bus.update("sensor.ph_mv", state("sensor.ph_mv", "161", "mV", iso(kNoonMs)), kNoonMs, 1000);
+  bus.update("sensor.ph_v", state("sensor.ph_v", "0.161", "V", iso(kNoonMs)), kNoonMs, 1000);
+  const auto mv = bus.sample("ha.sensor.ph_mv", "measure.ph");
+  const auto v = bus.sample("ha.sensor.ph_v", "measure.ph");
+  REQUIRE(mv);
+  REQUIRE(v);
+  CHECK(mv->raw == doctest::Approx(v->raw));
+  CHECK(mv->raw == doctest::Approx(7.0 - 161 / 59.16).epsilon(1e-9));
+  // The node now reports pH (calibrated there): not the old calibration on a new meaning
+  bus.update("sensor.ph_mv", state("sensor.ph_mv", "6.2", "pH", iso(kNoonMs + 1000)), kNoonMs + 1000, 2000);
+  CHECK_FALSE(bus.sample("ha.sensor.ph_mv", "measure.ph"));
+  CHECK(bus.fault("sensor.ph_mv") == "unit pH is no raw signal");
+  bus.update("sensor.ph_mv", state("sensor.ph_mv", "161", "", iso(kNoonMs + 2000)), kNoonMs + 2000, 3000);
+  CHECK_FALSE(bus.sample("ha.sensor.ph_mv", "measure.ph"));
+  CHECK(bus.fault("sensor.ph_mv") == "unit missing");
+  // And a pH calibrated in Home Assistant that turns into a voltage is no pH either
+  bus.update("sensor.grow_ph", state("sensor.grow_ph", "161", "mV", iso(kNoonMs)), kNoonMs, 1000);
+  CHECK_FALSE(bus.sample("ha.sensor.grow_ph", "measure.ph"));
+}
+
+TEST_CASE("Home Assistant: a pH signal goes into the mapping file and comes back from the configuration (SD-041)") {
+  std::string err;
+  const auto list = ha::parseEntities(json::array({{{"entity", "sensor.ph_mv"}, {"measures", "ph"}, {"signal", true}},
+                                                   {{"entity", "sensor.grow_ph"}, {"measures", "ph"}}}),
+                                      err);
+  REQUIRE(err.empty());
+  REQUIRE(list.size() == 2);
+  CHECK(list[0].signal);
+  CHECK_FALSE(list[1].signal);
+  CHECK(ha::entitiesJson(list) == json::array({{{"entity", "sensor.ph_mv"}, {"measures", "ph"}, {"signal", true}},
+                                               {{"entity", "sensor.grow_ph"}, {"measures", "ph"}}}));
+  // Only pH can be a raw signal so far
+  ha::parseEntities(json::array({{{"entity", "sensor.t"}, {"measures", "water_temp"}, {"signal", true}}}), err);
+  CHECK_FALSE(err.empty());
+  ha::parseEntities(json::array({{{"entity", "sensor.t"}, {"measures", "ph"}, {"signal", "yes"}}}), err);
+  CHECK_FALSE(err.empty());
+  // A picked signal is read again as one after a restart
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus;
+  gc::MemoryStorage store;
+  test::Clock clk;
+  {
+    gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+    hub.boot();
+    bus.adopt({"sensor.ph_mv", "ph", true});
+    bus.update("sensor.ph_mv", state("sensor.ph_mv", "0", "mV", iso(kNoonMs)), kNoonMs, clk.ms);
+    clk.ms += 1000;
+    hub.tick();
+    REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "Tank pH").status == 200);
+    CHECK(hub.config().device("ha.sensor.ph_mv")->cls == "ha_ph_raw");
+  }
+  ha::HaBus again;
+  gc::Hub hub(cat, again, store, clk, pseudoRandom);
+  hub.boot();
+  ha::adoptFromConfig(hub, again);
+  REQUIRE(again.entities().size() == 1);
+  CHECK(again.entities()[0].entityId == "sensor.ph_mv");
+  CHECK(again.entities()[0].measures == "ph");
+  CHECK(again.entities()[0].signal);
+}
+
+TEST_CASE("Home Assistant: an import cannot make a pH calibrated in Home Assistant a raw value, nor give a class a calibration it does not offer (SD-041, RAT-025)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.grow_ph", "ph"}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  std::int64_t reportedAt = kNoonMs;
+  auto tick = [&] {
+    clk.ms += 1000;
+    reportedAt = kNoonMs + clk.ms;
+    bus.update("sensor.grow_ph", state("sensor.grow_ph", "6.1", "", iso(reportedAt)), kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  tick();
+  REQUIRE(hub.acceptDevice("ha.sensor.grow_ph", "").status == 200);
+  tick();
+  REQUIRE(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");
+  // The import says the same sensor is a raw signal, with a calibration that passes the check on its own
+  json cfg = hub.state()["config"].is_null() ? json() : json();
+  cfg = gc::json(hub.config());
+  for (auto& d : cfg["devices"])
+    if (d["id"] == "ha.sensor.grow_ph") d["class"] = "ha_ph_raw";
+  cfg["calibrations"]["ha.sensor.grow_ph"]["ph"] = {{"points", json::array({json::array({4.0, 4.0}), json::array({7.0, 7.0})})}, {"at", 0}};
+  REQUIRE(hub.importConfig(cfg).status == 200);
+  tick();
+  json ph = hub.state()["readings"]["tank.ph"];
+  CHECK(ph["usable"] == false);  // the bus still reads a pH calibrated in Home Assistant: the classes disagree
+  CHECK(ph["value"].is_null());
+  CHECK(ph["reason"]["key"] == "truth.class_mismatch");
+  // Nor does the app offer its calibration for it
+  CHECK(hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}}).body["error"]["key"] == "probe.not_offered");
+  // A calibration left over in an older backup for a device that is not in it is left out, not refused
+  cfg = gc::json(hub.config());
+  cfg["calibrations"]["head-gone"]["ph"] = {{"points", json::array({json::array({4.0, 4.0}), json::array({7.0, 7.0})})}, {"at", 0}};
+  for (auto& d : cfg["devices"])
+    if (d["id"] == "ha.sensor.grow_ph") d["class"] = "ha_ph";
+  cfg["calibrations"].erase("ha.sensor.grow_ph");
+  REQUIRE(hub.importConfig(cfg).status == 200);
+  CHECK_FALSE(hub.config().calibrations.count("head-gone"));
+  // A calibration for a class that offers none is refused on import
+  cfg = gc::json(hub.config());
+  for (auto& d : cfg["devices"])
+    if (d["id"] == "ha.sensor.grow_ph") d["class"] = "ha_ph";
+  cfg["calibrations"]["ha.sensor.grow_ph"]["ph"] = {{"points", json::array({json::array({4.0, 4.0}), json::array({7.0, 7.0})})}, {"at", 0}};
+  CHECK(hub.importConfig(cfg).status == 422);
+}
+
+TEST_CASE("Home Assistant: an abandoned calibration stops explaining jumps after 30 min but keeps control waiting; a point is retaken, not added (SD-041, RAT-042)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.ph_mv", "ph", true}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  double mv = 0;
+  auto tick = [&] {
+    clk.ms += 1000;
+    const double noise = (clk.ms / 1000) % 2 ? 0.1 : 0.0;  // a live probe's raw signal moves a little
+    bus.update("sensor.ph_mv", state("sensor.ph_mv", fmt(mv + noise), "mV", iso(kNoonMs + clk.ms)), kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  tick();
+  REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  json file = gc::json(hub.config());  // calibrated as an ideal probe, so jumps are judged
+  file["calibrations"]["ha.sensor.ph_mv"]["ph"] = {{"points", json::array({json::array({7.0, 7.0}), json::array({4.0, 4.0})})}, {"at", 0}};
+  REQUIRE(hub.importConfig(file).status == 200);
+  auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+    json j = {{"device", "ha.sensor.ph_mv"}, {"kind", "ph"}, {"action", action}};
+    if (std::isfinite(ref)) j["reference"] = ref;
+    return hub.probeCalibration(j);
+  };
+  auto session = [&] { return hub.state()["probeCalibration"]["ha.sensor.ph_mv:ph"]; };
+  REQUIRE(probe("start").status == 200);
+  // pH 7 taken twice (the probe was not settled the first time): one point, the later one
+  REQUIRE(probe("point", 7.0).status == 200);
+  for (int i = 0; i < 3; ++i) tick();  // reports every second; taken once clearly after the request
+  mv = 3;
+  REQUIRE(probe("point", 7.0).status == 200);
+  for (int i = 0; i < 3; ++i) tick();
+  REQUIRE(session()["points"].size() == 1);
+  CHECK(session()["points"][0][0].get<double>() == doctest::Approx(7.0 - 3 / ha::kNernstMvPerPh).epsilon(0.002 / 7));  // within the 0.1 mV noise
+  // A reference outside what a buffer can be is refused
+  CHECK(probe("point", 15.0).status == 422);
+  CHECK(probe("point", -1.0).status == 422);
+  // While it runs, a jump is taken as the calibration
+  mv += 2 * ha::kNernstMvPerPh;  // 2 pH at once
+  for (int i = 0; i < 5; ++i) tick();
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "ok");
+  // The window was lost without cancelling (a closed tab): after 30 min without a step the session
+  // stays, so pH and EC control keep waiting (the probe may still be in a buffer), but no longer
+  // explains jumps once its last 10 min of explanation have run out
+  for (int i = 0; i < 29 * 60; ++i) tick();
+  CHECK_FALSE(session().contains("idle"));
+  for (int i = 0; i < 2 * 60; ++i) tick();
+  REQUIRE_FALSE(session().is_null());
+  CHECK(session()["idle"] == true);
+  for (int i = 0; i < 11 * 60; ++i) tick();
+  mv -= 2 * ha::kNernstMvPerPh;
+  for (int i = 0; i < 5; ++i) tick();
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "jump");
+  REQUIRE_FALSE(session().is_null());  // still there until saved or cancelled
+  REQUIRE(probe("cancel").status == 200);
+  // A session ends with its device too
+  REQUIRE(probe("start").status == 200);
+  REQUIRE(hub.removeDevice("ha.sensor.ph_mv").status == 200);
+  CHECK(hub.state()["probeCalibration"].empty());
+}
+
+TEST_CASE("Home Assistant: which voltages are suggested for pH, and which are not passed on at all (SD-041)") {
+  ha::HaBus bus;
+  bus.updateAll(json::array({
+                    described(state("sensor.probe_a", "12", "mV", iso(kNoonMs)), "", "pH Sonde"),            // the name says pH
+                    described(state("sensor.tank_ph1", "0.4", "V", iso(kNoonMs)), "voltage", "Tank 1"),      // ph1
+                    described(state("sensor.ph_orp", "250", "mV", iso(kNoonMs)), "voltage", "pH ORP Board"),  // a redox probe
+                    described(state("sensor.ph_battery", "3.7", "V", iso(kNoonMs)), "battery", "pH Battery"), // not a voltage class
+                    described(state("sensor.ph_mains", "231", "V", iso(kNoonMs)), "voltage", "Phase pH"),    // above 5 V
+                    described(state("sensor.ups_voltage", "230", "V", iso(kNoonMs)), "voltage", "USV"),
+                    described(state("sensor.esp_vcc", "3.3", "V", iso(kNoonMs)), "voltage", "ESP Versorgung"),
+                    described(state("sensor.probe_b", "unknown", "mV", iso(kNoonMs)), "ph", "Sonde B"),     // no value yet: still a signal
+                    described(state("sensor.probe_c", "6000", "mV", iso(kNoonMs)), "ph", "Sonde C"),        // 6 V: neither signal nor pH
+                }),
+                kNoonMs, 1000);
+  std::set<std::string> suggested, others;
+  for (const auto& c : bus.candidates()) suggested.insert(c.entityId);
+  for (const auto& c : bus.others()) others.insert(c.entityId);
+  CHECK(suggested == std::set<std::string>{"sensor.probe_a", "sensor.tank_ph1", "sensor.probe_b"});
+  for (const auto& c : bus.candidates())
+    if (c.entityId == "sensor.probe_b") CHECK(c.signal);
+  CHECK_FALSE(others.count("sensor.probe_c"));
+  CHECK(others.count("sensor.ph_orp"));      // can still be picked
+  CHECK(others.count("sensor.esp_vcc"));     // 3.3 V could be a front end
+  CHECK_FALSE(others.count("sensor.ups_voltage"));  // 230 V is never a pH signal and is not passed on
+  CHECK_FALSE(others.count("sensor.ph_mains"));
+  // An other voltage picked for pH is a signal too
+  gc::Msg why;
+  REQUIRE(bus.select("sensor.esp_vcc", "ph", why));
+  CHECK(bus.selected("sensor.esp_vcc")->signal);
+  CHECK(bus.devices()[0].cls == "ha_ph_raw");
+}
+
+TEST_CASE("Home Assistant: a calibration point waits as long as the sensor's own limit, takes no report from before the request, and fails when the sensor goes away (SD-041, RAT-006)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.ph_mv", "ph", true}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  double mv = 0;
+  std::int64_t reportedAt = kNoonMs;
+  std::int64_t haLag = 0;  // Home Assistant's Date header is in whole seconds: its time can read up to 999 ms early
+  auto poll = [&] {
+    bus.update("sensor.ph_mv", state("sensor.ph_mv", fmt(mv), "mV", iso(reportedAt)), kNoonMs + clk.ms - haLag, clk.ms);
+  };
+  auto run = [&](int seconds, int reportEvery) {
+    for (int i = 0; i < seconds; ++i) {
+      clk.ms += 1000;
+      if (reportEvery > 0 && (clk.ms / 1000) % reportEvery == 0) {
+        mv += 0.3;
+        reportedAt = kNoonMs + clk.ms;
+      }
+      poll();
+      hub.tick();
+    }
+  };
+  run(1, 0);
+  REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  run(10 * 60, 120);  // learns: a report every 2 min, so its limit is 6 min
+  auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+    json j = {{"device", "ha.sensor.ph_mv"}, {"kind", "ph"}, {"action", action}};
+    if (std::isfinite(ref)) j["reference"] = ref;
+    return hub.probeCalibration(j);
+  };
+  auto session = [&] { return hub.state()["probeCalibration"]["ha.sensor.ph_mv:ph"]; };
+  REQUIRE(probe("start").status == 200);
+  // No new report: still waiting just before the limit, failed just after it
+  REQUIRE(probe("point", 7.0).status == 200);
+  run(6 * 60 - 5, 0);
+  CHECK(session().contains("pending"));
+  run(10, 0);
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["failed"]["key"] == "probe.no_raw");
+  // A report made half a second before the request, first seen after it, is not taken, also
+  // when Home Assistant's clock in the answer reads late
+  run(30, 0);
+  haLag = 999;
+  REQUIRE(probe("point", 7.0).status == 200);
+  reportedAt = kNoonMs + clk.ms - 500;
+  run(3, 0);
+  CHECK(session()["points"].empty());
+  CHECK(session().contains("pending"));
+  // A commit while a point waits is refused; the waiting point stays
+  const auto early = probe("commit");
+  CHECK(early.status == 409);
+  CHECK(early.body["error"]["key"] == "probe.pending");
+  CHECK(session().contains("pending"));
+  // The sensor goes away during the wait (Home Assistant restarting): the point fails at once,
+  // so a value restored after the restart cannot become it
+  bus.lostAll();
+  clk.ms += 1000;
+  hub.tick();
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["failed"]["key"] == "probe.no_raw");
+  // Cancelled while waiting: no session, and a later report adds nothing
+  run(5, 0);
+  REQUIRE(probe("point", 7.0).status == 200);
+  REQUIRE(probe("cancel").status == 200);
+  reportedAt = kNoonMs + clk.ms + 5000;
+  run(10, 0);
+  CHECK(session().is_null());
+}
+
+TEST_CASE("Home Assistant: a raw pH from Home Assistant gets the standstill check by its reports (SD-041, RAT-023, RAT-059)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.ph_mv", "ph", true}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  double mv = 50;
+  std::int64_t reportedAt = kNoonMs;
+  auto run = [&](int seconds, int reportEvery, double change) {
+    for (int i = 0; i < seconds; ++i) {
+      clk.ms += 1000;
+      if (reportEvery > 0 && (clk.ms / 1000) % reportEvery == 0) {
+        mv += change;
+        reportedAt = kNoonMs + clk.ms;
+      }
+      bus.update("sensor.ph_mv", state("sensor.ph_mv", fmt(mv), "mV", iso(reportedAt)), kNoonMs + clk.ms, clk.ms);
+      hub.tick();
+    }
+  };
+  run(1, 0, 0);
+  REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  // Calibrated as an ideal probe, through the import a backup would take
+  json file = gc::json(hub.config());
+  file["calibrations"]["ha.sensor.ph_mv"]["ph"] = {{"points", json::array({json::array({7.0, 7.0}), json::array({4.0, 4.0})})}, {"at", 0}};
+  REQUIRE(hub.importConfig(file).status == 200);
+  // A probe that reports every 20 min, a little different each time, is not frozen between reports:
+  // 19 min after its last report, where the hub's own clock would already say frozen
+  run(90 * 60, 20 * 60, 0.4);
+  run(9 * 60, 0, 0.0);
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "ok");
+  // One that keeps reporting the same voltage every minute is frozen once 15 min of its reports are the same
+  run(60, 60, 0.4);  // one more change
+  run(14 * 60, 60, 0.0);
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "ok");
+  run(2 * 60, 60, 0.0);
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "frozen");
+}
+
+TEST_CASE("Home Assistant: a refused pH calibration says what is wrong, in mV per pH step (SD-041, RAT-025)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.ph_mv", "ph", true}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  double mv = 0;
+  auto tick = [&] {
+    clk.ms += 1000;
+    bus.update("sensor.ph_mv", state("sensor.ph_mv", fmt(mv), "mV", iso(kNoonMs + clk.ms)), kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  tick();
+  REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  auto calibrate = [&](double ph7Mv, double ph4Mv) {
+    auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+      json j = {{"device", "ha.sensor.ph_mv"}, {"kind", "ph"}, {"action", action}};
+      if (std::isfinite(ref)) j["reference"] = ref;
+      return hub.probeCalibration(j);
+    };
+    REQUIRE(probe("start").status == 200);
+    for (auto [ref, v] : {std::pair{7.0, ph7Mv}, std::pair{4.0, ph4Mv}}) {
+      REQUIRE(probe("point", ref).status == 200);
+      mv = v;
+      for (int i = 0; i < 4; ++i) tick();
+    }
+    return probe("commit");
+  };
+  auto swapped = calibrate(177.5, 0);
+  CHECK(swapped.body["error"]["key"] == "probe.swapped");
+  auto amplified = calibrate(1500, 2032.44);  // a board with gain 3
+  CHECK(amplified.body["error"]["key"] == "probe.too_steep");
+  CHECK(amplified.body["error"]["args"]["mv"].get<double>() == doctest::Approx(177.5).epsilon(0.001));
+  auto worn = calibrate(0, 3 * 40);
+  CHECK(worn.body["error"]["key"] == "probe.too_flat");
+  CHECK(worn.body["error"]["args"]["mv"].get<double>() == doctest::Approx(40).epsilon(0.001));
+  auto still = calibrate(0, 3);  // 3 mV between pH 7 and pH 4: not the probe's signal, or not in the buffer
+  CHECK(still.body["error"]["key"] == "probe.no_move");
+}
+
+TEST_CASE("Home Assistant: the configuration decides whether a sensor is read as a signal, over the mapping file (SD-041)") {
+  const gc::Catalog cat = ha::catalog();
+  gc::MemoryStorage store;
+  test::Clock clk;
+  {
+    ha::HaBus bus;
+    gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+    hub.boot();
+    bus.adopt({"sensor.ph_mv", "ph", true});
+    bus.update("sensor.ph_mv", state("sensor.ph_mv", "0", "mV", iso(kNoonMs)), kNoonMs, clk.ms);
+    clk.ms += 1000;
+    hub.tick();
+    REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  }
+  // The mapping file lists the pH sensor as no signal: the configuration wins
+  ha::HaBus bus({{"sensor.ph_mv", "ph", false}});
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  ha::adoptFromConfig(hub, bus);
+  REQUIRE(bus.selected("sensor.ph_mv"));
+  CHECK(bus.selected("sensor.ph_mv")->signal);
+}
+
+TEST_CASE("Home Assistant: picked from the list as a raw value, an entity the mapping file lists otherwise is read as picked (SD-041)") {
+  const gc::Catalog cat = ha::catalog();
+  ha::HaBus bus({{"sensor.tank_ph_mv", "ph", false}});  // the file says: a pH calibrated in Home Assistant
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  const json states = json::array({described(state("sensor.tank_ph_mv", "-10", "mV", iso(kNoonMs)), "voltage", "Tank pH Spannung")});
+  auto tick = [&] {
+    clk.ms += 1000;
+    bus.updateAll(states, kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  tick();
+  REQUIRE(ha::assign(hub, bus, "tank.ph", "sensor.tank_ph_mv", tick).status == 200);
+  REQUIRE(hub.config().device("ha.sensor.tank_ph_mv"));
+  CHECK(hub.config().device("ha.sensor.tank_ph_mv")->cls == "ha_ph_raw");
+  CHECK(bus.selected("sensor.tank_ph_mv")->signal);
+}

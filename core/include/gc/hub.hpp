@@ -158,6 +158,15 @@ class Hub {
   bool userJobActive() const { return job_ && (job_->state == "running" || job_->state == "waiting_user" || job_->state == "mixing"); }
   std::string newId(const std::string& prefix);
   void detectDevices();
+  // Probe sessions each tick: a point of a sensor on its own schedule takes
+  // the first report after it was asked for; a session left for 30 min no
+  // longer explains jumps, but holds pH and EC control until it is saved or
+  // cancelled, as the probe may still be in a buffer (SD-041)
+  void tendProbeSessions(Ms now);
+  static void addProbePoint(json& sess, double raw, double ref);
+  static constexpr Ms kProbeIdle = 30 * kMinute;
+  static constexpr Ms kSameReportMs = 2 * kSecond;  // as SD-035: reports under 2 s apart are one
+  static constexpr size_t kMaxProbePoints = 20;
 
   bool tickFault_ = false;  // letzter Takt mit Ausnahme: Aktoren aus, einmal melden
   mutable std::recursive_mutex mtx_;

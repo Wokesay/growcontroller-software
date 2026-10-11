@@ -537,6 +537,7 @@ void Hub::tickImpl() {
   if (epoch < maintenanceUntil_)
     for (const auto& [role, def] : cat_.roles) truth_.expectChange(role, now + (maintenanceUntil_ - epoch) * kSecond);
   for (const auto& [key, sess] : probeSessions_) {
+    if (sess.value("idle", false)) continue;  // left for 30 min: a jump is a jump again (RAT-042)
     std::string dev = jstr(sess, "device");
     cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
       if (b.device == dev) truth_.expectChange(role, now + 10 * kMinute);
@@ -544,6 +545,7 @@ void Hub::tickImpl() {
   }
   auto locksBefore = rt_.jumpLocks;
   truth_.update(cfg_, bus_, rt_, now, epoch);
+  tendProbeSessions(now);
   for (const auto& [role, until] : rt_.jumpLocks)
     if (!locksBefore.count(role)) {
       const auto& r = truth_.get(role);
@@ -961,6 +963,8 @@ Result Hub::removeDevice(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
   if (it == cfg_.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  for (auto p = probeSessions_.begin(); p != probeSessions_.end();)  // a calibration ends with its device
+    p = jstr(p->second, "device") == id ? probeSessions_.erase(p) : std::next(p);
   std::string name = it->name;
   // Ausgänge dieses Geräts erst aus, dann vergessen.
   std::vector<std::string> on;
@@ -1354,11 +1358,19 @@ Result Hub::importConfig(const json& j) {
   } catch (const std::exception& e) {
     return Result::fail(422, "config.import", std::string("Datei unlesbar: ") + e.what());
   }
+  // A calibration of a device that is not in the file (left over in an older backup) is left out
+  for (auto c = next.calibrations.begin(); c != next.calibrations.end();)
+    c = next.device(c->first) ? std::next(c) : next.calibrations.erase(c);
   auto errs = validateConfig(next, cat_);
   for (const auto& [dev, kinds] : next.calibrations)
-    for (const auto& [kind, data] : kinds)
+    for (const auto& [kind, data] : kinds) {
       if (auto e = SensorTruth::checkCalibration(kind, data))
         errs.push_back({"cfg.calibration", "Kalibrierung " + dev + " (" + kind + "): " + *e, json::object()});
+      // Only what the device's class offers: a file cannot give a sensor calibrated elsewhere a calibration (RAT-025)
+      const DeviceClassDef* dc = cat_.deviceClass(next.device(dev)->cls);
+      if (!dc || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
+        errs.push_back({"cfg.calibration", "Kalibrierung " + dev + " (" + kind + "): dieses Gerät bietet sie nicht an", json::object()});
+    }
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
     return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
@@ -1738,38 +1750,133 @@ Result Hub::prime(const std::string& pump, double seconds) {
   return Result::ok({{"job", *job_}});
 }
 
+namespace {
+// The capability a calibration kind is for; "" for an unknown one.
+std::string capabilityOfKind(const std::string& kind) {
+  return kind == "ph" ? "measure.ph" : kind == "ec" ? "measure.ec" : kind == "tank_curve" ? "measure.level" : "";
+}
+}  // namespace
+
+void Hub::tendProbeSessions(Ms now) {
+  for (auto it = probeSessions_.begin(); it != probeSessions_.end();) {
+    json& sess = it->second;
+    const std::string dev = jstr(sess, "device"), cap = capabilityOfKind(jstr(sess, "kind"));
+    // A session no one has stepped on for 30 min was left (a lost tab): it no
+    // longer explains jumps (RAT-042), but it stays and keeps pH and EC
+    // control waiting, as the probe may still be in a buffer; saving or
+    // cancelling it ends it (SD-041)
+    if (!sess.contains("pending")) {
+      if (!sess.value("idle", false) && now - sess.value("at", Ms(0)) > kProbeIdle) {
+        sess["idle"] = true;
+        stateDirty_ = true;
+      }
+      ++it;
+      continue;
+    }
+    auto fail = [&] {
+      sess.erase("pending");
+      sess["failed"] = say("probe.no_raw");
+      sess["at"] = now;
+      stateDirty_ = true;
+    };
+    const json& pending = sess["pending"];
+    bool online = false;
+    for (const auto& d : devices_)
+      if (d.id == dev) online = d.online;
+    // Gone during the wait (Home Assistant restarting): a report after that may carry an old value
+    if (!pending.contains("since") || !online) {
+      fail();
+      ++it;
+      continue;
+    }
+    const Ms since = pending["since"].get<Ms>();
+    auto s = bus_.sample(dev, cap);
+    // A report from before the request may still be from the tank, not the
+    // buffer (RAT-006); its time can be dated up to a second late, so it must
+    // be clearly later (as SD-035 takes reports under 2 s apart as one)
+    if (s && isNum(s->raw) && s->ts > since + kSameReportMs) {
+      addProbePoint(sess, s->raw, pending["reference"].get<double>());
+      sess.erase("pending");
+      sess["at"] = now;
+      stateDirty_ = true;
+      ++it;
+      continue;
+    }
+    // At most as long as the sensor's own freshness limit: no newer report means no value
+    Ms limit = 0;
+    cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
+      if (b.device == dev && cat_.role(role) && cat_.role(role)->capability == cap) limit = std::max(limit, truth_.limit(role));
+    });
+    if (now - since > (limit > 0 ? limit : 10 * kMinute)) fail();
+    ++it;
+  }
+}
+
+void Hub::addProbePoint(json& sess, double raw, double ref) {
+  // Taken again for the same reference (the probe had not settled): the later one counts
+  json& pts = sess["points"];
+  for (auto p = pts.begin(); p != pts.end();)
+    p = (*p)[1].get<double>() == ref ? pts.erase(p) : p + 1;
+  if (pts.size() < kMaxProbePoints) pts.push_back({raw, ref});
+}
+
 Result Hub::probeCalibration(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   std::string dev = jstr(j, "device"), kind = jstr(j, "kind"), action = jstr(j, "action");
-  if (!cfg_.device(dev)) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
-  std::string cap = kind == "ph" ? "measure.ph" : kind == "ec" ? "measure.ec" : kind == "tank_curve" ? "measure.level" : "";
-  if (cap.empty()) return Result::fail(422, "probe.kind", "Unbekannte Kalibrierung");
-  // Only kinds the device class offers; a device calibrated elsewhere offers none.
-  const DeviceClassDef* dc = cat_.deviceClass(cfg_.device(dev)->cls);
-  if (!dc || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
-    return Result::fail(422, "probe.not_offered", "Dieses Gerät lässt sich hier nicht kalibrieren");
-  std::string key = dev + ":" + kind;
-  if (action == "start") {
-    probeSessions_[key] = {{"device", dev}, {"kind", kind}, {"points", json::array()}};
-    return Result::ok(probeSessions_[key]);
-  }
+  const std::string key = dev + ":" + kind;
+  // Ending a session needs nothing more: also for a device that is gone
   if (action == "cancel") {
-    probeSessions_.erase(key);
+    if (probeSessions_.erase(key)) stateDirty_ = true;
     return Result::ok();
+  }
+  if (!cfg_.device(dev)) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  const std::string cap = capabilityOfKind(kind);
+  if (cap.empty()) return Result::fail(422, "probe.kind", "Unbekannte Kalibrierung");
+  // Only kinds the device class offers; a device calibrated elsewhere offers
+  // none, and one that reports another class than configured offers none either
+  const DeviceClassDef* dc = cat_.deviceClass(cfg_.device(dev)->cls);
+  bool reportedOther = false;
+  for (const auto& d : devices_)
+    if (d.id == dev && d.cls != cfg_.device(dev)->cls) reportedOther = true;
+  if (!dc || reportedOther || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
+    return Result::fail(422, "probe.not_offered", "Dieses Gerät lässt sich hier nicht kalibrieren");
+  if (action == "start") {
+    probeSessions_[key] = {{"device", dev}, {"kind", kind}, {"points", json::array()}, {"at", clock_.nowMs()}};
+    stateDirty_ = true;
+    return Result::ok(probeSessions_[key]);
   }
   auto it = probeSessions_.find(key);
   if (it == probeSessions_.end()) return Result::fail(409, "probe.session", "Erst die Kalibrierung starten");
   if (action == "point") {
     double ref = jnum(j, "reference");
     if (!isNum(ref)) return Result::fail(422, "probe.reference", "Sollwert fehlt");
+    // What a buffer, a reference solution or a tank can be
+    const bool plausible = kind == "ph" ? ref >= 0 && ref <= 14 : kind == "ec" ? ref > 0 && ref <= 20 : ref >= 0 && ref <= 100000;
+    if (!plausible) return Result::fail(422, "probe.reference", "Sollwert außerhalb dessen, was ein Puffer oder Tank sein kann");
+    // Room for another point: a retake for the same reference replaces its point
+    const json& have = it->second["points"];
+    if (have.size() >= kMaxProbePoints && std::none_of(have.begin(), have.end(), [&](const json& x) { return x[1].get<double>() == ref; }))
+      return Result::fail(422, "probe.points", "Höchstens " + std::to_string(kMaxProbePoints) + " Punkte");
+    it->second["at"] = clock_.nowMs();
+    it->second.erase("idle");
+    // A sensor on its own schedule (Home Assistant) reports when it reports:
+    // the point waits for its next report (tendProbeSessions)
+    if (dc->ownReportSchedule) {
+      it->second["pending"] = {{"since", clock_.nowMs()}, {"reference", ref}};
+      it->second.erase("failed");
+      stateDirty_ = true;
+      return Result::ok(it->second);
+    }
     auto s = bus_.sample(dev, cap);
     // Ein fehlender Rohwert wird nie Kalibrierpunkt (RAT-006)
     if (!s || !isNum(s->raw) || clock_.nowMs() - s->ts > 30 * kSecond)
-      return Result::fail(422, "probe.no_raw", "Kein aktueller Rohwert – Sonde prüfen");
-    it->second["points"].push_back({s->raw, ref});
+      return Result::fail(422, say("probe.no_raw"));
+    addProbePoint(it->second, s->raw, ref);
+    stateDirty_ = true;
     return Result::ok(it->second);
   }
   if (action == "commit") {
+    if (it->second.contains("pending")) return Result::fail(409, say("probe.pending"));
     json data;
     const json& pts = it->second["points"];
     if (kind == "ph") {
@@ -1789,8 +1896,22 @@ Result Hub::probeCalibration(const json& j) {
     }
     data["at"] = clock_.epoch();
     double probe = kind == "tank_curve" ? pts[0][0].get<double>() : 7.0;
-    if (!SensorTruth::calibrate(cap, probe, &data))
-      return Result::fail(422, "probe.invalid", "Kalibrierung unplausibel (Steigung oder Faktor außerhalb) – Sonde oder Puffer prüfen");
+    if (!SensorTruth::calibrate(cap, probe, &data)) {
+      // pH: what is wrong, in mV per pH step on the raw scale (RAT-025's band is 47.3–74.0)
+      if (kind == "ph") {
+        const double dRaw = pts[1][0].get<double>() - pts[0][0].get<double>(), dRef = pts[1][1].get<double>() - pts[0][1].get<double>();
+        // Hardly moved between the buffers: not the probe's signal, or it was not in the buffer
+        if (std::fabs(dRaw) < 0.5) return Result::fail(422, say("probe.no_move"));
+        const double ratio = dRef / dRaw;
+        if (isNum(ratio) && ratio < 0) return Result::fail(422, say("probe.swapped"));
+        if (isNum(ratio) && ratio != 0) {
+          const double mvPerPh = std::round(kNernstMvPerPh / ratio * 10) / 10;
+          if (ratio < 0.8) return Result::fail(422, say("probe.too_steep", {{"mv", mvPerPh}}));
+          if (ratio > 1.25) return Result::fail(422, say("probe.too_flat", {{"mv", mvPerPh}}));
+        }
+      }
+      return Result::fail(422, say("probe.invalid"));
+    }
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
     const Msg kindMsg = kindName(kind);

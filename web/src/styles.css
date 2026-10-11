@@ -221,6 +221,7 @@ small, .small { font-size: 0.85rem; }
 .modal .ha-search { position: sticky; top: 0; z-index: 1; }
 .ha-others-title { font-size: 1rem; margin: 0; scroll-margin-top: 64px; }
 .ha-used { color: var(--muted); }
+.ha-signal { color: var(--ok); font-weight: 600; }
 .ha-value { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
 .ha-novalue { text-align: right; max-width: 45%; }
 .metric .spark { display: block; height: 34px; width: 100%; max-width: 100%; }

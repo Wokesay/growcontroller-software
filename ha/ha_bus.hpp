@@ -6,7 +6,9 @@
 // the hub uses; or the mapping file lists the entities. Home Assistant
 // calibrates its sensors itself; the device classes carry
 // externalCalibration, so pH, EC and level are shown but are no values for
-// control until the hub can check them. Other sensors (SD-036): any other
+// control until the hub can check them. A raw signal (SD-038, SD-041), a pH
+// probe's voltage, is calibrated in the app instead, with the hub's own
+// checks; its device class has no externalCalibration. Other sensors (SD-036): any other
 // sensor whose unit fits a measure can be picked too; it is sent to the web
 // app only when asked for. Nothing is switched: every run or switch command
 // is refused.
@@ -26,10 +28,20 @@
 namespace ha {
 
 // One Home Assistant entity and what it measures ("ph", "ec", "water_temp",
-// "level", "air_temp", "humidity", "co2").
+// "level", "air_temp", "humidity", "co2"). signal: it reports a raw signal
+// the app calibrates (SD-041), so far a pH probe's voltage in mV or V.
 struct Entity {
   std::string entityId, measures;
+  bool signal = false;
 };
+
+// The ideal slope of a pH electrode at 25 °C (Nernst, RT·ln10/F). A probe's
+// voltage E in mV becomes the pH an ideal probe would read, 7 − E/59.16, so the
+// hub's own pH check applies unchanged: its slope band 0.8–1.25 is 47.3–74.0
+// mV/pH (RAT-025), and an uncalibrated probe already reads about right.
+constexpr double kNernstMvPerPh = gc::kNernstMvPerPh;
+// The device class of a picked entity: ha_<measure>, ha_ph_raw for a pH signal.
+std::string deviceClassOf(const Entity& e);
 
 // Home Assistant's address, checked once (#76): the token goes only to the
 // host a person reads in it. http(s)://host[:port][/path], the host a name
@@ -44,7 +56,8 @@ struct Address {
 };
 std::optional<Address> parseAddress(std::string url, std::string& err);
 
-// The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph"}]};
+// The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph", "signal": true}]},
+// "signal" only for a raw pH signal;
 // "entities" may be left out, the user then selects in the web app.
 struct Mapping {
   std::string url;
@@ -78,6 +91,9 @@ struct Candidate {
   // if Home Assistant says it measures something else (its device class).
   std::vector<std::string> measures;
   std::string deviceClass;
+  // A raw signal the app calibrates (SD-041): a pH probe's voltage. It has no
+  // value of its own before that; raw and unit are what Home Assistant reports.
+  bool signal = false;
 };
 // What a state describes by Home Assistant's own words; "" if nothing the hub uses.
 std::string classify(const gc::json& state);
@@ -122,6 +138,10 @@ class HaBus : public gc::IBus {
   void adopt(const Entity& entity);
   // The measure an entity is used for, "" if none.
   std::string selectedMeasure(const std::string& entityId) const;
+  // The picked entity, if it is picked.
+  std::optional<Entity> selected(const std::string& entityId) const;
+  // Whether the list offers it as a raw signal; none if it is not listed.
+  std::optional<bool> offeredAsSignal(const std::string& entityId) const;
   // Stop using an entity; it stays a candidate.
   void deselect(const std::string& entityId);
   // How the last round went, for the web app: "starting", "ok", "unreachable" or "refused".
@@ -131,11 +151,11 @@ class HaBus : public gc::IBus {
   std::vector<Candidate> candidates() const;  // the suggestions
   std::vector<Candidate> others() const;      // the other sensors (SD-036)
   // For the web app: {"connection": …, "truncated": [kinds, "other"], "candidates": [{entity,
-  // name, kind, measures, value, raw, unit, problem, used}], "otherFits": {measure: n},
+  // name, kind, measures, value, raw, unit, problem, used, signal (only if true)}], "otherFits": {measure: n},
   // "otherCount": n}, "used" naming the measure a selected one serves,
   // otherFits how many other sensors can serve each measure and otherCount
   // how many are listed (also those listed only with a reason). withOthers adds "others":
-  // [{entity, name, measures, value, raw, unit, problem, deviceClass, used}],
+  // [{entity, name, measures, value, raw, unit, problem, deviceClass, used, signal}],
   // sorted by name; only asked for while someone looks.
   gc::json candidatesJson(bool withOthers = false) const;
 

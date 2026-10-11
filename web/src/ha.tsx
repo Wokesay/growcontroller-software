@@ -5,12 +5,13 @@
 // (/ha/assign). Read-only: nothing is switched from here.
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { computed } from "@preact/signals";
-import { get, post } from "./api";
+import { get, post, probeKinds, type ProbeKind } from "./api";
+import { ProbeCalibration } from "./calibration";
 import { ago, num, numUpTo } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, info, refreshConfig, refreshState, state, toast } from "./store";
 import { Banner, Button, Modal, Pill } from "./ui";
-import { qualityText } from "./widgets";
+import { millivoltsText, qualityText, rawSignalUncalibrated } from "./widgets";
 
 export const isHa = computed(() => info.value?.platform?.kind === "home-assistant");
 
@@ -25,6 +26,7 @@ export type HaCandidate = {
   unit: string; // Home Assistant's unit
   problem: "unit_missing" | "unit_unsupported" | null;
   used: string | null;
+  signal?: boolean; // a raw signal calibrated in the app (SD-041): a pH probe's voltage, no value before that
 };
 // Any numeric sensor that is no suggestion (SD-036): it serves what its unit fits, nothing if
 // Home Assistant says it measures something else.
@@ -120,6 +122,7 @@ function ConnectionNotice(p: { list: HaList | null; failing?: boolean }) {
 export function HaRoles() {
   const { list, reload, failing } = useHaList();
   const [pick, setPick] = useState<{ role: string; measure: string } | null>(null);
+  const [cal, setCal] = useState<{ device: string; kind: ProbeKind; name: string } | null>(null);
   const st = state.value!;
   const cands = list?.candidates ?? [];
   const fits = (measure: string) => cands.filter((c) => c.measures.includes(measure));
@@ -163,23 +166,44 @@ export function HaRoles() {
             const external = reading?.quality === "uncalibrated" && reading.reason.key === "truth.external";
             const bad = !!reading && reading.quality !== "ok" && reading.quality !== "not_bound" && !external;
             const problem = unitProblem(cands.find((c) => c.entity === entity)); // a unit the hub cannot use, said as such
+            // A raw signal is calibrated here (SD-041); a sensor calibrated in Home Assistant offers nothing
+            const kind = device ? probeKinds(catalog.value, device.class)[0] : undefined;
+            const uncalibrated = reading?.quality === "uncalibrated" && !external;
+            // Before its calibration a pH voltage is shown as the voltage it is, not as a guessed pH
+            const asMv = rawSignalUncalibrated(role);
+            const shownValue = asMv && reading?.value != null ? t("ha.signalNow", { value: millivoltsText(reading.value) }) : valueText(measure, reading?.value);
+            const fault = st.devices.find((d) => d.id === b?.device)?.fault ?? "";
+            const unitNow = /^unit (.+) is no raw signal$/.exec(fault)?.[1];
             return (
               <div class="item" data-testid={`ha-role-${role}`}>
                 <span class="grow">
                   <span class="row" style="gap:8px">
                     <strong>{roleLabel(role)}</strong>
                     {b && external && <Pill tone="warn">{t("widgets.quality.external")}</Pill>}
-                    {b && bad && qualityText[reading!.quality] && <Pill tone="bad">{t(qualityText[reading!.quality])}</Pill>}
+                    {b && bad && qualityText[reading!.quality] && <Pill tone={uncalibrated ? "warn" : "bad"}>{t(qualityText[reading!.quality])}</Pill>}
                   </span>
                   {b && (
                     <div class="muted small" style="overflow-wrap:anywhere">
-                      {[device?.name || entity, valueText(measure, reading?.value), reading?.ageS != null ? ago(reading.ageS) : ""].filter(Boolean).join(" · ")}
-                      {bad && reading?.reason.text && live !== false && !problem && <div>{msg(reading.reason)}</div>}
+                      {[device?.name || entity, shownValue, reading?.ageS != null ? ago(reading.ageS) : ""].filter(Boolean).join(" · ")}
+                      {bad && uncalibrated && asMv && <div>{t("ha.uncalibratedHint")}</div>}
+                      {unitNow && <div>{t("ha.notSignal", { unit: unitNow })}</div>}
+                      {bad && reading?.reason.text && live !== false && !problem && !(uncalibrated && asMv) && !unitNow && <div>{msg(reading.reason)}</div>}
                       {problem && <div>{problem}</div>}
                       {live === false && entity && ok && <div>{t("ha.missing", { entity })}</div>}
                     </div>
                   )}
                 </span>
+                {b && device && kind && live && (
+                  <Button
+                    size="sm"
+                    variant={uncalibrated ? "primary" : "default"}
+                    onClick={() => setCal({ device: device.id, kind, name: device.name || entity })}
+                    aria-label={t("ha.calibrateFor", { role: roleLabel(role) })}
+                    data-testid={`ha-calibrate-${role}`}
+                  >
+                    {t("ha.calibrate")}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant={b ? "default" : "primary"}
@@ -202,6 +226,7 @@ export function HaRoles() {
         <p class="muted small">{t("ha.whyText")}</p>
       </details>
       {pick && <HaPicker role={pick.role} measure={pick.measure} list={list} failing={failing} reload={reload} onClose={() => setPick(null)} />}
+      {cal && <ProbeCalibration device={cal.device} kind={cal.kind} name={cal.name} onClose={() => setCal(null)} />}
     </div>
   );
 }
@@ -292,7 +317,8 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
   const b = binding(p.role);
   const current = b?.device.startsWith("ha.") ? b.device.slice(3) : "";
   const ok = p.list?.connection === "ok";
-  const all = (p.list?.candidates ?? []).filter((c) => c.measures.includes(p.measure)).sort(byName);
+  // A raw signal first: calibrated in the app, it can be checked (SD-038)
+  const all = (p.list?.candidates ?? []).filter((c) => c.measures.includes(p.measure)).sort((a, b) => Number(!!b.signal) - Number(!!a.signal) || byName(a, b));
   const match = (c: { name: string; entity: string }) => fold(`${c.name} ${c.entity}`).includes(fold(q.trim()));
   const shown = q.trim() ? all.filter(match) : all;
   const fitCount = p.list?.otherFits?.[p.measure] ?? 0;
@@ -324,7 +350,8 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
     try {
       await post("/ha/assign", { role: p.role, entity });
       await Promise.all([refreshConfig(), refreshState(), p.reload()]);
-      toast(entity ? t("ha.saved", { name: name || entity, role: label }) : t("ha.removed", { role: label }));
+      const signal = [...(p.list?.candidates ?? []), ...(others ?? [])].some((c) => c.entity === entity && c.signal);
+      toast(entity ? t(signal ? "ha.savedSignal" : "ha.saved", { name: name || entity, role: label }) : t("ha.removed", { role: label }));
       p.onClose();
     } catch (e: any) {
       toast(e.message, "error");
@@ -378,10 +405,13 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
                   <strong>{c.name || c.entity}</strong>
                   <span class="muted small mono ha-entity">{c.entity}</span>
                   {converted && <span class="muted small">{t("ha.inHa", { value: numUpTo(c.raw!, 2), unit: c.unit })}</span>}
+                  {c.signal && <span class="ha-signal small">{t("ha.signalBest")}</span>}
                   {elsewhere && <span class="ha-used small">{t("ha.usedFor", { role: roleLabel(elsewhere) })}</span>}
                   {saving === c.entity && <span class="muted small">{t("ha.saving")}</span>}
                 </span>
-                {c.value !== null ? (
+                {c.signal && c.raw !== null ? (
+                  <span class="ha-value">{`${numUpTo(c.raw, c.unit === "V" ? 4 : 1)} ${c.unit}`}</span>
+                ) : c.value !== null ? (
                   <span class="ha-value">{valueText(p.measure, c.value)}</span>
                 ) : (
                   <span class="muted small ha-novalue">{unitProblem(c) || t("ha.noValue")}</span>
@@ -462,12 +492,13 @@ function OtherOption(p: { o: HaOther; measure: string; role: string; current: st
       <span class="grow">
         <strong>{o.name || o.entity}</strong>
         <span class="muted small mono ha-entity">{o.entity}</span>
+        {o.signal && !problem && <span class="muted small">{t("ha.signal")}</span>}
         {problem && <span class="muted small">{problem}</span>}
         {elsewhere && <span class="ha-used small">{t("ha.usedFor", { role: roleLabel(elsewhere) })}</span>}
         {p.saving === o.entity && <span class="muted small">{t("ha.saving")}</span>}
       </span>
       {o.raw !== null ? (
-        <span class="ha-value">{`${numUpTo(o.raw, 2)}${o.unit ? ` ${o.unit}` : ""}`}</span>
+        <span class="ha-value">{`${numUpTo(o.raw, o.unit === "V" ? 4 : 2)}${o.unit ? ` ${o.unit}` : ""}`}</span>
       ) : !problem ? (
         <span class="muted small ha-novalue">{t("ha.noValue")}</span>
       ) : null}

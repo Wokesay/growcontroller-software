@@ -104,6 +104,7 @@ export const msgDe: Record<string, string> = {
   "check.dry_ok": "Trockenlaufschutz ok",
 
   // Monitoring: headline, labels and assessments
+  "truth.class_mismatch": "Gerät meldet einen anderen Typ als eingerichtet – neu zuordnen",
   "watch.headline.problem": "1 Problem",
   "watch.headline.problems": "{n} Probleme",
   "watch.headline.ok": "Alles in Ordnung ({n} Prüfungen)",
@@ -241,6 +242,14 @@ export const msgDe: Record<string, string> = {
   "ev.cfg.function_on": "{label} eingeschaltet",
   "ev.cfg.function_off": "{label} ausgeschaltet",
   "ev.cfg.function_params": "{label}: Parameter",
+  // Calibration in the app (hub.cpp)
+  "probe.no_raw": "Kein neuer Messwert vom Sensor. Prüf, ob er Werte liefert (in Home Assistant oder am Gerät), und tippe noch einmal auf „Wert übernehmen“.",
+  "probe.invalid": "Die Sonde reagiert nicht wie erwartet. Prüf, ob du den richtigen Sensor und die richtigen Puffer genommen hast, und kalibriere neu.",
+  "probe.pending": "Ein Punkt wartet noch auf den nächsten Messwert vom Sensor.",
+  "probe.swapped": "Die Werte laufen verkehrt herum: Puffer vertauscht oder Sonde falsch herum angeschlossen. Bitte neu kalibrieren.",
+  "probe.too_steep": "Die Sonde reagiert stärker, als eine Sonde kann ({mv} mV je pH-Stufe). Entweder steckt ein Verstärker dazwischen – das unterstützt die App noch nicht – oder ein Puffer stimmt nicht.",
+  "probe.too_flat": "Die Sonde reagiert zu schwach ({mv} mV je pH-Stufe): Sonde verbraucht, Puffer alt oder falscher Sensor gewählt.",
+  "probe.no_move": "Der Wert hat sich zwischen den Puffern kaum bewegt: Ist das wirklich das Signal der Sonde, und stand sie im Puffer? Nimm die Werte noch einmal auf.",
   // Refused configuration changes (hub.cpp)
   "system.control": "Je Bereich „Automatisch“ oder „Außerhalb der Steuerung“ wählen",
 

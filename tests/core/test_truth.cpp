@@ -158,8 +158,8 @@ TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for
   cfg.devices = {{"HA-PH", "ext_ph", "pH"}, {"HA-T", "ext_temp", "Water"}};
   cfg.tank().roles["tank.ph"] = {"HA-PH", 0};
   cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
-  bus.head("HA-PH");
-  bus.head("HA-T");
+  bus.head("HA-PH", true, "ext_ph");
+  bus.head("HA-T", true, "ext_temp");
   bus.set("HA-PH", "measure.ph", 6.2, clk.ms);
   bus.set("HA-T", "measure.water_temp", 21.0, clk.ms);
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
@@ -230,8 +230,8 @@ TEST_CASE("Sensor truth: a sensor on its own schedule is stale only when it miss
   SensorTruth truth{cat};
   cfg.devices = {{"HA-T", "ext_temp", "Water"}, {"HA-T2", "ext_temp", "Water 2"}};
   cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
-  bus.head("HA-T");
-  bus.head("HA-T2");
+  bus.head("HA-T", true, "ext_temp");
+  bus.head("HA-T2", true, "ext_temp");
   constexpr Ms kS = 1000, kMin = 60 * kS;
   auto quality = [&] {
     truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
@@ -367,8 +367,8 @@ TEST_CASE("Sensor truth: VPD pairs the hub's own readings within 60 s, and readi
   cfg.devices = {{"CL-1", "head_climate", "Climate"}, {"CL-2", "head_climate", "Climate 2"}};
   cfg.zone().roles["zone.air_temp"] = {"CL-1", 0};
   cfg.zone().roles["zone.humidity"] = {"CL-2", 0};
-  bus.head("CL-1");
-  bus.head("CL-2");
+  bus.head("CL-1", true, "head_climate");
+  bus.head("CL-2", true, "head_climate");
   bus.set("CL-1", "measure.air_temp", 25.0, clk.ms - 61 * kS);
   bus.set("CL-2", "measure.humidity", 60.0, clk.ms);
   CHECK(vpd().reason.key == "truth.vpd.apart");
@@ -380,8 +380,8 @@ TEST_CASE("Sensor truth: VPD pairs the hub's own readings within 60 s, and readi
   cfg.devices = {{"HA-AIR", "ext_air", "Air"}, {"HA-RH", "ext_rh", "Humidity"}};
   cfg.zone().roles["zone.air_temp"] = {"HA-AIR", 0};
   cfg.zone().roles["zone.humidity"] = {"HA-RH", 0};
-  bus.head("HA-AIR");
-  bus.head("HA-RH");
+  bus.head("HA-AIR", true, "ext_air");
+  bus.head("HA-RH", true, "ext_rh");
   bus.set("HA-AIR", "measure.air_temp", 25.0, clk.ms - 120 * kS);
   bus.set("HA-RH", "measure.humidity", 60.0, clk.ms - 5 * kS);
   const Reading r = vpd();
@@ -437,8 +437,8 @@ TEST_CASE("Sensor truth: VPD from one reading of the hub and one on its own sche
   cfg.devices = {{"CL-1", "head_climate", "Climate"}, {"HA-RH", "ext_rh", "Humidity"}};
   cfg.zone().roles["zone.air_temp"] = {"CL-1", 0};
   cfg.zone().roles["zone.humidity"] = {"HA-RH", 0};
-  bus.head("CL-1");
-  bus.head("HA-RH");
+  bus.head("CL-1", true, "head_climate");
+  bus.head("HA-RH", true, "ext_rh");
   bus.set("CL-1", "measure.air_temp", 25.0, clk.ms);
   bus.set("HA-RH", "measure.humidity", 60.0, clk.ms - 4 * 60 * 1000);  // reported on its last change
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());

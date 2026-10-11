@@ -97,7 +97,7 @@ for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 | POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
 | POST | `/dose {canister, ml}` | manual dose |
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
-| POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel |
+| POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel. For a sensor on its own schedule (Home Assistant, SD-041) `point` answers with `pending {since, reference}`: the point is taken from the sensor's next report; with none within its freshness limit the session in the state carries `failed` (`probe.no_raw`) |
 | POST | `/latches/{id}/ack` | acknowledge a latch (a jump lock clears itself) |
 | POST | `/stop`, `/resume`, `/maintenance {minutes}` | emergency stop, resume, maintenance mode |
 | POST | `/measure {ph, ec}` | manual measurement |
