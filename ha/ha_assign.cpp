@@ -65,8 +65,9 @@ gc::Result assign(gc::Hub& hub, HaBus& bus, const std::string& role, const std::
     if (before == device) return gc::Result::ok();  // already so, and read again if it was not
   }
   std::string name = entity;
-  for (const auto& c : bus.candidates())
-    if (c.entityId == entity && !c.name.empty()) name = c.name;
+  for (const auto& list : {bus.candidates(), bus.others()})
+    for (const auto& c : list)
+      if (c.entityId == entity && !c.name.empty()) name = c.name;
   // The hub sees a newly selected device with its next tick, and one picked
   // again for another measure with its new class: wait for that, without its lock.
   const std::string cls = kClassPrefix + measures;
@@ -111,7 +112,8 @@ void adoptFromConfig(gc::Hub& hub, HaBus& bus) {
 
 gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest& req) {
   if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
-  return gc::Result::ok(bus.candidatesJson());
+  auto others = req.query.find("others");
+  return gc::Result::ok(bus.candidatesJson(others != req.query.end() && others->second == "1"));
 }
 
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,

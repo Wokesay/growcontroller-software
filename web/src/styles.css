@@ -218,6 +218,8 @@ small, .small { font-size: 0.85rem; }
 .ha-option:disabled :is(strong, .ha-entity, .ha-value) { opacity: 0.6; }
 .ha-option.ha-none { background: transparent; border-style: dashed; color: var(--muted); }
 .ha-entity, .ha-option strong { overflow-wrap: anywhere; }
+.modal .ha-search { position: sticky; top: 0; z-index: 1; }
+.ha-others-title { font-size: 1rem; margin: 0; scroll-margin-top: 64px; }
 .ha-used { color: var(--muted); }
 .ha-value { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
 .ha-novalue { text-align: right; max-width: 45%; }

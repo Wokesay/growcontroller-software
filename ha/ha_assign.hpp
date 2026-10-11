@@ -28,7 +28,8 @@ gc::Result assign(gc::Hub& hub, HaBus& bus, const std::string& role, const std::
 void adoptFromConfig(gc::Hub& hub, HaBus& bus);
 
 // The server's two routes without the HTTP layer: signed in, then the work.
-// GET /api/v1/ha/candidates and POST /api/v1/ha/assign {"role", "entity"}.
+// GET /api/v1/ha/candidates (?others=1 adds the other sensors, SD-036) and
+// POST /api/v1/ha/assign {"role", "entity"}.
 gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest& req);
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,
                        const std::function<void()>& letHubSee);

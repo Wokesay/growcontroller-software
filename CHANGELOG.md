@@ -7,6 +7,23 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+### Added
+- **Home Assistant: choose a sensor the app does not suggest** (SD-036):
+  the sensor picker has "Show other sensors" ("Andere Sensoren anzeigen")
+  with a search by name. A sensor is offered for a measurement its unit
+  fits (% for humidity, ppm for CO2, L for level, no unit for pH); one
+  that Home Assistant says measures something else, such as a phone
+  battery, or a meter that only counts up, is listed folded with the
+  reason and cannot be chosen. Measurements without a suggestion can be
+  chosen right from the assignment page. Only sensors that could be
+  chosen, or need a reason, reach the app, and values only of those that
+  could be chosen.
+
+### Changed
+- **History: a curve shows only where it can have values** (SD-039): in
+  the Home Assistant app the volume from mixes is no longer an empty tile,
+  and a note says that more curves appear once a sensor is assigned.
+
 ## [0.1.0-proto.3] – 2026-10-11
 
 Third prototype: fixes from the first test of the Home Assistant app on a

@@ -6,8 +6,10 @@
 // the hub uses; or the mapping file lists the entities. Home Assistant
 // calibrates its sensors itself; the device classes carry
 // externalCalibration, so pH, EC and level are shown but are no values for
-// control until the hub can check them. Nothing is switched: every run or
-// switch command is refused.
+// control until the hub can check them. Other sensors (SD-036): any other
+// sensor whose unit fits a measure can be picked too; it is sent to the web
+// app only when asked for. Nothing is switched: every run or switch command
+// is refused.
 #pragma once
 
 #include <cstdint>
@@ -70,7 +72,12 @@ struct Candidate {
   double value = gc::kNaN;  // in the hub's unit; NaN if there is none now
   double raw = gc::kNaN;    // as Home Assistant reports it
   std::string unit;         // Home Assistant's unit
-  std::string problem;      // "", "unit_missing" or "unit_unsupported"
+  std::string problem;      // "", "unit_missing" or "unit_unsupported"; an other also "device_class" or "meter"
+  // An other sensor (SD-036): any numeric sensor that is no suggestion. It
+  // has no kind; it can serve the measures its unit fits exactly, and none
+  // if Home Assistant says it measures something else (its device class).
+  std::vector<std::string> measures;
+  std::string deviceClass;
 };
 // What a state describes by Home Assistant's own words; "" if nothing the hub uses.
 std::string classify(const gc::json& state);
@@ -89,6 +96,7 @@ class HaBus : public gc::IBus {
  public:
   explicit HaBus(std::vector<Entity> entities = {});
   static constexpr size_t kMaxPerKind = 100;
+  static constexpr size_t kMaxOthers = 1000;
 
   static std::string deviceId(const std::string& entityId) { return "ha." + entityId; }
 
@@ -105,9 +113,9 @@ class HaBus : public gc::IBus {
   // All states at once (GET /api/states): updates the selected entities and
   // refreshes the candidates. A selected entity missing from the list is lost.
   void updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs);
-  // Use a candidate for a measure. Refused (why: ha.unknown, ha.mismatch,
-  // ha.used) if it is no candidate, cannot serve that measure, or is already
-  // used for another one.
+  // Use a candidate or an other sensor for a measure. Refused (why:
+  // ha.unknown, ha.mismatch, ha.used) if Home Assistant did not list it, it
+  // cannot serve that measure, or it is already used for another one.
   bool select(const std::string& entityId, const std::string& measures, gc::Msg& why);
   // Use an entity without checking that it is a candidate now: the picks the
   // hub's configuration holds, at start.
@@ -120,11 +128,16 @@ class HaBus : public gc::IBus {
   void setConnection(const std::string& c);
 
   std::vector<Entity> entities() const;  // a copy: the web app may select while the poller reads
-  std::vector<Candidate> candidates() const;
-  // For the web app: {"connection": …, "truncated": [kinds], "candidates": [{entity,
-  // name, kind, measures, value, raw, unit, problem, used}]}, "used" naming
-  // the measure a selected one serves.
-  gc::json candidatesJson() const;
+  std::vector<Candidate> candidates() const;  // the suggestions
+  std::vector<Candidate> others() const;      // the other sensors (SD-036)
+  // For the web app: {"connection": …, "truncated": [kinds, "other"], "candidates": [{entity,
+  // name, kind, measures, value, raw, unit, problem, used}], "otherFits": {measure: n},
+  // "otherCount": n}, "used" naming the measure a selected one serves,
+  // otherFits how many other sensors can serve each measure and otherCount
+  // how many are listed (also those listed only with a reason). withOthers adds "others":
+  // [{entity, name, measures, value, raw, unit, problem, deviceClass, used}],
+  // sorted by name; only asked for while someone looks.
+  gc::json candidatesJson(bool withOthers = false) const;
 
   void poll(gc::Ms) override {}
   std::vector<gc::PortReport> ports() const override { return {}; }
@@ -150,8 +163,9 @@ class HaBus : public gc::IBus {
   void updateLocked(const Entity& e, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs);
   std::vector<Entity> entities_;
   std::vector<Candidate> candidates_;
-  std::map<std::string, gc::json> raw_;  // the candidates' last states, to start a pick with
-  std::set<std::string> truncated_;  // kinds with more candidates than kMaxPerKind
+  std::vector<Candidate> others_;
+  std::map<std::string, gc::json> raw_;  // the last states of what can be picked, to start a pick with
+  std::set<std::string> truncated_;  // kinds with more candidates than kMaxPerKind, "other" past kMaxOthers
   std::int64_t lastHaNowMs_ = 0;
   gc::Ms lastNowMs_ = 0;
   std::string connection_ = "starting";

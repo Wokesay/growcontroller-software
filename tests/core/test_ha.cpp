@@ -2,10 +2,12 @@
 // Read-only spike: Home Assistant as the device layer (docs/HOME_ASSISTANT.md).
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <map>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -211,7 +213,9 @@ TEST_CASE("Home Assistant: the hub finds the sensors it can use, drops the rest,
   CHECK(why.text.find("sensor.") == std::string::npos);  // the reason in words, not in IDs
   CHECK_FALSE(bus.select("sensor.tank_ph", "ec", why));  // pH cannot serve as EC
   CHECK(why.key == "ha.mismatch");
-  CHECK_FALSE(bus.select("sensor.phone_battery", "humidity", why));  // no candidate
+  CHECK_FALSE(bus.select("sensor.phone_battery", "humidity", why));  // Home Assistant says it is a battery
+  CHECK(why.key == "ha.mismatch");
+  CHECK_FALSE(bus.select("sensor.nowhere", "humidity", why));  // not in Home Assistant
   CHECK(why.key == "ha.unknown");
   CHECK_FALSE(bus.select("person.someone", "ph", why));
   CHECK_FALSE(bus.select("sensor.tank_ph", "voltage", why));
@@ -260,6 +264,110 @@ TEST_CASE("Home Assistant: the hub finds the sensors it can use, drops the rest,
   CHECK(bus.candidatesJson()["truncated"] == json::array({"temperature"}));  // only the kind that was cut
 }
 
+TEST_CASE("Home Assistant: any numeric sensor can be picked from the other sensors, in a unit that fits (SD-036)") {
+  json meter = described(state("sensor.meter_l", "1234", "L", iso(kNoonMs)), "", "Wasserzähler ohne Klasse");
+  meter["attributes"]["state_class"] = "total_increasing";
+  json volumeMeter = described(state("sensor.vol_total", "800", "L", iso(kNoonMs)), "volume", "Zähler");
+  volumeMeter["attributes"]["state_class"] = "total";
+  json states = json::array({
+      described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"),             // a suggestion
+      described(state("sensor.diy_rh", "58", "%", iso(kNoonMs)), "", "Selbstbau Feuchte"),       // no device class
+      described(state("sensor.diy_co2", "720", "ppm", iso(kNoonMs)), "", "Selbstbau CO2"),
+      described(state("sensor.diy_ph", "6.3", "", iso(kNoonMs)), "", "Eimer pH"),                // no unit: only pH
+      described(state("sensor.diy_level", "33", "L", iso(kNoonMs)), "", "Tank Liter"),
+      described(state("sensor.diy_off", "unavailable", "%", iso(kNoonMs)), "", "Selbstbau aus"),  // a unit, no value now
+      described(state("sensor.phone_battery", "80", "%", iso(kNoonMs)), "battery", "Handy"),     // its unit fits, its class not
+      described(state("sensor.rh_raw", "55", "", iso(kNoonMs)), "humidity", "Feuchte ohne Einheit"),  // the hub's class, no unit
+      volumeMeter,                                                                                  // the hub's class, but a meter
+      meter,                                                                                        // a litre counter is no level
+      described(state("sensor.plug_power", "12.5", "W", iso(kNoonMs)), "power", "Steckdose"),    // nothing the hub reads: not kept
+      described(state("sensor.watts", "3", "W", iso(kNoonMs)), "", "Watt ohne Klasse"),
+      described(state("sensor.firmware", "1.2.3", "", iso(kNoonMs)), "", "Firmware"),            // no number
+      described(state("sensor.last_boot", "2026-10-09T10:00:00+00:00", "", iso(kNoonMs)), "timestamp", "Start"),
+      described(state("binary_sensor.door", "on", "", iso(kNoonMs)), "door", "Tür"),           // not a sensor
+  });
+  ha::HaBus bus;
+  bus.updateAll(states, kNoonMs, 1000);
+  // The suggestions stay what they were; the others come only when asked for
+  CHECK(bus.candidates().size() == 1);
+  const json brief = bus.candidatesJson();
+  CHECK(brief["candidates"].size() == 1);
+  CHECK(brief["otherFits"] == json{{"humidity", 2}, {"co2", 1}, {"ph", 1}, {"level", 1}});
+  CHECK(brief["otherCount"] == 8);
+  CHECK_FALSE(brief.contains("others"));
+  std::map<std::string, json> other;
+  const json full = bus.candidatesJson(true);  // kept: a loop over a temporary's part would dangle
+  for (const auto& o : full["others"]) other[o["entity"].get<std::string>()] = o;
+  // Only what someone could pick, or what needs saying why not: the web app learns no more of the house
+  CHECK(other.size() == 8);
+  for (const char* gone : {"sensor.plug_power", "sensor.watts", "sensor.meter_l", "sensor.firmware", "sensor.last_boot",
+                           "binary_sensor.door", "sensor.tank_ph"})
+    CHECK_MESSAGE(other.count(gone) == 0, gone);
+  CHECK(other["sensor.diy_rh"]["measures"] == json::array({"humidity"}));
+  CHECK(other["sensor.diy_rh"]["name"] == "Selbstbau Feuchte");
+  CHECK(other["sensor.diy_rh"]["raw"] == 58);
+  CHECK(other["sensor.diy_rh"]["problem"].is_null());
+  CHECK(other["sensor.diy_co2"]["measures"] == json::array({"co2"}));
+  CHECK(other["sensor.diy_ph"]["measures"] == json::array({"ph"}));
+  CHECK(other["sensor.diy_level"]["measures"] == json::array({"level"}));
+  CHECK(other["sensor.diy_off"]["measures"] == json::array({"humidity"}));
+  CHECK(other["sensor.diy_off"]["raw"].is_null());  // no value, never 0 (R5)
+  CHECK(other["sensor.phone_battery"]["measures"].empty());
+  CHECK(other["sensor.phone_battery"]["problem"] == "device_class");
+  CHECK(other["sensor.phone_battery"]["deviceClass"] == "battery");
+  CHECK(other["sensor.phone_battery"]["raw"].is_null());  // what it measures stays in Home Assistant
+  CHECK(other["sensor.rh_raw"]["problem"] == "unit_missing");  // the unit is the reason, not "something else"
+  CHECK(other["sensor.rh_raw"]["raw"].is_null());
+  CHECK(other["sensor.vol_total"]["problem"] == "meter");
+  // Sorted by name, the entity ID breaking ties
+  std::vector<std::string> names;
+  for (const auto& o : full["others"]) names.push_back(o["name"]);
+  CHECK(std::is_sorted(names.begin(), names.end()));
+  // Picked for a measure its unit fits; refused for any other, with the reason
+  gc::Msg why;
+  CHECK_FALSE(bus.select("sensor.diy_rh", "ph", why));
+  CHECK(why.key == "ha.mismatch");
+  CHECK_FALSE(bus.select("sensor.phone_battery", "humidity", why));
+  CHECK(why.key == "ha.mismatch");
+  CHECK_FALSE(bus.select("sensor.plug_power", "humidity", why));  // not offered at all
+  CHECK(why.key == "ha.unknown");
+  CHECK_FALSE(bus.select("sensor.meter_l", "level", why));
+  REQUIRE(bus.select("sensor.diy_rh", "humidity", why));
+  CHECK(bus.devices().at(0).online);  // at once, from the round that listed it
+  REQUIRE(bus.sample("ha.sensor.diy_rh", "measure.humidity"));
+  CHECK(bus.sample("ha.sensor.diy_rh", "measure.humidity")->raw == doctest::Approx(58));
+  const json picked = bus.candidatesJson(true);
+  for (const auto& o : picked["others"]) CHECK(o["used"] == (o["entity"] == "sensor.diy_rh" ? json("humidity") : json(nullptr)));
+  bus.updateAll(states, kNoonMs, 2000);  // read on like any pick
+  CHECK(bus.devices().at(0).online);
+  // Home Assistant not answering: no old value shows as current
+  bus.lostAll();
+  for (const auto& o : bus.others()) CHECK(std::isnan(o.raw));
+  const json lost = bus.candidatesJson(true);
+  for (const auto& o : lost["others"]) CHECK(o["raw"].is_null());
+  // A large installation: past the limit the picked sensor and the ones that
+  // can be picked stay, whatever Home Assistant lists first, and it says so
+  json many = json::array();
+  for (size_t i = 0; i < ha::HaBus::kMaxOthers + 20; ++i)
+    many.push_back(described(state("sensor.b" + std::to_string(i), "80", "%", iso(kNoonMs)), "battery", "Akku"));
+  many.push_back(described(state("sensor.diy_rh", "58", "%", iso(kNoonMs)), "", "Selbstbau Feuchte"));
+  many.push_back(described(state("sensor.diy_co2", "720", "ppm", iso(kNoonMs)), "", "Selbstbau CO2"));
+  many.push_back(described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"));
+  bus.updateAll(many, kNoonMs, 3000);
+  const json cut = bus.candidatesJson(true);
+  CHECK(cut["others"].size() == ha::HaBus::kMaxOthers);
+  CHECK(cut["truncated"] == json::array({"other"}));
+  CHECK(cut["candidates"].size() == 1);  // the tank's pH is still suggested
+  std::set<std::string> kept;
+  for (const auto& o : cut["others"]) kept.insert(o["entity"]);
+  CHECK(kept.count("sensor.diy_rh"));
+  CHECK(kept.count("sensor.diy_co2"));
+  CHECK(bus.devices().at(0).online);  // the pick reads on
+  ha::HaBus fresh;
+  fresh.updateAll(many, kNoonMs, 3000);
+  CHECK(fresh.select("sensor.diy_co2", "co2", why));  // can be picked although listed last
+}
+
 TEST_CASE("Home Assistant: only units the hub converts exactly give a value; nothing is guessed (RAT-006, RAT-015)") {
   auto withClass = [](json s, const std::string& stateClass) {
     s["attributes"]["state_class"] = stateClass;
@@ -267,7 +375,7 @@ TEST_CASE("Home Assistant: only units the hub converts exactly give a value; not
   };
   const json states = json::array({
       described(state("sensor.tank_tds", "700", "ppm", iso(kNoonMs)), "conductivity", "Tank TDS"),  // a factor would be a guess
-      described(state("sensor.tds_plain", "700", "ppm", iso(kNoonMs)), "", "TDS"),                  // ppm alone: not offered
+      described(state("sensor.tds_plain", "700", "ppm", iso(kNoonMs)), "", "TDS"),                  // ppm alone: not suggested (as an other it fits only CO2, SD-036)
       described(state("sensor.ec_msm", "145", "mS/m", iso(kNoonMs)), "conductivity", "EC mS/m"),
       described(state("sensor.ec_greek", "1450", "\xce\xbcS/cm", iso(kNoonMs)), "conductivity", "EC"),  // μ U+03BC, as Home Assistant writes it
       described(state("sensor.ec_none", "1.4", "", iso(kNoonMs)), "conductivity", "EC ohne Einheit"),
@@ -370,6 +478,7 @@ TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken 
       described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH"),
       described(state("sensor.tent_temp", "24.5", "°C", iso(kNoonMs)), "temperature", "Zelt Temperatur"),
       described(state("sensor.room_temp", "21.0", "°C", iso(kNoonMs)), "temperature", "Wohnzimmer"),
+      described(state("sensor.diy_rh", "58", "%", iso(kNoonMs)), "", "Selbstbau Feuchte"),  // an other sensor (SD-036)
   });
   const gc::Catalog cat = ha::catalog();
   ha::HaBus bus;
@@ -394,6 +503,16 @@ TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken 
   CHECK(hub.config().binding("tank.ph")->device == "ha.sensor.tank_ph");
   letHubSee();
   CHECK(hub.state()["readings"]["tank.ph"]["value"].get<double>() == doctest::Approx(6.1));
+  // An other sensor is picked the same way, under its Home Assistant name, for what its unit fits
+  REQUIRE(ha::assign(hub, bus, "zone.humidity", "sensor.diy_rh", letHubSee).status == 200);
+  CHECK(hub.config().device("ha.sensor.diy_rh")->name == "Selbstbau Feuchte");
+  CHECK(hub.config().device("ha.sensor.diy_rh")->cls == "ha_humidity");
+  letHubSee();
+  CHECK(hub.state()["readings"]["zone.humidity"]["value"].get<double>() == doctest::Approx(58));
+  CHECK(ha::assign(hub, bus, "zone.co2", "sensor.diy_rh", letHubSee).body["error"]["key"] == "ha.used");
+  REQUIRE(ha::assign(hub, bus, "zone.humidity", "", letHubSee).status == 200);
+  CHECK(ha::assign(hub, bus, "zone.co2", "sensor.diy_rh", letHubSee).body["error"]["key"] == "ha.mismatch");  // % is no CO2
+  CHECK_FALSE(hub.config().device("ha.sensor.diy_rh"));
   // A temperature serves the role it was picked for, and only that one
   REQUIRE(ha::assign(hub, bus, "zone.air_temp", "sensor.tent_temp", letHubSee).status == 200);
   CHECK(hub.config().device("ha.sensor.tent_temp")->cls == "ha_air_temp");
@@ -434,12 +553,17 @@ TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken 
   CHECK(ha::assign(hub, bus, "zone.air_temp", "sensor.box_temp", [] {}).status == 504);
   CHECK(hub.config().binding("zone.air_temp")->device == "ha.sensor.room_temp");
   CHECK(bus.selectedMeasure("sensor.room_temp") == "air_temp");
+  REQUIRE(ha::assign(hub, bus, "zone.humidity", "sensor.diy_rh", letHubSee).status == 200);  // an other sensor (SD-036)
   // The picks live in the configuration: after a restart the bus reads them again
   ha::HaBus after;
   gc::Hub again(cat, after, store, clk, pseudoRandom);
   again.boot();
   ha::adoptFromConfig(again, after);
   CHECK(after.selectedMeasure("sensor.room_temp") == "air_temp");
+  CHECK(after.selectedMeasure("sensor.diy_rh") == "humidity");
+  after.updateAll(states, kNoonMs + clk.ms, clk.ms);
+  REQUIRE(after.sample("ha.sensor.diy_rh", "measure.humidity"));
+  CHECK(after.sample("ha.sensor.diy_rh", "measure.humidity")->raw == doctest::Approx(58));
   CHECK(after.selectedMeasure("sensor.tent_temp") == "water_temp");
   CHECK(after.selectedMeasure("sensor.tank_ph").empty());
   // The configuration wins over the mapping file at start
@@ -486,6 +610,10 @@ TEST_CASE("Home Assistant: the server's routes need a signed-in session") {
   CHECK(listed.status == 200);
   CHECK(listed.body["connection"] == "starting");
   CHECK(listed.body["candidates"].size() == 1);
+  CHECK_FALSE(listed.body.contains("others"));  // the other sensors only when asked for (SD-036)
+  gc::ApiRequest withOthers = signedIn;
+  withOthers.query["others"] = "1";
+  CHECK(ha::candidatesRoute(api, bus, withOthers).body["others"].is_array());
   CHECK(ha::assignRoute(api, hub, bus, signedIn, [&] {
           clk.ms += 200;
           hub.tick();
