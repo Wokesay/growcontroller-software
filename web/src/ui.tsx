@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
-import { Component, render, type ComponentChildren, type JSX } from "preact";
+import { Component, render, type ComponentChildren, type ButtonHTMLAttributes } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
@@ -50,7 +50,7 @@ export function Card(p: { title?: ComponentChildren; icon?: ComponentChildren; a
   );
 }
 
-type BtnProps = Omit<JSX.HTMLAttributes<HTMLButtonElement>, "onClick" | "size"> & {
+type BtnProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   variant?: "primary" | "danger" | "danger-soft" | "ghost" | "default";
   size?: "sm" | "lg";
   block?: boolean;

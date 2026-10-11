@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Schaltbare Steckdosen (Shelly im Simulator): in der Einrichtung finden,
 // übernehmen, je Dose sagen, was eingesteckt ist, testen.
-import { expect, test } from "@playwright/test";
-import { scenario } from "./helpers";
+import { expect, scenario, test } from "./helpers";
 
 test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen", async ({ page, request }) => {
   await scenario(request, "neu");

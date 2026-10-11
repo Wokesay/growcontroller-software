@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Zugangsschutz (EN 18031-1 ACM/AUM): ohne Anmeldung keine Daten, keine Aktoren.
-import { expect, test } from "@playwright/test";
-import { login, scenario } from "./helpers";
+import { expect, login, scenario, test } from "./helpers";
 
 test("API ohne Sitzung: 401 für Zustand und Aktoren", async ({ request }) => {
   await scenario(request, "demo");

@@ -36,6 +36,8 @@ listed in every release under "Security".
 - Build tools of the web app: TypeScript 7.0.2 for the type check and
   Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
   app itself does not change.
+- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
+  visible changes.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the

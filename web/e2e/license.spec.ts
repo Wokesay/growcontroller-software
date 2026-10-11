@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // AGPL-3.0 §13: users who interact with the hub over the network are offered
 // the source code of exactly this build, before and after login.
-import { expect, test } from "@playwright/test";
-import { login, scenario } from "./helpers";
+import { expect, login, scenario, test } from "./helpers";
 
 const SOURCE = /^https:\/\/github\.com\/Wokesay\/growcontroller-software(\/tree\/[0-9A-Za-z._\-]+)?$/;
 
