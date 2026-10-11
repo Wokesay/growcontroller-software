@@ -33,6 +33,9 @@ listed in every release under "Security".
   after a long press on BOOT, with a key per device (SD-044). Raw level
   and EC from Home Assistant, the combined history view and the stop menu
   wait until the ESP foundation stands.
+- Build tools of the web app: TypeScript 7.0.2 for the type check and
+  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  app itself does not change.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the
