@@ -22,6 +22,17 @@ listed in every release under "Security".
   values follow.
 
 ### Changed
+- **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
+  `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
+  (SD-042): a sensor is stale after 60 s without a measurement, not
+  without a change. Then the ESP32-S3, which runs control and safety on
+  its own (SD-045). Its firmware stays our own ESP-IDF firmware and will
+  speak the ESPHome native API to Home Assistant itself, off by default
+  and encrypted (SD-043). It gets its Wi-Fi over USB right after flashing
+  in the browser; later changes go over a setup network that opens only
+  after a long press on BOOT, with a key per device (SD-044). Raw level
+  and EC from Home Assistant, the combined history view and the stop menu
+  wait until the ESP foundation stands.
 - Build tools of the web app: TypeScript 7.0.2 for the type check and
   Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
   app itself does not change.
