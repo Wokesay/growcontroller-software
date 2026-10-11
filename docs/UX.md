@@ -91,7 +91,8 @@ Devices are detected, not selected. Exception: on a Home Assistant hub
 (docs/HOME_ASSISTANT.md) the user chooses one sensor per measurement under
 Devices › Assignment, because Home Assistant offers dozens of sensors and
 only a few belong to the grow. The list shows each sensor's name, entity ID
-and live value, sorted by name only (rows never move as values come and
+and live value, a pH probe's voltage first (marked as a raw value the app
+calibrates, SD-041), then by name (rows never move as values come and
 go); one tap saves; a sensor used for another
 measurement is shown but cannot be taken; a unit the hub cannot use is
 named instead of a value, and a converted value also shows Home

@@ -7,6 +7,46 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+### Added
+- **Home Assistant: a pH probe's voltage is calibrated in the app**
+  (SD-038, SD-041): a pH probe connected without amplification that
+  reports its voltage (mV or V) instead of a pH is suggested first in the
+  sensor picker, marked as a raw value, and calibrated under Devices ›
+  Assignment › "Kalibrieren" with pH 7 and pH 4 buffers, with the hub's
+  own check (it accepts 47–74 mV per pH step, 80–125 % of the ideal). Then
+  its pH is a valid reading, checked for freshness (the limit learned for
+  the sensor) and a stuck signal; the app still switches nothing. Each
+  step waits for the sensor's next report. A refused calibration says what
+  is wrong: buffers swapped, an amplifier in between, or a worn probe. A
+  pH from Home Assistant in pH stays display only. Level and EC as raw
+  values follow.
+
+### Fixed
+- **Calibrating a probe:** closing the window half way no longer leaves the
+  calibration running on the hub, and opening it again starts at the first
+  buffer instead of showing a step the hub did not have. The window now
+  says when the hub ended the calibration (a restart, a long pause) and
+  offers to start again after a refused save.
+
+### Security
+Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
+Severity: low. The first concerns the hub's own probes, which only the
+simulator has so far; the second needed the password for an import, and
+nothing in the Home Assistant app reads a value to switch. No GHSA or CVE
+is issued.
+
+- **An abandoned probe calibration no longer keeps jump checks off:** a
+  calibration window closed without saving left the calibration open on
+  the hub until a restart; meanwhile jumps of that probe were taken as the
+  calibration (RAT-042). A calibration now ends when its window closes and
+  with its device; one left for 30 min without a step no longer explains
+  jumps, while pH and EC control keep waiting until it is saved or
+  cancelled, since the probe may still be in a buffer.
+- **An import could show a pH calibrated in Home Assistant as checked**
+  (SD-041): a device whose reported class differs from the configured one
+  now has no value, and an import gives a calibration only to a class that
+  offers it.
+
 ## [0.1.0-proto.4] – 2026-10-11
 
 Fourth prototype: more from the first test of the Home Assistant app.

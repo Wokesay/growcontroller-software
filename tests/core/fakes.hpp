@@ -48,10 +48,11 @@ struct FakeBus : gc::IBus {
   }
   bool writePumpCalibration(const std::string&, double, std::string&) override { return true; }
 
-  void head(const std::string& id, bool online = true) {
+  // A device reports its own class; sensor truth refuses one that differs from the configured class
+  void head(const std::string& id, bool online = true, const std::string& cls = "head_ph_ec") {
     gc::DeviceReport r;
     r.id = id;
-    r.cls = "head_ph_ec";
+    r.cls = cls;
     r.port = 3;
     r.online = online;
     devs.push_back(r);

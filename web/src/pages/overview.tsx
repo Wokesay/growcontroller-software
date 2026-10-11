@@ -8,7 +8,7 @@ import { catalog, config, hasRole, readOnly, refreshState, state, tank, toast } 
 import { msg, t as tr } from "../i18n";
 import { ClimateTiles, OutputsOverview } from "./areas";
 import { Banner, Button, Card, NumberInput, Pill } from "../ui";
-import { ControllerRow, EventList, JobView, MetricTile, StockList, useSparks } from "../widgets";
+import { ControllerRow, EventList, JobView, MetricTile, StockList, rawSignalUncalibrated, useSparks } from "../widgets";
 import { HaBanner, isHa } from "../ha";
 
 
@@ -153,7 +153,7 @@ export function Overview() {
             </div>
             {hasHead ? (
               <div class="grid-3">
-                {hasRole("tank.ph") && <MetricTile label="pH" reading={st.readings["tank.ph"]} color="--ph" band={phBand} spark={sparks["tank.ph"]} />}
+                {hasRole("tank.ph") && <MetricTile label="pH" reading={st.readings["tank.ph"]} color="--ph" band={phBand} spark={sparks["tank.ph"]} millivolts={rawSignalUncalibrated("tank.ph")} />}
                 {hasRole("tank.ec") && <MetricTile label="EC" reading={st.readings["tank.ec"]} color="--ec" band={ecBand} spark={sparks["tank.ec"]} />}
                 {hasRole("tank.water_temp") && (
                   <MetricTile

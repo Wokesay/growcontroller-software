@@ -70,7 +70,8 @@ export type HubState = {
   watchdog: Watchdog; functions: FunctionState[]; latches: Record<string, any>;
   stock: Record<string, number | null>; effects: { ph: number | null; ec: number | null };
   lastMixAt: number; manual: { values: Record<string, number>; at: number }; grow: Grow; eventId: number;
-  probeCalibration: Record<string, { device: string; kind: string; points: [number, number][] }>;
+  // pending: a point waiting for the next report of a sensor on its own schedule (SD-041); failed: none came in time
+  probeCalibration: Record<string, { device: string; kind: string; points: [number, number][]; pending?: { since: number; reference: number }; failed?: Msg }>;
   sim?: { speed: number; scenario: string };
 };
 
@@ -95,6 +96,13 @@ export type Config = {
 };
 
 export type ParamDef = { key: string; label: string; type: "number" | "enum" | "recipe"; unit?: string; min?: number; max?: number; step?: number; default?: unknown; phase?: boolean; options?: [string, string][] };
+// A raw signal from Home Assistant (SD-041): its class is attached through Home Assistant and calibrated here
+export const isSignalClass = (cat: Catalog | null | undefined, cls: string | undefined) =>
+  !!cls && cat?.deviceClasses[cls]?.attach === "ha" && (cat.deviceClasses[cls].calibrations?.length ?? 0) > 0;
+// The raw pH scale's ideal slope at 25 °C (ha::kNernstMvPerPh): a pH probe's voltage is shown back in mV
+export const NERNST_MV_PER_PH = 59.16;
+export const millivoltsOf = (rawPh: number) => (7 - rawPh) * NERNST_MV_PER_PH;
+
 export type Catalog = {
   catalogVersion: number;
   capabilities: Record<string, { label: string; unit?: string; kind: string; decimals?: number }>;

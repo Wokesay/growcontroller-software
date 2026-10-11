@@ -296,3 +296,32 @@ test("A value calibrated outside the hub shows for display only, with its age, n
   await expect(tile.locator(".spark")).toHaveCount(1);  // its trend too: the history records it (SD-039)
   await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
 });
+
+test("Calibration: a window closed half way ends the calibration on the hub, and opened again it starts at the first buffer (RAT-042)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const cancels: unknown[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/probe") && r.method() === "POST" && r.postDataJSON()?.action === "cancel") cancels.push(r.postDataJSON());
+  });
+  await page.goto("/#/geraete");
+  const open = () => page.getByRole("button", { name: "pH kalibrieren" }).first().click();
+  await open();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByTestId("probe-take").click();
+  await expect(dialog.locator(".ws.cur")).toContainText("Puffer 4,00");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => cancels.length).toBe(1);
+  await expect.poll(async () => Object.keys((await (await page.request.get("/api/v1/state")).json()).probeCalibration ?? {}).length).toBe(0);
+  // Opened again: from the first buffer, as the hub has it, and it saves once the probe has settled in each buffer
+  await open();
+  await expect(dialog.locator(".ws.cur")).toContainText("Puffer 7,00");
+  await expect(dialog.locator("strong").first()).toHaveText(/^(6,9|7,0)/);
+  await dialog.getByTestId("probe-take").click();
+  await expect(dialog.locator(".ws.cur")).toContainText("Puffer 4,00");
+  await expect(dialog.locator("strong").first()).toHaveText(/^(3,9|4,0)/);
+  await dialog.getByTestId("probe-take").click();
+  await dialog.getByRole("button", { name: "Kalibrierung speichern" }).click();
+  await expect(page.getByText("Kalibrierung gespeichert")).toBeVisible();
+  expect(cancels.length).toBe(1);  // a saved one is not cancelled
+});

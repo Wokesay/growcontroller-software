@@ -182,6 +182,14 @@ Ms SensorTruth::freshLimit(const CapabilityDef& cap, const Track* learned) {
   return std::max({catalog, kShortestOwnLimit, std::min(3 * usual, kLongestLimit)});
 }
 
+Ms SensorTruth::limit(const std::string& role) const {
+  const RoleDef* rd = cat_.role(role);
+  const CapabilityDef* cap = rd ? cat_.capability(rd->capability) : nullptr;
+  if (!cap) return 0;
+  auto it = tracks_.find(role);
+  return freshLimit(*cap, it != tracks_.end() && it->second.ownSchedule ? &it->second : nullptr);
+}
+
 const Reading& SensorTruth::get(const std::string& role) const {
   auto it = readings_.find(role);
   return it == readings_.end() ? emptyReading() : it->second;
@@ -198,7 +206,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     r.unit = cap->unit;
     r.decimals = cap->decimals;
     auto& tr = tracks_[roleId];
-    tr.ownSchedule = false;  // known only once a sample is read below
+    tr.ownSchedule = false;  // set from the bound device below
     auto setQ = [&](Quality q, const std::string& key, const std::string& text, json args = json::object()) {
       r.quality = q;
       r.reason = {key, text, std::move(args)};
@@ -211,11 +219,28 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       continue;
     }
     bool online = false;
+    const DeviceReport* report = nullptr;
     for (const auto& d : devices)
-      if (d.id == b->device) online = d.online;
+      if (d.id == b->device) {
+        online = d.online;
+        report = &d;
+      }
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
+    // Known from the configured class, also while the sensor is silent: its
+    // learned limit holds through a missed round (SD-035, SD-041)
+    tr.ownSchedule = dc && dc->ownReportSchedule;
     auto s = bus.sample(b->device, role.capability);
     if (!online) {
       setQ(Quality::Offline, "truth.offline", "Gerät antwortet nicht");
+      readings_[roleId] = r;
+      continue;
+    }
+    // The class the device reports must be the one configured: an import
+    // cannot make a sensor calibrated elsewhere one the hub checks (SD-041, RAT-025)
+    if (report && dev && report->cls != dev->cls) {
+      r.quality = Quality::NoData;
+      r.reason = say("truth.class_mismatch");
       readings_[roleId] = r;
       continue;
     }
@@ -226,12 +251,9 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     }
     r.ts = s->ts;
     r.ageMs = now - s->ts;
-    const DeviceCfg* dev = cfg.device(b->device);
-    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
 
     // A sensor on its own schedule: learn the gaps between its reports (SD-035)
-    const bool ownSchedule = dc && dc->ownReportSchedule;
-    tr.ownSchedule = ownSchedule;
+    const bool ownSchedule = tr.ownSchedule;
     if (!ownSchedule || tr.device != b->device) {  // another sensor for the role starts over
       tr.device = ownSchedule ? b->device : std::string();
       tr.reported = false;
@@ -251,10 +273,14 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     }
     const Ms limit = freshLimit(*cap, ownSchedule ? &tr : nullptr);
 
-    // Stillstand des Rohwerts getrennt von der Frische prüfen (RAT-023).
+    // Stillstand des Rohwerts getrennt von der Frische prüfen (RAT-023). A
+    // sensor on its own schedule counts by its reports: one that reports
+    // every 20 min is not frozen between two of them; one that keeps
+    // reporting the same raw value is (SD-041).
+    const Ms rawClock = ownSchedule ? s->ts : now;
     if (s->raw != tr.lastRaw) {
       tr.lastRaw = s->raw;
-      tr.lastRawChange = now;
+      tr.lastRawChange = rawClock;
     }
     bool needsCal = !calibrationKind(role.capability).empty();
     // Calibrated elsewhere (e.g. in Home Assistant): shown, but the hub has
@@ -277,7 +303,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
            {{"ageS", r.ageMs / 1000}, {"limitS", limit / 1000}});
     } else if (!assessed) {
       setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
-    } else if (expectsNoise(role.capability) && !calibratedElsewhere && now - tr.lastRawChange > kFrozenAfter) {
+    } else if (expectsNoise(role.capability) && !calibratedElsewhere && rawClock - tr.lastRawChange > kFrozenAfter) {
       setQ(Quality::Frozen, "truth.frozen", "Wert steht seit über 15 min still – Sonde prüfen");
     } else if ((isNum(cap->plausMin) && *assessed < cap->plausMin) || (isNum(cap->plausMax) && *assessed > cap->plausMax)) {
       setQ(Quality::Implausible, "truth.implausible",

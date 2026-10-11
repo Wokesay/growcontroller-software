@@ -31,6 +31,12 @@ missing value is never 0). Nobody has to write a list of entity IDs.
   a rounded, calibrated value, not a raw signal, and a steady tank is no
   fault (RAT-059); a sensor that falls silent goes stale. Temperature,
   humidity and CO2 need no calibration and are valid readings.
+- **A raw signal is calibrated in the app instead** (SD-038, SD-041): a pH
+  probe's voltage in mV or V. The app calibrates it with two buffers and
+  the hub's own check (RAT-025), as it does the hub's own probes; then it
+  is a valid reading, still switching nothing, with the standstill check
+  of a raw signal (RAT-023, RAT-059). See "Raw values calibrated in the
+  app" below. Level and EC as raw values follow (SD-041).
 - The history records pH, EC and level too: a value that passes every
   check and is only calibrated elsewhere is a measurement worth keeping;
   control still never reads it (SD-039).
@@ -98,7 +104,8 @@ labels follow Home Assistant's developer documentation for apps
    the host you read in the address. If you prefer, the file can also
    list the entities (`"entities": [{"entity": "sensor.grow_ph",
    "measures": "ph"}]`, `measures` one of `ph`, `ec`, `water_temp`,
-   `level`, `air_temp`, `humidity`, `co2`); they are then used from the
+   `level`, `air_temp`, `humidity`, `co2`; `"signal": true` for a pH
+   probe's voltage, calibrated in the app); they are then used from the
    start.
 5. Start it on a computer in your network, as a normal user (not root),
    with a new, empty data folder:
@@ -163,6 +170,52 @@ labels follow Home Assistant's developer documentation for apps
   a real 0 (RAT-006). Give them an `availability` template instead.
 - **Units:** see below. Without a unit only pH is taken.
 
+## Raw values calibrated in the app
+
+A pH probe that reports its voltage instead of a pH is calibrated in the
+app (SD-038, SD-041):
+
+- **What is taken:** a voltage in `mV` or `V`, at most 5 V, from a front
+  end without gain, glass electrode on the + input, so the voltage rises
+  as the pH falls. The hub accepts 47–74 mV per pH step (80–125 % of the
+  ideal 59.16 mV at 25 °C, RAT-025). The picker suggests it for pH when
+  Home Assistant calls it pH, or its entity ID or name contains "pH" as a
+  word (also "pH1"), unless it says ORP or redox; any other voltage up to
+  5 V is under "Andere Sensoren anzeigen", higher ones are not passed on
+  (5 V: an assumption about the inputs such front ends feed). Until it is
+  calibrated, the overview, the assignment and the calibration show its
+  voltage in mV, marked "nicht kalibriert" (not calibrated).
+- **Not taken yet:** a board with gain (for example 1500 mV at pH 7 and
+  about 177 mV per pH step at its output, the defaults of a common
+  amplified board) fails the check, and the app says so in mV per pH step;
+  such boards, and temperature compensation of the slope, need a rule
+  first (SD-041). Swapped buffers or a reversed probe are refused as
+  running the wrong way, a worn probe as too weak.
+- **Calibrating:** Devices › Assignment › "Kalibrieren" (calibrate), pH 7
+  then pH 4. Each step takes the sensor's first report clearly after
+  "Wert übernehmen" (take value), at least 2 s later, and waits for it as
+  long as the sensor's freshness limit, at most 30 min (RAT-006, SD-035):
+  leave the probe in the buffer until the step moves on. If the sensor
+  goes offline meanwhile (Home Assistant restarting), the step fails and
+  can be taken again. Closing the window ends the calibration. One left
+  for 30 min without a step no longer explains jumps (RAT-042), but keeps
+  pH and EC control waiting until it is saved or cancelled, since the
+  probe may still be in a buffer.
+- **On the node:** no calibration there (no `offset`, `multiply` or
+  `calibrate_linear` filter), or the app checks the wrong thing;
+  `force_update: true`; no `delta` filter and no rounding coarser than the
+  probe's noise (keep at least 0.1 mV, or 4 decimals in V; assumption), a
+  report every 60 s or faster (assumption). A probe that keeps reporting
+  one value goes "frozen" after 15 min of its reports (RAT-023); one that
+  stops reporting goes stale.
+- **If the unit changes** to anything other than mV or V (the node now
+  reports pH), the sensor has no value, and the assignment says so: choose
+  "Kein Sensor" (no sensor), then pick it again. The old calibration never
+  meets a new meaning (RAT-006). mV and V are the same scale.
+- **The mapping file is only a start:** a pick from the list decides
+  whether a sensor is read as a raw value, and after a restart the
+  configuration does, whatever the file says.
+
 Two things to know while it runs:
 
 - **After a Home Assistant restart** restored states carry the restart
@@ -190,12 +243,18 @@ https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/componen
 ## Before any of this may feed control
 
 What the hub would need before pH, EC or level from Home Assistant may
-steer anything. Each point is open; none is built in this spike.
+steer anything. Each point is open unless it says what is built.
 
-1. **The hub's own check, with a date.** Not a calibration: the hub
-   compares the values with references. pH with two buffers, the slope
-   inside the band the hub accepts for its own calibration (RAT-025); EC
-   with one reference solution; level with two known volumes.
+1. **The hub's own check, with a date.** Built for a pH probe's voltage
+   (SD-041): calibrated in the app with two buffers and the hub's check
+   (RAT-025, 47–74 mV/pH), dated. Raw means no calibration on the node: an
+   `offset`, `multiply` or `calibrate_linear` filter changed there goes
+   unnoticed unless it moves the value by more than the jump threshold
+   (1 pH in 5 min, RAT-039). Open: level as an immersion probe's
+   voltage and a compensated EC (SD-041, next steps); a check of sensors
+   calibrated in Home Assistant (they stay display only); pH boards with
+   gain, EC from a voltage, level as a current or pressure, each needing a
+   rule first.
 2. **The calibration state from the node where it has one.** An EZO pH
    circuit reports how many points it was calibrated with (`Cal,?`; at
    least two, RAT-025) and its slope, which can be mapped as an entity and
@@ -221,10 +280,14 @@ steer anything. Each point is open; none is built in this spike.
 8. **How old a calibration may be,** and when to recalibrate, has no rule
    yet; that is a product question.
 9. **Fresh and stuck values:** after a Home Assistant restart a restored
-   value needs a change or a second report before it counts; and a probe
-   stuck on one value while still reporting needs a check of its own,
-   since the hub's standstill check judges a raw signal (RAT-023, RAT-059)
-   and gets none from Home Assistant.
+   value is dated at the restart and needs a change or a second report
+   before it counts (open; a calibration point fails when the sensor goes
+   offline during its wait, so it cannot be one). A raw
+   pH voltage gets the hub's standstill check (RAT-023, RAT-059); it needs
+   `force_update: true`, no `delta` filter and no rounding coarser than
+   its noise. A value calibrated in Home Assistant still needs a check of
+   its own. A calibration point takes only a report after the step started
+   (RAT-006).
 10. **Freshness for control:** the learned limit (5 to 30 min) and VPD
     from inputs any distance apart are for display (SD-035). Control needs
     its own limits first: for example the humidifier interlock reads any
@@ -243,6 +306,7 @@ steer anything. Each point is open; none is built in this spike.
 | Measure | Taken as it is | Converted |
 |---|---|---|
 | pH | no unit, `pH` | |
+| pH as a raw signal (SD-041) | | `mV`, `V` (× 1000): 7 − mV/59.16, then calibrated in the app |
 | EC | `mS/cm` | `µS/cm` ÷ 1000 |
 | Water and air temperature | `°C` | `°F` |
 | Level | `L` | `%` is not supported yet (needs the tank's shape) |
@@ -264,6 +328,16 @@ time is no value.
   shows such pH, EC and level values but keeps them unusable for control;
   the resolver says so instead of asking for a calibration, and the hub
   refuses its own calibration for such devices.
+- A raw signal has a class of its own, `ha_ph_raw` (SD-041): it offers the
+  pH calibration and is not marked `externalCalibration`, also set in code.
+  The bus turns the voltage into the hub's raw pH scale (`kNernstMvPerPh`);
+  calibration, slope band and standstill check are the hub's own. A
+  calibration point of a sensor on its own schedule waits for its next
+  report (`Hub::tendProbeSessions`); a session left for 30 min no longer
+  explains jumps but holds pH and EC control until saved or cancelled. A device whose reported class differs from the configured one
+  has no value, and an import gives a calibration only to a class that
+  offers it, so a file cannot make a sensor calibrated in Home Assistant
+  one the hub checks.
 - `ha/ha_client.*`: reads all states in one request (`GET <path>/api/states`)
   with the token in its own thread, so the hub's tick never waits for the
   network. An answer is at most 16 MB and 10 s; redirects are not
@@ -311,7 +385,9 @@ time is no value.
 - What the hub cannot tell: whether a sensor with the right unit sits in
   the right place. A soil sensor's EC or a pool's pH looks like the tank's;
   the picker says so, and the name and live value are the guard. pH, EC
-  and level stay display only (RAT-025); temperature, humidity and CO2 are
+  and level calibrated in Home Assistant stay display only (RAT-025); a pH
+  probe's voltage calibrated in the app is valid (SD-041); temperature,
+  humidity and CO2 are
   used as valid readings, which matters once anything is switched.
 - `ha/ha_assign.*`: one step from the web app, `POST /api/v1/ha/assign`
   with a measuring role and an entity: select the entity, accept the device

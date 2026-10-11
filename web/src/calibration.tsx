@@ -3,10 +3,11 @@
 // EC-Sonde (1 Referenz), Füllstand (Stützpunkte, stückweise linear).
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Beaker, Check, Timer } from "lucide-preact";
-import { get, post, sim, type Msg } from "./api";
-import { num } from "./format";
+import { get, isSignalClass, post, sim, type Msg } from "./api";
+import { ago, num } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { refreshConfig, refreshState, simulated, state, toast, toastError } from "./store";
+import { catalog, config, refreshConfig, refreshState, simulated, state, toast, toastError } from "./store";
+import { millivoltsText } from "./widgets";
 import { Banner, Button, Field, Modal, NumberInput } from "./ui";
 
 export function PumpCalibration(p: { pump: string; name: string; onClose: () => void }) {
@@ -143,25 +144,74 @@ const PROBE_STEPS: Record<string, { ref: number; text: TextKey }[]> = {
 export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_curve"; name: string; onClose: () => void }) {
   const st = state.value!;
   const [started, setStarted] = useState(false);
-  const [idx, setIdx] = useState(0);
   const [done, setDone] = useState(false);
+  const [lost, setLost] = useState(false); // the hub ended the session (a restart, or left for 30 min)
+  const [refused, setRefused] = useState(""); // why the hub refused to save: start again
+  const [announce, setAnnounce] = useState("");
   const [liters, setLiters] = useState<number | null>(0);
-  const [points, setPoints] = useState<[number, number][]>([]);
+  const ended = useRef(false); // saved or cancelled: nothing left to end on close
+  const seen = useRef(false); // the hub's session has been seen, so its absence means it ended
+  const committing = useRef(false);
+  const cancelBtn = useRef<HTMLButtonElement>(null);
+  const takeBtn = useRef<HTMLButtonElement>(null);
+  const saveBtn = useRef<HTMLButtonElement>(null);
+  const restartBtn = useRef<HTMLButtonElement>(null);
   const steps = PROBE_STEPS[p.kind] ?? [];
   const role = p.kind === "ph" ? "tank.ph" : p.kind === "ec" ? "tank.ec" : "tank.level";
   const reading = st.readings[role];
+  // The hub's session is the truth, read only once this dialog has started its own (SD-041)
+  const session = started ? st.probeCalibration?.[`${p.device}:${p.kind}`] : undefined;
+  const points = session?.points ?? [];
+  const idx = p.kind === "tank_curve" ? 0 : points.length;
+  // A sensor on its own schedule (Home Assistant): a point waits for its next report
+  const pending = !!session?.pending;
+  const failed = !pending ? session?.failed : undefined;
+  // A pH probe's voltage from Home Assistant is shown in mV while no calibration is stored;
+  // once one is, the value is a calibrated pH and stays one
+  const cls = config.value?.devices.find((d) => d.id === p.device)?.class;
+  const asMv = p.kind === "ph" && isSignalClass(catalog.value, cls) && !st.devices.find((d) => d.id === p.device)?.calibrations?.ph;
+  const shown = (v: number | null | undefined) => (v == null ? num(null, 3) : asMv ? millivoltsText(v) : num(v, 3));
 
+  async function begin() {
+    await post("/probe", { device: p.device, kind: p.kind, action: "start" });
+    await refreshState();
+    seen.current = false;
+    setLost(false);
+    setRefused("");
+    setAnnounce("");
+    setStarted(true);
+  }
   useEffect(() => {
-    post("/probe", { device: p.device, kind: p.kind, action: "start" })
-      .then(() => setStarted(true))
-      .catch((e) => {
-        toastError(e);
-        p.onClose();
-      });
+    begin().catch((e) => {
+      toastError(e);
+      p.onClose();
+    });
     return () => {
+      // Closed without saving: the hub ends the calibration too, so jumps count again (RAT-042)
+      if (!ended.current) post("/probe", { device: p.device, kind: p.kind, action: "cancel" }).catch(() => {});
       if (simulated.value && p.kind !== "tank_curve") sim("probe", { kind: p.kind, buffer: null }).catch(() => {});
     };
   }, []);
+  // Ended on the hub meanwhile (a restart, the device removed): say so instead of a button that no longer works
+  useEffect(() => {
+    if (session) seen.current = true;
+    else if (started && !done && seen.current && !committing.current) {
+      setLost(true);
+      window.setTimeout(() => restartBtn.current?.focus());
+    }
+  }, [started, done, !!session]);
+  // A point taken from the sensor's next report: said aloud, the focus back on the next step
+  const before = useRef(0);
+  useEffect(() => {
+    if (points.length > before.current && p.kind !== "tank_curve") {
+      setAnnounce(t("calibration.pointTaken", { v: num(steps[points.length - 1]?.ref ?? null, 2) }));
+      window.setTimeout(() => (points.length >= steps.length ? saveBtn.current : takeBtn.current)?.focus());
+    }
+    before.current = points.length;
+  }, [points.length]);
+  useEffect(() => {
+    if (pending) cancelBtn.current?.focus();
+  }, [pending]);
   useEffect(() => {
     if (!simulated.value || !started || p.kind === "tank_curve" || done) return;
     const s = steps[idx];
@@ -169,12 +219,29 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
   }, [idx, started]);
 
   async function capture(ref: number) {
-    const r = await post("/probe", { device: p.device, kind: p.kind, action: "point", reference: ref });
-    setPoints(r.points);
-    if (p.kind !== "tank_curve") setIdx(idx + 1);
+    await post("/probe", { device: p.device, kind: p.kind, action: "point", reference: ref });
+    await refreshState();
+  }
+  async function cancel() {
+    try {
+      await post("/probe", { device: p.device, kind: p.kind, action: "cancel" });
+      ended.current = true;
+    } catch (e) {
+      toastError(e);
+    }
+    p.onClose();
   }
   async function commit() {
-    await post("/probe", { device: p.device, kind: p.kind, action: "commit" });
+    committing.current = true;
+    try {
+      await post("/probe", { device: p.device, kind: p.kind, action: "commit" });
+    } catch (e: any) {
+      committing.current = false;
+      setRefused(e?.message ?? String(e)); // the reason stays in view, not only in a toast
+      window.setTimeout(() => restartBtn.current?.focus());
+      return;
+    }
+    ended.current = true;
     if (simulated.value && p.kind !== "tank_curve") await sim("probe", { kind: p.kind, buffer: null });
     await refreshConfig();
     await refreshState();
@@ -183,10 +250,26 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
   }
 
   const title = p.kind === "ph" ? t("calibration.phTitle", { name: p.name }) : p.kind === "ec" ? t("calibration.ecTitle", { name: p.name }) : t("calibration.curveTitle", { name: p.name });
+  const restart = (
+    <div>
+      <button ref={restartBtn} class="btn primary" onClick={() => begin().catch(toastError)} data-testid="probe-restart">
+        {t("calibration.restart")}
+      </button>
+    </div>
+  );
   return (
     <Modal title={title} onClose={p.onClose}>
+      {/* One live region that stays in place: waiting, a point taken, no report in time */}
+      <div class="sr-only" role="status" aria-live="polite">
+        {lost ? t("calibration.lost") : pending ? t("calibration.waitReport") : failed ? msg(failed) : announce}
+      </div>
       {done ? (
         <Banner tone="ok">{t("calibration.doneText")}</Banner>
+      ) : lost ? (
+        <div class="stack">
+          <Banner tone="warn">{t("calibration.lost")}</Banner>
+          {restart}
+        </div>
       ) : p.kind === "tank_curve" ? (
         <div class="stack">
           <p class="muted">{t("calibration.curveIntro")}</p>
@@ -199,7 +282,7 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
                 <span class="sim-tag">{t("calibration.simTag")}</span> {t("calibration.simLevel")}
               </Button>
             )}
-            <Button size="sm" disabled={liters === null} onClick={() => capture(liters!)}>
+            <Button size="sm" disabled={liters === null || !started} onClick={() => capture(liters!)}>
               {t("calibration.capture")}
             </Button>
           </div>
@@ -232,25 +315,51 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
         <div class="stack">
           <div class="wizard-steps">
             {steps.map((s, i) => (
-              <span class={`ws ${i === idx ? "cur" : i < idx ? "done" : ""}`}>{i < idx ? "✓ " : ""}{t("calibration.buffer", { v: num(s.ref, s.ref < 2 ? 3 : 1) })}</span>
+              <span class={`ws ${i === idx ? "cur" : i < idx ? "done" : ""}`}>{i < idx ? "✓ " : ""}{t("calibration.buffer", { v: num(s.ref, s.ref < 2 ? 3 : 2) })}</span>
             ))}
           </div>
           <p>{t(steps[idx].text)}</p>
-          <p class="muted small">{t("calibration.waitSteady")} <strong>{num(reading?.value ?? null, 3)}</strong></p>
-          <div>
-            <Button variant="primary" disabled={!started} onClick={() => capture(steps[idx].ref)}>
-              {t("calibration.takeValue")}
-            </Button>
-          </div>
+          <p class="muted small">
+            {t("calibration.waitSteady")} <strong>{shown(reading?.value)}</strong>
+            {reading?.ageS != null && ` · ${t("calibration.lastReport", { ago: ago(reading.ageS) })}`}
+          </p>
+          {failed && <Banner tone="warn">{msg(failed)}</Banner>}
+          {pending ? (
+            <div class="stack-sm" data-testid="probe-pending">
+              <strong>{t("calibration.waitReport")}</strong>
+              <span class="muted small">{t("calibration.waitReportText", { v: num(steps[idx].ref, steps[idx].ref < 2 ? 3 : 2) })}</span>
+              <div class="row wrap">
+                <button ref={cancelBtn} class="btn" onClick={cancel} data-testid="probe-cancel">
+                  {t("common.cancel")}
+                </button>
+                <span class="muted small">{t("calibration.cancelHint")}</span>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <button ref={takeBtn} class="btn primary" disabled={!started} onClick={() => capture(steps[idx].ref).catch(toastError)} data-testid="probe-take">
+                {t("calibration.takeValue")}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div class="stack">
-          <Banner tone="ok">{t("calibration.allPoints")}</Banner>
-          <div>
-            <Button variant="primary" onClick={commit}>
-              {t("calibration.save")}
-            </Button>
-          </div>
+          {refused ? (
+            <>
+              <Banner tone="warn">{refused}</Banner>
+              {restart}
+            </>
+          ) : (
+            <>
+              <Banner tone="ok">{t("calibration.allPoints")}</Banner>
+              <div>
+                <button ref={saveBtn} class="btn primary" onClick={commit} data-testid="probe-save">
+                  {t("calibration.save")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
       {done && (

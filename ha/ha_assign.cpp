@@ -10,6 +10,7 @@ namespace {
 const std::string kMeasurePrefix = "measure.";
 const std::string kDevicePrefix = "ha.";
 const std::string kClassPrefix = "ha_";
+const std::string kSignalSuffix = "_raw";
 
 // The measure a role reads: "zone.air_temp" → "air_temp"; "" for a role that is no measurement.
 std::string measureOfRole(const gc::Catalog& cat, const std::string& role) {
@@ -57,8 +58,11 @@ gc::Result assign(gc::Hub& hub, HaBus& bus, const std::string& role, const std::
     }
     wasConfigured = hub.config().device(device) != nullptr;
     const std::string usedFor = bus.selectedMeasure(entity);
-    // Listed in the mapping file for another measure but not set up: free to pick.
-    if (!usedFor.empty() && usedFor != measures && !wasConfigured) bus.deselect(entity);
+    // Listed in the mapping file for another measure, or as a signal or not
+    // where the list offers it the other way, but not set up: the pick decides.
+    const auto listed = bus.selected(entity);
+    const auto offered = bus.offeredAsSignal(entity);
+    if (listed && !wasConfigured && (usedFor != measures || (offered && *offered != listed->signal))) bus.deselect(entity);
     wasSelected = bus.selectedMeasure(entity) == measures;
     gc::Msg why;
     if (!bus.select(entity, measures, why)) return gc::Result::fail(422, why);
@@ -70,7 +74,8 @@ gc::Result assign(gc::Hub& hub, HaBus& bus, const std::string& role, const std::
       if (c.entityId == entity && !c.name.empty()) name = c.name;
   // The hub sees a newly selected device with its next tick, and one picked
   // again for another measure with its new class: wait for that, without its lock.
-  const std::string cls = kClassPrefix + measures;
+  const auto picked = bus.selected(entity);
+  const std::string cls = picked ? deviceClassOf(*picked) : kClassPrefix + measures;
   auto seen = [&] {
     std::lock_guard<std::recursive_mutex> l(hub.mutex());
     const gc::json st = hub.state();  // kept: a loop over a temporary's part would dangle
@@ -101,12 +106,17 @@ void adoptFromConfig(gc::Hub& hub, HaBus& bus) {
   for (const auto& d : hub.config().devices) {
     const std::string entity = entityOf(d.id);
     if (entity.empty() || d.cls.rfind(kClassPrefix, 0) != 0) continue;
-    const std::string measures = d.cls.substr(kClassPrefix.size());
-    if (!validEntityId(entity) || !knownMeasure(measures)) continue;
+    std::string measures = d.cls.substr(kClassPrefix.size());
+    const bool signal = measures.size() > kSignalSuffix.size() &&
+                        measures.compare(measures.size() - kSignalSuffix.size(), kSignalSuffix.size(), kSignalSuffix) == 0;
+    if (signal) measures.resize(measures.size() - kSignalSuffix.size());
+    const Entity picked{entity, measures, signal};
+    // Only a class the catalog has: a configuration cannot invent a signal (ha_ec_raw does not exist yet)
+    if (!validEntityId(entity) || !knownMeasure(measures) || deviceClassOf(picked) != d.cls || !hub.catalog().deviceClass(d.cls)) continue;
     // The configuration wins over the mapping file: a sensor picked for
-    // another measure than the file says is read for what it is bound to.
-    if (const std::string listed = bus.selectedMeasure(entity); !listed.empty() && listed != measures) bus.deselect(entity);
-    bus.adopt({entity, measures});
+    // another measure than the file says, or as a signal or not, is read as it is bound.
+    if (const auto listed = bus.selected(entity); listed && deviceClassOf(*listed) != d.cls) bus.deselect(entity);
+    bus.adopt(picked);
   }
 }
 

@@ -28,6 +28,12 @@ constexpr Ms kHour = 60 * kMinute;
 // Ein fehlender Wert ist nie 0 (Quelle: RAT-006). Fehlende Zahlen sind
 // std::nullopt oder NaN und werden in JSON als null ausgegeben.
 inline constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+// The ideal slope of a pH electrode at 25 °C (Nernst, RT·ln10/F), in mV per
+// pH step. The raw pH scale is the pH an ideal probe would read, 7 − E/59.16
+// (SD-041: how a probe's voltage from Home Assistant is taken; the simulator
+// models its probe head on the same scale, and the head's firmware must
+// report on it), so RAT-025's slope band 0.8–1.25 is 47.3–74.0 mV/pH.
+inline constexpr double kNernstMvPerPh = 59.16;
 inline bool isNum(double v) { return std::isfinite(v); }
 
 // Uhr wird injiziert (Regel R8): deterministische Tests, Zeitraffer im Simulator.

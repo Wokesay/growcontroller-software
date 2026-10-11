@@ -35,9 +35,10 @@ struct DeviceClassDef {
   // The device reports on its own schedule, not when the hub asks (e.g. a
   // sensor in Home Assistant that reports every few minutes or only on a
   // change). The sensor truth learns its usual gap between reports and calls
-  // a value stale only when it misses it, within fixed limits (SD-035). Set
-  // only in code, never from catalog data, so the catalog cannot loosen
-  // freshness (R7).
+  // a value stale only when it misses it, within fixed limits (SD-035); its
+  // standstill check counts by its reports, and a calibration point waits
+  // for its next report (SD-041). Set only in code, never from catalog
+  // data, so the catalog cannot loosen freshness (R7).
   bool ownReportSchedule = false;
   std::vector<std::string> provides, calibrations, accepts;
 };

@@ -651,6 +651,7 @@ Decided by the project owner on 2026-10-11 in the software session.
 - Where a sensor offers both, the picker suggests the raw value.
 - Whether growcontroller's own hardware should deliver raw values to Home
   Assistant is a product question for the product repository.
+- Which raw values, and how they are checked: SD-041.
 
 
 ## SD-039: The history records shown values, hides empty tiles and has a combined view
@@ -688,6 +689,60 @@ Decided by the project owner on 2026-10-11 in the software session.
   without water.
 - Ending or aborting a grow asks for confirmation and for the controller's
   name, typed in.
+
+
+## SD-041: Which raw values from Home Assistant the app calibrates
+
+Decided by the project owner on 2026-10-11 in the software session, after
+the `domain` review of SD-038. Built in three steps.
+
+- **pH:** a probe's voltage in mV or V from a front end without gain. The
+  app takes it as the pH an ideal probe would read (7 − E/59.16, the Nernst
+  slope at 25 °C) and calibrates it with two buffers, with the hub's own
+  check: the slope band 0.8–1.25 is 47.3–74.0 mV/pH (RAT-025). No
+  temperature compensation, as on the hub's own probes.
+- **Level:** an immersion (pressure) probe's voltage behind a
+  current-to-voltage converter, calibrated with litre points like the
+  hub's own level sensor (RAT-078). No ultrasonic level sensing (project
+  owner).
+- **EC:** a conductivity the sensor already compensates to 25 °C, which the
+  user marks as not calibrated in Home Assistant, calibrated with one
+  reference solution (RAT-025, factor 0.5–2).
+- Not yet, each needs a rule from the product repository first: pH boards
+  with gain, EC from a voltage, level as a current or a pressure. Such a
+  sensor shows no value rather than a guessed one.
+- A calibration point takes the first report after it was asked for, and
+  waits at most the sensor's learned freshness limit (SD-035); a report
+  from before may still be from the tank, not the buffer (RAT-006).
+- A raw signal whose unit changes after the pick has no value: the old
+  calibration never meets a new meaning (RAT-006).
+- Hardware recommendations (an EC module with compensation, a combined
+  pH/EC probe, a converter with noise filtering for the immersion probe)
+  are product questions.
+- Built so far: pH (step 1). The device class `ha_ph_raw` offers the
+  calibration and is not marked `externalCalibration`; both are set in
+  code, never from catalog data (R7). A voltage is suggested for pH when
+  Home Assistant calls it pH or its ID or name says pH; any other voltage
+  can be picked from the other sensors, also with Home Assistant's device
+  class `voltage`, an exception to SD-036. The app's calibration refuses
+  one that does not move between the buffers. A pH from Home Assistant in
+  pH stays display only (SD-038).
+- Own rules of step 1, from the reviews (no RAT; numbers marked as
+  assumptions where they are): a voltage above 5 V is no pH signal and is
+  not passed on (assumption: no front end without gain reads more); a
+  point takes a report more than 2 s after the request (as SD-035 takes
+  reports under 2 s apart as one) and fails at once if the sensor goes
+  offline during its wait; a calibration ends when its window closes and
+  with its device; left for 30 min without a step it stops explaining
+  jumps (RAT-042) but keeps pH and EC control waiting until it is saved or
+  cancelled, as the probe may still be in a buffer (a confirmation that
+  the probe is back in the tank is a product question); a device whose reported class differs from
+  the configured one has no value, and an import gives a calibration only
+  to a class that offers it; the standstill check of a sensor on its own
+  schedule counts by its reports. Until it is calibrated, the app shows
+  the voltage in mV, not a guessed pH. The Nernst slope is one constant
+  (`gc::kNernstMvPerPh`); the hub's own probe head must report on the same
+  raw scale.
 
 ---
 

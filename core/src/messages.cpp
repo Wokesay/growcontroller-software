@@ -118,6 +118,8 @@ constexpr Entry kMessages[] = {
     {"check.inlet_free", "Inlet can open"},
     {"check.dry_ok", "Dry-run protection OK"},
 
+    // Sensor truth (truth.cpp)
+    {"truth.class_mismatch", "The device reports another type than set up – assign it again"},
     // Monitoring: headline, labels and assessments (watchdog.cpp, hub.cpp)
     {"watch.headline.problem", "1 problem"},
     {"watch.headline.problems", "{n} problems"},
@@ -257,6 +259,14 @@ constexpr Entry kMessages[] = {
     {"ev.cfg.function_on", "{label} switched on"},
     {"ev.cfg.function_off", "{label} switched off"},
     {"ev.cfg.function_params", "{label}: settings saved"},
+    // Calibration in the app (hub.cpp)
+    {"probe.no_raw", "No new reading from the sensor. Check that it is sending values (in Home Assistant or on the device), then tap “Record value” again."},
+    {"probe.invalid", "The probe does not respond as expected. Check that you chose the right sensor and buffers, then calibrate again."},
+    {"probe.pending", "A point is still waiting for the sensor's next reading."},
+    {"probe.swapped", "The values run the wrong way: buffers swapped, or the probe connected the wrong way round. Calibrate again."},
+    {"probe.too_steep", "The probe responds more strongly than a probe can ({mv} mV per pH step). Either an amplifier sits in between – the app doesn't support that yet – or a buffer is wrong."},
+    {"probe.too_flat", "The probe responds too weakly ({mv} mV per pH step): probe worn, buffers old, or the wrong sensor chosen."},
+    {"probe.no_move", "The value hardly moved between the buffers: is this really the probe's signal, and was the probe in the buffer? Take the values again."},
     // Refused configuration changes (hub.cpp)
     {"system.control", "Choose automatic or outside the control for each area"},
 

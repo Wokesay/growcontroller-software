@@ -4,8 +4,8 @@
 import { useEffect, useState } from "preact/hooks";
 import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Plug, Power, RotateCcw, Square, Waves, Zap } from "lucide-preact";
 import { Sparkline } from "./chart";
-import { del, get, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
-import { ago, day, num, time } from "./format";
+import { del, get, isSignalClass, millivoltsOf, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
+import { ago, day, num, numUpTo, time } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
 import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
@@ -22,7 +22,15 @@ export const qualityText: Record<string, TextKey> = {
   ok: "widgets.quality.ok",
 };
 
-export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string }) {
+/** A pH probe's voltage from Home Assistant with no calibration stored yet: shown as the mV it reports, not as a guessed pH (SD-041). */
+export function rawSignalUncalibrated(role: string): boolean {
+  const dev = binding(role)?.device;
+  const cls = config.value?.devices.find((d) => d.id === dev)?.class;
+  return isSignalClass(catalog.value, cls) && !state.value?.devices.find((d) => d.id === dev)?.calibrations?.ph;
+}
+export const millivoltsText = (rawPh: number) => `${numUpTo(millivoltsOf(rawPh), 1)} mV`;
+
+export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string; millivolts?: boolean }) {
   const r = p.reading;
   // Calibrated outside the hub (Home Assistant trial): a value to look at, not
   // a fault; it keeps its age and says where it was calibrated. Its trend
@@ -48,8 +56,17 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
         ) : null}
       </div>
       <div class="metric-value">
-        {p.notApplicable ? <span class="faint" style="font-size:1.1rem">{t("widgets.notApplicable")}</span> : num(r?.value ?? null, r?.decimals ?? 2)}
-        {!p.notApplicable && r?.unit && <span class="unit">{r.unit}</span>}
+        {p.notApplicable ? (
+          <span class="faint" style="font-size:1.1rem">{t("widgets.notApplicable")}</span>
+        ) : p.millivolts && r?.value != null ? (
+          <>
+            {numUpTo(millivoltsOf(r.value), 1)}
+            <span class="unit">mV</span>
+          </>
+        ) : (
+          num(r?.value ?? null, r?.decimals ?? 2)
+        )}
+        {!p.notApplicable && !(p.millivolts && r?.value != null) && r?.unit && <span class="unit">{r.unit}</span>}
       </div>
       {p.spark && !bad && <Sparkline values={p.spark} color={p.color} band={p.band} />}
       {bad && r?.reason.text && <div class="metric-reason">{msg(r.reason)}</div>}
