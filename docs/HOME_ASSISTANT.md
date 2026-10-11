@@ -162,6 +162,8 @@ labels follow Home Assistant's developer documentation for apps
   change rarely and would go stale; set `force_update: true` on such
   ESPHome or MQTT sensors (default off [2]). It makes Home Assistant record
   every reading, so its database grows.
+  Planned (SD-042): a sign of life per sensor replaces this advice; a
+  sensor is then fresh by its last measurement, stale after 60 s.
 - **Map the sensor itself, not a rounding template:** a `round()` template
   sensor only writes when its source changes, so a steady value would go
   stale (assumption from how templates work, not tested here).
@@ -207,7 +209,9 @@ app (SD-038, SD-041):
   probe's noise (keep at least 0.1 mV, or 4 decimals in V; assumption), a
   report every 60 s or faster (assumption). A probe that keeps reporting
   one value goes "frozen" after 15 min of its reports (RAT-023); one that
-  stops reporting goes stale.
+  stops reporting goes stale. Planned (SD-042):
+  with a sign of life, `force_update` is not needed and both checks count
+  by the last measurement.
 - **If the unit changes** to anything other than mV or V (the node now
   reports pH), the sensor has no value, and the assignment says so: choose
   "Kein Sensor" (no sensor), then pick it again. The old calibration never

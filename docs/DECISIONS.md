@@ -378,7 +378,8 @@ repository.
   the last sync only warns (from about 2 min estimated error); the time
   counts as unsecured only from about 15 min estimated error.
 - **Dimming output and 12 V outputs (PD-074, PD-075):** the firmware gives
-  a sign of life from the control loop to an external watchdog. After a
+  a sign of life from the control loop to an external watchdog. Changed
+  by SD-045: the sign of life comes from the safety component only. After a
   restart the hub sets the light to its planned value again (PD-048).
 - **Emergency stop and internal error (PD-076, PD-077):** a manual
   emergency stop stops everything, fans included, until someone resumes,
@@ -596,6 +597,8 @@ changes RAT-017's pairing for them.
   Home Assistant may feed control, control needs its own freshness check
   (`docs/HOME_ASSISTANT.md`, "Before any of this may feed control").
 - The stale message carries the limit (`limitS`) for the web app.
+- Changed by SD-042: a sensor with a sign of life is stale after 60 s
+  without a measurement; the learned limit stays for sensors without one.
 
 ## SD-036: Any numeric Home Assistant sensor can be picked, with a search
 
@@ -675,6 +678,7 @@ Decided by the project owner on 2026-10-11 in the software session.
 ## SD-040: Emergency stop, pause and ending a grow
 
 Decided by the project owner on 2026-10-11 in the software session.
+Changed by SD-045: the function is called "Stop", in German "Stopp".
 
 - Where nothing is switched (the Home Assistant trial), the web app shows
   no emergency stop, which would stop nothing. A notice "Nur Anzeige"
@@ -743,6 +747,189 @@ the `domain` review of SD-038. Built in three steps.
   the voltage in mV, not a guessed pH. The Nernst slope is one constant
   (`gc::kNernstMvPerPh`); the hub's own probe head must report on the same
   raw scale.
+- Changed by SD-042: with a sign of life, the standstill check and a
+  calibration point count by the last measurement.
+
+
+## SD-042: Freshness from a sign of life per sensor
+
+Decided by the project owner on 2026-10-11 in the software session, after
+the first test of the Home Assistant app showed a calm water temperature
+as "1 min" old although its sensor reported every 30 s. Changes SD-035
+and SD-041 for sensors with a sign of life; RAT-027 is updated with it.
+
+- **Why:** Home Assistant drops a state equal to the previous one (its
+  ESPHome integration does unless `force_update` is set, and helpers
+  written only on a change do the same). A calm sensor and a silent one
+  then look alike, and the app showed the time since the last change.
+  `force_update` on every sensor is no way out: it makes Home Assistant
+  record every reading.
+- **A sensor is fresh by its last measurement, not by its last change.**
+  The app takes the time of the last measurement from a sign of life,
+  assigned per sensor:
+  - a sign-of-life text of the device, sent at least every 15 s: the age
+    of each of its channels in whole seconds, as
+    `n=<counter>|<code>=<s>|<code>=<s>|…` (`-` for a channel without a
+    value since the device started). The counter changes the text on
+    every send, so Home Assistant never drops it. The app suggests the
+    channel code for a sensor; the user confirms it at the assignment.
+    The age is the channel's age plus the age of the text;
+  - or a timestamp sensor that gives the time of the sensor's last
+    reading (Home Assistant's device class `timestamp`).
+- **60 s:** a sensor with a sign of life is stale when its last
+  measurement is older than 60 s. Stale has no usable value, as a missing
+  value (RAT-006). A sign-of-life text older than 60 s means the device
+  sends nothing at all: all its sensors are stale, with one message for
+  the device, not one per sensor. A channel shown as `-` is stale once the
+  app has seen it so for more than 60 s in a row (counted again after the
+  app starts).
+- **Never looser by accident:** an assigned sign of life that is
+  unavailable or unreadable, a channel code missing from the text, or an
+  age that lies in the future makes the sensor stale with a message; it
+  never falls back to the learned limit. Ages up to 2 s in the future
+  (whole-second rounding) count as 0.
+- **Standstill and calibration** use the same clock: with a sign of life
+  the frozen check (RAT-023, SD-041) counts by the last measurement, as
+  Home Assistant drops the unchanged reports of a stuck signal; a
+  calibration point (SD-041) takes the first measurement more than 2 s
+  after the request and fails when the sensor turns stale.
+- **Display:** the age stands next to the value, in whole seconds rounded
+  half up: green up to 30 s, yellow from 31 s, red from 60 s (the limit).
+  A healthy channel read every 30 s often shows yellow; that is accepted.
+  The colour is for display only; whether a value may be used shows its
+  state.
+- **Without a sign of life** SD-035 stays (learned, never sooner than
+  5 min, never later than 30 min), and the app says "unchanged since"
+  instead of "ago", since it cannot see the last measurement.
+- Substrate sensors read every 30 s over the slow sensor bus get 90 s once
+  they exist. The hub's own sensors keep the catalog's limits; the
+  firmware knows each reading's time.
+- 60, 30 and 90 s are a rule from operating practice (RAT-027). The text
+  format is the app's own; it will be documented in
+  `docs/HOME_ASSISTANT.md` with an example for an ESPHome device and the
+  advice to keep the text out of Home Assistant's recorder.
+
+
+## SD-043: Firmware base: own ESP-IDF firmware that speaks the ESPHome native API
+
+Decided by the project owner on 2026-10-11 in the software session. It is
+the proposal that PD-151 asks of this repository (#91), reviewed by
+`security`; it goes back to the product session through #91.
+
+- The firmware stays our own ESP-IDF project with the same core, REST API
+  and web app as the simulator and the Home Assistant app. It is not built
+  on ESPHome.
+- **Why not ESPHome as the frame:** ESPHome fixes its entities when the
+  firmware is built [1]; our roles and devices change at run time in the
+  web app. The safety component must control every flash write and the
+  order of an update (actuators off first, #94); in ESPHome its own
+  preference writes and its update path decide that [2]. The core already
+  runs on ESP-IDF. No GPL-3.0 runtime next to our AGPL code (ESPHome's
+  C++ runtime is GPL-3.0 [3]); the libraries keep their own licences.
+- **Home Assistant** connects through the ESPHome native API, implemented
+  in our firmware:
+  - off by default, switched on by the owner after login (PD-142);
+  - encrypted connections only, with a 32-byte key from the hardware RNG,
+    different on every device, shown once, replaceable, stored in
+    encrypted NVS;
+  - limits on connections, frame size and handshake time;
+  - read-only first; later commands only as jobs through `Actuators`
+    (R1), with the same checks as the REST API, and logged;
+  - its protocol logic platform-neutral in a module outside `core/` (no
+    network headers there), with a socket binding per platform, so the
+    simulator speaks it too; CI tests it against the client library
+    version Home Assistant uses, and a fuzz target covers frames and the
+    handshake.
+- **No own cryptography:** noise-c with libsodium (as ESPHome itself uses
+  [4]) and nanopb, pinned by hash, listed in the SBOM and in
+  `THIRD_PARTY_NOTICES.md`.
+- **Updates** (SD-021, SD-024): signed app images without hardware Secure
+  Boot, checked before an image may boot; an own downgrade check against
+  the version in the signed image; only when idle; a self-test before the
+  version counts as valid; no eFuse burned except the HMAC key for NVS
+  encryption; the owner can always flash their own firmware over USB.
+- **Flashing** (PD-148): ESP Web Tools in the browser, shipped with the
+  release and pinned (no CDN at run time); the release lists SHA-256
+  checksums of the images. Two builds: DevKitC-1-N32R16V (octal flash,
+  32 MB) and N8R8 as the fallback with a smaller history (PD-162, #91).
+- Whether product texts may name ESPHome is a product question (trade
+  mark). MQTT may come later as an option.
+- Accepted risk: more code of our own (API, updater, Wi-Fi setup) to
+  maintain, fix and disclose (CRA).
+- Sources, retrieved 2026-10-11: [1] https://github.com/esphome/esphome/blob/dev/esphome/core/application.h ;
+  [2] https://github.com/esphome/esphome/blob/dev/esphome/components/esp32/core.cpp ;
+  [3] https://github.com/esphome/esphome/blob/dev/LICENSE ;
+  [4] https://github.com/esphome/esphome/blob/dev/esphome/components/noise/__init__.py
+
+
+## SD-044: Wi-Fi setup of the ESP: over USB while flashing, a setup network with a device key for later changes
+
+Decided by the project owner on 2026-10-11 in the software session;
+reviewed by `security`.
+
+- **First setup over USB:** right after flashing in the browser, ESP Web
+  Tools offers "Configure Wi-Fi" (Improv Wi-Fi over serial, on the
+  DevKit's UART port, not USB-Serial-JTAG, SD-024) and then opens the web
+  app on the device, where the user sets the password.
+- **One-time setup token:** the link back carries a token that setting
+  the first password requires, so nobody else on the home network can set
+  it first. It is the only secret that ever goes over the serial port:
+  valid for 15 min, used once, void once a password is set; every new
+  Improv session over USB gives a new one (a closed tab means: connect
+  over USB again).
+- **Later Wi-Fi change:** over USB again, or through a setup network of
+  the ESP:
+  - only after a long press on the BOOT button, open for at most 10 min,
+    one client, closed after setup;
+  - WPA2 with a random key per device (at least 80 bits from the hardware
+    RNG, made at the first start, stored in encrypted NVS), shown in the
+    web app after login to print;
+  - never an open network, never a fixed, shared or derivable key; a lost
+    key means setup over USB.
+- Improv and the setup network only set the Wi-Fi credentials. They never
+  set or reset the password and never return a stored secret.
+- Setting up or changing Wi-Fi never switches an actuator and never
+  restarts the device while a job runs; running jobs carry on (R6,
+  PD-161). The credentials are stored only when no job runs, ordered by
+  the safety component like every flash write (#94).
+- Open: whether the BOOT button can be reached on the carrier board
+  (product question); whether the UART counts as a physically protected
+  interface under EN 18031 (`regulatorik`).
+
+
+## SD-045: Product requirement (from PD-145 to PD-174): control and safety on the ESP32-S3 on carrier board v0.1
+
+Recorded on 2026-10-11 from #91 and #94 (SD-029). The issues hold the
+full behaviour; this entry names what changes earlier decisions.
+
+- The ESP32-S3 DevKit on the carrier board runs all control and all
+  safety without Home Assistant or any other computer; Home Assistant and
+  the Home Assistant app are optional and hold no logic (PD-149, PD-150).
+- A safety component apart from control enforces the limits: the board's
+  outputs (dosing pumps, refill valve) are off after boot and stay locked
+  until the safety component releases them; after a normal start it does
+  so itself once its checks pass (our reading of #94, to be confirmed in
+  the product repository), after a stop only on the user's request (below).
+  Smart plugs keep their state as before (PD-050, SD-028). Every outside command
+  a job with a fixed end; one dosing pump at a time with a dose end by
+  timer; per pump a maximum run time, a volume budget and a pause, tested
+  on their own, because the pumps have no time limit in hardware (PD-147,
+  PD-160); a job from outside runs to its end when the connection drops,
+  new ones only with a connection (PD-161).
+- The sign of life to the board watchdog comes from the safety component
+  only, never from the control loop; it replaces SD-028's "from the
+  control loop" (PD-165). A flash erase can hold up the sign of life past
+  the watchdog's window, so no pump or refill job runs during an update or
+  a write to NVS; the write waits for the job's end (#94). Smart plugs,
+  light and circulation are not switched for it.
+- After a stop, outputs are released only when the user chooses "Resume"
+  and the button is released, never by themselves, also not after a
+  restart (PD-174). The function is called "Stop" ("Alles stoppen" in
+  German), never "emergency stop" or "Not-Halt" (PD-172).
+- Pin assignment, bus devices and conversion values of the board are
+  public firmware configuration (PD-157, PD-168, PD-170).
+- Built as M1 in `docs/ROADMAP.md`.
+
 
 ---
 
