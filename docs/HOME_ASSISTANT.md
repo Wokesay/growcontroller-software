@@ -119,7 +119,9 @@ labels follow Home Assistant's developer documentation for apps
    to Devices › Assignment. There, choose a sensor for each measurement:
    the list shows each sensor's Home Assistant name, its entity ID and its
    current value. Can't tell two sensors apart? Warm one in your hand and
-   watch its value rise. Name and time zone are under Settings.
+   watch its value rise. A sensor the hub does not suggest is under "Andere
+   Sensoren anzeigen" (show other sensors), with a search (SD-036). Name
+   and time zone are under Settings.
 
 ## What the sensors in Home Assistant need
 
@@ -224,6 +226,12 @@ steer anything. Each point is open; none is built in this spike.
     valid humidity, a VPD-led climate would act on inputs minutes apart,
     and the jump check sees nothing in sensors that report less often than
     every 5 min (RAT-039).
+11. **What a sensor measures:** a sensor picked from the other sensors
+    (SD-036) carries no word from Home Assistant on what it measures, only a
+    fitting unit; a CPU load in % or a VOC sensor in ppm would pass as
+    humidity or CO2. Control should accept only sensors whose device class
+    confirms the measure, or that pass a check of the hub's own, and check
+    the device class again every round.
 
 ## Units
 
@@ -268,7 +276,7 @@ time is no value.
   cut; any other kept field longer than that is dropped (the ID then makes
   the state invalid, a value or time counts as missing), because a cut could
   turn an invalid ID into a valid one or change a value.
-- Of the states, the bus keeps only the candidates: sensors whose device
+- Of the states, the bus keeps the candidates (the suggestions): sensors whose device
   class or unit says pH (`ph`, unit `pH`), EC (`conductivity`, `µS/cm`,
   `mS/cm`), temperature (`temperature`, `°C`, `°F`), humidity (`humidity`
   with `%`), CO2 (`carbon_dioxide`) or level (`volume_storage` or `volume`,
@@ -277,9 +285,24 @@ time is no value.
   also stand for batteries, VOC or water meters, so they need the device
   class. A candidate whose unit the hub does not convert exactly (TDS in
   ppm, EC in mS/m, temperature in K) is listed without a value and says
-  why; no factor is assumed (RAT-006, RAT-015). Everything else (people,
-  locations, switches) is dropped at once, never kept or logged. Only
-  picked sensors become devices.
+  why; no factor is assumed (RAT-006, RAT-015). Only picked sensors become
+  devices.
+- The other sensors (SD-036), sent to the web app only when asked for
+  (`GET /api/v1/ha/candidates?others=1`, while the picker shows them),
+  sorted by name; the hub keeps no more of them than someone could use:
+  - a sensor without a device class whose unit fits a measure exactly, by
+    the same conversion as any pick (`%` humidity, `ppm` CO2, `L` level,
+    no unit only pH; a litre counter that only adds up is no level), with
+    its value: these can be picked;
+  - without a value, so the picker can say why it is not offered: one
+    whose unit would fit but whose device class says it measures something
+    else (a phone battery in %), and one of the hub's own device classes
+    with a unit it cannot use or as a meter;
+  - at most 1000; past that the picked sensors and those that can be picked
+    stay. Everything else (energy, power, text, dates, people, switches) is
+    dropped at once, never kept or logged.
+  The list shows the names of these sensors to whoever is signed in to
+  growcontroller, like the suggestions (`docs/SECURITY_MODEL.md`).
 - What the hub cannot tell: whether a sensor with the right unit sits in
   the right place. A soil sensor's EC or a pool's pH looks like the tank's;
   the picker says so, and the name and live value are the guard. pH, EC
@@ -293,9 +316,10 @@ time is no value.
   if any part fails, nothing this call added stays behind.
   `GET /api/v1/ha/candidates` lists the candidates with their value, their
   value and unit in Home Assistant, a unit problem, the measure a picked
-  one serves and the connection state (`starting`, `ok`, `unreachable`,
-  `refused`), so the web app can tell "no sensors" from "Home Assistant not
-  answering". Both need a signed-in session.
+  one serves, the number of other sensors and the connection state
+  (`starting`, `ok`, `unreachable`, `refused`), so the web app can tell "no
+  sensors" from "Home Assistant not answering"; `?others=1` adds the other
+  sensors. Both need a signed-in session.
 - The picks live in the hub's configuration (devices `ha.<entity>` of
   class `ha_<measure>`), saved at once after each pick; at start they are
   handed back to the bus. There is no second file to get out of step.

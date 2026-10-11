@@ -111,6 +111,59 @@ double convert(const std::string& measures, double v, const std::string& unit, s
   return gc::kNaN;
 }
 
+// The device classes of the measurements the hub reads (classify()).
+bool ownDeviceClass(const std::string& dc) {
+  return dc == "ph" || dc == "conductivity" || dc == "temperature" || dc == "humidity" || dc == "carbon_dioxide" ||
+         dc == "volume_storage" || dc == "volume";
+}
+
+// An other sensor (SD-036), or none. Kept are only sensors someone could
+// pick, so the web app learns no more about the house than that: a sensor
+// without a device class whose unit fits a measure exactly (the same
+// conversion as for any pick; a litre counter that only adds up is no
+// level), with its value; and, without a value, one whose unit would fit
+// but whose device class says it measures something else (a battery in %,
+// so the picker can say why it is not offered), or one of the hub's own
+// device classes whose unit the hub cannot use. Text, dates, energy, power
+// and any other unit are dropped here, not kept or logged.
+std::optional<Candidate> otherOf(const std::string& id, const gc::json& state) {
+  if (id.rfind("sensor.", 0) != 0) return std::nullopt;
+  const gc::json& attrs = attributesOf(state);
+  const std::string unit = gc::jstr(attrs, "unit_of_measurement");
+  // A device class that is no text still says it measures something
+  const bool hasClass = attrs.contains("device_class") && !(attrs["device_class"].is_string() && attrs["device_class"].get<std::string>().empty());
+  const std::string dc = hasClass ? (attrs["device_class"].is_string() ? attrs["device_class"].get<std::string>() : "?") : "";
+  const double v = numericState(state);
+  if (!std::isfinite(v) && unit.empty()) return std::nullopt;
+  const std::string sc = gc::jstr(attrs, "state_class");
+  std::vector<std::string> fits;
+  for (const char* m : kMeasures) {
+    std::string fault;
+    convert(m, 0.0, unit, fault);
+    if (fault.empty() && !(std::string(m) == "level" && (sc == "total" || sc == "total_increasing"))) fits.push_back(m);
+  }
+  Candidate c;
+  c.entityId = id;
+  c.name = printable(gc::jstr(attrs, "friendly_name"), 60);
+  c.unit = printable(unit, 16);
+  if (hasClass && ownDeviceClass(dc)) {  // e.g. humidity without %: the unit is the reason, or a meter
+    const bool meter = (dc == "volume" || dc == "volume_storage") && (sc == "total" || sc == "total_increasing");
+    c.problem = meter ? "meter" : unit.empty() ? "unit_missing" : "unit_unsupported";
+    return c;
+  }
+  if (fits.empty()) return std::nullopt;
+  if (hasClass) {
+    c.problem = "device_class";
+    c.deviceClass = printable(dc, 32);
+    return c;
+  }
+  c.measures = std::move(fits);
+  c.raw = v;
+  std::string fault;
+  if (std::isfinite(v)) c.value = convert(c.measures.front(), v, unit, fault);
+  return c;
+}
+
 // Days since 1970-01-01 for a civil date (H. Hinnant's algorithm).
 std::int64_t daysFromCivil(std::int64_t y, unsigned m, unsigned d) {
   y -= m <= 2;
@@ -450,6 +503,11 @@ std::vector<Candidate> HaBus::candidates() const {
   return candidates_;
 }
 
+std::vector<Candidate> HaBus::others() const {
+  std::lock_guard<std::mutex> l(m_);
+  return others_;
+}
+
 void HaBus::update(const std::string& entityId, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs) {
   std::lock_guard<std::mutex> l(m_);
   auto e = std::find_if(entities_.begin(), entities_.end(), [&](const Entity& x) { return x.entityId == entityId; });
@@ -459,9 +517,14 @@ void HaBus::update(const std::string& entityId, const gc::json& state, std::int6
 void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs) {
   // Looked through without the lock, so the hub's tick never waits for a
   // large answer; only the result is swapped in below.
+  std::set<std::string> picked;
+  {
+    std::lock_guard<std::mutex> l(m_);
+    for (const auto& e : entities_) picked.insert(e.entityId);
+  }
   std::unordered_map<std::string, const gc::json*> byId;
   std::map<std::string, size_t> perKind;
-  std::vector<Candidate> found;
+  std::vector<Candidate> found, others;
   std::map<std::string, gc::json> raw;
   std::set<std::string> truncated;
   if (states.is_array())
@@ -470,9 +533,12 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
       const std::string id = gc::jstr(s, "entity_id");
       if (!validEntityId(id) || byId.count(id)) continue;
       byId[id] = &s;
-      // Everything that is no candidate is dropped here, not kept or logged.
       const std::string kind = classify(s);
-      if (kind.empty()) continue;
+      if (kind.empty()) {
+        // An other sensor, offered only when someone asks (SD-036)
+        if (auto o = otherOf(id, s)) others.push_back(std::move(*o));
+        continue;
+      }
       if (perKind[kind] >= kMaxPerKind) {  // per kind, so 100 device temperatures cannot hide the tank's pH
         truncated.insert(kind);
         continue;
@@ -493,6 +559,20 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
       found.push_back(std::move(c));
       raw[id] = s;  // already only the few fields the hub reads
     }
+  // Past the limit, the picked sensors and those that can be picked stay;
+  // then by name, the entity ID breaking ties so rows do not swap.
+  auto rank = [&](const Candidate& c) { return picked.count(c.entityId) ? 0 : c.measures.empty() ? 2 : 1; };
+  auto label = [](const Candidate& c) { return c.name.empty() ? c.entityId : c.name; };
+  if (others.size() > kMaxOthers) {
+    std::stable_sort(others.begin(), others.end(), [&](const Candidate& a, const Candidate& b) { return rank(a) < rank(b); });
+    others.resize(kMaxOthers);
+    truncated.insert("other");
+  }
+  for (const auto& o : others)
+    if (!o.measures.empty()) raw[o.entityId] = *byId[o.entityId];  // to start a pick with
+  std::sort(others.begin(), others.end(), [&](const Candidate& a, const Candidate& b) {
+    return std::make_pair(label(a), a.entityId) < std::make_pair(label(b), b.entityId);
+  });
   std::lock_guard<std::mutex> l(m_);
   for (const auto& e : entities_) {
     auto it = byId.find(e.entityId);
@@ -505,28 +585,60 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
     }
   }
   candidates_ = std::move(found);
+  others_ = std::move(others);
   raw_ = std::move(raw);
   truncated_ = std::move(truncated);
   lastHaNowMs_ = haNowMs;
   lastNowMs_ = nowMs;
 }
 
-gc::json HaBus::candidatesJson() const {
-  std::lock_guard<std::mutex> l(m_);
-  gc::json list = gc::json::array();
-  for (const auto& c : candidates_) {
-    auto e = std::find_if(entities_.begin(), entities_.end(), [&](const Entity& x) { return x.entityId == c.entityId; });
-    list.push_back({{"entity", c.entityId},
+gc::json HaBus::candidatesJson(bool withOthers) const {
+  // Copied under the lock, built without it: up to a thousand others must not hold up the hub's tick
+  std::vector<Candidate> candidates, others;
+  std::vector<Entity> entities;
+  std::string connection;
+  std::set<std::string> truncated;
+  std::map<std::string, size_t> fits;  // per measure, how many others can serve it
+  size_t otherCount = 0;
+  {
+    std::lock_guard<std::mutex> l(m_);
+    candidates = candidates_;
+    if (withOthers) others = others_;
+    entities = entities_;
+    connection = connection_;
+    truncated = truncated_;
+    for (const auto& o : others_)
+      for (const auto& m : o.measures) ++fits[m];
+    otherCount = others_.size();
+  }
+  auto entry = [&](const Candidate& c, const std::vector<std::string>& measures) {
+    auto e = std::find_if(entities.begin(), entities.end(), [&](const Entity& x) { return x.entityId == c.entityId; });
+    return gc::json{{"entity", c.entityId},
                     {"name", c.name},
-                    {"kind", c.kind},
-                    {"measures", measuresOf(c.kind)},
+                    {"measures", measures},
                     {"value", std::isfinite(c.value) ? gc::json(c.value) : gc::json(nullptr)},
                     {"raw", std::isfinite(c.raw) ? gc::json(c.raw) : gc::json(nullptr)},
                     {"unit", c.unit},
                     {"problem", c.problem.empty() ? gc::json(nullptr) : gc::json(c.problem)},
-                    {"used", e != entities_.end() ? gc::json(e->measures) : gc::json(nullptr)}});
+                    {"used", e != entities.end() ? gc::json(e->measures) : gc::json(nullptr)}};
+  };
+  gc::json list = gc::json::array();
+  for (const auto& c : candidates) {
+    gc::json j = entry(c, measuresOf(c.kind));
+    j["kind"] = c.kind;
+    list.push_back(std::move(j));
   }
-  return {{"connection", connection_}, {"truncated", truncated_}, {"candidates", list}};
+  gc::json out = {{"connection", connection}, {"truncated", truncated}, {"candidates", list}, {"otherFits", fits}, {"otherCount", otherCount}};
+  if (withOthers) {
+    gc::json list2 = gc::json::array();
+    for (const auto& c : others) {
+      gc::json j = entry(c, c.measures);
+      j["deviceClass"] = c.deviceClass;
+      list2.push_back(std::move(j));
+    }
+    out["others"] = std::move(list2);
+  }
+  return out;
 }
 
 std::string HaBus::selectedMeasure(const std::string& entityId) const {
@@ -562,12 +674,17 @@ bool HaBus::select(const std::string& entityId, const std::string& measures, gc:
       why = gc::say("ha.used", {{"entity", entityId}});
       return false;
     }
-  auto c = std::find_if(candidates_.begin(), candidates_.end(), [&](const Candidate& x) { return x.entityId == entityId; });
-  if (c == candidates_.end()) {
+  // A suggestion serves what its kind says, an other sensor what its unit fits (SD-036)
+  auto byId = [&](const Candidate& x) { return x.entityId == entityId; };
+  std::vector<std::string> can;
+  if (auto c = std::find_if(candidates_.begin(), candidates_.end(), byId); c != candidates_.end()) {
+    can = measuresOf(c->kind);
+  } else if (auto o = std::find_if(others_.begin(), others_.end(), byId); o != others_.end()) {
+    can = o->measures;
+  } else {
     why = gc::say("ha.unknown", {{"entity", entityId}});
     return false;
   }
-  const auto can = measuresOf(c->kind);
   if (std::find(can.begin(), can.end(), measures) == can.end()) {
     why = gc::say("ha.mismatch", {{"entity", entityId}});
     return false;
@@ -626,6 +743,7 @@ void HaBus::lostAll() {
   for (const auto& e : entities_) states_[e.entityId] = State{};
   // The candidates' last values are no longer current either
   for (auto& c : candidates_) c.value = c.raw = gc::kNaN;
+  for (auto& c : others_) c.value = c.raw = gc::kNaN;
   raw_.clear();
 }
 

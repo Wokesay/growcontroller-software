@@ -53,6 +53,8 @@ the sensors from it and shows them with growcontroller's checks.
    the page asks you to sign in although you never set a password,
    someone else did: uninstall the app and install it again.
 6. Open **Devices › Assignment** and choose one sensor per measurement.
+   A sensor the app does not suggest is under **Show other sensors**; its
+   unit must fit the measurement.
 
 There is nothing to configure: the app reaches Home Assistant through the
 Supervisor and gets its access from it. No token is needed.

@@ -4,10 +4,11 @@ import { useEffect, useState } from "preact/hooks";
 import { Download, History, LineChart } from "lucide-preact";
 import { get, type HubEvent, type SeriesData } from "../api";
 import { TimeChart, type Marker } from "../chart";
-import { hasRole, state } from "../store";
+import { hasRole, readOnly, state } from "../store";
 import { msg, t, type TextKey } from "../i18n";
 import { Card, Seg } from "../ui";
 import { EventList } from "../widgets";
+import { ROLES } from "../ha";
 
 const RANGES: [string, TextKey, number][] = [
   ["6h", "history.range6h", 6 * 3600],
@@ -40,7 +41,9 @@ export function HistoryPage() {
   const [filter, setFilter] = useState("");
   const span = RANGES.find((r) => r[0] === range)![2];
   const series = ["tank.ph", "tank.ec", "tank.water_temp", "tank.level"].filter((s) => hasRole(s));
-  if (!series.includes("tank.level")) series.push("tank.volume");
+  // The volume from mixes only where the hub mixes; elsewhere it would stay empty (SD-039)
+  const volumeFromMixes = !series.includes("tank.level") && !readOnly.value;
+  if (volumeFromMixes) series.push("tank.volume");
   // Raumklima, wenn ein Sensor zugeordnet ist; VPD wird daraus abgeleitet
   const climate = ["zone.air_temp", "zone.humidity", "zone.vpd", "zone.co2"].filter((s) => st.readings[s] && st.readings[s].quality !== "not_bound");
   series.push(...climate);
@@ -64,7 +67,7 @@ export function HistoryPage() {
       alive = false;
       clearInterval(timer);
     };
-  }, [range]);
+  }, [range, series.join(",")]);  // and again once a sensor is assigned
 
   useEffect(() => {
     get<{ events: HubEvent[] }>(`/events?limit=150${filter ? `&type=${filter}` : ""}`).then((r) => setEvents(r.events)).catch(() => {});
@@ -108,9 +111,11 @@ export function HistoryPage() {
             <TimeChart data={data["tank.water_temp"] ?? null} color="--temp" label={t("common.water")} unit="°C" decimals={1} />
           </Card>
         )}
-        <Card title={hasRole("tank.level") ? t("area.tankLevel") : t("history.volumeFromMixes")} icon={<LineChart size={18} />}>
-          <TimeChart data={data[hasRole("tank.level") ? "tank.level" : "tank.volume"] ?? null} color="--level" label={t("history.volume")} unit="L" decimals={1} />
-        </Card>
+        {(hasRole("tank.level") || volumeFromMixes) && (
+          <Card title={hasRole("tank.level") ? t("area.tankLevel") : t("history.volumeFromMixes")} icon={<LineChart size={18} />}>
+            <TimeChart data={data[hasRole("tank.level") ? "tank.level" : "tank.volume"] ?? null} color="--level" label={t("history.volume")} unit="L" decimals={1} />
+          </Card>
+        )}
         {climate.includes("zone.air_temp") && (
           <Card title={t("history.airTemp")} icon={<LineChart size={18} />}>
             <TimeChart data={data["zone.air_temp"] ?? null} color="--air" label={t("area.airTemp")} unit="°C" decimals={1} />
@@ -132,6 +137,12 @@ export function HistoryPage() {
           </Card>
         )}
       </div>
+      {/* A curve shows once its sensor is assigned (SD-039) */}
+      {readOnly.value && ROLES.some(([r]) => !hasRole(r)) && (
+        <p class="muted small" data-testid="history-more">
+          {t("history.moreWithSensors")} <a href="#/geraete?tab=zuordnung">{t("history.toAssignment")} →</a>
+        </p>
+      )}
       <Card title={t("history.events")} icon={<History size={18} />}>
         <div class="chips" style="margin-bottom:8px">
           {FILTERS.map(([v, l]) => (

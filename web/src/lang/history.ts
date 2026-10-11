@@ -20,6 +20,8 @@ export const de = {
   "history.humidity": "Luftfeuchte",
   "history.vpd": "VPD (Luft)",
   "history.events": "Ereignisse",
+  "history.moreWithSensors": "Wählst du für eine Messung einen Sensor, erscheint hier ihre Kurve.",
+  "history.toAssignment": "Sensoren wählen",
 } as const;
 
 export const en: Record<keyof typeof de, string> = {
@@ -41,4 +43,6 @@ export const en: Record<keyof typeof de, string> = {
   "history.humidity": "Humidity",
   "history.vpd": "Vapour pressure deficit (VPD)",
   "history.events": "Events",
+  "history.moreWithSensors": "Choose a sensor for a measurement and its curve appears here.",
+  "history.toAssignment": "Choose sensors",
 };

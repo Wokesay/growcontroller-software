@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { computed } from "@preact/signals";
 import { get, post } from "./api";
 import { ago, num, numUpTo } from "./format";
-import { msg, t } from "./i18n";
+import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, info, refreshConfig, refreshState, state, toast } from "./store";
 import { Banner, Button, Modal, Pill } from "./ui";
 import { qualityText } from "./widgets";
@@ -26,10 +26,20 @@ export type HaCandidate = {
   problem: "unit_missing" | "unit_unsupported" | null;
   used: string | null;
 };
-type HaList = { connection: Connection; truncated: string[]; candidates: HaCandidate[] };
+// Any numeric sensor that is no suggestion (SD-036): it serves what its unit fits, nothing if
+// Home Assistant says it measures something else.
+type HaOther = Omit<HaCandidate, "kind" | "problem"> & { deviceClass: string; problem: HaCandidate["problem"] | "device_class" | "meter" };
+type HaList = {
+  connection: Connection;
+  truncated: string[];
+  candidates: HaCandidate[];
+  otherFits?: Record<string, number>;
+  otherCount?: number;
+  others?: HaOther[];
+};
 
 // The measuring roles and the measure each one reads ("zone.air_temp" → "air_temp").
-const ROLES: [string, string][] = [
+export const ROLES: [string, string][] = [
   ["tank.ph", "ph"],
   ["tank.ec", "ec"],
   ["tank.water_temp", "water_temp"],
@@ -114,7 +124,12 @@ export function HaRoles() {
   const cands = list?.candidates ?? [];
   const fits = (measure: string) => cands.filter((c) => c.measures.includes(measure));
   const rows = ROLES.filter(([role, m]) => binding(role) || fits(m).length > 0);
-  const without = ROLES.filter(([role, m]) => !binding(role) && fits(m).length === 0).map(([role]) => roleLabel(role));
+  const without = ROLES.filter(([role, m]) => !binding(role) && fits(m).length === 0);
+  // Roles without a suggestion: open to a sensor of one's own choosing, or at least to why
+  // the user's own one is not offered, as long as Home Assistant has any other sensor
+  const anyOthers = (list?.otherCount ?? 0) > 0;
+  const anyway = anyOthers ? without : [];
+  const noneAtAll = anyOthers ? [] : without;
   const ok = list?.connection === "ok";
   // Until the list is there, show nothing that would move once it arrives;
   // if it does not come, show the assigned sensors with a notice
@@ -135,6 +150,7 @@ export function HaRoles() {
           <p class="muted">{t("ha.emptyText")}</p>
         </div>
       )}
+      {ok && rows.length === 0 && <PickAnyway roles={anyway} onPick={setPick} />}
       {rows.length > 0 && (
         <div class="list">
           {rows.map(([role, measure]) => {
@@ -177,7 +193,10 @@ export function HaRoles() {
           })}
         </div>
       )}
-      {ok && rows.length > 0 && without.length > 0 && <p class="muted small">{t("ha.noneFor", { list: without.join(", ") })}</p>}
+      {ok && rows.length > 0 && <PickAnyway roles={anyway} onPick={setPick} />}
+      {ok && rows.length > 0 && noneAtAll.length > 0 && (
+        <p class="muted small">{t("ha.noneFor", { list: noneAtAll.map(([role]) => roleLabel(role)).join(", ") })}</p>
+      )}
       <details>
         <summary>{t("ha.why")}</summary>
         <p class="muted small">{t("ha.whyText")}</p>
@@ -186,6 +205,84 @@ export function HaRoles() {
     </div>
   );
 }
+
+/** Roles without a suggestion that an other sensor fits, each still open to a sensor of one's own choosing (SD-036). */
+function PickAnyway(p: { roles: [string, string][]; onPick: (pick: { role: string; measure: string }) => void }) {
+  if (p.roles.length === 0) return null;
+  return (
+    <div class="row" style="gap:8px;flex-wrap:wrap" data-testid="ha-pick-anyway">
+      <span class="muted small">{t("ha.pickAnyway")}</span>
+      {p.roles.map(([role, measure]) => (
+        <Button size="sm" onClick={() => p.onPick({ role, measure })} aria-label={t("ha.chooseFor", { role: roleLabel(role) })}>
+          {roleLabel(role)}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+// Home Assistant's device classes in words; any other says only "something else"
+const CLASS_TEXT: Record<string, TextKey> = {
+  battery: "ha.cls.battery",
+  power: "ha.cls.power",
+  apparent_power: "ha.cls.power",
+  energy: "ha.cls.energy",
+  voltage: "ha.cls.voltage",
+  current: "ha.cls.current",
+  illuminance: "ha.cls.illuminance",
+  signal_strength: "ha.cls.signal",
+  moisture: "ha.cls.moisture",
+  pressure: "ha.cls.pressure",
+  atmospheric_pressure: "ha.cls.pressure",
+  pm1: "ha.cls.particulates",
+  pm25: "ha.cls.particulates",
+  pm10: "ha.cls.particulates",
+  volatile_organic_compounds: "ha.cls.voc",
+  volatile_organic_compounds_parts: "ha.cls.voc",
+  water: "ha.cls.water",
+  gas: "ha.cls.gas",
+  distance: "ha.cls.distance",
+};
+const measureLabel = (measure: string) => capOf(measure)?.label ?? measure;
+
+// Why an other sensor cannot serve this measure, "" if it can.
+function otherProblem(o: HaOther, measure: string): string {
+  if (o.measures.includes(measure)) return "";
+  if (o.problem === "device_class")
+    return Object.prototype.hasOwnProperty.call(CLASS_TEXT, o.deviceClass) ? t("ha.otherIs", { what: t(CLASS_TEXT[o.deviceClass]) }) : t("ha.otherClass");
+  if (o.problem === "meter") return t("ha.otherMeter");
+  if (o.problem === "unit_missing") return t("ha.otherUnitMissing");
+  if (o.problem === "unit_unsupported" || o.measures.length === 0) return t("ha.otherUnit", { unit: o.unit });
+  if (!o.unit) return t("ha.otherNoUnit");
+  return t("ha.otherUnitFor", { unit: o.unit, fits: o.measures.map(measureLabel).join(", ") });
+}
+
+/** The other sensors, fetched only while shown, refreshed like the suggestions. */
+function useOthers(on: boolean): { others: HaOther[] | null; failing: boolean } {
+  const [others, setOthers] = useState<HaOther[] | null>(null);
+  const [fails, setFails] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    let alive = true;
+    const load = () =>
+      get<HaList>("/ha/candidates?others=1")
+        .then((l) => {
+          if (!alive) return;
+          setOthers(l.others ?? []);
+          setFails(0);
+        })
+        .catch(() => alive && setFails((n) => n + 1));
+    load();
+    const id = window.setInterval(load, 10000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [on]);
+  return { others, failing: fails >= 2 };
+}
+const byLabel = (a: { name: string; entity: string }, b: { name: string; entity: string }) =>
+  (a.name || a.entity).localeCompare(b.name || b.entity, undefined, { numeric: true }) || a.entity.localeCompare(b.entity);
 
 /** Choosing the sensor for one role: search, live values, one tap saves. */
 function HaPicker(p: { role: string; measure: string; list: HaList | null; failing: boolean; reload: () => Promise<void>; onClose: () => void }) {
@@ -196,11 +293,31 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
   const current = b?.device.startsWith("ha.") ? b.device.slice(3) : "";
   const ok = p.list?.connection === "ok";
   const all = (p.list?.candidates ?? []).filter((c) => c.measures.includes(p.measure)).sort(byName);
-  const shown = q.trim() ? all.filter((c) => fold(`${c.name} ${c.entity}`).includes(fold(q.trim()))) : all;
+  const match = (c: { name: string; entity: string }) => fold(`${c.name} ${c.entity}`).includes(fold(q.trim()));
+  const shown = q.trim() ? all.filter(match) : all;
+  const fitCount = p.list?.otherFits?.[p.measure] ?? 0;
+  // The other sensors show at once without a suggestion, and when the sensor in use is one of them
+  const [showOthers, setShowOthers] = useState(all.length === 0 || (!!current && !all.some((c) => c.entity === current)));
+  const [jumpToOthers, setJumpToOthers] = useState(false);
+  const othersHead = useRef<HTMLHeadingElement>(null);
+  const { others, failing: othersFailing } = useOthers(showOthers);
+  const othersShown = (others ?? []).filter((o) => !q.trim() || match(o)).sort(byLabel);
+  const othersFit = othersShown.filter((o) => o.measures.includes(p.measure));
+  const othersNot = othersShown.filter((o) => !o.measures.includes(p.measure));
   const label = roleLabel(p.role);
   useEffect(() => {
-    if (all.length > 8 && window.matchMedia?.("(pointer: fine)").matches) search.current?.focus();
+    if ((all.length > 8 || showOthers) && window.matchMedia?.("(pointer: fine)").matches) search.current?.focus();
   }, []);
+  useEffect(() => {
+    if (!jumpToOthers || !othersHead.current) return;
+    othersHead.current.focus();
+    othersHead.current.scrollIntoView?.({ block: "start" });
+    setJumpToOthers(false);
+  }, [jumpToOthers, showOthers]);
+  const openOthers = () => {
+    setShowOthers(true);
+    setJumpToOthers(true);
+  };
   const choose = async (entity: string, name: string) => {
     if (entity && entity === current) return p.onClose(); // already this one
     setSaving(entity);
@@ -218,10 +335,11 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
   return (
     <Modal title={t("ha.pickerTitle", { role: label })} onClose={p.onClose} wide>
       <ConnectionNotice list={p.list} failing={p.failing} />
-      {ok && all.length > 8 && (
+      {ok && all.length === 0 && <p class="muted small">{t("ha.noSuggestion")}</p>}
+      {ok && (all.length > 8 || showOthers) && (
         <input
           ref={search}
-          class="input"
+          class="input ha-search"
           type="search"
           value={q}
           placeholder={t("ha.search")}
@@ -235,13 +353,13 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
           }}
         />
       )}
-      {ok && (
+      {ok && all.length > 0 && (
         <p class="muted small">
           {q.trim() ? t("ha.countFiltered", { n: shown.length, total: all.length }) : all.length === 1 ? t("ha.countOne") : t("ha.count", { n: all.length })}
         </p>
       )}
       {ok && Array.isArray(p.list?.truncated) && p.list!.truncated.includes(kindOf(p.measure)) && <p class="muted small">{t("ha.truncated")}</p>}
-      {ok && TIP.has(p.measure) && all.length > 1 && <p class="muted small">{t("ha.tip")}</p>}
+      {ok && TIP.has(p.measure) && (all.length > 1 || showOthers) && <p class="muted small">{t("ha.tip")}</p>}
       {ok && ALSO_ELSEWHERE.has(p.measure) && <p class="muted small">{t("ha.alsoElsewhere")}</p>}
       <div class="ha-options" data-testid="ha-picker" aria-busy={saving !== null || undefined}>
         {ok &&
@@ -271,14 +389,89 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
               </button>
             );
           })}
-        {ok && q.trim() && shown.length === 0 && <p class="muted">{t("ha.noMatch", { q: q.trim() })}</p>}
+        {ok && q.trim() && all.length > 0 && shown.length === 0 && !showOthers && (
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <span class="muted">{fitCount > 0 ? t("ha.noSuggestionMatch", { q: q.trim() }) : t("ha.noMatch", { q: q.trim() })}</span>
+            {fitCount > 0 && (
+              <Button size="sm" onClick={openOthers}>
+                {t("ha.searchOthers")}
+              </Button>
+            )}
+          </div>
+        )}
         {current && (
           <button class="ha-option ha-none" disabled={saving !== null} onClick={() => choose("", "")}>
             <span class="grow">{saving === "" ? t("ha.saving") : t("ha.none")}</span>
           </button>
         )}
       </div>
+      {ok && !showOthers && !(q.trim() && all.length > 0 && shown.length === 0 && fitCount > 0) && (
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <span class="muted small">{t("ha.notListed")}</span>
+          <Button size="sm" onClick={openOthers} data-testid="ha-show-others">
+            {fitCount > 0 ? t("ha.showOthers", { n: fitCount }) : t("ha.showOthersPlain")}
+          </Button>
+        </div>
+      )}
+      {ok && showOthers && (
+        <div class="stack-sm" data-testid="ha-others">
+          <h3 ref={othersHead} tabIndex={-1} class="ha-others-title">
+            {t("ha.othersTitle")}
+          </h3>
+          <p class="muted small">{t("ha.othersHelp", { role: label })}</p>
+          {Array.isArray(p.list?.truncated) && p.list!.truncated.includes("other") && <p class="muted small">{t("ha.othersTruncated")}</p>}
+          {others === null && !othersFailing && <p class="muted small">{t("ha.loading")}</p>}
+          {othersFailing && <p class="muted small">{t("ha.othersFailed")}</p>}
+          <div class="ha-options" aria-busy={saving !== null || undefined}>
+            {othersFit.map((o) => (
+              <OtherOption o={o} measure={p.measure} role={p.role} current={current} saving={saving} onChoose={choose} />
+            ))}
+            {others !== null && othersFit.length === 0 && (!q.trim() || othersNot.length === 0) && (
+              <p class="muted">{q.trim() ? t("ha.noMatch", { q: q.trim() }) : t("ha.othersNone", { role: label })}</p>
+            )}
+          </div>
+          {othersNot.length > 0 && (
+            <details open={!!q.trim() || othersFit.length === 0} data-testid="ha-others-not">
+              <summary class="small">{t("ha.othersNot", { role: label, n: othersNot.length })}</summary>
+              <div class="ha-options" style="margin-top:8px">
+                {othersNot.map((o) => (
+                  <OtherOption o={o} measure={p.measure} role={p.role} current={current} saving={saving} onChoose={choose} />
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
     </Modal>
+  );
+}
+
+/** One other sensor in the picker: chosen with a tap if its unit fits, otherwise greyed with the reason. */
+function OtherOption(p: { o: HaOther; measure: string; role: string; current: string; saving: string | null; onChoose: (entity: string, name: string) => void }) {
+  const { o } = p;
+  const elsewhere = boundElsewhere(o.entity, p.role);
+  const problem = otherProblem(o, p.measure);
+  return (
+    <button
+      class={`ha-option ${o.entity === p.current ? "current" : ""}`}
+      disabled={p.saving !== null || !!elsewhere || !!problem}
+      aria-disabled={elsewhere || problem ? true : undefined}
+      aria-current={o.entity === p.current || undefined}
+      onClick={() => p.onChoose(o.entity, o.name)}
+    >
+      <span class="grow">
+        <strong>{o.name || o.entity}</strong>
+        <span class="muted small mono ha-entity">{o.entity}</span>
+        {problem && <span class="muted small">{problem}</span>}
+        {elsewhere && <span class="ha-used small">{t("ha.usedFor", { role: roleLabel(elsewhere) })}</span>}
+        {p.saving === o.entity && <span class="muted small">{t("ha.saving")}</span>}
+      </span>
+      {o.raw !== null ? (
+        <span class="ha-value">{`${numUpTo(o.raw, 2)}${o.unit ? ` ${o.unit}` : ""}`}</span>
+      ) : !problem ? (
+        <span class="muted small ha-novalue">{t("ha.noValue")}</span>
+      ) : null}
+    </button>
   );
 }
 

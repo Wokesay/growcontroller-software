@@ -154,7 +154,14 @@ const haSensors = [
   { entity: "sensor.kaputt", name: "Kaputt", kind: "temperature", measures: ["water_temp", "air_temp"], value: null, raw: null, unit: "°C", problem: null, used: null },
   { entity: "sensor.growbox_wassertemperatur_ds18b20_sonde_unten", name: "Growboxwassertemperatursondeimtankunten", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.3, raw: 21.3, unit: "°C", problem: null, used: null },
 ];
-async function asHomeAssistant(page: Page, connection: string, sensors: unknown[] = haSensors) {
+// Sensors the hub does not suggest (SD-036), sent only with ?others=1
+const haOthers = [
+  { entity: "sensor.diy_rh", name: "Selbstbau Feuchte", measures: ["humidity"], value: 58, raw: 58, unit: "%", problem: null, deviceClass: "", used: null },
+  { entity: "sensor.diy_co2", name: "Selbstbau CO2", measures: ["co2"], value: 720, raw: 720, unit: "ppm", problem: null, deviceClass: "", used: null },
+  { entity: "sensor.handy_akku", name: "Handy Akku", measures: [], value: null, raw: null, unit: "%", problem: "device_class", deviceClass: "battery", used: null },
+  { entity: "sensor.rh_raw", name: "Feuchte ohne Einheit", measures: [], value: null, raw: null, unit: "", problem: "unit_missing", deviceClass: "", used: null },
+];
+async function asHomeAssistant(page: Page, connection: string, sensors: unknown[] = haSensors, others: unknown[] = []) {
   let asked = 0;
   await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
     const res = await route.fetch();
@@ -164,7 +171,10 @@ async function asHomeAssistant(page: Page, connection: string, sensors: unknown[
   });
   await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => {
     asked++;
-    return route.fulfill({ json: { connection, truncated: [], candidates: sensors } });
+    const withOthers = new URL(route.request().url()).searchParams.get("others") === "1";
+    const otherFits: Record<string, number> = {};
+    for (const o of others as { measures: string[] }[]) for (const m of o.measures) otherFits[m] = (otherFits[m] ?? 0) + 1;
+    return route.fulfill({ json: { connection, truncated: [], candidates: sensors, otherFits, otherCount: others.length, ...(withOthers ? { others } : {}) } });
   });
   return () => asked;
 }
@@ -232,6 +242,99 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
     await page.keyboard.press("Escape");
     await expect(picker).toHaveCount(0);
   }
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: a sensor the hub does not suggest can be chosen from the other sensors, in a unit that fits (SD-036)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok", haSensors, haOthers);
+  const picked: unknown[] = [];
+  await page.route(/\/api\/v1\/ha\/assign(\?|$)/, (route) => {
+    picked.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  // Humidity, CO2 and level have no suggestion: each can still be opened, level at least to see why
+  await expect(page.getByTestId("ha-pick-anyway")).toContainText("Ohne Vorschlag – trotzdem einen Sensor wählen für:");
+  await expect(page.getByText(/Kein passender Sensor in Home Assistant für/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Sensor wählen: Füllstand" }).click();
+  await expect(page.getByTestId("ha-others").getByText("Kein anderer Sensor passt zu Füllstand.")).toBeVisible();
+  await expect(page.getByTestId("ha-others-not").getByRole("button", { name: /Handy Akku/ })).toBeVisible();  // the reasons open
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sensor wählen: Luftfeuchte" }).click();
+  const picker = page.getByRole("dialog");
+  await expect(picker).toBeVisible();
+  // No suggestion: the other sensors show at once, the fitting first, the rest folded with the reason
+  await expect(page.getByText("Kein Vorschlag. Wähle unten selbst einen Sensor.")).toBeVisible();
+  const others = page.getByTestId("ha-others");
+  await expect(others.getByRole("button", { name: /Selbstbau Feuchte/ })).toBeEnabled();
+  const not = page.getByTestId("ha-others-not");
+  await expect(not.locator("summary")).toHaveText("Passt nicht zu Luftfeuchte (3) – mit Grund");
+  await expect(not.getByRole("button", { name: /Handy Akku/ })).not.toBeVisible();
+  await not.locator("summary").click();
+  await expect(not.getByRole("button", { name: /Handy Akku/ })).toBeDisabled();
+  await expect(not.getByRole("button", { name: /Handy Akku/ })).toContainText("Misst laut Home Assistant Akkustand");
+  await expect(not.getByRole("button", { name: /Feuchte ohne Einheit/ })).toContainText("Ohne Einheit – der Hub kann den Wert nicht verwenden");
+  await expect(not.getByRole("button", { name: /Selbstbau CO2/ })).toContainText("Einheit ppm passt nur zu CO2");
+  // A search covers both lists; Escape clears it first and keeps the window open
+  const search = page.getByPlaceholder("Nach Namen suchen, z. B. Zelt");
+  await search.fill("handy");
+  await expect(not.getByRole("button", { name: /Handy Akku/ })).toBeVisible();
+  await expect(others.getByText("Kein Sensor passt zu „handy“.")).toHaveCount(0);  // it is found, just below with its reason
+  await search.fill("xyz");
+  await expect(others.getByText("Kein Sensor passt zu „xyz“.")).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(picker).toBeVisible();
+  await others.getByRole("button", { name: /Selbstbau Feuchte/ }).click();
+  await expect(page.getByText("Gespeichert: Selbstbau Feuchte für Luftfeuchte")).toBeVisible();
+  expect(picked).toEqual([{ role: "zone.humidity", entity: "sensor.diy_rh" }]);
+  // With suggestions, the others come on request; there nothing fits pH, and the reason is said
+  await page.getByRole("button", { name: "Sensor wählen: pH im Tank" }).click();
+  await expect(picker).toBeVisible();
+  await expect(page.getByTestId("ha-others")).toHaveCount(0);
+  await expect(page.getByText("Dein Sensor ist nicht dabei?")).toBeVisible();
+  await page.getByTestId("ha-show-others").click();
+  await expect(page.getByTestId("ha-others").getByText("Kein anderer Sensor passt zu pH im Tank.")).toBeVisible();
+  // Nothing fits, so the reasons are open already
+  await expect(page.getByTestId("ha-others-not").getByRole("button", { name: /Selbstbau Feuchte/ })).toContainText("Einheit % passt nur zu Luftfeuchte");
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+  expect(picked).toHaveLength(1);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: without any suggestion, the sensors of one's own choosing are offered right away (SD-036)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok", [], haOthers);
+  await newPassword(page);
+  await page.goto("/#/geraete?tab=zuordnung");
+  await expect(page.getByText("Keine passenden Sensoren gefunden")).toBeVisible();
+  await page.getByRole("button", { name: "Sensor wählen: CO2" }).click();
+  await expect(page.getByTestId("ha-others").getByRole("button", { name: /Selbstbau CO2/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant: the history shows only curves that can have values, and says how to get more (SD-039)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await page.goto("/");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  // The simulated hub mixes, so its volume from mixes stays (the setup is skipped for this look)
+  await page.goto("/#/verlauf?skip=1");
+  await expect(page.getByText("Volumen (aus Mischläufen)")).toBeVisible();
+  await expect(page.getByTestId("history-more")).toHaveCount(0);
+  await asHomeAssistant(page, "ok");
+  await page.reload();
+  await expect(page.getByTestId("history-more")).toBeVisible();
+  await expect(page.getByText("Volumen (aus Mischläufen)")).toHaveCount(0);  // nothing mixes here
+  await page.getByTestId("history-more").getByRole("link").click();
+  await expect(page).toHaveURL(/tab=zuordnung/);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
