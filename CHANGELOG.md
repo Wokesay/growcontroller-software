@@ -7,6 +7,31 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+## [0.1.0-proto.3] – 2026-10-11
+
+Third prototype: fixes from the first test of the Home Assistant app on a
+Raspberry Pi. Control still runs only in the simulator; the Home Assistant
+app only reads sensors and switches nothing. No compatibility promises.
+
+- **New:** pH, EC and level from Home Assistant now have a history and a
+  trend line on their tiles. In the Home Assistant app the top bar says
+  "Display only" ("Nur Anzeige") instead of offering an emergency stop.
+- **Fixed:** sensors from Home Assistant no longer show as outdated while
+  they keep reporting; VPD now shows when temperature and humidity report
+  at different times; the emergency stop question is no longer cut off on
+  a phone.
+- **Please note:** the Home Assistant app switches nothing and has no
+  emergency stop: in an emergency, switch off in Home Assistant or at the
+  device. A sensor that stops reporting shows as outdated after 30 min at
+  the latest; one that reports only on a change can show as outdated while
+  its value stays the same, so let it report at least every 10 min.
+
+### Added
+- **Home Assistant: pH, EC and level have a history** (SD-039): values
+  calibrated in Home Assistant that pass every check are recorded,
+  exported and shown as a trend on their tiles, now marked "Calibrated
+  elsewhere" ("anderswo kalibriert"); control still never uses them.
+
 ### Fixed
 - **Home Assistant: sensors no longer show as outdated while they report**
   (SD-035): the app learns how often each sensor reports and calls a
@@ -14,30 +39,31 @@ listed in every release under "Security".
   than 5 min, and at the latest after 30 min; right after the start,
   10 min. A sensor that is "unavailable" in Home Assistant still shows at
   once. The hub's own probes keep their fixed limits (60 s for pH, EC and
-  level, 120 s for temperature, humidity and CO2).
-- **Home Assistant: VPD is computed while air temperature and humidity are
-  both valid** (SD-035), however far apart their last reports are; many
-  sensors report only on a change. The hub's own climate head still pairs
-  its readings within 60 s.
-- **Home Assistant: pH, EC and level have a history** (SD-039): values
-  calibrated in Home Assistant that pass every check are recorded,
-  exported and shown as a trend on their tiles, now marked "anderswo
-  kalibriert" (calibrated elsewhere); control still never uses them.
+  level, 120 s for temperature, humidity and CO2). A sensor that reports
+  only on a change needs `force_update: true` (Home Assistant 2024.4 or
+  later) to stay valid while its value stays the same.
+- **Home Assistant: VPD now shows when air temperature and humidity report
+  at different times** (SD-035): it is computed while both are valid;
+  many sensors report only on a change. The hub's own climate head still
+  pairs its readings within 60 s.
 
 ### Security
-- **The emergency stop confirmation is whole on a phone:** opened from the
-  top bar, it was cut off at the top and the page behind it was not
-  dimmed. Every window in the app now opens over the whole page.
+Affected: 0.1.0-proto.2, fixed in 0.1.0-proto.3 (the cut-off dialog also
+existed in 0.1.0-proto.1, which was never published). Severity: low; both
+are about what the web app shows about the emergency stop, and no
+published download switches anything outside the simulator. Neither is a
+vulnerability: nothing could be exploited, bypassed or switched, so no
+GHSA or CVE was issued.
+
+- **The emergency stop question is no longer cut off on a phone:** opened
+  from the top bar, it was cut off at the top and the page behind it was
+  not dimmed (most visible on a phone). Every window in the app now opens
+  over the whole page.
 - **Home Assistant: no emergency stop button that would stop nothing**
-  (SD-040): the app switches nothing, so the top bar says "Nur Anzeige"
-  (display only) and tells you to switch off in Home Assistant or at the
+  (SD-040): the app switches nothing, so the top bar says "Display only"
+  ("Nur Anzeige") and tells you to switch off in Home Assistant or at the
   device. A stop set by the previous version can be cleared, and the
   overview no longer claims that everything is off.
-
-### Changed
-- `docs/DECISIONS.md`: SD-035 to SD-040 from the first test of the Home
-  Assistant app (freshness, choosing any sensor, onboarding, raw values
-  with calibration in the app, history views, stop and pause).
 
 ## [0.1.0-proto.2] – 2026-10-10
 
