@@ -258,12 +258,12 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Tests:** tests/core/test_truth.cpp "Sensorwahrheit: ohne gültige Kalibrierung kein Wert für die Regelung (RAT-025)", "Sensorwahrheit: veraltet und unplausibel"
 
 
-### RAT-027 – A sensor counts as failed only after several missed readings
+### RAT-027 – A sensor counts as failed only after several missed readings, judged by its last measurement
 
-- **Rule:** (Planned for the bus driver in the firmware, not yet implemented.) A sensor is declared failed only after several consecutive failed reads, not after a single one.
-- **Why:** A single missed reading is usually a short communication glitch; alarming on it produces false alarms. Requiring several misses still detects a real defect within minutes.
-- **Evidence:** Observed on the reference installation (2026): with sensors reporting every 30 s, a freshness limit of 5 min (ten missed reports) separated real defects from wireless dropouts; six missed reports were judged too close to ordinary dropouts.
-- **Implemented in:** docs/INVARIANTS.md (open for the hub's own sensors); for sensors on their own schedule (Home Assistant), never stale sooner than 5 min: core/src/truth.cpp `SensorTruth::freshLimit` (SD-035)
+- **Rule:** A sensor is declared failed only after several consecutive missed readings, not after a single one. Missed means no measurement, not an unchanged value: a sensor may show the same value for days, but it must keep showing that it measures. With a sign of life per channel, sent at least every 15 s, a channel is stale when its last measurement is older than 60 s; a substrate sensor read every 30 s over the slow sensor bus after 90 s (three missed reads). Changed on 2026-10-11 (SD-042): before, the limit was 5 min and judged per device.
+- **Why:** A single missed reading is usually a short communication glitch; alarming on it produces false alarms. Requiring several misses still detects a real defect quickly. Judging by a change of value instead hides a channel that falls silent while its device keeps running, and makes a calm, healthy sensor look old.
+- **Evidence:** Observed on the reference installation (2026): first, with freshness judged only per device and sensors reporting every 30 s, a limit of 5 min separated real defects from wireless dropouts, and six missed reports were too close to ordinary dropouts. Later the installation sent a sign of life per channel every 15 s: in a 14-day replay with real data, a water temperature read every 30 s was never stale at 60 s, and the other channels stayed between 0 and 20 s old.
+- **Implemented in:** docs/INVARIANTS.md (open for the hub's own sensors); for sensors on their own schedule (Home Assistant) without a sign of life, never stale sooner than 5 min: core/src/truth.cpp `SensorTruth::freshLimit` (SD-035); with a sign of life, 60 s: planned (SD-042)
 - **Tests:** tests/core/test_truth.cpp "Sensor truth: a sensor on its own schedule is stale only when it misses its usual reports (SD-035)"
 
 
