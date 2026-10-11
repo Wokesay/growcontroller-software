@@ -5,7 +5,8 @@ As of 2026-10-07. These are the domain rules documented in
 implementation and test evidence. "Rationale" cites the RAT ID;
 "proposal by <agent>" marks a rule that came from a review; R1–R8 are the
 code rules ([`CONCEPT.md`](CONCEPT.md) §4) and PD-xxx are product
-decisions. "Test" names the file under `tests/core/` or `web/e2e/`.
+decisions and SD-xxx software decisions. "Test" names the file under
+`tests/core/` or `web/e2e/`.
 Status: **✓** implemented and tested · **◐** implemented, without a
 dedicated test or with a deviation · **○** open.
 
@@ -94,11 +95,13 @@ dedicated test or with a deviation · **○** open.
 | A missing value is never 0 | RAT-006 | ✓ | test_truth M8-1; `arch_check.sh` |
 | A value from outside the hub is taken only in a unit the hub converts exactly; a missing unit, another unit or one that needs an assumed factor (TDS in ppm, level in %) gives no value | RAT-006, RAT-015 | ✓ | test_ha "only units the hub converts exactly give a value" |
 | Freshness and frozen readings are checked separately; a value calibrated outside the hub has no raw signal and gets no frozen check, only freshness | RAT-023, RAT-059 | ✓ | test_truth |
+| A sensor on its own schedule (Home Assistant) is stale after three of its usual gaps between reports, never sooner than 5 min, never later than 30 min, 10 min until learned; a report re-dated by under 2 s and a clock step back are no gap; "unavailable" shows at once; the hub's own probes keep the catalog's limit; the mark is set only in code | SD-035, RAT-027, R7 | ✓ | `SensorTruth::freshLimit` · test_truth "a sensor on its own schedule is stale only when it misses its usual reports", "the hub's own probes keep the catalog's limit"; test_ha "a sensor that reports every few minutes stays valid" |
+| The history records values that pass every check, also one calibrated outside the hub; a raw signal, a stale, implausible, jumping or frozen value stays a gap; `forHistory()` is read only where the history is sampled | SD-039, RAT-006, RAT-016, RAT-025 | ✓ | `Reading::forHistory`, `Hub::sampleHistory`, `arch_check.sh` · test_truth "the history takes what passed every check, also calibrated elsewhere, and nothing else"; test_ha "a sensor that reports every few minutes stays valid, and pH is in the history" |
 | Invalid calibration → no control value; a value calibrated outside the hub is shown, never used for control | RAT-025, RAT-026 | ✓ | test_truth, "a value calibrated elsewhere is shown, but not used for control (RAT-025)"; test_ha |
 | Jump lock (pH > 1.0 / EC > 0.5 in 5 min), released after 15 min steady, survives a restart | RAT-039, RAT-044 | ✓ | test_truth M8-2, test_scenarios, E2E |
 | An announced intervention explains a jump | RAT-042 | ✓ | own doses, mix run, inlet, calibration, maintenance mode · test_truth M8-3 |
-| Failure only after n missed readings | RAT-027 | ○ | job of the bus driver (firmware) |
-| VPD is air VPD without leaf offset; if an input is missing, no value | RAT-017 | ✓ | `SensorTruth::updateDerived` (FAO-56 eq. 11) · test_climate "Formel", "bei Ausfall eine Lücke". Own rule: both inputs at most 60 s apart |
+| Failure only after n missed readings | RAT-027 | ◐ | for the hub's own sensors the job of the bus driver (firmware, open); sensors on their own schedule: stale never sooner than 5 min (SD-035) · test_truth "a sensor on its own schedule is stale only when it misses its usual reports" |
+| VPD is air VPD without leaf offset; if an input is missing, no value | RAT-017 | ✓ | `SensorTruth::updateDerived` (FAO-56 eq. 11) · test_climate "Formel", "bei Ausfall eine Lücke". Own rule: the hub's own inputs at most 60 s apart; if either input is on its own schedule, while both are valid (SD-035) · test_truth "VPD pairs the hub's own readings within 60 s", "VPD from one reading of the hub and one on its own schedule" |
 
 ## M9 Watchdog
 

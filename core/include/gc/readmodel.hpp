@@ -35,6 +35,12 @@ struct Reading {
   Ms ts = 0;
   Ms ageMs = -1;
   bool usable() const { return quality == Quality::Ok && value.has_value(); }
+  // Passed every check the hub makes, though perhaps calibrated elsewhere:
+  // what the history records (SD-039). Only for the history: control, the
+  // watchdog and the resolver read usable() (tools/arch_check.sh).
+  bool forHistory() const {
+    return value.has_value() && (quality == Quality::Ok || (quality == Quality::Uncalibrated && reason.key == kCalibratedElsewhere));
+  }
 };
 
 }  // namespace gc

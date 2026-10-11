@@ -11,9 +11,24 @@ the sensors from it and shows them with growcontroller's checks.
   it can use: pH, EC, temperature, humidity, CO2 and level, recognised by
   their device class and unit.
 - It **switches nothing**: no pump, no plug, no light. It asks Home
-  Assistant only for the list of states.
-- pH, EC and level are shown for display only: they were calibrated
-  outside growcontroller, which has not checked that calibration.
+  Assistant only for the list of states. That is why there is no
+  emergency stop: the top bar shows **Display only** (German: **Nur
+  Anzeige**) in its place. In an emergency, switch off in Home Assistant
+  or at the device itself, or pull the plug.
+- It learns how often each sensor reports. A value shows as **Outdated**
+  only when its sensor has missed about three of its usual reports: never
+  sooner than 5 min, and at the latest after 30 min without a report.
+  Until the app has seen a sensor report a few times (after a start, or
+  after you pick another sensor), the limit is 10 min.
+- A sensor that reports only when its value changes shows as outdated
+  once its value stays the same longer than that. Then let it report at
+  least every 10 min (ESPHome or MQTT: `force_update: true`). Reports that
+  keep the same value count only from Home Assistant 2024.4 on.
+- A sensor that Home Assistant marks as unavailable shows as **Not
+  responding** at once.
+- pH, EC and level were calibrated in Home Assistant, which growcontroller
+  has not checked; their tiles say so. They are recorded in the history,
+  but never used for control.
 - It is experimental: a trial of the growcontroller software on Home
   Assistant, not the finished product.
 

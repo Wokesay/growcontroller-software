@@ -33,6 +33,12 @@ if grep -rnE 'value_or\(0(\.0)?\)' core/; then
   err "fehlender Wert wird zu 0"
 fi
 
+# SD-039: a value calibrated elsewhere goes into the history, never into
+# control: Reading::forHistory() is read only where the history is sampled.
+if grep -rnE 'forHistory\(' core/ | grep -vE '^core/include/gc/readmodel\.hpp:|^core/src/hub\.cpp:[0-9]+: +samples\.emplace_back'; then
+  err "forHistory() outside the history sampling"
+fi
+
 # PD-022, PD-043, PD-047 (SD-010, SD-021, SD-024): devices do not lock out
 # third-party firmware; the only eFuse allowed is the HMAC key for encrypted
 # NVS. No sdkconfig option that burns eFuses for Secure Boot, flash

@@ -7,6 +7,38 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+### Fixed
+- **Home Assistant: sensors no longer show as outdated while they report**
+  (SD-035): the app learns how often each sensor reports and calls a
+  value outdated only after about three of its usual gaps: never sooner
+  than 5 min, and at the latest after 30 min; right after the start,
+  10 min. A sensor that is "unavailable" in Home Assistant still shows at
+  once. The hub's own probes keep their fixed limits (60 s for pH, EC and
+  level, 120 s for temperature, humidity and CO2).
+- **Home Assistant: VPD is computed while air temperature and humidity are
+  both valid** (SD-035), however far apart their last reports are; many
+  sensors report only on a change. The hub's own climate head still pairs
+  its readings within 60 s.
+- **Home Assistant: pH, EC and level have a history** (SD-039): values
+  calibrated in Home Assistant that pass every check are recorded,
+  exported and shown as a trend on their tiles, now marked "anderswo
+  kalibriert" (calibrated elsewhere); control still never uses them.
+
+### Security
+- **The emergency stop confirmation is whole on a phone:** opened from the
+  top bar, it was cut off at the top and the page behind it was not
+  dimmed. Every window in the app now opens over the whole page.
+- **Home Assistant: no emergency stop button that would stop nothing**
+  (SD-040): the app switches nothing, so the top bar says "Nur Anzeige"
+  (display only) and tells you to switch off in Home Assistant or at the
+  device. A stop set by the previous version can be cleared, and the
+  overview no longer claims that everything is off.
+
+### Changed
+- `docs/DECISIONS.md`: SD-035 to SD-040 from the first test of the Home
+  Assistant app (freshness, choosing any sensor, onboarding, raw values
+  with calibration in the app, history views, stop and pause).
+
 ## [0.1.0-proto.2] – 2026-10-10
 
 Second prototype and the first published release: simulator downloads for

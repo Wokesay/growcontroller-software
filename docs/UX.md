@@ -17,9 +17,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
   "not applicable" (for example water temperature with an empty tank).
   Rationale: RAT-021, RAT-048. **Calibrated outside the hub** (Home
   Assistant trial) is a state of its own, not "not calibrated": the value
-  shows with its age (no trend: the history keeps only values usable for
-  control) and is marked "display only"; stale,
-  implausible and jumps still show. Rationale: RAT-025.
+  shows with its age and its trend (the history records it, SD-039) and is
+  marked "anderswo kalibriert" (calibrated elsewhere); stale, implausible
+  and jumps still show. Rationale: RAT-025.
 - **Show only what the hardware can do.** What is missing is listed in one
   place: Devices › Expand. Empty "–" tiles and probe advertising get in
   the way (`anwender`). On a Home Assistant hub there is nothing to plug
@@ -53,7 +53,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
 | Settings | System, access, updates with "What's new", report a problem, data, display |
 
 On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
-(emergency stop) is always at the top right.
+(emergency stop) is always at the top right, except where nothing is
+switched (the Home Assistant trial): there "Nur Anzeige" (display only)
+says why there is no stop and how to switch off in an emergency (SD-040).
 
 ## 3. Overview per expansion stage
 

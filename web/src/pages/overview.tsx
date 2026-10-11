@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, PackagePlus, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";
 import { get, post, type HubEvent } from "../api";
 import { ago, dateTime, num } from "../format";
-import { catalog, config, hasRole, refreshState, state, tank, toast } from "../store";
+import { catalog, config, hasRole, readOnly, refreshState, state, tank, toast } from "../store";
 import { msg, t as tr } from "../i18n";
 import { ClimateTiles, OutputsOverview } from "./areas";
 import { Banner, Button, Card, NumberInput, Pill } from "../ui";
@@ -101,7 +101,8 @@ export function Overview() {
     <div class="stack">
       {st.stopped && (
         <Banner tone="bad" icon={<OctagonX size={18} />}>
-          <strong>{tr("overview.stoppedTitle")}</strong> {tr("overview.stoppedText")}
+          {/* Where nothing is switched, "everything is off" would be untrue (SD-040) */}
+          <strong>{tr("overview.stoppedTitle")}</strong> {tr(readOnly.value ? "overview.stoppedReadOnly" : "overview.stoppedText")}
         </Banner>
       )}
       {st.maintenanceUntil > st.now && (

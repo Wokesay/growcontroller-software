@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bausteine der Oberfläche: Karten, Knöpfe, Felder, Dialoge, Status.
-import { Component, type ComponentChildren, type JSX } from "preact";
+import { Component, render, type ComponentChildren, type JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
@@ -227,6 +227,25 @@ export function Seg<T extends string>(p: { value: T; options: [T, string][]; onC
   );
 }
 
+// Renders its children at the end of <body>: a window opened from the sticky
+// top bar would otherwise be fenced in by it (its blur makes it the frame of
+// fixed elements), cut off at the top and over an undimmed page. The app
+// uses no context, so a second root loses nothing.
+function Portal(p: { children: ComponentChildren }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  if (!host.current) host.current = document.createElement("div");
+  useLayoutEffect(() => {
+    const el = host.current!;
+    document.body.appendChild(el);
+    return () => {
+      render(null, el);
+      el.remove();
+    };
+  }, []);
+  useLayoutEffect(() => render(<>{p.children}</>, host.current!));
+  return null;
+}
+
 export function Modal(p: { title: ComponentChildren; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren; wide?: boolean }) {
   // Escape calls the current onClose, not the one from the first render. The key is
   // listened for as soon as the window is in the page, not only after the next frame.
@@ -238,18 +257,20 @@ export function Modal(p: { title: ComponentChildren; onClose: () => void; childr
     return () => window.removeEventListener("keydown", k);
   }, []);
   return (
-    <div class="overlay" onClick={(e) => e.target === e.currentTarget && p.onClose()}>
-      <div class={`modal ${p.wide ? "wide" : ""}`} role="dialog" aria-modal="true">
-        <div class="row-between">
-          <h2>{p.title}</h2>
-          <button class="btn ghost sm" onClick={p.onClose} aria-label={t("common.close")}>
-            <X size={18} />
-          </button>
+    <Portal>
+      <div class="overlay" onClick={(e) => e.target === e.currentTarget && p.onClose()}>
+        <div class={`modal ${p.wide ? "wide" : ""}`} role="dialog" aria-modal="true">
+          <div class="row-between">
+            <h2>{p.title}</h2>
+            <button class="btn ghost sm" onClick={p.onClose} aria-label={t("common.close")}>
+              <X size={18} />
+            </button>
+          </div>
+          {p.children}
+          {p.footer && <div class="modal-foot">{p.footer}</div>}
         </div>
-        {p.children}
-        {p.footer && <div class="modal-foot">{p.footer}</div>}
       </div>
-    </div>
+    </Portal>
   );
 }
 

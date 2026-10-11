@@ -15,8 +15,10 @@ As of 2026-10-10. Proposal by `software`, implemented in the prototype
   thins out to at most N points and keeps minimum and maximum.
 - **Gaps stay gaps:** NaN, `null` in the API, a break in the chart, an
   empty field in the CSV. Rationale: RAT-006, RAT-016.
-- **What is stored:** only valid values from sensor truth go into the
-  history. An invalid value becomes a gap, not a wrong point.
+- **What is stored:** only values that pass every check of the sensor
+  truth go into the history, also one calibrated outside the hub (Home
+  Assistant, display only, SD-039). An invalid value, or a probe's raw
+  signal without a calibration, becomes a gap, not a wrong point.
 - **Series:** every role with `series: true` (pH, EC, water temperature,
   level, climate) and the known tank volume.
 

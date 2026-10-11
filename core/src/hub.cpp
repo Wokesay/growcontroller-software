@@ -641,7 +641,7 @@ void Hub::sampleHistory(Epoch epoch) {
     const CapabilityDef* cap = cat_.capability(role.capability);
     const bool derived = cap && cap->kind == "derived";
     if (derived ? r.quality == Quality::NotBound : !cfg_.binding(roleId)) continue;
-    samples.emplace_back(roleId, r.usable() ? *r.value : kNaN);  // Lücke statt 0
+    samples.emplace_back(roleId, r.forHistory() ? *r.value : kNaN);  // Lücke statt 0
   }
   double v = tankVolume();
   if (isNum(v)) samples.emplace_back("tank.volume", v);

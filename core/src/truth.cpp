@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 #include "gc/messages.hpp"
 
@@ -28,6 +29,19 @@ namespace {
 
 constexpr Ms kJumpWindow = 5 * kMinute;     // Sprung innerhalb von 5 min (RAT-039)
 constexpr Ms kFrozenAfter = 15 * kMinute;   // Rohwert steht still
+
+// A sensor on its own schedule (SD-035): stale after three of its usual gaps
+// between reports, learned from the last ten, never sooner than 5 min (such
+// sensors drop a few reports now and then, RAT-027) and never later than
+// 30 min; until three gaps are seen, 10 min. All own rules (assumptions).
+// A report re-dated by less than 2 s is the same report: the hub dates a
+// report again after a lost connection, to Home Assistant's whole seconds.
+constexpr size_t kGapsKept = 10;
+constexpr size_t kGapsToLearn = 3;
+constexpr Ms kShortestOwnLimit = 5 * kMinute;
+constexpr Ms kStartLimit = 10 * kMinute;
+constexpr Ms kLongestLimit = 30 * kMinute;
+constexpr Ms kSameReport = 2 * kSecond;
 
 std::string calibrationKind(const std::string& cap) {
   if (cap == "measure.ph") return "ph";
@@ -156,6 +170,18 @@ void SensorTruth::expectChange(const std::string& role, Ms until) {
   t.explainedUntil = std::max(t.explainedUntil, until);
 }
 
+Ms SensorTruth::freshLimit(const CapabilityDef& cap, const Track* learned) {
+  const Ms catalog = static_cast<Ms>(cap.maxAgeS * 1000.0);
+  if (!learned) return catalog;
+  if (learned->gaps.size() < kGapsToLearn) return std::max(catalog, kStartLimit);
+  // The usual gap is the second longest, so one outage (Home Assistant
+  // restarting) does not loosen the limit for the next ten reports.
+  std::vector<Ms> gaps(learned->gaps.begin(), learned->gaps.end());
+  std::sort(gaps.begin(), gaps.end());
+  const Ms usual = gaps[gaps.size() - 2];
+  return std::max({catalog, kShortestOwnLimit, std::min(3 * usual, kLongestLimit)});
+}
+
 const Reading& SensorTruth::get(const std::string& role) const {
   auto it = readings_.find(role);
   return it == readings_.end() ? emptyReading() : it->second;
@@ -172,6 +198,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     r.unit = cap->unit;
     r.decimals = cap->decimals;
     auto& tr = tracks_[roleId];
+    tr.ownSchedule = false;  // known only once a sample is read below
     auto setQ = [&](Quality q, const std::string& key, const std::string& text, json args = json::object()) {
       r.quality = q;
       r.reason = {key, text, std::move(args)};
@@ -199,6 +226,30 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     }
     r.ts = s->ts;
     r.ageMs = now - s->ts;
+    const DeviceCfg* dev = cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
+
+    // A sensor on its own schedule: learn the gaps between its reports (SD-035)
+    const bool ownSchedule = dc && dc->ownReportSchedule;
+    tr.ownSchedule = ownSchedule;
+    if (!ownSchedule || tr.device != b->device) {  // another sensor for the role starts over
+      tr.device = ownSchedule ? b->device : std::string();
+      tr.reported = false;
+      tr.gaps.clear();
+    }
+    if (ownSchedule) {
+      if (!tr.reported) {
+        tr.reported = true;
+        tr.lastReport = s->ts;
+      } else if (std::llabs(s->ts - tr.lastReport) >= kSameReport) {
+        if (s->ts > tr.lastReport) {  // a clock step back is no gap
+          tr.gaps.push_back(std::min(s->ts - tr.lastReport, kLongestLimit));
+          if (tr.gaps.size() > kGapsKept) tr.gaps.pop_front();
+        }
+        tr.lastReport = s->ts;
+      }
+    }
+    const Ms limit = freshLimit(*cap, ownSchedule ? &tr : nullptr);
 
     // Stillstand des Rohwerts getrennt von der Frische prüfen (RAT-023).
     if (s->raw != tr.lastRaw) {
@@ -208,8 +259,6 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     bool needsCal = !calibrationKind(role.capability).empty();
     // Calibrated elsewhere (e.g. in Home Assistant): shown, but the hub has
     // not checked that calibration, so it is no value for control (RAT-025).
-    const DeviceCfg* dev = cfg.device(b->device);
-    const DeviceClassDef* dc = dev ? cat_.deviceClass(dev->cls) : nullptr;
     const bool calibratedElsewhere = needsCal && dc && dc->externalCalibration;
     auto value = calibratedElsewhere ? std::nullopt : calibrate(role.capability, s->raw, cfg.calibration(b->device, calibrationKind(role.capability)));
     if (value) r.value = value;
@@ -223,9 +272,9 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     // stay the same, so it gets no standstill check and freshness covers
     // silence (RAT-059).
     const std::optional<double> assessed = calibratedElsewhere ? std::optional<double>(s->raw) : value;
-    if (r.ageMs > static_cast<Ms>(cap->maxAgeS * 1000.0)) {
+    if (r.ageMs > limit) {
       setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
-           {{"ageS", r.ageMs / 1000}});
+           {{"ageS", r.ageMs / 1000}, {"limitS", limit / 1000}});
     } else if (!assessed) {
       setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
     } else if (expectsNoise(role.capability) && !calibratedElsewhere && now - tr.lastRawChange > kFrozenAfter) {
@@ -286,10 +335,16 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
 double SensorTruth::saturationKPa(double t) { return 0.6108 * std::exp(17.27 * t / (t + 237.3)); }
 double SensorTruth::airVpdKPa(double t, double rh) { return saturationKPa(t) * (1.0 - rh / 100.0); }
 
-// Abgeleitete Werte, fester Code statt Skript: Luft-VPD ohne Blatt-Offset,
-// fehlt ein Quellwert, gibt es keinen Wert (RAT-017, R5). Beide Werte
-// höchstens 60 s auseinander (eigene Regel, Annahme).
+// Derived values in fixed code, not a script: air VPD without a leaf offset;
+// without an input there is no value (RAT-017, R5). The hub's own readings
+// at most 60 s apart (own rule, assumption). If either reading is on its own
+// schedule, both only need to be valid: such sensors often report only on a
+// change, so a report's time is not the age of its value (SD-035).
 void SensorTruth::updateDerived() {
+  auto ownSchedule = [&](const std::string& role) {
+    auto it = tracks_.find(role);
+    return it != tracks_.end() && it->second.ownSchedule;
+  };
   for (const auto& [roleId, role] : cat_.roles) {
     if (role.capability != "derive.vpd") continue;
     const CapabilityDef* cap = cat_.capability(role.capability);
@@ -306,7 +361,7 @@ void SensorTruth::updateDerived() {
     } else if (!t.usable() || !h.usable()) {
       r.quality = Quality::NoData;
       r.reason = {"truth.vpd.invalid", "Lufttemperatur oder Luftfeuchte ungültig", json::object()};
-    } else if (std::llabs(t.ts - h.ts) > 60 * kSecond) {
+    } else if (!ownSchedule("zone.air_temp") && !ownSchedule("zone.humidity") && std::llabs(t.ts - h.ts) > 60 * kSecond) {
       r.quality = Quality::Stale;
       r.reason = {"truth.vpd.apart", "Temperatur und Feuchte liegen zeitlich zu weit auseinander", json::object()};
     } else {

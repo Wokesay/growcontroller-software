@@ -214,3 +214,233 @@ TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for
   CHECK(rt.jumpLocks.count("tank.ph") == 0);
   CHECK_FALSE(truth.get("tank.ph").usable());
 }
+
+TEST_CASE("Sensor truth: a sensor on its own schedule is stale only when it misses its usual reports (SD-035)") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_temp"] = {{"label", "Temperature from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.water_temp"}}};
+  j["deviceClasses"]["ext_temp"]["ownReportSchedule"] = true;  // ignored: the catalog cannot loosen freshness (R7)
+  CHECK_FALSE(Catalog::fromJson(j).deviceClass("ext_temp")->ownReportSchedule);
+  Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_temp"].ownReportSchedule = true;  // set in code, as the Home Assistant adapter does
+  REQUIRE(cat.capability("measure.water_temp")->maxAgeS == 120);
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  SensorTruth truth{cat};
+  cfg.devices = {{"HA-T", "ext_temp", "Water"}, {"HA-T2", "ext_temp", "Water 2"}};
+  cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
+  bus.head("HA-T");
+  bus.head("HA-T2");
+  constexpr Ms kS = 1000, kMin = 60 * kS;
+  auto quality = [&] {
+    truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+    return truth.get("tank.water_temp").quality;
+  };
+  // The sensor reports every `gap`, `n` times; the hub looks every second in between.
+  auto reports = [&](const std::string& dev, Ms gap, int n) {
+    for (int i = 0; i < n; ++i) {
+      for (Ms t = 0; t < gap; t += kS) {
+        clk.ms += kS;
+        quality();
+      }
+      bus.set(dev, "measure.water_temp", 21.0, clk.ms);
+      quality();
+    }
+  };
+  // Is it still valid when its last report is `age` old?
+  auto validAt = [&](Ms age) {
+    const Ms last = bus.samples["HA-T|measure.water_temp"].ts;
+    clk.ms = last + age;
+    return quality() == Quality::Ok;
+  };
+
+  // Right after the start nothing is learned: a report 4 min old is no fault
+  // (the catalog's 2 min would call it stale); 10 min is the rough limit.
+  clk.ms = 30 * kMin;
+  bus.set("HA-T", "measure.water_temp", 21.0, clk.ms - 4 * kMin);
+  CHECK(quality() == Quality::Ok);
+  CHECK(validAt(10 * kMin - kS));
+  CHECK_FALSE(validAt(10 * kMin + kS));
+  CHECK(truth.get("tank.water_temp").quality == Quality::Stale);
+
+  // Every 5 min, learned after three gaps: stale after 3 × 5 = 15 min
+  reports("HA-T", 5 * kMin, 3);
+  CHECK(validAt(15 * kMin - kS));
+  CHECK_FALSE(validAt(15 * kMin + kS));
+  const Reading& stale = truth.get("tank.water_temp");
+  CHECK(stale.reason.key == "truth.stale");
+  CHECK(stale.reason.args.value("limitS", 0) == 900);  // the web app can say what was expected
+
+  // Every 2 min: 6 min, valid up to the limit itself
+  reports("HA-T", 2 * kMin, 11);
+  CHECK(validAt(6 * kMin));
+  CHECK_FALSE(validAt(6 * kMin + kS));
+
+  // One outage (a restart of Home Assistant) does not loosen the limit
+  reports("HA-T", 20 * kMin, 1);
+  reports("HA-T", 2 * kMin, 2);
+  CHECK(validAt(6 * kMin - kS));
+  CHECK_FALSE(validAt(6 * kMin + kS));
+
+  // Never sooner than 5 min: such sensors drop a few reports now and then
+  // (RAT-027), so every 5 s gives 5 min, not 15 s or the catalog's 2 min
+  reports("HA-T", 5 * kS, 11);
+  CHECK(validAt(5 * kMin - kS));
+  CHECK_FALSE(validAt(5 * kMin + kS));
+
+  // Never more than 30 min, however rarely it reports
+  reports("HA-T", 20 * kMin, 3);
+  CHECK(validAt(30 * kMin - kS));
+  CHECK_FALSE(validAt(30 * kMin + kS));
+
+  // The same report dated again by a second or so (after a lost connection
+  // the hub dates it anew, to Home Assistant's whole seconds) is no gap
+  reports("HA-T", 3 * kMin, 10);  // 9 min
+  const Ms last = clk.ms;
+  for (int i = 0; i < 24; ++i) {
+    bus.set("HA-T", "measure.water_temp", 21.0, last + (i % 2 ? 1500 : 800));
+    clk.ms += kS;
+    quality();
+  }
+  bus.set("HA-T", "measure.water_temp", 21.0, last);
+  CHECK(validAt(8 * kMin));  // with a dozen gaps under a second learned it would be 5 min
+
+  // "unavailable" in Home Assistant shows at once, whatever was learned
+  bus.devs[0].online = false;
+  CHECK(quality() == Quality::Offline);
+  bus.devs[0].online = true;
+
+  // Another sensor for the role starts over: 10 min until three gaps are seen
+  reports("HA-T", 5 * kS, 11);  // 5 min
+  bus.set("HA-T2", "measure.water_temp", 22.0, clk.ms - 8 * kMin);
+  cfg.tank().roles["tank.water_temp"] = {"HA-T2", 0};
+  CHECK(quality() == Quality::Ok);  // with what HA-T taught, 8 min would be stale
+  const Ms start = clk.ms;
+  bus.set("HA-T2", "measure.water_temp", 22.0, start);  // gap 1: 8 min
+  quality();
+  clk.ms += kMin;
+  bus.set("HA-T2", "measure.water_temp", 22.0, clk.ms);  // gap 2: 1 min
+  quality();
+  // A clock step back is no gap: still two, so still 10 min
+  clk.ms += kS;
+  bus.set("HA-T2", "measure.water_temp", 22.0, start + 30 * kS);
+  quality();
+  clk.ms = start + 30 * kS + 7 * kMin;
+  CHECK(quality() == Quality::Ok);  // learned from [8 min, 1 min, a step back] it would be 5 min
+}
+
+TEST_CASE("Sensor truth: the hub's own probes keep the catalog's limit, however they report (SD-035)") {
+  Fix f;
+  for (int i = 0; i < 6; ++i) {  // a probe the hub reads only every 5 min
+    f.ph(7.18 + 0.001 * i);
+    f.run("tank.ph");
+    f.clk.ms += 5 * 60 * 1000;
+  }
+  f.ph(7.19);
+  f.run("tank.ph");
+  f.clk.ms += 59 * 1000;
+  CHECK(f.run("tank.ph").quality == Quality::Ok);
+  f.clk.ms += 2 * 1000;
+  CHECK(f.run("tank.ph").quality == Quality::Stale);  // 60 s, as in the catalog
+}
+
+TEST_CASE("Sensor truth: VPD pairs the hub's own readings within 60 s, and readings on their own schedule while both are valid (SD-035)") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_air"] = {{"label", "Air from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.air_temp"}}};
+  j["deviceClasses"]["ext_rh"] = {{"label", "Humidity from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.humidity"}}};
+  Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_air"].ownReportSchedule = true;
+  cat.deviceClasses["ext_rh"].ownReportSchedule = true;
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  SensorTruth truth{cat};
+  constexpr Ms kS = 1000;
+  clk.ms = 600 * kS;
+  auto vpd = [&] {
+    truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+    return truth.get("zone.vpd");
+  };
+  // The hub's climate head: both readings come from one read, so 61 s apart means one is stuck
+  cfg.devices = {{"CL-1", "head_climate", "Climate"}, {"CL-2", "head_climate", "Climate 2"}};
+  cfg.zone().roles["zone.air_temp"] = {"CL-1", 0};
+  cfg.zone().roles["zone.humidity"] = {"CL-2", 0};
+  bus.head("CL-1");
+  bus.head("CL-2");
+  bus.set("CL-1", "measure.air_temp", 25.0, clk.ms - 61 * kS);
+  bus.set("CL-2", "measure.humidity", 60.0, clk.ms);
+  CHECK(vpd().reason.key == "truth.vpd.apart");
+  CHECK_FALSE(vpd().value.has_value());
+  bus.set("CL-1", "measure.air_temp", 25.0, clk.ms - 59 * kS);
+  CHECK(vpd().usable());
+  // Sensors in Home Assistant often report only on a change: a temperature
+  // reported 2 min ago is still the current one while it is valid
+  cfg.devices = {{"HA-AIR", "ext_air", "Air"}, {"HA-RH", "ext_rh", "Humidity"}};
+  cfg.zone().roles["zone.air_temp"] = {"HA-AIR", 0};
+  cfg.zone().roles["zone.humidity"] = {"HA-RH", 0};
+  bus.head("HA-AIR");
+  bus.head("HA-RH");
+  bus.set("HA-AIR", "measure.air_temp", 25.0, clk.ms - 120 * kS);
+  bus.set("HA-RH", "measure.humidity", 60.0, clk.ms - 5 * kS);
+  const Reading r = vpd();
+  REQUIRE(truth.get("zone.air_temp").usable());
+  REQUIRE(r.usable());
+  CHECK(*r.value == doctest::Approx(SensorTruth::airVpdKPa(25.0, 60.0)));
+  // Without a valid input there is no VPD, never 0 (R5)
+  clk.ms += 10 * 60 * kS;  // the temperature is now stale
+  bus.set("HA-RH", "measure.humidity", 60.0, clk.ms);
+  const Reading none = vpd();
+  REQUIRE(truth.get("zone.air_temp").quality == Quality::Stale);
+  CHECK_FALSE(none.value.has_value());
+}
+
+TEST_CASE("Sensor truth: the history takes what passed every check, also calibrated elsewhere, and nothing else (SD-039)") {
+  auto reading = [](Quality q, const char* key, std::optional<double> v) {
+    Reading r;
+    r.quality = q;
+    r.reason.key = key;
+    r.value = v;
+    return r;
+  };
+  CHECK(reading(Quality::Ok, "truth.ok", 6.1).forHistory());
+  CHECK(reading(Quality::Uncalibrated, kCalibratedElsewhere, 6.1).forHistory());
+  // A probe of the hub without a calibration shows its raw signal: never as pH in the history
+  CHECK_FALSE(reading(Quality::Uncalibrated, "truth.uncalibrated", 7.18).forHistory());
+  CHECK_FALSE(reading(Quality::Stale, "truth.stale", 6.1).forHistory());
+  CHECK_FALSE(reading(Quality::Implausible, "truth.implausible", 9.7).forHistory());
+  CHECK_FALSE(reading(Quality::Jump, "truth.jump", 7.4).forHistory());
+  CHECK_FALSE(reading(Quality::Frozen, "truth.frozen", 6.1).forHistory());
+  CHECK_FALSE(reading(Quality::Ok, "truth.ok", std::nullopt).forHistory());
+  CHECK_FALSE(reading(Quality::Uncalibrated, kCalibratedElsewhere, std::nullopt).forHistory());
+  // As the sensor truth gives it for a hub probe without a calibration
+  Fix f;
+  f.cfg.calibrations.erase("PH-1");
+  f.ph(7.18);
+  const Reading& raw = f.run("tank.ph");
+  REQUIRE(raw.value.has_value());  // shown as the raw signal
+  CHECK_FALSE(raw.forHistory());
+}
+
+TEST_CASE("Sensor truth: VPD from one reading of the hub and one on its own schedule needs both valid only (SD-035)") {
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_rh"] = {{"label", "Humidity from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.humidity"}}};
+  Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_rh"].ownReportSchedule = true;
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  SensorTruth truth{cat};
+  clk.ms = 600 * 1000;
+  cfg.devices = {{"CL-1", "head_climate", "Climate"}, {"HA-RH", "ext_rh", "Humidity"}};
+  cfg.zone().roles["zone.air_temp"] = {"CL-1", 0};
+  cfg.zone().roles["zone.humidity"] = {"HA-RH", 0};
+  bus.head("CL-1");
+  bus.head("HA-RH");
+  bus.set("CL-1", "measure.air_temp", 25.0, clk.ms);
+  bus.set("HA-RH", "measure.humidity", 60.0, clk.ms - 4 * 60 * 1000);  // reported on its last change
+  truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+  CHECK(truth.get("zone.vpd").usable());
+}

@@ -19,16 +19,21 @@ missing value is never 0). Nobody has to write a list of entity IDs.
 - It switches nothing. Every run of a pump and every switch command is
   refused, so dosing, refill, circulation and the climate outputs stay off.
   It sends Home Assistant nothing but `GET /api/states` (below the path in
-  the address, if it has one; tested).
+  the address, if it has one; tested). So the web app shows no emergency
+  stop, which would stop nothing; in its place "Nur Anzeige" (display only)
+  says to switch off in Home Assistant or at the device (SD-040).
 - pH, EC and level are shown but are **no values for control**: they were
   calibrated outside the hub, and the hub has not checked that calibration
-  (RAT-025). Their tiles say "nur Anzeige" (display only) and "Außerhalb
-  des Hubs kalibriert – vom Hub nicht geprüft" (calibrated outside the hub,
-  not checked by the hub); stale, implausible and jumping values are still
+  (RAT-025). Their tiles say "anderswo kalibriert" (calibrated elsewhere)
+  and "Außerhalb des Hubs kalibriert – vom Hub nicht geprüft" (calibrated
+  outside the hub, not checked by the hub); stale, implausible and jumping values are still
   marked as such. They get no standstill ("frozen") check: what arrives is
   a rounded, calibrated value, not a raw signal, and a steady tank is no
   fault (RAT-059); a sensor that falls silent goes stale. Temperature,
   humidity and CO2 need no calibration and are valid readings.
+- The history records pH, EC and level too: a value that passes every
+  check and is only calibrated elsewhere is a measurement worth keeping;
+  control still never reads it (SD-039).
 
 ## As a Home Assistant app
 
@@ -120,18 +125,29 @@ labels follow Home Assistant's developer documentation for apps
 
 - **Home Assistant 2024.4 or later**, so a state carries `last_reported`,
   which every report updates even when the value stays the same [1].
-  The hub dates each value by its last report; a value that is not
-  reported again goes stale after the capability's limit (60 s for pH, EC
-  and level, 120 s for temperature, humidity and CO2), even though Home
-  Assistant still answers. On an older version a steady value goes stale,
-  which is safe but useless.
-- **A report interval of 10 s or less for pH, EC and level.** ESPHome's
-  EZO sensors read every 60 s by default [2], the same as the freshness
-  limit, so readings would flip between valid and stale.
-- **`force_update: true` only if needed:** if a steady value goes stale
-  although the sensor reports, set it on the ESPHome or MQTT sensor
-  (default off [2]). It makes Home Assistant record every reading, so its
-  database grows.
+  On an older version a steady value is reported only when it changes.
+- **A report at least every 10 min.** The hub dates each value by its
+  last report and learns each sensor's usual gap between reports from its
+  last ten: a value goes stale after three of its usual gaps (the second
+  longest counts, so one outage does not loosen it), never sooner than
+  5 min, since such sensors drop a report now and then (RAT-027), and
+  never later than 30 min. A sensor that reports every 10 to 30 min goes
+  stale on one late report. Right after the start, or after another sensor
+  is picked, nothing is learned yet: then a value goes stale after 10 min.
+  All these numbers are own rules (SD-035). A sensor that reports only on
+  a change goes stale once its value stays the same for longer than that.
+  "unavailable" in Home Assistant shows at once as "Gerät antwortet nicht"
+  (device not answering).
+- **VPD** is computed while air temperature and humidity are both valid,
+  each by its own learned limit, however far apart their last reports are:
+  a sensor that reports on a change keeps its value until it changes. The
+  hub's own climate head still pairs its two readings within 60 s (SD-035).
+- **`force_update: true` for calm channels:** Home Assistant's ESPHome
+  integration drops a state that did not change unless `force_update` is
+  set, so `last_reported` does not move [3]. Water temperature and level
+  change rarely and would go stale; set `force_update: true` on such
+  ESPHome or MQTT sensors (default off [2]). It makes Home Assistant record
+  every reading, so its database grows.
 - **Map the sensor itself, not a rounding template:** a `round()` template
   sensor only writes when its source changes, so a steady value would go
   stale (assumption from how templates work, not tested here).
@@ -143,7 +159,9 @@ labels follow Home Assistant's developer documentation for apps
 Two things to know while it runs:
 
 - **After a Home Assistant restart** restored states carry the restart
-  time, so an old value looks fresh until the freshness limit runs out.
+  time, so an old value looks fresh until the freshness limit runs out:
+  10 min, as nothing is learned after a restart of the app either, and up
+  to 30 min while the app keeps running.
 - **Calibrating in Home Assistant** is not announced to the hub: buffer
   tests show up as jumps. Calibrate only while the hub is in maintenance
   mode.
@@ -154,9 +172,13 @@ Sources (retrieved 2026-10-09):
 https://developers.home-assistant.io/blog/2024/03/20/state_reported_timestamp;
 the version 2024.4 is inferred from that date (assumption, not confirmed
 from release notes).
-[2] ESPHome source: `esphome/components/ezo/sensor.py` (polling interval
-"60s") and `esphome/components/sensor/__init__.py` (`force_update`
-default false), https://github.com/esphome/esphome (branch `dev`).
+[2] ESPHome source: `esphome/components/sensor/__init__.py`
+(`force_update` default false), https://github.com/esphome/esphome
+(branch `dev`).
+[3] Home Assistant source: `homeassistant/components/esphome/entry_data.py`
+(`async_update_state`),
+https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/esphome/entry_data.py
+(retrieved 2026-10-11 by the `domain` review).
 
 ## Before any of this may feed control
 
@@ -196,6 +218,12 @@ steer anything. Each point is open; none is built in this spike.
    stuck on one value while still reporting needs a check of its own,
    since the hub's standstill check judges a raw signal (RAT-023, RAT-059)
    and gets none from Home Assistant.
+10. **Freshness for control:** the learned limit (5 to 30 min) and VPD
+    from inputs any distance apart are for display (SD-035). Control needs
+    its own limits first: for example the humidifier interlock reads any
+    valid humidity, a VPD-led climate would act on inputs minutes apart,
+    and the jump check sees nothing in sensors that report less often than
+    every 5 min (RAT-039).
 
 ## Units
 
@@ -277,6 +305,10 @@ time is no value.
 - A report's age is measured in Home Assistant's own time (its `Date`
   header minus `last_reported`), so the two computers' clocks need not
   agree; the same report keeps the time it got when first seen.
+- The device classes are also marked `ownReportSchedule` in code: the
+  sensor truth (`core/src/truth.cpp`, `SensorTruth::freshLimit`) learns
+  their gaps between reports; the hub's own probes keep the catalog's
+  fixed limit (SD-035, R7).
 - `ha/main.cpp`: the server (`gc_ha_server`), following the simulator's.
   `--app` sets what the app needs (above) and refuses `--config` and
   `--token-file`; the Supervisor's token is read from the environment and
