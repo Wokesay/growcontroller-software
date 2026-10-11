@@ -21,6 +21,11 @@ listed in every release under "Security".
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
 
+### Changed
+- Build tools of the web app: TypeScript 7.0.2 for the type check and
+  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  app itself does not change.
+
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
