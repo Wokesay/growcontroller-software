@@ -8,7 +8,7 @@ export const de = {
   "mix.pair": "Paar {pair}",
   "mix.total": "Gesamt {ml} ml · ca. {time} Pumpenlauf",
   "mix.noPumpBottles": "Erst Kanister mit Pumpe anlegen.",
-  "mix.manualMax": "Höchstens {ml} ml je Handgabe",
+  "mix.manualMax": "Höchstens {ml} ml je manueller Gabe",
   "mix.pairWarn": "{name} gehört zu einem Paar. Gib den Partner im gleichen Verhältnis dazu, sonst stimmt die Mischung nicht.",
   "mix.dosing": "{name}: {ml} ml werden dosiert",
   "mix.dose": "Dosieren",
@@ -30,7 +30,7 @@ export const de = {
   "mix.topupNote": "Die Mengen rechnen auf das frische Wasser, nicht auf den ganzen Tank.",
   "mix.start": "Mischen starten",
   "mix.noCirc": "Ohne Umwälzpumpe hält der Lauf nach jeder Gabe an, bis du umgerührt hast.",
-  "mix.manualTitle": "Von Hand dosieren",
+  "mix.manualTitle": "Manuell dosieren",
   "mix.repeatTitle": "Wirklich noch einmal mischen?",
   "mix.repeatConfirm": "Trotzdem mischen",
 } as const;
@@ -64,7 +64,7 @@ export const en: Record<keyof typeof de, string> = {
   "mix.topupNote": "Amounts are for the fresh water, not the whole tank.",
   "mix.start": "Start mixing",
   "mix.noCirc": "Without a circulation pump, mixing pauses after each dose until you have stirred.",
-  "mix.manualTitle": "Dose by hand",
+  "mix.manualTitle": "Dose manually",
   "mix.repeatTitle": "Mix this tank again?",
   "mix.repeatConfirm": "Mix anyway",
 };

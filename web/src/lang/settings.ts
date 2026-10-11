@@ -37,7 +37,7 @@ export const de = {
 
   // System and access
   "settings.system": "System",
-  "settings.handLimit": "Grenze je Handgabe",
+  "settings.handLimit": "Grenze je manueller Gabe",
   "settings.handLimitHint": "Schutz gegen Tippfehler (Quelle: RAT-039)",
   "settings.saved": "Gespeichert",
   "settings.access": "Zugang",

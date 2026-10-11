@@ -82,7 +82,7 @@ export function useHaList(everyMs = 5000): { list: HaList | null; reload: () => 
   return { list, reload, failing: fails >= 3 };
 }
 
-const roleLabel = (role: string) => catalog.value?.roles[role]?.label ?? role;
+export const roleLabel = (role: string) => catalog.value?.roles[role]?.label ?? role;
 const capOf = (measure: string) => catalog.value?.capabilities[`measure.${measure}`];
 const valueText = (measure: string, v: number | null | undefined) => {
   const cap = capOf(measure);

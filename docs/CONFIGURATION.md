@@ -76,7 +76,7 @@ function `unavailable`. It shows "blocked: device not responding".
 
 ```
 config {schemaVersion, revision}
-├─ system      name, time zone, language, update channel, update check
+├─ system      name, time zone, language, update channel, update check, what the app is to do per area (control, SD-037)
 ├─ limits      cap per manual dose, run-time limits
 ├─ devices[]   device ID → class, name   (flat inventory)
 ├─ tanks[]     usable volume, minimum level, water, roles{tank.* → device/channel}

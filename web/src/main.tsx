@@ -4,13 +4,9 @@ import "./styles.css";
 import { App } from "./app";
 import { boot } from "./store";
 import { t } from "./i18n";
+import { loadTheme } from "./theme";
 
-try {
-  const theme = localStorage.getItem("gc-theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-} catch {
-  /* no storage: follow the system setting */
-}
+loadTheme();
 
 render(<App />, document.getElementById("app")!);
 boot().catch(() => {

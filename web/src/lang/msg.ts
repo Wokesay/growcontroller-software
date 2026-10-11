@@ -241,6 +241,8 @@ export const msgDe: Record<string, string> = {
   "ev.cfg.function_on": "{label} eingeschaltet",
   "ev.cfg.function_off": "{label} ausgeschaltet",
   "ev.cfg.function_params": "{label}: Parameter",
+  // Refused configuration changes (hub.cpp)
+  "system.control": "Je Bereich „Automatisch“ oder „Außerhalb der Steuerung“ wählen",
 
   // Events: devices, sockets, locks
   "ev.device.found": "{label} erkannt",
@@ -278,7 +280,7 @@ export const msgDe: Record<string, string> = {
   "ev.off_unconfirmed.unassigned": "Zuordnung entfernt: {reason}",
   "ev.manual_on": "{label} an",
   "ev.manual_off": "{label} aus",
-  "ev.manual.text": "von Hand",
+  "ev.manual.text": "Manuell",
   "ev.bottle_changed": "Kanister gewechselt",
   "ev.bottle_changed.text": "{name}: {ml:0} ml",
 
@@ -316,7 +318,7 @@ export const msgDe: Record<string, string> = {
   "ev.job.aborted": "Auftrag abgebrochen",
   "ev.contents": "Drin: {done}",
   "ev.contents_none": "Drin: nichts",
-  "ev.manual_pair": "Handgabe aus einem Paar",
+  "ev.manual_pair": "Manuelle Gabe aus einem Paar",
   "ev.manual_pair.text": "{name} gehört zum Paar {pair}. Den Partner im gleichen Verhältnis geben.",
   "ev.pump_calibrated": "Pumpe eingemessen",
   "ev.pump_calibrated.text": "{name}: {flow:1} ml/min, gespeichert in der Pumpe.",
@@ -400,7 +402,7 @@ export const msgDe: Record<string, string> = {
   "abort.job": "Auftrag abgebrochen",
   "abort.stop": "Not-Halt",
   "purpose.mix": "Mischlauf",
-  "purpose.manual": "Handgabe",
+  "purpose.manual": "Manuelle Gabe",
   "purpose.ec": "EC-Nachdosierung",
   "purpose.ph": "pH-Korrektur",
   "purpose.calibration": "Einmessen",
@@ -416,7 +418,7 @@ export const msgDe: Record<string, string> = {
   "who.refill_done": "Nachfüllen fertig",
   "who.refill_off": "Nachfüllen ausgeschaltet",
   "who.circulation": "Umwälzen",
-  "who.manual": "Hand",
+  "who.manual": "Manuell",
   "who.test": "Testen",
   "who.device_removed": "Gerät entfernt",
   "who.role_changed": "Zuordnung geändert",

@@ -277,7 +277,7 @@ const base: Record<keyof typeof deBase, string> = {
   "area.noClimateSensor": "No climate sensor",
   "area.noClimateSensorText": "With the climate sensor head the hub measures air temperature and humidity and calculates the VPD.",
   "area.expand": "What's missing?",
-  "area.lightNote": "The light can be switched by hand. A light schedule per phase does not exist yet; until then it stays off after a restart.",
+  "area.lightNote": "The light can be switched manually here. A light schedule per phase does not exist yet; until then it stays off after a restart.",
   "area.tankLevel": "Level",
   "area.irrigationNeedsLevel": "The watering pump only runs with a valid level above the minimum level – otherwise it runs dry. This needs the level sensor.",
 };

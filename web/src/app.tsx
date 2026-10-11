@@ -3,7 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import {
-  Beaker, Cpu, Droplets, Eye, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
+  Beaker, Compass, Cpu, Droplets, Eye, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
 } from "lucide-preact";
 import { post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
@@ -19,6 +19,7 @@ import { DevicesPage } from "./pages/devices";
 import { FunctionsPage } from "./pages/functions";
 import { SettingsPage } from "./pages/settings";
 import { SetupWizard } from "./pages/setup";
+import { Welcome } from "./pages/welcome";
 import { SimPanel } from "./pages/sim";
 import { ClimatePage, IrrigationPage, LightPage } from "./pages/areas";
 
@@ -218,14 +219,15 @@ export function App() {
       </div>
     );
   const r = route.value;
-  // A read-only hub has no dosing hardware to set up, so the setup is not forced on it
-  if (!state.value.setupDone && !readOnly.value && r.path !== "/einrichtung" && !r.query.skip) {
-    navigate("/einrichtung");
-  }
-  if (r.path === "/einrichtung")
+  // A read-only hub has no dosing hardware to set up: it gets the short
+  // onboarding of the Home Assistant app instead (SD-037)
+  const firstRun = readOnly.value ? "/willkommen" : "/einrichtung";
+  if (readOnly.value && r.path === "/einrichtung") navigate(firstRun);
+  else if (!state.value.setupDone && r.path !== firstRun && !r.query.skip) navigate(firstRun);
+  if (r.path === firstRun)
     return (
       <>
-        <SetupWizard />
+        {readOnly.value ? <Welcome /> : <SetupWizard />}
         {simulated.value && <SimPanel />}
         <Toasts />
       </>
@@ -259,7 +261,11 @@ export function App() {
           ))}
         </nav>
         <div class="side-foot">
-          {!readOnly.value && (  // the setup is for the hub's own dosing hardware
+          {readOnly.value ? (  // the setup is for the hub's own dosing hardware
+            <a href="#/willkommen" class="row" style="gap:8px">
+              <Compass size={15} /> {t("welcome.title")}
+            </a>
+          ) : (
             <a href="#/einrichtung" class="row" style="gap:8px">
               <Wrench size={15} /> {t("nav.setup")}
             </a>

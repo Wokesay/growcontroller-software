@@ -624,6 +624,18 @@ Decided by the project owner on 2026-10-11 in the software session.
 - Texts that say "von Hand" (by hand) where the app cannot operate a
   switch are reworded ("manuell", "außerhalb der Steuerung"), so nobody
   expects to switch a device through the app.
+- Built as: `/willkommen` with four steps (basics, sensors, control, done),
+  opened by itself on a read-only hub until the setup is done; skipping it
+  or finishing it marks the setup done (`POST /setup/complete`). The
+  choice per area (climate, light, irrigation, refill, circulation,
+  dosing) is `system.control` in the configuration, set with
+  `PUT /system {control}`; an area not chosen is not listed. It feeds no
+  control yet: today it only decides what the area pages show instead of
+  switches, where it can also be changed in one tap. The colour scheme stays in the browser, as in Settings.
+- A choice recorded while the app switched nothing is no consent to
+  switch. The first version that lets `system.control` feed control asks
+  again, or treats an earlier "auto" as not chosen; until then "outside"
+  is what the step shows when nothing is chosen.
 
 
 ## SD-038: Raw values are preferred, and calibrated in the app

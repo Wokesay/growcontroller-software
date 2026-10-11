@@ -5,8 +5,10 @@
 // damit nicht jede Dosierung eine neue Konfigurations-Revision erzeugt.
 #pragma once
 
+#include <array>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gc/catalog.hpp"
@@ -113,7 +115,17 @@ struct SystemCfg {
   std::string language = "de";
   bool updateCheck = true;
   std::string updateChannel = "stable";
+  // What the app is to do per area (SD-037): "auto" or "outside" (left to something else, such
+  // as Home Assistant). Only what the owner chose; an area not listed has no choice yet. Feeds no
+  // control: today it only decides what the area pages show. A choice recorded while nothing
+  // switched is no consent to switch: the version that wires this into control asks again.
+  std::map<std::string, std::string> control;
 };
+
+// Areas and modes `SystemCfg::control` accepts (SD-037); the web app lists them in api.ts.
+inline constexpr std::array<std::string_view, 6> kControlAreas{"climate", "light", "irrigation", "refill", "circulation", "dosing"};
+bool isControlArea(std::string_view area);
+bool isControlMode(std::string_view mode);
 
 struct Config {
   int schemaVersion = kSchemaVersion;

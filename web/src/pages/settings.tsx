@@ -2,13 +2,14 @@
 // Einstellungen: System, Zugang, Darstellung, Updates mit „Was ist neu“,
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
-import { Bug, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
+import { Bug, Compass, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
 import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
 import { get, post, put } from "../api";
 import { dateTime, num } from "../format";
-import { config, info, logoutLocal, refreshConfig, simulated, toast } from "../store";
+import { config, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
+import { currentTheme, setTheme, type Theme } from "../theme";
 
 // Target for public bug reports.
 const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
@@ -188,17 +189,10 @@ export function SettingsPage() {
   const [hand, setHand] = useState<number | null>(cfg.limits.handDoseMaxMl);
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
-  const [theme, setTheme] = useState<"system" | "light" | "dark">(((document.documentElement.dataset.theme as any) || "system"));
-  const setThemeAll = (v: "system" | "light" | "dark") => {
+  const [theme, setThemeState] = useState<Theme>(currentTheme());
+  const setThemeAll = (v: Theme) => {
+    setThemeState(v);
     setTheme(v);
-    if (v === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = v;
-    try {
-      if (v === "system") localStorage.removeItem("gc-theme");
-      else localStorage.setItem("gc-theme", v);
-    } catch {
-      /* no storage */
-    }
   };
   return (
     <div class="stack">
@@ -228,6 +222,16 @@ export function SettingsPage() {
                 {t("common.save")}
               </Button>
             </div>
+            {readOnly.value && (  // the onboarding of the Home Assistant app (SD-037)
+              <div class="row-between">
+                <span class="row">
+                  <Compass size={16} /> {t("welcome.title")}
+                </span>
+                <a class="btn sm" href="#/willkommen" data-testid="open-welcome">
+                  {t("welcome.open")}
+                </a>
+              </div>
+            )}
           </div>
         </Card>
         <Card title={t("settings.access")} icon={<KeyRound size={18} />}>

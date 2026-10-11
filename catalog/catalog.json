@@ -101,7 +101,7 @@
 
   "functions": [
     {
-      "id": "manual_dose", "label": "Von Hand dosieren", "stage": 0, "group": "Dosieren", "alwaysOn": true,
+      "id": "manual_dose", "label": "Manuell dosieren", "stage": 0, "group": "Dosieren", "alwaysOn": true,
       "text": "Eine Menge aus einem Kanister in den Tank geben.",
       "requires": [ { "canisters": { "min": 1, "kind": "any" } }, { "canisters": { "min": 1, "kind": "any", "calibrated": true } } ]
     },

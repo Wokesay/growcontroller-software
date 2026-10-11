@@ -3,7 +3,7 @@
 // German first. de.ts and en.ts merge all areas.
 export const de = {
   "ha.title": "Sensoren aus Home Assistant",
-  "ha.help": "Wähle für jede Messung einen Sensor aus Home Assistant. Der Hub liest nur mit und schaltet nichts.",
+  "ha.help": "Wähle für jeden Messwert einen Sensor aus Home Assistant. Die App liest nur mit und schaltet nichts.",
   "ha.choose": "Sensor wählen",
   "ha.change": "Ändern",
   "ha.chooseFor": "Sensor wählen: {role}",
@@ -85,7 +85,7 @@ export const de = {
 
 export const en: Record<keyof typeof de, string> = {
   "ha.title": "Sensors from Home Assistant",
-  "ha.help": "Choose a Home Assistant sensor for each reading. The hub only reads them and switches nothing.",
+  "ha.help": "Choose a Home Assistant sensor for each measurement. The app only reads them and switches nothing.",
   "ha.choose": "Choose sensor",
   "ha.change": "Change",
   "ha.chooseFor": "Choose sensor: {role}",

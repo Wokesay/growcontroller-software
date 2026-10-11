@@ -882,6 +882,19 @@ Result Hub::setSystem(const json& j) {
     if (v < 0.5 || v > 50) return Result::fail(422, "system.hand", "Grenze je Handgabe 0,5–50 ml");
     lim.handDoseMaxMl = v;
   }
+  if (j.contains("control")) {
+    // Adds to what was chosen; null takes an area's choice back (SD-037).
+    if (!j["control"].is_object()) return Result::fail(422, say("system.control"));
+    for (const auto& [area, mode] : j["control"].items()) {
+      if (!isControlArea(area)) return Result::fail(422, say("system.control"));
+      if (mode.is_null())
+        sys.control.erase(area);
+      else if (mode.is_string() && isControlMode(mode.get<std::string>()))
+        sys.control[area] = mode.get<std::string>();
+      else
+        return Result::fail(422, say("system.control"));
+    }
+  }
   cfg_.system = sys;
   cfg_.limits = lim;
   saveConfig(say("ev.cfg.system"));

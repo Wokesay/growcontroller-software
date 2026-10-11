@@ -52,9 +52,14 @@ the sensors from it and shows them with growcontroller's checks.
    set, anyone in your network who opens the page first could set it. If
    the page asks you to sign in although you never set a password,
    someone else did: uninstall the app and install it again.
-6. Open **Devices › Assignment** and choose one sensor per measurement.
-   A sensor the app does not suggest is under **Show other sensors**; its
-   unit must fit the measurement.
+6. A short introduction opens: name, language and colour scheme, one
+   sensor per measurement, and per area whether the app is to do it
+   automatically one day or it stays outside the control (in Home
+   Assistant or manually). The app switches nothing yet, whatever you
+   choose. You can skip it and open it again under **Settings**. Sensors
+   are also under **Devices › Assignment**; a sensor the app does not
+   suggest is under **Show other sensors**, and its unit must fit the
+   measurement.
 
 There is nothing to configure: the app reaches Home Assistant through the
 Supervisor and gets its access from it. No token is needed.

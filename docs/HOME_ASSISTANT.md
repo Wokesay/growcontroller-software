@@ -115,8 +115,13 @@ labels follow Home Assistant's developer documentation for apps
    you restart the server: Home Assistant counts every failed login and
    bans the computer after a few, however slowly they come.
 6. Open the address and set a password. The setup for the hub's own
-   dosing hardware is not offered on a read-only hub; the overview points
-   to Devices › Assignment. There, choose a sensor for each measurement:
+   dosing hardware is not offered on a read-only hub; a short introduction
+   opens instead (SD-037): name, language and colour scheme, a sensor per
+   measurement, and per area whether the app is to do it automatically or
+   it stays outside the control (for example in Home Assistant). The app
+   switches nothing yet and says so; the choice is only recorded. The
+   introduction can be skipped and is under Settings. Sensors are also
+   under Devices › Assignment; choose a sensor for each measurement:
    the list shows each sensor's Home Assistant name, its entity ID and its
    current value. Can't tell two sensors apart? Warm one in your hand and
    watch its value rise. A sensor the hub does not suggest is under "Andere

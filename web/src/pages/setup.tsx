@@ -20,10 +20,11 @@ const DONE = STEPS.length - 1;
 
 // ---------- Rahmen: Leiste unten
 
-type FootProps = { step: number; onNext?: () => unknown; nextDisabled?: boolean; nextLabel?: ComponentChildren; onSkip?: () => void };
+// base and total: the onboarding of the Home Assistant app uses the same frame (SD-037)
+export type FootProps = { step: number; onNext?: () => unknown; nextDisabled?: boolean; nextLabel?: ComponentChildren; onSkip?: () => void; base?: string; total?: number };
 
 function Foot(p: FootProps) {
-  const go = (s: number) => navigate(`/einrichtung?s=${s}`);
+  const go = (s: number) => navigate(`${p.base ?? "/einrichtung"}?s=${s}`);
   return (
     <div class="wizard-foot">
       <div>
@@ -35,7 +36,7 @@ function Foot(p: FootProps) {
           <span />
         )}
         <span class="spacer" />
-        <span class="faint small hide-sm">{t("common.step", { n: p.step + 1, total: STEPS.length })}</span>
+        <span class="faint small hide-sm">{t("common.step", { n: p.step + 1, total: p.total ?? STEPS.length })}</span>
         {p.onSkip && (
           <Button variant="ghost" onClick={p.onSkip} data-testid="wizard-skip">
             {t("common.skip")}
@@ -78,7 +79,7 @@ function Aside(p: { terms?: HelpTopic[] }) {
   );
 }
 
-function Page(p: { aside?: ComponentChildren; children: ComponentChildren; foot: FootProps }) {
+export function Page(p: { aside?: ComponentChildren; children: ComponentChildren; foot: FootProps }) {
   return (
     <>
       <div class={`wizard-body ${p.aside ? "" : "single"}`}>
@@ -89,6 +90,19 @@ function Page(p: { aside?: ComponentChildren; children: ComponentChildren; foot:
       </div>
       <Foot {...p.foot} />
     </>
+  );
+}
+
+/** The steps at the top: done ones can be opened again, later ones not yet. */
+export function StepNav(p: { label: string; steps: TextKey[]; step: number; go: (s: number) => void }) {
+  return (
+    <nav class="wizard-steps" aria-label={p.label}>
+      {p.steps.map((s, i) => (
+        <button type="button" class={`ws ${i === p.step ? "cur" : i < p.step ? "done" : ""}`} disabled={i > p.step} aria-current={i === p.step ? "step" : undefined} onClick={() => i < p.step && p.go(i)}>
+          {i < p.step ? "✓" : i + 1} {t(s)}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -585,13 +599,7 @@ export function SetupWizard() {
             </a>
           )}
         </div>
-        <nav class="wizard-steps" aria-label={t("setup.title")}>
-          {STEPS.map((s, i) => (
-            <button type="button" class={`ws ${i === step ? "cur" : i < step ? "done" : ""}`} disabled={i > step} aria-current={i === step ? "step" : undefined} onClick={() => i < step && go(i)}>
-              {i < step ? "✓" : i + 1} {t(s)}
-            </button>
-          ))}
-        </nav>
+        <StepNav label={t("setup.title")} steps={STEPS} step={step} go={go} />
         {step === 0 && <StepStart step={step} next={next} />}
         {step === 1 && <StepDevices step={step} next={next} />}
         {step === 2 && <StepTank step={step} next={next} />}

@@ -257,6 +257,8 @@ constexpr Entry kMessages[] = {
     {"ev.cfg.function_on", "{label} switched on"},
     {"ev.cfg.function_off", "{label} switched off"},
     {"ev.cfg.function_params", "{label}: settings saved"},
+    // Refused configuration changes (hub.cpp)
+    {"system.control", "Choose automatic or outside the control for each area"},
 
     // Events: devices, sockets, locks
     {"ev.device.found", "{label} detected"},
@@ -294,7 +296,7 @@ constexpr Entry kMessages[] = {
     {"ev.off_unconfirmed.unassigned", "Switching off failed after removing the assignment: {reason}. Check it and unplug it if needed."},
     {"ev.manual_on", "{label} on"},
     {"ev.manual_off", "{label} off"},
-    {"ev.manual.text", "By hand"},
+    {"ev.manual.text", "Manually"},
     {"ev.bottle_changed", "Bottle changed"},
     {"ev.bottle_changed.text", "{name}: {ml:0} ml"},
 
@@ -432,7 +434,7 @@ constexpr Entry kMessages[] = {
     {"who.refill_done", "Tank refill done"},
     {"who.refill_off", "Tank refill switched off in Functions"},
     {"who.circulation", "Circulation"},
-    {"who.manual", "By hand"},
+    {"who.manual", "Manual"},
     {"who.test", "Test button"},
     {"who.device_removed", "Device removed"},
     {"who.role_changed", "Assignment changed"},
