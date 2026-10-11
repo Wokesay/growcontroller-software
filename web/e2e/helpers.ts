@@ -1,5 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { expect, type Page, type APIRequestContext } from "@playwright/test";
+import { test as base, expect, type Page, type APIRequestContext } from "@playwright/test";
+
+export { expect };
+
+// Every test also fails on an uncaught exception in the page and on a part
+// the error boundary had to replace (SD-032): either could otherwise pass
+// unnoticed where no step looks at that part of the page.
+export const test = base.extend<{ appErrorGuard: void }>({
+  appErrorGuard: [
+    async ({ page }, use) => {
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await use();
+      expect(errors, "uncaught exceptions in the page").toEqual([]);
+      if (!page.isClosed()) await expect(page.getByText(/Dieser Teil lässt sich nicht anzeigen|This part can't be shown/)).toHaveCount(0);
+    },
+    { auto: true },
+  ],
+});
 
 export async function scenario(request: APIRequestContext, name: "neu" | "stufe1" | "demo") {
   const r = await request.post("/api/v1/sim/scenario", { data: { name } });

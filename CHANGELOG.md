@@ -21,6 +21,10 @@ listed in every release under "Security".
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
 
+### Changed
+- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
+  visible changes.
+
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first

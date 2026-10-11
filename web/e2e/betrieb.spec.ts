@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Betrieb im eingerichteten System: Übersicht, Not-Halt, Störungen, Verlauf, Funktionen.
-import { expect, test } from "@playwright/test";
-import { login, scenario } from "./helpers";
+import { expect, login, scenario, test } from "./helpers";
 
 test.beforeAll(async ({ request }) => {
   await scenario(request, "demo");
