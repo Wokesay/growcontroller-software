@@ -32,6 +32,13 @@ struct DeviceClassDef {
   // pH, EC and level from it are no values for control (RAT-025). Set only
   // in code, never from catalog data, so the catalog cannot loosen it (R7).
   bool externalCalibration = false;
+  // The device reports on its own schedule, not when the hub asks (e.g. a
+  // sensor in Home Assistant that reports every few minutes or only on a
+  // change). The sensor truth learns its usual gap between reports and calls
+  // a value stale only when it misses it, within fixed limits (SD-035). Set
+  // only in code, never from catalog data, so the catalog cannot loosen
+  // freshness (R7).
+  bool ownReportSchedule = false;
   std::vector<std::string> provides, calibrations, accepts;
 };
 

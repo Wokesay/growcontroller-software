@@ -168,12 +168,12 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 
 ### RAT-017 – VPD is air VPD, with no value when an input is missing
 
-- **Rule:** The hub derives VPD from air temperature and humidity with the FAO-56 saturation vapour pressure (eq. 11): air VPD = es(T) · (1 − RH/100), with no leaf offset. If either input is missing or invalid, or the two are more than 60 s apart, there is no VPD value (a gap), never 0.
+- **Rule:** The hub derives VPD from air temperature and humidity with the FAO-56 saturation vapour pressure (eq. 11): air VPD = es(T) · (1 − RH/100), with no leaf offset. If either input is missing or invalid, or two readings of the hub's own sensors are more than 60 s apart, there is no VPD value (a gap), never 0. Changed on 2026-10-11 (SD-035): if either input reports on its own schedule (Home Assistant), both only need to be valid.
 - **Why:** How much cooler a leaf is than the air under LED light varies with light intensity, air movement and leaf angle. Subtracting a fixed amount would present a guess as a measurement, the same mistake as a default posing as a reading. The phase targets are defined as air VPD anyway.
 - **Evidence:** Observed on the reference installation (2026): a cross-check of 27 °C at 62 % RH gave 1.352 kPa, against a hand-calculated reference value of 1.36 kPa. A check over several failure cases (inputs missing or offline, implausible humidity, light off) produced no 0 in any of them. Leaf VPD under LED was put at roughly 0.1–0.2 kPa below air VPD, but varying.
-- **Deviation:** The software plans an optional leaf offset whose result is shown as "estimated" (not yet implemented), with air VPD as the default. The 60 s limit between the two inputs is the software's own rule (an assumption).
+- **Deviation:** The software plans an optional leaf offset whose result is shown as "estimated" (not yet implemented), with air VPD as the default. The 60 s limit between the two inputs is the software's own rule (an assumption). A sensor that reports only on a change keeps its value until it changes, so its report time is not the age of its value; for such inputs the pairing is dropped and each input's own learned freshness applies (SD-035, for display; not yet for control).
 - **Implemented in:** core/src/truth.cpp (`SensorTruth::updateDerived`), core/include/gc/truth.hpp, catalog/catalog.json, docs/PLANT_AUTOMATION.md, CHANGELOG.md
-- **Tests:** tests/core/test_climate.cpp "VPD: Formel nach FAO-56", "VPD: aus Klima-Kopf abgeleitet, im Verlauf, bei Ausfall eine Lücke"
+- **Tests:** tests/core/test_climate.cpp "VPD: Formel nach FAO-56", "VPD: aus Klima-Kopf abgeleitet, im Verlauf, bei Ausfall eine Lücke"; tests/core/test_truth.cpp "VPD pairs the hub's own readings within 60 s, and readings on their own schedule while both are valid (SD-035)", "VPD from one reading of the hub and one on its own schedule needs both valid only (SD-035)"
 
 
 ### RAT-018 – No parallel dosing sequence; time limits sit above the longest legitimate run
@@ -227,7 +227,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Rule:** The sensor-truth layer evaluates every bound sensor on every cycle, also without an active cultivation run and in maintenance mode, because dosing locks depend on it. Freshness (does anything still arrive?) and standstill (does the raw value still move?) are separate checks; a pH or EC raw value unchanged for 15 min is marked "frozen".
 - **Why:** A sensor that fails between runs is cheapest to fix right then; monitoring that waits for the next run finds it only on the start day. Standstill is judged on the raw signal, because calibrated, rounded values may rightly stay the same for hours, while the raw signal of a working probe always shows some noise.
 - **Evidence:** Observed on the reference installation (2026): the history stored a new time only when the value changed, so the age of the last entry could not tell a sensor repeating the same value from one that had stopped.
-- **Implemented in:** core/include/gc/truth.hpp, core/src/truth.cpp, core/include/gc/readmodel.hpp, docs/INVARIANTS.md
+- **Implemented in:** core/include/gc/truth.hpp, core/src/truth.cpp, core/include/gc/readmodel.hpp, docs/INVARIANTS.md; for a sensor on its own schedule the learned limit `SensorTruth::freshLimit` (SD-035)
 - **Tests:** tests/core/test_truth.cpp "Sensorwahrheit: stillstehender Rohwert wird erkannt (RAT-023)"
 
 
@@ -263,8 +263,8 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Rule:** (Planned for the bus driver in the firmware, not yet implemented.) A sensor is declared failed only after several consecutive failed reads, not after a single one.
 - **Why:** A single missed reading is usually a short communication glitch; alarming on it produces false alarms. Requiring several misses still detects a real defect within minutes.
 - **Evidence:** Observed on the reference installation (2026): with sensors reporting every 30 s, a freshness limit of 5 min (ten missed reports) separated real defects from wireless dropouts; six missed reports were judged too close to ordinary dropouts.
-- **Implemented in:** docs/INVARIANTS.md (open)
-- **Tests:** —
+- **Implemented in:** docs/INVARIANTS.md (open for the hub's own sensors); for sensors on their own schedule (Home Assistant), never stale sooner than 5 min: core/src/truth.cpp `SensorTruth::freshLimit` (SD-035)
+- **Tests:** tests/core/test_truth.cpp "Sensor truth: a sensor on its own schedule is stale only when it misses its usual reports (SD-035)"
 
 
 ### RAT-028 – After a restart, outputs fall back to off but recorded facts survive
@@ -561,7 +561,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Rule:** The software checks separately whether a sensor still delivers (age of the last sample → "stale") and whether its raw value has stopped moving ("frozen"). The standstill check applies only where change is expected: pH and EC raw values, which normally show noise, are flagged after more than 15 min without change. Calm or coarsely rounded channels such as water temperature get no standstill check.
 - **Why:** A rounded or very quiet signal that does not change is not a fault; flagging it produces false alarms that teach users to ignore warnings. A sensor that stops reporting is still caught by the freshness check.
 - **Evidence:** Observed on the reference installation (2026): a water temperature reported in 0.1 °C steps stayed on one value for more than 60 min twenty times in 14 days (up to 211 min) with a full tank and a working sensor; an air temperature sensor with 0.1 °C resolution stood still for up to 182 min. None of them had a gap in delivery.
-- **Implemented in:** `core/src/truth.cpp` (`SensorTruth::update`, `expectsNoise`, `kFrozenAfter`; no standstill check for a value calibrated outside the hub, which arrives rounded, not raw), `core/include/gc/readmodel.hpp` (`Quality::Stale`, `Quality::Frozen`)
+- **Implemented in:** `core/src/truth.cpp` (`SensorTruth::update`, `expectsNoise`, `kFrozenAfter`; no standstill check for a value calibrated outside the hub, which arrives rounded, not raw), `core/include/gc/readmodel.hpp` (`Quality::Stale`, `Quality::Frozen`); for a sensor on its own schedule the learned limit `SensorTruth::freshLimit` (SD-035)
 - **Tests:** `tests/core/test_truth.cpp` – "Sensorwahrheit: veraltet und unplausibel", "Sensorwahrheit: stillstehender Rohwert wird erkannt", "Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)"
 
 

@@ -57,7 +57,16 @@ class SensorTruth {
     Ms lastTs = 0;
     std::deque<std::pair<Ms, double>> window;  // für die Sprungprüfung
     Ms explainedUntil = 0;
+    // A sensor on its own schedule (SD-035): the device the gaps belong to,
+    // its last report and the last gaps between reports
+    bool ownSchedule = false;
+    std::string device;
+    bool reported = false;
+    Ms lastReport = 0;
+    std::deque<Ms> gaps;
   };
+  // How old a value may be before it is stale (SD-035)
+  static Ms freshLimit(const CapabilityDef& cap, const Track* learned);
   const Catalog& cat_;
   std::map<std::string, Reading> readings_;
   std::map<std::string, Track> tracks_;

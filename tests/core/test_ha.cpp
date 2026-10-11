@@ -7,6 +7,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <httplib.h>
@@ -639,29 +640,117 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   CHECK(explained["ph_control"] == 1);
   CHECK(explained["monitor_tank"] == 1);
   // The sensor goes silent (or Home Assistant is older than 2024.4): Home Assistant keeps answering
-  // with the last report while its own time runs on. Valid until the 60 s limit, stale after it (RAT-023).
+  // with the last report while its own time runs on. It reported every second, so its limit is the
+  // shortest for a sensor on its own schedule, 5 min: valid until then, stale after it (RAT-023, SD-035).
+  tick(15, true);
   const std::int64_t reportedAt = kNoonMs + clk.ms;
   auto sameReport = [&] {
     auto s = state("sensor.grow_ph", "6.1", "", "");
     s["last_reported"] = s["last_updated"] = iso(reportedAt);
     bus.update("sensor.grow_ph", s, kNoonMs + clk.ms, clk.ms);
   };
-  for (int i = 0; i < 59; ++i) {
+  for (int i = 0; i < 299; ++i) {
     sameReport();
     clk.ms += 1000;
     hub.tick();
   }
-  CHECK(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");  // 59 s: not stale yet
+  CHECK(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");  // 299 s: not stale yet
   for (int i = 0; i < 3; ++i) {
     sameReport();
     clk.ms += 1000;
     hub.tick();
   }
-  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "stale");  // 62 s
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "stale");  // 302 s
   bus.lost("sensor.grow_ph");
   clk.ms += 1000;
   hub.tick();
   CHECK(hub.state()["readings"]["tank.ph"]["value"].is_null());  // never 0 (R5)
+}
+
+TEST_CASE("Home Assistant: a sensor that reports every few minutes stays valid, and pH is in the history (SD-035, SD-039)") {
+  const gc::Catalog cat = ha::catalog();
+  for (const char* m : {"ph", "ec", "water_temp", "level", "air_temp", "humidity", "co2"}) {
+    REQUIRE(cat.deviceClass(std::string("ha_") + m));
+    CHECK(cat.deviceClass(std::string("ha_") + m)->ownReportSchedule);
+  }
+  CHECK_FALSE(cat.deviceClass("head_ph_ec")->ownReportSchedule);  // the hub's own probes keep the catalog's limit
+  ha::HaBus bus({{"sensor.grow_ph", "ph"}, {"sensor.grow_temp", "water_temp"}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  clk.start = kNoonMs / 1000;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  // The sensors report every 3 min; Home Assistant is asked every 5 s and
+  // answers with the last report in between.
+  std::int64_t reportedAt = kNoonMs;
+  double ph = 6.0;
+  auto answer = [&] {
+    for (const auto& [entity, value, unit] : {std::tuple<std::string, std::string, std::string>{"sensor.grow_ph", std::to_string(ph), ""},
+                                              {"sensor.grow_temp", "21.5", "°C"}}) {
+      auto s = state(entity, value, unit, "");
+      s["last_reported"] = s["last_updated"] = iso(reportedAt);
+      bus.update(entity, s, kNoonMs + clk.ms, clk.ms);
+    }
+  };
+  auto run = [&](int minutes) {
+    for (int i = 0; i < minutes * 12; ++i) {
+      if (kNoonMs + clk.ms - reportedAt >= 3 * 60 * 1000) {
+        reportedAt = kNoonMs + clk.ms;
+        ph += 0.01;
+      }
+      answer();
+      clk.ms += 5000;
+      hub.tick();
+    }
+  };
+  run(1);
+  REQUIRE(hub.acceptDevice("ha.sensor.grow_ph", "").status == 200);
+  REQUIRE(hub.acceptDevice("ha.sensor.grow_temp", "").status == 200);
+  run(20);
+  // 3 min after the last report: valid, not "last value 3 min ago"
+  json st = hub.state();
+  CHECK(st["readings"]["tank.water_temp"]["quality"] == "ok");
+  CHECK(st["readings"]["tank.ph"]["reason"]["key"] == "truth.external");
+  // Calibrated in Home Assistant, so no value for control, but its curve is
+  // recorded: shown values belong in the history (SD-039)
+  CHECK_FALSE(st["readings"]["tank.ph"]["usable"].get<bool>());
+  const json h = hub.history("tank.ph", clk.epoch() - 600, clk.epoch(), 0);
+  size_t values = 0;
+  for (const auto& v : h["avg"])
+    if (v.is_number()) {
+      ++values;
+      CHECK(v.get<double>() > 6.0);
+      CHECK(v.get<double>() < 6.2);
+    }
+  CHECK(values > 0);
+  CHECK(hub.exportCsv({"tank.ph"}, clk.epoch() - 600, clk.epoch()).find(";6") != std::string::npos);  // and exported
+  // What fails a check is a gap, never a value (R5). Silent: valid for three
+  // of its usual gaps (9 min), then stale.
+  auto silent = [&](int minutes) {
+    for (int i = 0; i < minutes * 12; ++i) {
+      answer();
+      clk.ms += 5000;
+      hub.tick();
+    }
+  };
+  auto historyEmpty = [&](gc::Epoch seconds) {
+    const json h = hub.history("tank.ph", clk.epoch() - seconds, clk.epoch(), 0);
+    for (const auto& v : h["avg"])
+      if (!v.is_null()) return false;
+    return true;
+  };
+  silent(5);  // 8 min since the last report
+  CHECK(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");
+  silent(2);
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "stale");
+  CHECK(historyEmpty(50));
+  // Reporting again, then an implausible pH
+  run(6);
+  REQUIRE(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");
+  ph = 9.5;
+  run(6);
+  CHECK(hub.state()["readings"]["tank.ph"]["quality"] == "implausible");
+  CHECK(historyEmpty(300));
 }
 
 TEST_CASE("Home Assistant: an address with a path is read below it, as in an add-on") {

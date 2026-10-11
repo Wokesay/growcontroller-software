@@ -287,12 +287,12 @@ test("A value calibrated outside the hub shows for display only, with its age, n
   });
   await login(page);
   const tile = page.getByTestId("metric-pH");
-  await expect(tile.getByText("nur Anzeige")).toBeVisible();
+  await expect(tile.getByText("anderswo kalibriert")).toBeVisible();
   await expect(tile.getByText("Außerhalb des Hubs kalibriert – vom Hub nicht geprüft")).toBeVisible();
   await expect(tile.getByText("nicht kalibriert")).toHaveCount(0);
   await expect(tile).not.toHaveClass(/\bbad\b/);
   await expect(tile.locator(".metric-foot")).toContainText("vor 20 s");
   await expect(page.getByTestId("metric-EC").locator(".spark")).toHaveCount(1);  // the history has arrived
-  await expect(tile.locator(".spark")).toHaveCount(0);  // no trend: the history keeps only values usable for control
+  await expect(tile.locator(".spark")).toHaveCount(1);  // its trend too: the history records it (SD-039)
   await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
 });

@@ -561,6 +561,122 @@ apply the rules above and add no new ones):
   build's own pinned Alpine base image.
 
 
+## SD-035: Freshness of sensors that report on their own schedule is learned
+
+Decided by the project owner on 2026-10-11 in the software session, after
+the first test of the Home Assistant app showed pH, EC and water
+temperature as outdated although their sensors reported every few minutes
+("Takt je Sensor lernen", then "mindestens 5 min" and, for VPD, "solange
+beide gültig sind"). It applies RAT-023 and RAT-059 to such sensors and
+changes RAT-017's pairing for them.
+
+- A device class whose sensors report on their own schedule, not when the
+  hub asks, is marked `ownReportSchedule` in code, never by catalog data,
+  so the catalog cannot loosen freshness (R7). The Home Assistant classes
+  are marked; the hub's own probes are not and keep the catalog's fixed
+  limits (`maxAgeS`).
+- For a marked sensor the sensor truth learns the gaps between its reports
+  from the last ten. The usual gap is the second longest, so one outage
+  does not loosen the limit. A value is stale after three usual gaps,
+  never sooner than 5 min and never later than 30 min. Until three gaps
+  are seen (after a start, or when another sensor is picked for the role)
+  the limit is 10 min. A report dated again by less than 2 s is the same
+  report. Nothing of this is saved; a restart learns again. Factor, count,
+  5, 10 and 30 min are own rules (assumptions).
+- The 5 min lower limit follows RAT-027: sensors that report by
+  themselves, often over radio, drop a few reports now and then; RAT-027's
+  evidence put the line between a dropout and a defect at about 5 min.
+- "unavailable" in Home Assistant shows at once (the device is offline),
+  as before.
+- VPD: if either reading is on its own schedule, both only need to be
+  valid, however far apart their reports are, because such sensors often
+  report only on a change. Two readings of the hub's own stay paired within
+  60 s (RAT-017).
+- The learned limit and this pairing are for display. Before a value from
+  Home Assistant may feed control, control needs its own freshness check
+  (`docs/HOME_ASSISTANT.md`, "Before any of this may feed control").
+- The stale message carries the limit (`limitS`) for the web app.
+
+## SD-036: Any numeric Home Assistant sensor can be picked, with a search
+
+Decided by the project owner on 2026-10-11 in the software session.
+
+- Besides the suggestions (by Home Assistant's device class and unit), the
+  picker offers "Andere Sensoren anzeigen" (show other sensors): every
+  numeric sensor in Home Assistant, searchable by name and entity ID.
+- A sensor is taken only in a unit that fits the measurement or that the
+  hub converts exactly (RAT-006, RAT-015). Otherwise the app says why and
+  does not take it.
+
+
+## SD-037: An onboarding after the first sign-in to the Home Assistant app
+
+Decided by the project owner on 2026-10-11 in the software session.
+
+- After the first sign-in a short guide leads through: basics (name of the
+  controller, time zone, language, colour scheme), one sensor per
+  measurement, and what the app does automatically: per function
+  "automatisch" (automatic) or "außerhalb der Steuerung" (outside the
+  control, for example in Home Assistant or by hand). Then done.
+- It can be skipped and opened again from Settings.
+- While the trial switches nothing, the guide records the choice and says
+  that the app does not switch yet.
+- Texts that say "von Hand" (by hand) where the app cannot operate a
+  switch are reworded ("manuell", "außerhalb der Steuerung"), so nobody
+  expects to switch a device through the app.
+
+
+## SD-038: Raw values are preferred, and calibrated in the app
+
+Decided by the project owner on 2026-10-11 in the software session.
+
+- A Home Assistant sensor that delivers a raw value (for example a pH
+  probe's voltage in mV) is calibrated in the app, as the hub's own probes
+  are. Its values then pass the sensor truth's calibration check (RAT-025).
+  Whether such values may feed control through Home Assistant is part of
+  the product decision on switching through Home Assistant.
+- A sensor calibrated in Home Assistant stays display only (RAT-025).
+- Where a sensor offers both, the picker suggests the raw value.
+- Whether growcontroller's own hardware should deliver raw values to Home
+  Assistant is a product question for the product repository.
+
+
+## SD-039: The history records shown values, hides empty tiles and has a combined view
+
+Decided by the project owner on 2026-10-11 in the software session.
+
+- The history records every value that passes the sensor truth's checks,
+  also one calibrated elsewhere (display only, RAT-025); a gap stays a gap,
+  never 0 (R5). Control still reads only usable values.
+- A history tile shows only when its series can have data: a sensor is
+  assigned, or for the volume from mixes, the hub mixes.
+- A switch between single tiles and a combined grow view: every curve on
+  one time axis, stacked, each on its own scale, with one cursor that shows
+  all values at the same moment. One chart with one axis is not used: pH,
+  EC, temperature, humidity and CO2 differ too much in their units and
+  ranges.
+- A tile's small trend line shows for such values too, as the history
+  holds them.
+
+
+## SD-040: Emergency stop, pause and ending a grow
+
+Decided by the project owner on 2026-10-11 in the software session.
+
+- Where nothing is switched (the Home Assistant trial), the web app shows
+  no emergency stop, which would stop nothing. A notice "Nur Anzeige"
+  (display only) says to switch off in Home Assistant or at the device. A
+  stop set by an earlier version can be cleared ("Not-Halt aufheben"), and
+  the overview then does not claim that everything is off.
+- On the hub the emergency stop stays one tap and one confirmation: in an
+  emergency nobody types.
+- The stop button gets a menu: the emergency stop, and the maintenance mode
+  as the pause, with a chosen duration and a simple confirmation. There is
+  no pause without an end: a forgotten pause would leave the plants
+  without water.
+- Ending or aborting a grow asks for confirmation and for the controller's
+  name, typed in.
+
 ---
 
 ## Drafts (waiting for "entschieden")

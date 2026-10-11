@@ -235,6 +235,44 @@ test("Home Assistant: from the overview to a sensor per measurement, in one tap 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Home Assistant: no emergency stop where nothing is switched, but a stop from before can be resumed (SD-040)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);
+  await expect(page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus")).toHaveCount(0);
+  await page.getByTestId("read-only-tag").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Kein Not-Halt in dieser App")).toBeVisible();
+  // The window is whole on a phone too, over a dimmed page (it was cut off when opened from the top bar)
+  await page.setViewportSize({ width: 375, height: 740 });
+  expect((await dialog.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+  const overlay = (await page.locator(".overlay").boundingBox())!;
+  expect(overlay.width).toBeGreaterThanOrEqual(375);
+  expect(overlay.height).toBeGreaterThanOrEqual(740);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await expect(dialog.getByText(/Im Notfall schaltest du in Home Assistant oder direkt am Gerät aus/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Verstanden" }).click();
+  await expect(dialog).toHaveCount(0);
+  // A phone shows it too
+  await page.setViewportSize({ width: 375, height: 740 });
+  await expect(page.getByTestId("read-only-tag")).toBeVisible();
+  // Stopped by an earlier version: it can be cleared, and nothing claims that everything is off
+  expect((await page.request.post("/api/v1/stop")).status()).toBe(200);
+  await page.reload();
+  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  await expect(page.getByText(/Er schaltet nichts aus: Was Home Assistant schaltet, läuft weiter/)).toBeVisible();
+  await expect(page.getByText(/Alle Pumpen und Ausgänge sind aus/)).toHaveCount(0);
+  await expect(page.getByTestId("read-only-tag")).toBeVisible();
+  // On a phone the bar holds both without scrolling sideways
+  const clear = page.getByRole("button", { name: "Not-Halt aufheben" });
+  const box = await clear.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await clear.click();
+  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await expect(page.getByTestId("read-only-tag")).toBeVisible();
+});
+
 test("Home Assistant: a sensor serving one measurement cannot be taken for another", async ({ page, request }) => {
   await scenario(request, "neu");
   await asHomeAssistant(page, "ok");

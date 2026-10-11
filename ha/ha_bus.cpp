@@ -428,8 +428,13 @@ gc::Catalog catalog() {
                                       {"provides", {std::string("measure.") + m}},
                                       {"text", "Wert aus Home Assistant; kalibriert wird dort."}};
   gc::Catalog c = gc::Catalog::fromJson(j);
-  // Set in code, not from the catalog data, so the catalog cannot loosen it (R7).
-  for (const char* m : kMeasures) c.deviceClasses[classOf(m)].externalCalibration = true;
+  // Set in code, not from the catalog data, so the catalog cannot loosen
+  // them (R7): calibrated in Home Assistant (RAT-025), and reported when the
+  // sensor reports, not when the hub asks (SD-035).
+  for (const char* m : kMeasures) {
+    c.deviceClasses[classOf(m)].externalCalibration = true;
+    c.deviceClasses[classOf(m)].ownReportSchedule = true;
+  }
   return c;
 }
 

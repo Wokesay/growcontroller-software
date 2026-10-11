@@ -3,7 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import {
-  Beaker, Cpu, Droplets, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
+  Beaker, Cpu, Droplets, Eye, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
 } from "lucide-preact";
 import { post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
@@ -51,9 +51,63 @@ const PAGES: Record<string, { title: TextKey; el: () => ComponentChildren }> = {
   "/einstellungen": { title: "nav.settings", el: () => <SettingsPage /> },
 };
 
+// Home Assistant's trial switches nothing, so a stop there would stop
+// nothing; it says so instead (SD-040).
+// compact: only the icon on a phone, where it shares the bar with "Clear stop"
+function ReadOnlyTag(p: { compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        class="btn sm ro-tag"
+        onClick={() => setOpen(true)}
+        title={t("shell.readOnlyTitle")}
+        aria-label={p.compact ? t("shell.readOnly") : undefined}
+        aria-haspopup="dialog"
+        data-testid="read-only-tag"
+      >
+        <Eye size={15} aria-hidden="true" /> {p.compact ? <span class="hide-sm">{t("shell.readOnly")}</span> : t("shell.readOnly")}
+      </button>
+      {open && (
+        <Modal
+          title={t("shell.readOnlyTitle")}
+          onClose={() => setOpen(false)}
+          footer={
+            <button class="btn" onClick={() => setOpen(false)}>
+              {t("common.gotIt")}
+            </button>
+          }
+        >
+          <p>{t("shell.readOnlyWhat")}</p>
+          <p class="muted small">{t("shell.readOnlyWhy")}</p>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function StopButton() {
   const [ask, setAsk] = useState(false);
   const st = state.value;
+  if (readOnly.value) {
+    if (!st?.stopped) return <ReadOnlyTag />;
+    // A stop from an earlier version stays clearable; nothing starts running
+    return (
+      <>
+        <ReadOnlyTag compact />
+        <button
+          class="btn sm"
+          onClick={async () => {
+            await post("/resume");
+            await refreshState();
+            toast(t("shell.stopCleared"));
+          }}
+        >
+          {t("shell.clearStop")}
+        </button>
+      </>
+    );
+  }
   if (st?.stopped)
     return (
       <button
