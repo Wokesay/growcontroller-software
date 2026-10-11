@@ -3,7 +3,10 @@
 As of 2026-10-07. Assessment by `regulatorik` (EN 18031-1, CRA); not
 legal advice. The rows on the Home Assistant app (SD-034) were added on
 2026-10-10 by the software session after `security`'s review and are to
-be confirmed by `regulatorik`. Two kinds of safety and security:
+be confirmed by `regulatorik`. Additions for SD-036 and SD-037 to the rows
+on the Home Assistant app's port and on faulty input were made on
+2026-10-11 by the software session, also to be confirmed by `regulatorik`.
+Two kinds of safety and security:
 
 - **functional:** no overdose, no overflow, no dry run;
 - **IT security:** no outside access to the pumps.

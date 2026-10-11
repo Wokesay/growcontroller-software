@@ -7,32 +7,83 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+## [0.1.0-proto.4] – 2026-10-11
+
+Fourth prototype: more from the first test of the Home Assistant app.
+Control still runs only in the simulator; the Home Assistant app only
+reads sensors and switches nothing. No compatibility promises.
+
+- **New:** after the first sign-in, the Home Assistant app gives a short
+  introduction: name, language, colour scheme, a sensor for each
+  measurement, and for each area (climate, light, watering …) whether the
+  app should take it over one day or leave it to Home Assistant. A sensor
+  the app does not suggest can now be chosen under "Show other sensors"
+  ("Andere Sensoren anzeigen"), with a search, if its unit fits the
+  measurement.
+- **Fixed:** the climate, light and watering pages in the Home Assistant
+  app no longer show switches that switch nothing; they show your choice
+  for the area instead. The history no longer shows an empty tile for the
+  mixed volume.
+- **Please note:** the app still switches nothing, also where you choose
+  "Automatic" ("Automatisch"): keep your Home Assistant automations and
+  timers on. If you already use the app, the introduction opens once after
+  this update; you can skip it and open it again under Settings. A choice
+  made now will not switch anything after a later update without being
+  asked again.
+
 ### Added
 - **Home Assistant: choose a sensor the app does not suggest** (SD-036):
   the sensor picker has "Show other sensors" ("Andere Sensoren anzeigen")
-  with a search by name. A sensor is offered for a measurement its unit
-  fits (% for humidity, ppm for CO2, L for level, no unit for pH); one
-  that Home Assistant says measures something else, such as a phone
-  battery, or a meter that only counts up, is listed folded with the
-  reason and cannot be chosen. Measurements without a suggestion can be
-  chosen right from the assignment page. Only sensors that could be
-  chosen, or need a reason, reach the app, and values only of those that
-  could be chosen.
+  with a search by name or entity ID. A sensor is offered for a
+  measurement its unit fits (% for humidity, ppm for CO2, L for level, no
+  unit for pH). One that Home Assistant says measures something else, such
+  as a phone battery, is listed apart with the reason and cannot be
+  chosen; a meter that only counts up is never taken as a level. For a
+  measurement without a suggestion, a sensor can be chosen right from the
+  assignment page.
 - **Home Assistant: a short introduction after the first sign-in** (SD-037):
-  name, language and colour scheme, a sensor per measurement, and per area
-  (climate, light, watering, refill, circulation, dosing) whether the app
-  is to do it automatically or it stays outside the control. The app
-  switches nothing yet and says so; the choice is recorded. It can be
-  skipped and opened again from Settings.
+  name, time zone (from the browser), language and colour scheme, a sensor
+  per measurement, and per area (climate, light, watering, refill,
+  circulation, dosing) whether the app is to do it automatically
+  ("Automatic") or it is "Handled elsewhere" ("Außerhalb der Steuerung").
+  The app switches nothing yet and says so; the choice is recorded. It can
+  be skipped and opened again from Settings.
+- **API:** `PUT /system {control}` and `system.control` in the
+  configuration and its export (`docs/API.md`); `GET /ha/candidates`
+  reports `otherFits` and `otherCount`, and `?others=1` adds the other
+  sensors (`docs/HOME_ASSISTANT.md`).
 
 ### Changed
 - **Home Assistant: no switches that switch nothing** (SD-037): the
   climate, light and watering pages show what was chosen for the area,
-  changeable there in one tap, instead of switch buttons. Texts say "manuell" (manually) instead of
-  "von Hand" (by hand) where the app switches or doses.
+  changeable there in one tap, instead of switch buttons.
+- **German wording** (SD-037): the web app says "manuell" (manually) and
+  "manuelle Gabe" (manual dose) instead of "von Hand" (by hand) and
+  "Handgabe"; "von Hand" stays only where you do something yourself, such
+  as measuring pH.
 - **History: a curve shows only where it can have values** (SD-039): in
   the Home Assistant app the volume from mixes is no longer an empty tile,
   and a note says that more curves appear once a sensor is assigned.
+
+### Security
+No vulnerability was fixed, so no version is affected and no GHSA or CVE
+was issued. What changes for security:
+
+- **Home Assistant: the app can list more of your sensors, but only what
+  it needs** (SD-036): for "Show other sensors" a signed-in session now
+  also receives other numeric sensors from Home Assistant, only when the
+  picker asks for them and at most 1000: name, entity ID and unit, Home
+  Assistant's device class and the reason when one cannot be chosen, and a
+  value only for those that can. Text, dates, energy, power and any other
+  unit are left out by the app's server. Before, a session received only
+  the suggested sensors. A sensor can be chosen only if it is on this list
+  and fits the measurement.
+- **The choice per area is recorded, not used** (SD-037): only the six
+  areas and "auto" or "outside" are accepted, anything else is refused
+  (422 `system.control`); an import leaves out unknown entries. It feeds
+  no control; the actuator gateway and the protective cut-offs are
+  unchanged. A choice made while the app switches nothing is no consent to
+  switch: the first version that lets it feed control asks again.
 
 ## [0.1.0-proto.3] – 2026-10-11
 
