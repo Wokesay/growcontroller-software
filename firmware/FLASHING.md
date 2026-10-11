@@ -27,7 +27,7 @@ image you build runs.
 
 - ESP-IDF v5.4 (CI uses the container `espressif/idf:v5.4.1`):
   https://docs.espressif.com/projects/esp-idf/en/v5.4.1/esp32s3/get-started/
-- Node.js 22 to build the web app that is embedded in the image.
+- Node.js 22.12 or later to build the web app that is embedded in the image.
 - A USB cable to the hub's USB port (ESP32-S3 USB-Serial-JTAG).
 
 ## Build

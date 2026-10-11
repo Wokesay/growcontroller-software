@@ -38,6 +38,11 @@ listed in every release under "Security".
   app itself does not change.
 - The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
   visible changes.
+- Build tool of the web app: Vite 8.3.2 (proposed by Dependabot). It needs
+  lightningcss, which is under MPL-2.0; the license check now allows
+  MPL-2.0 for lightningcss as a build tool, which is never shipped
+  (SD-046). The code of the app does not change; Vite 8 bundles it with
+  Rolldown, so the built files differ.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the
