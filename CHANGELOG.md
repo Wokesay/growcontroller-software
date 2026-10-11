@@ -27,8 +27,8 @@ listed in every release under "Security".
 
 ### Changed
 - **Home Assistant: no switches that switch nothing** (SD-037): the
-  climate, light and watering pages show what was chosen for the area
-  instead of switch buttons. Texts say "manuell" (manually) instead of
+  climate, light and watering pages show what was chosen for the area,
+  changeable there in one tap, instead of switch buttons. Texts say "manuell" (manually) instead of
   "von Hand" (by hand) where the app switches or doses.
 - **History: a curve shows only where it can have values** (SD-039): in
   the Home Assistant app the volume from mixes is no longer an empty tile,

@@ -257,6 +257,8 @@ constexpr Entry kMessages[] = {
     {"ev.cfg.function_on", "{label} switched on"},
     {"ev.cfg.function_off", "{label} switched off"},
     {"ev.cfg.function_params", "{label}: settings saved"},
+    // Refused configuration changes (hub.cpp)
+    {"system.control", "Choose automatic or outside the control for each area"},
 
     // Events: devices, sockets, locks
     {"ev.device.found", "{label} detected"},
@@ -354,7 +356,6 @@ constexpr Entry kMessages[] = {
     {"job.internal", "Stopped by an internal error. In the tank: {done}"},
     {"job.internal_none", "Stopped by an internal error. Nothing went into the tank."},
     {"job.start_failed", "{name}: {reason}"},
-    {"system.control", "Choose automatic or outside the control for each area"},
     {"job.dosing_step", "Step {n} of {total}: {name} · {ml:1} ml"},
     {"job.dose_failed", "{name} was not fully dosed ({reason})."},
     {"job.pair_failed", "{name} was not fully dosed ({reason}). {partner} is already in the tank. Fix the cause, then tap \"Complete {name}\" – otherwise the mix will be off."},

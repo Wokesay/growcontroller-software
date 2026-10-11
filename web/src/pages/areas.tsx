@@ -104,13 +104,13 @@ function ControlNote(p: { area: ControlArea; title: TextKey; icon: ComponentChil
     } catch (x: any) {
       toast(x.message ?? String(x), "error");
     } finally {
-      await refreshConfig();  // also puts the radios back if saving failed
+      await refreshConfig().catch(() => undefined);  // also puts the radios back if saving failed; offline, the toast has said so
     }
   };
   return (
     <Card title={t(p.title)} icon={p.icon}>
       <div class="stack-sm" data-testid={`control-note-${p.area}`}>
-        <p>{mode === "auto" ? t("control.page.auto") : mode === "outside" ? t("control.page.outside") : t("control.page.none")}</p>
+        <p aria-live="polite">{mode === "auto" ? t("control.page.auto") : mode === "outside" ? t("control.page.outside") : t("control.page.none")}</p>
         <ControlChoice area={p.area} value={mode} onChange={choose} label={t(`control.${p.area}`)} />
       </div>
     </Card>

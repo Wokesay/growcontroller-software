@@ -241,6 +241,8 @@ export const msgDe: Record<string, string> = {
   "ev.cfg.function_on": "{label} eingeschaltet",
   "ev.cfg.function_off": "{label} ausgeschaltet",
   "ev.cfg.function_params": "{label}: Parameter",
+  // Refused configuration changes (hub.cpp)
+  "system.control": "Je Bereich „Automatisch“ oder „Außerhalb der Steuerung“ wählen",
 
   // Events: devices, sockets, locks
   "ev.device.found": "{label} erkannt",
@@ -338,7 +340,6 @@ export const msgDe: Record<string, string> = {
   "job.internal": "Durch einen internen Fehler abgebrochen. Drin: {done}",
   "job.internal_none": "Durch einen internen Fehler abgebrochen. Drin: nichts",
   "job.start_failed": "{name}: {reason}",
-  "system.control": "Je Bereich „Automatisch“ oder „Außerhalb der Steuerung“ wählen",
   "job.dosing_step": "Schritt {n} von {total}: {name} · {ml:1} ml",
   "job.dose_failed": "{name} nicht vollständig dosiert ({reason}).",
   "job.pair_failed": "{name} nicht vollständig dosiert ({reason}). {partner} ist schon drin. Ursache beheben, dann „{name} nachholen“ – sonst stimmt das Verhältnis nicht.",
