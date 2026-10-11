@@ -18,8 +18,18 @@ listed in every release under "Security".
   chosen right from the assignment page. Only sensors that could be
   chosen, or need a reason, reach the app, and values only of those that
   could be chosen.
+- **Home Assistant: a short introduction after the first sign-in** (SD-037):
+  name, language and colour scheme, a sensor per measurement, and per area
+  (climate, light, watering, refill, circulation, dosing) whether the app
+  is to do it automatically or it stays outside the control. The app
+  switches nothing yet and says so; the choice is recorded. It can be
+  skipped and opened again from Settings.
 
 ### Changed
+- **Home Assistant: no switches that switch nothing** (SD-037): the
+  climate, light and watering pages show what was chosen for the area
+  instead of switch buttons. Texts say "manuell" (manually) instead of
+  "von Hand" (by hand) where the app switches or doses.
 - **History: a curve shows only where it can have values** (SD-039): in
   the Home Assistant app the volume from mixes is no longer an empty tile,
   and a note says that more curves appear once a sensor is assigned.

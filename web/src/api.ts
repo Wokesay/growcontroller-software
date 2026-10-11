@@ -76,9 +76,14 @@ export type HubState = {
 
 export type Canister = { id: string; name: string; kind: "nutrient" | "ph_down" | "ph_up"; pump: string; pair: string; color: string; capacityMl: number | null };
 export type Recipe = { id: string; name: string; note: string; steps: { canister: string; mlPerL: number | null }[] };
+/** What the app is to do per area (SD-037); an area not listed has no choice yet. Same list as kControlAreas in config.hpp. */
+export const CONTROL_AREAS = ["climate", "light", "irrigation", "refill", "circulation", "dosing"] as const;
+export type ControlArea = (typeof CONTROL_AREAS)[number];
+export type ControlMode = "auto" | "outside";
+
 export type Config = {
   schemaVersion: number; revision: number;
-  system: { name: string; setupDone: boolean; timezone: string; language: string; updateCheck: boolean; updateChannel: string };
+  system: { name: string; setupDone: boolean; timezone: string; language: string; updateCheck: boolean; updateChannel: string; control?: Partial<Record<ControlArea, ControlMode>> };
   limits: { handDoseMaxMl: number; minRunS: number; maxRunS: number; maxPartialRuns: number };
   devices: { id: string; class: string; name: string }[];
   tanks: { id: string; name: string; capacityL: number | null; minL: number | null; water: string; roles: Record<string, { device: string; channel: number }> }[];

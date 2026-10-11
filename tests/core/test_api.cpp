@@ -369,3 +369,66 @@ TEST_CASE("Namen: Kürzen auf 40 Zeichen zerschneidet keinen Umlaut") {
   CHECK(cfg["zones"][0]["name"].get<std::string>().size() <= 40);
   CHECK(cfg["system"]["name"].get<std::string>() == std::string(39, 'x'));
 }
+
+TEST_CASE("System: what the app is to do per area is stored, only known areas and modes, and read back as saved (SD-037)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json::object());  // nothing chosen yet
+  c.ok("PUT", "/api/v1/system", {{"control", {{"light", "outside"}, {"refill", "auto"}}}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json{{"light", "outside"}, {"refill", "auto"}});
+  // A later choice adds to it; null takes one back
+  c.ok("PUT", "/api/v1/system", {{"control", {{"light", nullptr}, {"climate", "outside"}}}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json{{"climate", "outside"}, {"refill", "auto"}});
+  // Unknown areas and modes are refused, and a refusal changes nothing
+  CHECK(c.call("PUT", "/api/v1/system", {{"control", {{"kitchen", "auto"}}}}).first == 422);
+  CHECK(c.call("PUT", "/api/v1/system", {{"control", {{"light", "sometimes"}}}}).first == 422);
+  CHECK(c.call("PUT", "/api/v1/system", {{"control", "auto"}}).first == 422);
+  for (const gc::json& mode : {gc::json(1), gc::json(true), gc::json::array({"auto"}), gc::json{{"mode", "auto"}}})
+    CHECK(c.call("PUT", "/api/v1/system", {{"control", {{"light", mode}}}}).first == 422);
+  CHECK(c.call("PUT", "/api/v1/system", {{"control", {{"kitchen", nullptr}}}}).first == 422);
+  // Keys come in order: the valid take-back of climate comes first and is undone with the refusal
+  CHECK(c.call("PUT", "/api/v1/system", {{"control", {{"climate", nullptr}, {"light", "sometimes"}}}}).first == 422);
+  c.ok("PUT", "/api/v1/system", {{"control", gc::json::object()}});  // nothing to change
+  const auto [st, err] = c.call("PUT", "/api/v1/system", {{"name", "Neu"}, {"control", {{"light", "sometimes"}}}});
+  CHECK(st == 422);
+  CHECK(err["error"]["key"] == "system.control");
+  gc::json cfg = c.ok("GET", "/api/v1/config");
+  CHECK(cfg["system"]["name"] == "growcontroller");
+  CHECK(cfg["system"]["control"] == gc::json{{"climate", "outside"}, {"refill", "auto"}});
+  // Read back from a saved configuration: what is unknown there is left out, a configuration
+  // written before this field has nothing chosen
+  cfg["system"]["control"]["kitchen"] = "auto";
+  cfg["system"]["control"]["light"] = "sometimes";
+  const gc::Config back = gc::configFromJson(cfg);
+  CHECK(back.system.control == std::map<std::string, std::string>{{"climate", "outside"}, {"refill", "auto"}});
+  // A value that is no string is left out too, and does not make the whole file unreadable
+  cfg["system"]["control"]["dosing"] = 1;
+  cfg["system"]["control"]["circulation"] = nullptr;
+  cfg["system"]["control"]["irrigation"] = {{"mode", "auto"}};
+  CHECK_NOTHROW(gc::configFromJson(cfg));
+  CHECK(gc::configFromJson(cfg).system.control == std::map<std::string, std::string>{{"climate", "outside"}, {"refill", "auto"}});
+  for (const gc::json& v : {gc::json("auto"), gc::json::array()}) {
+    gc::json odd = cfg;
+    odd["system"]["control"] = v;
+    CHECK(gc::configFromJson(odd).system.control.empty());
+  }
+  cfg["system"].erase("control");
+  CHECK(gc::configFromJson(cfg).system.control.empty());
+}
+
+TEST_CASE("System: the choice per area goes along with an export and an import, unknown entries are left out (SD-037)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  c.ok("PUT", "/api/v1/system", {{"control", {{"climate", "outside"}}}});
+  gc::json file = c.ok("GET", "/api/v1/config/export");
+  CHECK(file["system"]["control"] == gc::json{{"climate", "outside"}});
+  file["system"]["control"] = {{"light", "auto"}, {"kitchen", "auto"}, {"dosing", "sometimes"}};
+  c.ok("POST", "/api/v1/config/import", file);  // left out, not refused, as when the file is loaded
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json{{"light", "auto"}});
+  // An import replaces: a file without the field has nothing chosen
+  file["system"].erase("control");
+  c.ok("POST", "/api/v1/config/import", file);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json::object());
+}

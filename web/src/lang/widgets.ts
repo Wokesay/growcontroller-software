@@ -21,7 +21,7 @@ export const de = {
   "widgets.latch.ecNoEffect": "EC ohne Wirkung",
   "widgets.jobMix": "Mischlauf „{name}“ · {l} L",
   "widgets.jobCalibration": "Pumpe einmessen",
-  "widgets.jobManual": "Handgabe",
+  "widgets.jobManual": "Manuelle Gabe",
   "widgets.job.running": "läuft",
   "widgets.job.waitingUser": "wartet auf dich",
   "widgets.job.mixing": "durchmischen",

@@ -446,3 +446,13 @@ body:has(.wizard-foot) .sim-fab { bottom: 86px; }
   .outlet { grid-template-columns: auto minmax(0, 1fr) auto auto; row-gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
   .outlet .select { grid-column: 1 / -1; order: 5; }
 }
+
+/* ---------- Onboarding of the Home Assistant app: one choice per area (SD-037) */
+.wizard-title { font-size: 1rem; }
+.ctl-choice { flex-wrap: wrap; }
+.ctl-modes { display: flex; flex-wrap: wrap; gap: 8px; }
+.radio-pill { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; font-weight: 600; font-size: 0.88rem; color: var(--muted); cursor: pointer; }
+.radio-pill input { margin: 0; accent-color: var(--accent); }
+.radio-pill.on { border-color: var(--accent); background: var(--accent-weak); color: var(--text); }
+.radio-pill:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 700px) { .ctl-modes { width: 100%; } .radio-pill { flex: 1 1 auto; } }

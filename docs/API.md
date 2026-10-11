@@ -29,6 +29,8 @@ UI can do, an integration can do as well.
   refuses with 423 `auth.lost`: a factory reset on the device is needed.
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
+  Exception: an unknown area or mode in `system.control` is left out, as
+  when the file is loaded, not refused.
 
 ## Read
 
@@ -50,7 +52,7 @@ UI can do, an integration can do as well.
 | Method | Path | |
 |---|---|---|
 | POST | `/setup/complete` | setup completed |
-| PUT | `/system` | name, time zone, language (`de`/`en`), update channel and update check, cap per manual dose |
+| PUT | `/system` | name, time zone, language (`de`/`en`), update channel and update check, cap per manual dose; `control` sets what the app is to do per area (`climate`, `light`, `irrigation`, `refill`, `circulation`, `dosing`): `"auto"`, `"outside"` or `null` to take a choice back, adding to the choices so far, anything else 422 `system.control`; recorded only, it feeds no control yet (SD-037) |
 | POST / PATCH / DELETE | `/devices/{id}/accept`, `/devices/{id}` | accept, rename, remove |
 | PUT / DELETE | `/roles/{rolle}` `{device, channel}` | assignment; for mains sockets only after the protection setting is confirmed (otherwise 502) |
 | POST | `/roles/{rolle}/test` | switched output on for 3 s |

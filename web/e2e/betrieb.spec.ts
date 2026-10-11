@@ -79,7 +79,7 @@ test("Numbers follow the page language: range with a comma, field re-formats on 
   await page.goto("/#/funktionen?f=refill");
   await expect(page.getByTestId("fn-refill")).toContainText("1–1000");
   await page.goto("/#/einstellungen");
-  await page.getByLabel("Grenze je Handgabe").fill("2,5");
+  await page.getByLabel("Grenze je manueller Gabe").fill("2,5");
   try {
     const saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/system") && r.request().method() === "PUT");
     await page.getByRole("tab", { name: "English" }).click();
@@ -147,7 +147,7 @@ test("English page: overview, mixing, tank, functions and history speak English 
   await expect(page.getByRole("heading", { name: "Control", exact: true })).toBeVisible();
   await page.goto("/#/mischen");
   await expect(page.getByRole("heading", { name: "Mix nutrient solution" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Dose by hand" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dose manually" })).toBeVisible();
   await page.goto("/#/tank");
   await expect(page.getByRole("heading", { name: "Grow cycle and phases" })).toBeVisible();
   await page.goto("/#/funktionen");
@@ -225,7 +225,7 @@ test("Messwert-Kacheln bei Sensorausfall: nichts ragt aus der Kachel", async ({ 
   await page.request.post("/api/v1/sim/speed", { data: { speed: 1 } });
 });
 
-test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich von Hand schalten", async ({ page }) => {
+test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich manuell schalten", async ({ page }) => {
   await login(page);
   await page.goto("/#/klima");
   await expect(page.getByTestId("metric-VPD")).toBeVisible();

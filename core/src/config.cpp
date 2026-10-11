@@ -73,6 +73,14 @@ const json* Config::calibration(const std::string& dev, const std::string& kind)
   return k == it->second.end() ? nullptr : &k->second;
 }
 
+bool isControlArea(std::string_view area) {
+  for (auto a : kControlAreas)
+    if (a == area) return true;
+  return false;
+}
+
+bool isControlMode(std::string_view mode) { return mode == "auto" || mode == "outside"; }
+
 void to_json(json& j, const Config& c) {
   j = json::object();
   j["schemaVersion"] = c.schemaVersion;
@@ -83,7 +91,8 @@ void to_json(json& j, const Config& c) {
                  {"timezone", c.system.timezone},
                  {"language", c.system.language},
                  {"updateCheck", c.system.updateCheck},
-                 {"updateChannel", c.system.updateChannel}};
+                 {"updateChannel", c.system.updateChannel},
+                 {"control", c.system.control}};
   j["limits"] = {{"handDoseMaxMl", c.limits.handDoseMaxMl},
                  {"minRunS", c.limits.minRunS},
                  {"maxRunS", c.limits.maxRunS},
@@ -187,6 +196,10 @@ Config configFromJson(const json& in) {
     c.system.language = s.value("language", c.system.language);
     c.system.updateCheck = s.value("updateCheck", true);
     c.system.updateChannel = s.value("updateChannel", c.system.updateChannel);
+    // Only known areas and modes; anything else is left out rather than refusing the file.
+    if (s.contains("control") && s["control"].is_object())
+      for (const auto& [area, mode] : s["control"].items())
+        if (isControlArea(area) && mode.is_string() && isControlMode(mode.get<std::string>())) c.system.control[area] = mode.get<std::string>();
   }
   if (j.contains("limits")) {
     const auto& l = j["limits"];

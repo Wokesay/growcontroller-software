@@ -120,17 +120,119 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
 });
 
-test("Read-only trial (Home Assistant): after the password the app opens, not the setup for dosing hardware", async ({ page, request }) => {
+test("Read-only trial (Home Assistant): after the password a short introduction opens, not the setup for dosing hardware (SD-037)", async ({ page, request }) => {
   await scenario(request, "neu");
   // gc_ha_server announces itself as read-only; the setup asks for a dosing block it cannot have
   await asHomeAssistant(page, "ok");
-  await newPassword(page);
-  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way back into it
-  await expect(page.getByRole("heading", { name: "Willkommen" })).toHaveCount(0);
+  await airTempPicked(page);
+  await page.goto("/");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page).toHaveURL(/#\/willkommen/);
+  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
+  // Basics: the name, the colour scheme
+  await page.locator("input[name=hubname]").fill("Zelt 1");
+  await page.getByRole("tab", { name: "Dunkel" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByTestId("wizard-next").click();
+  // Sensors: the same choice as under Devices › Assignment
+  await expect(page.getByRole("heading", { name: "Ein Sensor je Messwert" })).toBeFocused();
+  await expect(page.getByTestId("ha-role-zone.air_temp")).toContainText("Zelt Temperatur");
+  await page.getByTestId("wizard-next").click();
+  // Control: outside unless chosen, and said that nothing is switched yet
+  await expect(page.getByText(/Diese Version schaltet noch nichts/)).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "Klima" }).getByRole("radio", { name: "Außerhalb der Steuerung" })).toBeChecked();
+  await page.getByRole("radiogroup", { name: "Licht" }).getByText("Automatisch").click();
+  await expect(page.getByRole("radiogroup", { name: "Licht" }).getByRole("radio", { name: "Automatisch" })).toBeChecked();
+  await page.getByTestId("wizard-next").click();
+  await expect(page.getByTestId("welcome-sensors")).toHaveText("Sensor gewählt für: Lufttemperatur");
+  await expect(page.getByTestId("welcome-control-light")).toContainText("Automatisch");
+  await expect(page.getByTestId("welcome-control-dosing")).toContainText("Außerhalb der Steuerung");
+  await expect(page.getByText("„Automatisch“ ist vorgemerkt. Diese Version schaltet noch nichts.")).toBeVisible();
+  await expect(page.getByTestId("welcome-skip")).toHaveCount(0);  // nothing left to skip
+  await page.getByTestId("wizard-next").click();
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  const sys = (await (await page.request.get("/api/v1/config")).json()).system;
+  expect(sys.name).toBe("Zelt 1");
+  expect(sys.setupDone).toBe(true);
+  expect(sys.control).toEqual({ climate: "outside", light: "auto", irrigation: "outside", refill: "outside", circulation: "outside", dosing: "outside" });
+  await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way into the dosing setup
+  await page.goto("/#/einrichtung");
+  await expect(page).toHaveURL(/#\/willkommen/);  // not even by its address
+  // Area pages: no switches that switch nothing and no note about switching, but what was chosen
+  for (const [path, area] of [["klima", "climate"], ["licht", "light"], ["bewaesserung", "irrigation"]]) {
+    await page.goto(`/#/${path}`);
+    await expect(page.getByTestId(`control-note-${area}`)).toBeVisible();
+    await expect(page.locator('[data-testid^="output-"]')).toHaveCount(0);
+    await expect(page.getByText(/Manuell schalten|manuell schalten|Gießpumpe läuft nur/)).toHaveCount(0);
+  }
+  await page.goto("/#/licht");
+  await expect(page.getByTestId("control-note-light")).toContainText("„Automatisch“ ist vorgemerkt. Diese Version schaltet noch nichts");
+  // Changed right there, in one tap
+  await page.goto("/#/klima");
+  await expect(page.getByTestId("control-note-climate")).toContainText("Du schaltest das in Home Assistant oder am Gerät.");
+  await page.getByRole("radiogroup", { name: "Klima" }).getByText("Automatisch").click();
+  await expect(page.getByText("Gespeichert")).toBeVisible();
+  await expect(page.getByTestId("control-note-climate")).toContainText("„Automatisch“ ist vorgemerkt.");
+  expect((await (await page.request.get("/api/v1/config")).json()).system.control.climate).toBe("auto");
+  // Done once: it does not open by itself again; the colour scheme stays
+  await page.reload();
+  await expect(page).toHaveURL(/#\/klima/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.goto("/#/einstellungen");
+  await expect(page.getByRole("tab", { name: "Dunkel" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "System" }).click();
+  await page.reload();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
+  // Opened again from Settings, without "skip"
+  await page.getByTestId("open-welcome").click();
+  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
+  await expect(page.getByTestId("welcome-skip")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Read-only trial (Home Assistant): the introduction can be skipped; nothing is chosen then", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);  // skips it
+  await expect(page.getByText("Die Einführung findest du jederzeit unter Einstellungen.")).toBeVisible();
+  const sys = (await (await page.request.get("/api/v1/config")).json()).system;
+  expect(sys.setupDone).toBe(true);
+  expect(sys.control).toEqual({});
+  await page.reload();
+  await expect(page.getByTestId("watchdog")).toBeVisible();  // not opened again
   // The overview points to choosing sensors
   await page.getByTestId("ha-choose-link").click();
   await expect(page).toHaveURL(/#\/geraete\?tab=zuordnung/);
+  // No hardware to buy for a climate sensor, but one to choose
+  await page.goto("/#/klima");
+  await expect(page.getByText("Kein Klimasensor gewählt")).toBeVisible();
+  await page.getByRole("link", { name: "Sensor wählen" }).click();
+  await expect(page).toHaveURL(/#\/geraete\?tab=zuordnung/);
+  await page.goto("/#/bewaesserung");
+  await expect(page.getByTestId("control-note-irrigation")).toContainText("Diese App schaltet hier nichts. Wähle, was sie künftig automatisch machen soll.");
+  await expect(page.getByRole("radiogroup", { name: "Bewässerung" }).getByRole("radio", { checked: true })).toHaveCount(0);
+  await page.getByRole("radiogroup", { name: "Bewässerung" }).getByText("Außerhalb der Steuerung").click();
+  await expect(page.getByTestId("control-note-irrigation")).toContainText("Du schaltest das in Home Assistant oder am Gerät.");
+  expect((await (await page.request.get("/api/v1/config")).json()).system.control).toEqual({ irrigation: "outside" });
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("A hub with its own hardware has no introduction of the Home Assistant app", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await page.goto("/");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await page.goto("/#/willkommen");
+  await expect(page).toHaveURL(/#\/einrichtung/);  // its own setup instead
+  expect((await page.request.post("/api/v1/setup/complete")).ok()).toBe(true);
+  await page.reload();  // the page learns of the completed setup
+  await expect(page.getByTestId("wizard-next")).toBeVisible();
+  await page.goto("/#/willkommen");
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toHaveCount(0);
 });
 
 test("The overview points to devices waiting to be accepted", async ({ page, request }) => {
@@ -194,6 +296,7 @@ async function newPassword(page: Page) {
   await page.locator("input[name=password]").fill("mein-passwort");
   await page.locator("input[name=password2]").fill("mein-passwort");
   await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await page.getByTestId("welcome-skip").click();  // the introduction (SD-037) has its own test
   await expect(page.getByTestId("watchdog")).toBeVisible();
 }
 
@@ -329,6 +432,7 @@ test("Home Assistant: the history shows only curves that can have values, and sa
   await page.goto("/#/verlauf?skip=1");
   await expect(page.getByText("Volumen (aus Mischläufen)")).toBeVisible();
   await expect(page.getByTestId("history-more")).toHaveCount(0);
+  expect((await page.request.post("/api/v1/setup/complete")).ok()).toBe(true);  // past the introduction (SD-037)
   await asHomeAssistant(page, "ok");
   await page.reload();
   await expect(page.getByTestId("history-more")).toBeVisible();

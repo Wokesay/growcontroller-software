@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Bereiche der Anlage: Klima, Licht, Bewässerung. Jede Seite zeigt die
-// Messwerte des Bereichs und seine Schaltausgänge mit Handbetrieb. Alle
+// Messwerte des Bereichs und seine Schaltausgänge zum manuellen Schalten. Alle
 // Sperren gelten auch hier (Aktor-Gateway); eine abgelehnte Schaltung zeigt
 // den Grund. Automatische Funktionen kommen auf diese Seiten, sobald es sie
-// gibt.
+// gibt. In the Home Assistant app nothing is switched here; the page says what
+// was chosen for the area instead (SD-037).
 import type { ComponentChildren } from "preact";
 import { Droplets, Fan, Sun, Thermometer, Zap } from "lucide-preact";
-import { post } from "../api";
+import { post, put, type ControlArea, type ControlMode } from "../api";
 import { num } from "../format";
 import { t, type TextKey } from "../i18n";
-import { binding, catalog, refreshState, state } from "../store";
+import { binding, catalog, config, readOnly, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Pill, Term } from "../ui";
 import { MetricTile, useSparks } from "../widgets";
 
@@ -77,6 +78,45 @@ function Outputs(p: { roles: string[]; title: TextKey; icon: ComponentChildren }
   );
 }
 
+const MODES: ControlMode[] = ["auto", "outside"];
+
+/** Automatic or outside the control for one area (SD-037): native radios, so arrow keys and screen readers work. */
+export function ControlChoice(p: { area: ControlArea; value?: ControlMode; onChange: (m: ControlMode) => void; label?: string; labelledBy?: string; describedBy?: string }) {
+  return (
+    <span class="ctl-modes" role="radiogroup" aria-label={p.label} aria-labelledby={p.labelledBy} aria-describedby={p.describedBy}>
+      {MODES.map((m) => (
+        <label class={`radio-pill ${p.value === m ? "on" : ""}`}>
+          <input type="radio" name={`ctl-${p.area}`} value={m} checked={p.value === m} onChange={() => p.onChange(m)} />
+          {t(`control.mode.${m}`)}
+        </label>
+      ))}
+    </span>
+  );
+}
+
+/** Read-only (Home Assistant): no switches that switch nothing, but what the area is left to, changed in one tap. */
+function ControlNote(p: { area: ControlArea; title: TextKey; icon: ComponentChildren }) {
+  const mode = config.value?.system.control?.[p.area];
+  const choose = async (m: ControlMode) => {
+    try {
+      await put("/system", { control: { [p.area]: m } });
+      toast(t("settings.saved"));
+    } catch (x: any) {
+      toast(x.message ?? String(x), "error");
+    } finally {
+      await refreshConfig();  // also puts the radios back if saving failed
+    }
+  };
+  return (
+    <Card title={t(p.title)} icon={p.icon}>
+      <div class="stack-sm" data-testid={`control-note-${p.area}`}>
+        <p>{mode === "auto" ? t("control.page.auto") : mode === "outside" ? t("control.page.outside") : t("control.page.none")}</p>
+        <ControlChoice area={p.area} value={mode} onChange={choose} label={t(`control.${p.area}`)} />
+      </div>
+    </Card>
+  );
+}
+
 const shown = (role: string) => state.value?.readings[role] && state.value.readings[role].quality !== "not_bound";
 
 /** Raumklima als Kacheln; leer, wenn kein Klimasensor zugeordnet ist. */
@@ -108,22 +148,33 @@ export function ClimatePage() {
         ) : (
           <Empty
             icon={<Thermometer size={34} />}
-            title={t("area.noClimateSensor")}
-            text={t("area.noClimateSensorText")}
+            title={t(readOnly.value ? "area.noClimateSensorHa" : "area.noClimateSensor")}
+            text={t(readOnly.value ? "area.noClimateSensorHaText" : "area.noClimateSensorText")}
             action={
-              <a class="btn" href="#/geraete?tab=erweitern">
-                {t("area.expand")}
-              </a>
+              readOnly.value ? (  // no hardware to buy in the Home Assistant app
+                <a class="btn" href="#/geraete?tab=zuordnung">
+                  {t("area.chooseSensor")}
+                </a>
+              ) : (
+                <a class="btn" href="#/geraete?tab=erweitern">
+                  {t("area.expand")}
+                </a>
+              )
             }
           />
         )}
       </Card>
-      <Outputs roles={["zone.exhaust", "zone.circulation_fan", "zone.humidifier", "zone.dehumidifier"]} title="area.climateDevices" icon={<Fan size={18} />} />
+      {readOnly.value ? (
+        <ControlNote area="climate" title="area.climateDevices" icon={<Fan size={18} />} />
+      ) : (
+        <Outputs roles={["zone.exhaust", "zone.circulation_fan", "zone.humidifier", "zone.dehumidifier"]} title="area.climateDevices" icon={<Fan size={18} />} />
+      )}
     </div>
   );
 }
 
 export function LightPage() {
+  if (readOnly.value) return <ControlNote area="light" title="nav.light" icon={<Sun size={18} />} />;
   return (
     <div class="stack">
       <Outputs roles={["zone.light"]} title="nav.light" icon={<Sun size={18} />} />
@@ -136,13 +187,17 @@ export function IrrigationPage() {
   const st = state.value!;
   return (
     <div class="stack">
-      <Outputs roles={["zone.irrigation_pump"]} title="nav.irrigation" icon={<Droplets size={18} />} />
+      {readOnly.value ? (
+        <ControlNote area="irrigation" title="nav.irrigation" icon={<Droplets size={18} />} />
+      ) : (
+        <Outputs roles={["zone.irrigation_pump"]} title="nav.irrigation" icon={<Droplets size={18} />} />
+      )}
       {shown("tank.level") ? (
         <div class="grid-3">
           <MetricTile label={t("area.tankLevel")} reading={st.readings["tank.level"]} color="--level" />
         </div>
       ) : (
-        <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>
+        !readOnly.value && <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>  // no pump here to protect
       )}
     </div>
   );
