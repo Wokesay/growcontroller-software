@@ -17,8 +17,8 @@ release". The list grows with every report
 - **Sensors you already have in Home Assistant:** the Home Assistant app
   shows them today and switches nothing. The ESP32-S3 measures with probes
   on its carrier board and, later, with Bluetooth sensors such as the
-  Shelly BLU H&T; reading sensors from Home Assistant on the ESP32-S3 is
-  not planned.
+  Shelly BLU H&T (#91). Whether it may also read sensors from Home
+  Assistant is open.
 - **Probes you already have:** the carrier board's pH and EC inputs take
   the probe itself, not a signal board (see
   [Carrier board](#carrier-board-with-the-esp32-s3-from-m1)).
@@ -93,7 +93,7 @@ the unit fits ([units](HOME_ASSISTANT.md#units)).
 | Humidity | % | Valid |
 | CO2 | ppm | Valid |
 | pH | pH, or no unit; calibrated in the sensor or in Home Assistant | Calibrated elsewhere |
-| pH | the voltage of a pH probe from a front end without gain: a buffer that passes the glass electrode's voltage on unchanged, so the voltage rises as the pH falls (mV or V, at most 5 V) | From the next release: you calibrate it in the app with pH 7 and pH 4 buffer solutions; then it is valid (SD-041). |
+| pH | the voltage of a pH probe from an input circuit without an amplifier, which passes the glass electrode's voltage on unchanged, so the voltage rises as the pH falls (mV or V, at most 5 V) | From the next release: you calibrate it in the app with pH 7 and pH 4 buffer solutions; then it is valid (SD-041). |
 | pH | the voltage of a board with an amplifier (with a healthy probe, more than 74 mV per pH step) | Not yet: the app refuses to calibrate it; boards with an amplifier need a rule first (SD-041). Do not pick a board's voltage: behind an amplifier a worn probe can pass the check. |
 | EC | mS/cm or µS/cm, calibrated in the sensor or in Home Assistant | Calibrated elsewhere |
 | EC | a conductivity compensated to 25 °C, to calibrate in the app | Not yet: planned (SD-041) |
@@ -175,8 +175,8 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 | Connection | What fits | Status | Notes |
 |---|---|---|---|
-| 8 sensor ports | growcontroller sensor heads, found automatically; wired sensors of other makers that use Modbus over RS485 (9600 baud), once you pick their type in the app | Not yet (M1) | Each port is its own bus with 12 V. Which sensors of other makers the app will know is open; report yours. The app uses a value only after a plausibility check, and pH and EC only with a calibration made in growcontroller: a value calibrated in the sensor stays display only (RAT-025). |
-| pH and EC inputs | a pH electrode; an EC probe with K=1 (calculated for about 20 µS/cm to 20 mS/cm); a 10 kΩ NTC for the water temperature (B 3950, assumed) | Not yet (M1) | Each input is isolated on its own, so the probes do not disturb each other. They take the probe itself: a signal board with its own amplifier (DFRobot Gravity) or an Atlas EZO circuit does not belong there. The board has no 1-Wire input for a DS18B20. |
+| 8 sensor ports | growcontroller sensor heads, found automatically; wired sensors of other makers that use Modbus over RS485 (9600 baud), once you pick their type in the app | Not yet (M1) | Each port is its own bus with 12 V. Which sensors of other makers the app will know is open; report yours. The app uses a value only after a plausibility check, and pH and EC only with a calibration made in growcontroller: a value calibrated in the sensor shows as "Calibrated elsewhere" and is never used for control (RAT-025). |
+| pH and EC inputs | a pH electrode; an EC probe with K=1 (calculated for about 20 µS/cm to 20 mS/cm); a 10 kΩ NTC for the water temperature (B 3950, assumed) | Not yet (M1) | Each input is isolated on its own, so the probes do not disturb each other. They take the probe itself: a signal board with its own amplifier (DFRobot Gravity) or an Atlas EZO circuit does not belong there. The pin assignment in #94 has no 1-Wire input for a DS18B20. |
 | 3 contact inputs | switch contacts, for example a float switch, and leak sensors | Not yet (M1) | |
 | 10 dosing pump outputs, 12 V | 12 V DC dosing pumps | Not yet (M1) | One pump runs at a time. All 10 outputs together switch off above about 1.8 A (calculated). There is no time limit in the hardware; the firmware limits run time, volume and pause per pump (SD-045). For pH− in a tank under about 30 L, choose a pump of about 20–30 ml/min or less: a first pH− dose is capped at about 0.06 ml per litre of tank (0.6 ml in 10 L), and a pump runs at least 1 s (RAT-050; calculated, pH− products differ in strength). |
 | Refill valve output, 12 V | a 12 V solenoid valve, with an overflow float switch in series | Not yet (M1) | The float switch is required: it is the overflow guard, as a small tank overflows long before any time limit ends (RAT-032, RAT-079). Test it before the first fill. The output switches off above about 1.8 A (calculated). |
@@ -186,7 +186,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 | What | Status | Notes |
 |---|---|---|
-| Bluetooth sensors in the BTHome format (an open format, used by Shelly BLU and others) that send at a fixed interval: air temperature and humidity | Not yet: no milestone yet | Can control humidifier, dehumidifier, exhaust fan and air heater. Encrypted where the sensor can. If its value is stale or invalid, the ESP32-S3 switches that device off. Keep the device's own setting (for example its humidistat) as the outer limit (PD-153, #91). |
+| Bluetooth sensors in the BTHome format (an open format, used by Shelly BLU and others) that send at a fixed interval: air temperature and humidity | Not yet: no milestone yet | Can control humidifier, dehumidifier, exhaust fan and air heater. Encrypted where the sensor can. If its value is outdated or invalid, the ESP32-S3 switches that device off. Keep the device's own setting (for example its humidistat) as the outer limit (PD-153, #91). |
 | Other wireless values | Not yet: no milestone yet | Shown, never used for control (PD-153). |
 | Level, overflow, leak, drain, pH, EC, water temperature, substrate, anything that drives the CO2 valve | No | Never over radio (PD-153): a lost message must not hide a full tank or a wrong pH. |
 

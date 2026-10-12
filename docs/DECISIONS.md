@@ -1050,9 +1050,9 @@ Decided by the project owner on 2026-10-12 in the software session.
   trademarks).
 - The list describes connections, not the board. It takes from the board
   only what is public in issues #91 and #94 (pin assignment, bus devices
-  and conversion values: PD-157, PD-168, PD-170) and what a user needs to
-  choose a sensor, pump or valve; the rest of the board stays private
-  (PD-103).
+  and conversion values: PD-157, PD-168, PD-170), and of that only what a
+  user needs to choose a sensor, pump or valve; the rest of the board
+  stays private (PD-103).
 - A step-by-step guide for flashing the ESP32-S3 (board, cable, USB port,
   browser, steps, duration, problems, other tools, pictures) is written
   with M1, once a flashing page and a release with firmware exist. Until
