@@ -64,6 +64,11 @@ listed in every release under "Security".
   server in the app is now linked against musl 1.2.6 and the runtime of
   GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
   ships musl 1.2.6's license notice.
+- **License check: the app imports only runtime dependencies** (#102):
+  every package the web app imports must be listed under `dependencies`.
+  A package listed as a build tool would be bundled into the app but
+  checked only as a build tool, without a notice in
+  `THIRD_PARTY_NOTICES.md`.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the

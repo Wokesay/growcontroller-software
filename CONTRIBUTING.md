@@ -26,7 +26,9 @@ of all npm dependencies (`tools/check_licenses.mjs`). A new dependency
 needs a license compatible with the AGPL and an entry in
 `THIRD_PARTY_NOTICES.md`. Build tools that are never shipped may also be
 under CC-BY-4.0 (data); lightningcss as a build tool also under MPL-2.0
-(SD-046).
+(SD-046). A package the web app imports goes under `dependencies` in
+`web/package.json`, never under `devDependencies`: it ends up in what we
+ship, and the check refuses it otherwise (#102).
 
 ## Develop
 
