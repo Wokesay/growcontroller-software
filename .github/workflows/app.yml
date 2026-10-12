@@ -128,6 +128,28 @@ jobs:
           docker rm app
           docker rm -f supervisor
           docker network rm gc-smoke
+      # The image's server is linked against musl and the GCC runtime of its
+      # Alpine base, the other jobs test on Ubuntu's toolchain (#112).
+      - name: Core tests with the image's toolchain
+        run: |
+          # gc_tests built as the image builds its server: in the same base,
+          # with the same linker flags
+          docker run --rm -v "$PWD:/src:ro" "$STANDIN" sh -ec '
+            apk add --no-cache build-base cmake ninja linux-headers > /dev/null
+            cmake -S /src -B /tmp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGC_WERROR=OFF \
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-pie -Wl,-z,stack-size=1048576"
+            cmake --build /tmp/build --target gc_tests
+            /tmp/build/gc_tests'
+      - name: The image's server against a stand-in Home Assistant
+        run: |
+          # The binary that ships, with values a stand-in Home Assistant
+          # reports: a number, an unavailable sensor, a unit to convert (#112)
+          docker create --name shipped "growcontroller-ha:$ARCH" > /dev/null
+          docker cp shipped:/gc_ha_server gc_ha_server
+          docker rm shipped > /dev/null
+          docker run --rm -v "$PWD:/src:ro" -w /src -e GC_HA_SERVER=/src/gc_ha_server "$STANDIN" sh -ec '
+            apk add --no-cache nodejs > /dev/null
+            node --test tools/ha_server.test.mjs'
       - name: Save the image
         id: save
         if: inputs.release

@@ -2,13 +2,15 @@
 // gc_ha_server as a Home Assistant app (SD-034): --app refuses a mapping
 // file and a token file, takes the token only from SUPERVISOR_TOKEN and
 // writes nothing without it, is not switched on by an option's value, and
-// still honours --data, --host, --web and --port. Runs the built server
-// (tools/ci.sh builds it first).
+// still honours --data, --host, --web and --port. Values that a stand-in
+// Home Assistant reports reach the hub's readings (#112). Runs the built
+// server (tools/ci.sh builds it first; the app image's own server in
+// .github/workflows/app.yml).
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { get } from "node:http";
+import { createServer as httpServer, get } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,4 +122,75 @@ test("--app starts with the Supervisor's token and honours --data, --host, --web
   const files = readdirSync(data);
   assert.ok(files.length > 0, "the hub wrote its data folder");
   for (const f of files) assert.equal(statSync(join(data, f)).mode & 0o777, 0o600, f);
+});
+
+// A stand-in for Home Assistant: every read gets these states and a Date
+// header, as Home Assistant sends one.
+async function standIn(states) {
+  const seen = [];
+  const server = httpServer((req, res) => {
+    seen.push(`${req.method} ${req.url} ${req.headers.authorization ?? ""}`);
+    res.writeHead(200, { "Content-Type": "application/json", Date: new Date().toUTCString() });
+    res.end(JSON.stringify(states));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { url: `http://127.0.0.1:${server.address().port}`, seen, close: () => server.close() };
+}
+
+test("values from Home Assistant reach the hub: a number, an unavailable sensor, a unit to convert (#112)", { skip }, async () => {
+  const now = new Date().toISOString();
+  const state = (entity_id, value, unit, device_class) => ({
+    entity_id,
+    state: value,
+    attributes: { unit_of_measurement: unit, device_class },
+    last_changed: now,
+    last_updated: now,
+    last_reported: now,
+  });
+  const ha = await standIn([
+    state("sensor.grow_ph", "6.2", "pH", "ph"),
+    state("sensor.grow_rh", "unavailable", "%", "humidity"),
+    state("sensor.grow_ec", "5", "µS/cm", "conductivity"),
+  ]);
+  const dir = mkdtempSync(join(tmp, "values-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: ha.url }));
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const child = spawn(bin, ["--config", config, "--data", join(dir, "hub"), "--host", "127.0.0.1", "--port", String(port), "--every", "1"], {
+    env: env({ GC_HA_TOKEN: "stand-in-token" }),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (out += c));
+  const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+  try {
+    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    // as the web app does it: set the password, then pick a sensor per measurement
+    const json = { "Content-Type": "application/json", Origin: base };
+    const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1" }) });
+    assert.equal(setup.status, 200, out);
+    const cookie = (setup.headers.get("set-cookie") ?? "").split(";")[0];
+    for (const [role, entity] of [["tank.ph", "sensor.grow_ph"], ["zone.humidity", "sensor.grow_rh"], ["tank.ec", "sensor.grow_ec"]]) {
+      const r = await fetch(`${base}/api/v1/ha/assign`, { method: "POST", headers: { ...json, Cookie: cookie }, body: JSON.stringify({ role, entity }) });
+      assert.equal(r.status, 200, `${role}: ${await r.text()}\n${out}`);
+    }
+    let readings = {};
+    for (let i = 0; i < 40; i++) {
+      readings = (await (await fetch(`${base}/api/v1/state`, { headers: { Cookie: cookie } })).json()).readings;
+      if (readings["tank.ph"]?.value != null && readings["tank.ec"]?.value != null) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    assert.equal(readings["tank.ph"]?.value, 6.2, JSON.stringify(readings["tank.ph"]));
+    assert.equal(readings["tank.ec"]?.value, 0.005, JSON.stringify(readings["tank.ec"]));
+    assert.equal(readings["tank.ec"]?.unit, "mS/cm");
+    assert.equal(readings["zone.humidity"]?.value, null, "unavailable stays missing, never 0 (R5)");
+    assert.ok(ha.seen.some((r) => r === "GET /api/states Bearer stand-in-token"), ha.seen.join("\n"));
+    assert.doesNotMatch(out, /no Date header/, "the stand-in's Date header was read");
+  } finally {
+    child.kill("SIGTERM");
+    ha.close();
+  }
+  assert.deepEqual(await ended, { code: 0, signal: null }, out);
 });
