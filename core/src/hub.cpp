@@ -384,7 +384,7 @@ void Hub::detectDevices() {
       // Pumpe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
       if (known && d && d->cls == "pump_cap")
         if (const CanisterCfg* k = cfg_.canisterByPump(id)) text = say("ev.device.where_pump", {{"where", where}, {"name", k->name}});
-      if (!seenOnline_.empty() || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
+      if (anyOnlineSinceStart_ || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
     }
   for (const auto& id : seenOnline_)
     if (!online.count(id)) {
@@ -393,6 +393,7 @@ void Hub::detectDevices() {
                say("ev.device.lost.text"), {{"device", id}});
     }
   seenOnline_ = online;
+  if (!online.empty()) anyOnlineSinceStart_ = true;
 }
 
 double Hub::tankVolume() const {

@@ -2148,3 +2148,59 @@ TEST_CASE("Home Assistant: with a sign of life a live pH that moves a little sta
   CHECK_FALSE(session().contains("pending"));
   CHECK(session()["failed"]["key"] == "probe.no_raw");
 }
+
+TEST_CASE("Devices: after every device was offline at once, each known device logs that it is back; a start logs none") {
+  // With Home Assistant as the device layer this is the normal case: when
+  // Home Assistant restarts, every device stops answering at once.
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  bus.head("PHEC-1");
+  bus.head("PHEC-2");
+  auto tick = [&](gc::Hub& h) {
+    clk.ms += 1000;
+    h.tick();
+  };
+  {
+    gc::Hub first(cat, bus, store, clk, pseudoRandom);
+    first.boot();
+    tick(first);
+    REQUIRE(first.acceptDevice("PHEC-1", "").status == 200);
+    REQUIRE(first.acceptDevice("PHEC-2", "").status == 200);
+    first.flush();
+  }
+  for (auto& d : bus.devs) d.online = false;  // Home Assistant answers only after the start
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  auto count = [&](const std::string& key) {
+    int n = 0;
+    const json events = hub.events(0, 9999999999, "device", 2000)["events"];
+    for (const auto& e : events)
+      if (e["title"]["key"] == key) ++n;
+    return n;
+  };
+  auto all = [&](bool online) {
+    for (auto& d : bus.devs) d.online = online;
+  };
+  tick(hub);
+  all(true);
+  tick(hub);
+  CHECK(count("ev.device.back") == 0);  // a start is no return
+  CHECK(count("ev.device.lost") == 0);
+  for (int outage = 1; outage <= 2; ++outage) {
+    all(false);
+    tick(hub);
+    CHECK(count("ev.device.lost") == 2 * outage);
+    all(true);
+    tick(hub);
+    CHECK(count("ev.device.back") == 2 * outage);  // one per known device
+  }
+  // One device alone, as before
+  bus.devs[0].online = false;
+  tick(hub);
+  bus.devs[0].online = true;
+  tick(hub);
+  CHECK(count("ev.device.lost") == 5);
+  CHECK(count("ev.device.back") == 5);
+}

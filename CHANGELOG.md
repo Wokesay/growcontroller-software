@@ -62,6 +62,11 @@ listed in every release under "Security".
   Rolldown, so the built files differ.
 
 ### Fixed
+- **Event log: devices are "back" after a full outage** (#69): when every
+  device stopped answering at once, for example while Home Assistant
+  restarted, the log said "not responding" for each of them but never
+  that they were back. Now each known device logs "is back" again. Only
+  the first devices seen after a start are not logged as back.
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
   buffer instead of showing a step the hub did not have. The window now
