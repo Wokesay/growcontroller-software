@@ -75,29 +75,32 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
-- **Plan: access from outside, Home Assistant, fans and EC** (SD-059, SD-052
-  to SD-054): at setup you will choose whether the ESP32-S3's web app can be
-  reached only in the home network (preselected), viewed from outside, or
-  viewed and controlled from outside. The Home Assistant window counts as
-  outside. "Stop" works from outside at both outside levels; calibration,
-  limits, updates and acknowledging a latch stay in the home network. The
-  ESP32-S3 reads only its own sensors and sends their values to Home
-  Assistant. Fans are only switched on and off, must start again in their
-  last setting, and are switched on when a climate value is outdated or
-  invalid; a dehumidifier with its own hygrostat keeps power, other climate
-  devices switch off. The ESP32-S3 will compensate EC for the water
-  temperature; if that sensor fails, EC and pH wait. Without a water
-  temperature sensor you can choose to control EC without compensation. The
-  pH calibration on the board's input will also check the probe's zero point
-  once its limit is set.
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
+  SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
+  web app can be reached only in the home network (preselected), viewed
+  from outside, or viewed and controlled from outside. The Home Assistant
+  window counts as outside. "Stop" works from outside at both outside
+  levels; calibration, limits, updates and acknowledging a latch stay in
+  the home network. The ESP32-S3 reads only its own sensors and sends
+  their values to Home Assistant. Fans are only switched on and off, must
+  start again in their last setting, and are switched on when a climate
+  value is outdated or invalid; a dehumidifier with its own hygrostat
+  keeps power, other climate devices switch off; a Bluetooth climate
+  sensor is outdated after three missed reports, never sooner than 120 s.
+  You will choose whether the ESP32-S3 compensates EC for the water
+  temperature (2 % per °C) or not, with a hint how far off EC can be
+  without it; with compensation, EC and pH wait while the water
+  temperature sensor fails. The pH calibration on the board's input will
+  refuse a probe whose zero point is more than 30 mV off and ask to clean
+  or replace it; pH correction then waits for your confirmation.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
   security review of the design; access from outside is chosen at setup
-  (SD-059); control stays on the ESP. A step-by-step
-  guide for flashing follows with the first firmware release (SD-049).
+  (SD-059); control stays on the ESP. A step-by-step guide for flashing
+  follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not
