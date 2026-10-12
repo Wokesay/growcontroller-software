@@ -1130,15 +1130,19 @@ the review questions below come from the `security` review of this entry.
   ingress; whether they get the link on the device page instead. Open
   too: whether the app's present mode (reading sensors from Home Assistant
   without an ESP, switching nothing, SD-034) stays once the window exists.
-- Changed by SD-051: access from outside is no product question any more;
+- Changed by SD-059: access from outside is no product question any more;
   the user chooses a level at setup. Requests through the window and
   commands over the native API count as from outside and follow that
   level, so the ESP is set up through the window only as far as the level
-  allows; what SD-051 keeps to the home network is done only directly
+  allows; what SD-059 keeps to the home network is done only directly
   there.
 
 
-## SD-051: Access from outside the home network in three levels, chosen at setup
+## SD-059: Access from outside the home network in three levels, chosen at setup
+
+Recorded as SD-051 in #123; renumbered on 2026-10-12, because #122 recorded
+the sign-in lockout as SD-051 at the same time and its code and tests cite
+that number.
 
 Decided by the project owner on 2026-10-12 in the software session, as a
 question the software solves; the rules for building it come from the

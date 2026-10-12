@@ -61,6 +61,9 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Decision numbers:** the decision on access from outside the home
+  network is now SD-059. It and the sign-in lockout had both been recorded
+  as SD-051 on the same day; SD-051 stays the lockout.
 - **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
   prototype release comes after a block of fixes from a review: the phone
   layout, a message when Stop or a switch fails, plain words instead of
@@ -72,8 +75,8 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
-- **Plan: access from outside, Home Assistant, fans and EC** (SD-051 to
-  SD-054): at setup you will choose whether the ESP32-S3's web app can be
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-059,
+  SD-052 to SD-054): at setup you will choose whether the ESP32-S3's web app can be
   reached only in the home network (preselected), viewed from outside, or
   viewed and controlled from outside. The Home Assistant window counts as
   outside. "Stop" works from outside at both outside levels; calibration,
@@ -93,7 +96,7 @@ listed in every release under "Security".
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
   security review of the design; access from outside is chosen at setup
-  (SD-051); control stays on the ESP. A step-by-step
+  (SD-059); control stays on the ESP. A step-by-step
   guide for flashing follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
