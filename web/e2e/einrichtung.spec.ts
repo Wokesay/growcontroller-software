@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Vom ersten Einschalten bis zur ersten Mischung – so, wie ein Kunde es erlebt.
-import { expect, test, type Page } from "@playwright/test";
-import { login, scenario, simSpeed } from "./helpers";
+import type { Page } from "@playwright/test";
+import { expect, login, scenario, simSpeed, test } from "./helpers";
 
 test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, request }) => {
   await scenario(request, "neu");

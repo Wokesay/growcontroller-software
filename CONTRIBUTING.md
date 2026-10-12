@@ -24,7 +24,9 @@ Every new source file starts with an SPDX header:
 JSON, which `REUSE.toml` covers.) CI runs `reuse lint` and a license check
 of all npm dependencies (`tools/check_licenses.mjs`). A new dependency
 needs a license compatible with the AGPL and an entry in
-`THIRD_PARTY_NOTICES.md`.
+`THIRD_PARTY_NOTICES.md`. Build tools that are never shipped may also be
+under CC-BY-4.0 (data); lightningcss as a build tool also under MPL-2.0
+(SD-046).
 
 ## Develop
 

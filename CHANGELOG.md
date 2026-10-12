@@ -50,6 +50,16 @@ listed in every release under "Security".
   after a long press on BOOT, with a key per device (SD-044). Raw level
   and EC from Home Assistant, the combined history view and the stop menu
   wait until the ESP foundation stands.
+- Build tools of the web app: TypeScript 7.0.2 for the type check and
+  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  app itself does not change.
+- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
+  visible changes.
+- Build tool of the web app: Vite 8.3.2 (proposed by Dependabot). It needs
+  lightningcss, which is under MPL-2.0; the license check now allows
+  MPL-2.0 for lightningcss as a build tool, which is never shipped
+  (SD-046). The code of the app does not change; Vite 8 bundles it with
+  Rolldown, so the built files differ.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the

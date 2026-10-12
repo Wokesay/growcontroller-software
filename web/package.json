@@ -15,13 +15,13 @@
   "dependencies": {
     "@preact/signals": "2.11.3",
     "lucide-preact": "1.52.0",
-    "preact": "10.29.8",
+    "preact": "11.0.0",
     "uplot": "1.6.32"
   },
   "devDependencies": {
-    "@playwright/test": "1.56.1",
+    "@playwright/test": "1.63.0",
     "@preact/preset-vite": "2.10.6",
-    "typescript": "5.9.3",
-    "vite": "7.3.6"
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
   }
 }

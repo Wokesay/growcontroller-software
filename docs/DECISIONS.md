@@ -935,6 +935,26 @@ full behaviour; this entry names what changes earlier decisions.
 - Built as M1 in `docs/ROADMAP.md`.
 
 
+## SD-046: MPL-2.0 is allowed for lightningcss as a build tool
+
+Decided by the project owner on 2026-10-11 in the software session, for
+Vite 8 (Dependabot #58), which needs lightningcss.
+
+- The license check (`tools/license_policy.mjs`) allows MPL-2.0 for
+  lightningcss and its platform builds as build tools: Vite runs them on
+  our CSS, and none of their files end up in the hub, the simulator or the
+  Home Assistant app. MPL-2.0 binds only copies of its own files; the CSS
+  that comes out stays ours.
+- Only these packages: other build tools such as Vite and Rolldown put
+  code of their own into the app, so being a build tool does not by itself
+  mean never shipped. Another package under MPL-2.0 needs a decision of
+  its own, and shipped packages stay limited to the permissive list.
+- Other copyleft licenses (GPL, LGPL, AGPL, EPL, MPL-1.1) stay excluded.
+- `tools/check_licenses.test.mjs` tests both: lightningcss as a build tool
+  passes, the same package shipped or any other package under MPL-2.0
+  fails.
+
+
 ## SD-047: Sign of life: details from the implementation
 
 Decided by the project owner on 2026-10-12 in the software session, from
@@ -981,7 +1001,6 @@ named here stays as SD-042 says.
 - **Open:** the jump lock of a calm sensor from Home Assistant (a value
   unchanged for 5 min drops out of its window) must be solved before such
   values feed control. The 90 s for substrate sensors is not built yet.
-
 
 ---
 
