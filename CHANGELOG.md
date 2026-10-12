@@ -121,6 +121,12 @@ listed in every release under "Security".
   server that ships against a stand-in Home Assistant: a pH of 6.2, an
   unavailable sensor and 5 µS/cm must arrive as 6.2, no value and
   0.005 mS/cm, aged by Home Assistant's clock and timestamps.
+- **Type check of the end-to-end tests** (#101): `tools/ci.sh` and CI now
+  also type-check `web/e2e`, `web/playwright.config.ts` and
+  `web/vite.config.ts` (`npm run typecheck:node`, `web/tsconfig.node.json`).
+  Until now Playwright only stripped their types, so a type error showed
+  up only when its path ran. Node's types (`@types/node`, MIT, a build
+  tool only) follow the Node that CI runs, 22.
 
 ### Fixed
 - **Phone: the app opens at 100 % and needs no zooming out** (#33): on an

@@ -34,8 +34,8 @@ cmake --build build
 node --test tools/ha_server.test.mjs
 end
 
-group "Web app (type check, build, size budget, no build tool code)"
-(cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+group "Web app (type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
+(cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build && npm run typecheck:node)
 end
 
 if [ "${E2E:-0}" = "1" ]; then
