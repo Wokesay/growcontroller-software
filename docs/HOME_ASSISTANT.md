@@ -593,6 +593,9 @@ time is no value.
 - The session cookie is not tied to the port: the browser also sends it
   to Home Assistant and other apps under the same host name. It is
   HttpOnly and only valid for growcontroller.
+- When the app starts while Home Assistant's integrations are still
+  connecting, sensors whose devices answer later than the first ones are
+  logged as "back", though nothing said they were gone.
 - If the Supervisor ever refuses the token, reading stops until the app
   is restarted, while the app keeps answering (so its watchdog sees no
   fault), and the web app's hint speaks of a token file. A follow-up

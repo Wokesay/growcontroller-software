@@ -200,8 +200,9 @@ class Hub {
   std::vector<PortReport> ports_;
   PumpMap pumps_;
   std::set<std::string> seenOnline_;
-  // The first devices seen after a start are not "back"; after every device
-  // was offline at once (Home Assistant restarting) they are.
+  // The first devices seen after a start are not "back"; devices that answer
+  // after them are, and so is every device after all were offline at once
+  // (Home Assistant restarting).
   bool anyOnlineSinceStart_ = false;
 
   std::optional<Job> job_;
