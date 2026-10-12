@@ -17,10 +17,37 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 // The boards the firmware is built for (firmware/boards/, PD-162)
+// with the settings the build must end up with: Kconfig drops a default
+// whose conditions do not hold without a word
 export const boards = {
-  n32r16v: { name: "ESP32-S3-DevKitC-1-N32R16V", flashSize: "32MB" },
-  n8r8: { name: "ESP32-S3-DevKitC-1-N8R8", flashSize: "8MB" },
+  n32r16v: {
+    name: "ESP32-S3-DevKitC-1-N32R16V",
+    flashSize: "32MB",
+    sdkconfig: [
+      "CONFIG_ESPTOOLPY_OCT_FLASH=y",
+      'CONFIG_ESPTOOLPY_FLASHSIZE="32MB"',
+      "CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_OCTAL_FLASH=y",
+      "CONFIG_SPIRAM_MODE_OCT=y",
+      'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/n32r16v.csv"',
+    ],
+  },
+  n8r8: {
+    name: "ESP32-S3-DevKitC-1-N8R8",
+    flashSize: "8MB",
+    sdkconfig: [
+      "CONFIG_ESPTOOLPY_FLASHMODE_QIO=y",
+      'CONFIG_ESPTOOLPY_FLASHSIZE="8MB"',
+      "CONFIG_SPIRAM_MODE_OCT=y",
+      'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/n8r8.csv"',
+    ],
+  },
 };
+
+// The board's settings that the build's sdkconfig lacks
+export function missingSettings(board, sdkconfig) {
+  const lines = new Set(sdkconfig.split("\n").map((l) => l.trim()));
+  return boards[board].sdkconfig.filter((s) => !lines.has(s));
+}
 
 const kPartitionTable = 0x8000; // ESP-IDF's default offset; the partitions follow it
 
@@ -100,6 +127,8 @@ export function flashArgs(args, files) {
 export function writeFlashFolder(board, buildDir, outDir, version) {
   const args = JSON.parse(readFileSync(join(buildDir, "flasher_args.json"), "utf8"));
   const files = flashFiles(board, args);
+  const missing = missingSettings(board, readFileSync(join(buildDir, "sdkconfig"), "utf8"));
+  if (missing.length) throw new Error(`the build lacks the ${boards[board].name}'s settings: ${missing.join(", ")}`);
   mkdirSync(outDir, { recursive: true });
   for (const f of files) {
     const from = join(buildDir, f.path);

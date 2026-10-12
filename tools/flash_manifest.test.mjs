@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { boards, flashArgs, flashFiles, layout, manifest } from "./flash_manifest.mjs";
+import { boards, flashArgs, flashFiles, layout, manifest, missingSettings } from "./flash_manifest.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (f) => readFileSync(join(root, f), "utf8");
@@ -79,12 +79,17 @@ test("command line: copies the images and writes manifest and flash_args; a miss
     mkdirSync(join(build, "bootloader"));
     mkdirSync(join(build, "partition_table"));
     writeFileSync(join(build, "flasher_args.json"), JSON.stringify(built("8MB")));
+    writeFileSync(join(build, "sdkconfig"), `# comment\n${boards.n8r8.sdkconfig.join("\n")}\nCONFIG_SPIRAM=y\n`);
     for (const f of ["bootloader/bootloader.bin", "partition_table/partition-table.bin", "ota_data_initial.bin"]) writeFileSync(join(build, f), f);
     const out = join(outRoot, "n8r8");
     const missing = spawnSync(process.execPath, [script, "n8r8", build, out], { encoding: "utf8" });
     assert.notEqual(missing.status, 0);
     assert.match(missing.stderr, /missing in the build: growcontroller_hub.bin/);
     writeFileSync(join(build, "growcontroller_hub.bin"), "app");
+    // Settings Kconfig dropped stop it too
+    writeFileSync(join(build, "sdkconfig"), boards.n8r8.sdkconfig.filter((l) => !l.includes("QIO")).join("\n"));
+    assert.match(spawnSync(process.execPath, [script, "n8r8", build, out], { encoding: "utf8" }).stderr, /lacks .*FLASHMODE_QIO=y/);
+    writeFileSync(join(build, "sdkconfig"), boards.n8r8.sdkconfig.join("\n"));
     execFileSync(process.execPath, [script, "n8r8", build, out], { encoding: "utf8" });
     const m = JSON.parse(readFileSync(join(out, "manifest.json"), "utf8"));
     assert.equal(m.version, read("VERSION").trim());
@@ -95,6 +100,35 @@ test("command line: copies the images and writes manifest and flash_args; a miss
   } finally {
     rmSync(build, { recursive: true, force: true });
     rmSync(outRoot, { recursive: true, force: true });
+  }
+});
+
+test("a build lacks a board's settings when Kconfig dropped one", () => {
+  assert.deepEqual(missingSettings("n32r16v", boards.n32r16v.sdkconfig.join("\n")), []);
+  assert.deepEqual(missingSettings("n32r16v", boards.n32r16v.sdkconfig.join("\n").replace("CONFIG_ESPTOOLPY_OCT_FLASH=y", "# CONFIG_ESPTOOLPY_OCT_FLASH is not set")), ["CONFIG_ESPTOOLPY_OCT_FLASH=y"]);
+  // Every setting a board profile sets is one the build is checked for
+  for (const b of Object.keys(boards))
+    for (const line of read(`firmware/boards/${b}.defaults`).split("\n").filter((l) => l.startsWith("CONFIG_") && !l.includes("FLASHFREQ")))
+      assert.ok(boards[b].sdkconfig.includes(line) || line === `CONFIG_ESPTOOLPY_FLASHSIZE_${boards[b].flashSize}=y`, `${b}: ${line} is checked in the build`);
+});
+
+test("CMake takes only a known board and no build folder of the other board", () => {
+  const stub = temp("gc-idf-");
+  const build = temp("gc-cmake-");
+  try {
+    mkdirSync(join(stub, "tools", "cmake"), { recursive: true });
+    writeFileSync(join(stub, "tools", "cmake", "project.cmake"), "# stub of ESP-IDF's project.cmake\n");
+    const cmake = (...args) => spawnSync("cmake", ["-S", join(root, "firmware"), "-B", build, ...args], { encoding: "utf8", env: { ...process.env, IDF_PATH: stub } });
+    const unknown = cmake("-DGC_BOARD=n16r8");
+    assert.notEqual(unknown.status, 0);
+    assert.match(unknown.stderr, /GC_BOARD must be n32r16v or n8r8, not 'n16r8'/);
+    writeFileSync(join(build, "sdkconfig"), 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/n8r8.csv"\n');
+    const other = cmake("-DGC_BOARD=n32r16v");
+    assert.notEqual(other.status, 0);
+    assert.match(other.stderr, /not for the board n32r16v/);
+  } finally {
+    rmSync(stub, { recursive: true, force: true });
+    rmSync(build, { recursive: true, force: true });
   }
 });
 
