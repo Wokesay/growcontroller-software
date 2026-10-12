@@ -1414,7 +1414,9 @@ session is told.
   calibration it is done only in the home network (SD-055). Setting up a
   water temperature sensor does not change the choice or void the EC
   calibration; only changing the choice does. This replaces SD-054's
-  sentence on calibrations made under the choice.
+  sentence on calibrations made under the choice. Until the user has
+  chosen (an existing configuration, after a factory reset), EC is not
+  used for control; the setup asks for the choice.
 - **Coefficient:** 2 % per °C, linear to 25 °C (SD-054, sources 1 and 2).
   No measured value for nutrient solutions was found; the project owner
   accepts the figure.
@@ -1433,10 +1435,11 @@ session is told.
   reference is measured on the board samples; if it takes a noticeable
   part of the band, the band is looked at again.
 - **Bluetooth climate sensors:** outdated after 120 s without a report,
-  the catalog's limit for air temperature and humidity. It allows about
-  two missed reports at a 60 s send interval, so it suits sensors that
-  send at a fixed interval of 60 s or less; `docs/COMPATIBILITY.md` says
-  so. A false outdated value switches climate devices (SD-053), so if
+  the catalog's limit for air temperature and humidity (today 120 s); their
+  device classes take this fixed limit, not a learned one. It tolerates
+  one missed report at a 60 s send interval and two at 40 s; RAT-027 asks
+  for several, so it suits sensors that send at a fixed interval of 40 s
+  or less, and `docs/COMPATIBILITY.md` says so. A false outdated value switches climate devices (SD-053), so if
   ordinary dropouts of real devices do that too often, the limit is
   looked at again (RAT-027).
 - The RAT entries for EC compensation and the zero point, and their tests,
