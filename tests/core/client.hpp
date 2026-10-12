@@ -13,6 +13,7 @@ namespace test {
 struct Client {
   sim::Simulation& sim;
   std::string token = {};
+  std::string addr = {};  // the peer's address as the transport reports it
 
   std::pair<int, gc::json> call(const std::string& method, const std::string& pathQ, const gc::json& body = nullptr) {
     gc::ApiRequest r;
@@ -33,6 +34,7 @@ struct Client {
     }
     r.body = body.is_null() ? "" : body.dump();
     r.token = token;
+    r.client = gc::clientKey(addr);
     gc::ApiResponse res;
     {
       std::lock_guard<std::recursive_mutex> l(sim.mutex());

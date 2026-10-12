@@ -274,6 +274,25 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   CHECK(findEvents(c, "block").at(0)["text"]["key"] == "latch.inlet.fault");  // named as on the Release button
 }
 
+TEST_CASE("Scenario: someone guessing the password cannot keep the owner from stopping a running mix (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client phone{s, {}, "192.168.1.20"};  // set up from the owner's phone
+  setupStage0(s, phone);
+  for (const char* id : {kA, kB, kC}) calibrate(s, phone, id);
+  s.world().fill(20, 0.02, 7.0);
+  phone.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}});
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1; }, 10000, 200));
+  phone.ok("POST", "/api/v1/auth/logout");  // its session is gone
+  Client guesser{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 6; ++i) guesser.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  CHECK(guesser.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+  phone.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  phone.ok("POST", "/api/v1/stop");
+  s.step(2000);
+  for (const char* id : {kA, kB, kC}) CHECK(s.world().cap(id)->state != 1);
+  CHECK(phone.state()["stopped"] == true);
+}
+
 TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};

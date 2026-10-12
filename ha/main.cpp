@@ -70,6 +70,7 @@ gc::ApiRequest toApi(const httplib::Request& req) {
   for (const auto& [k, v] : req.params) r.query[k] = v;
   r.body = req.body;
   r.token = tokenOf(req);
+  r.client = gc::clientKey(req.remote_addr);  // the socket's peer; never X-Forwarded-For (SD-051)
   return r;
 }
 

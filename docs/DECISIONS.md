@@ -1337,6 +1337,56 @@ and the simulator's raw EC has no temperature term (`sim/world.cpp`).
   [3] Hamilton, "The Zero Point of a pH Sensor",
   https://www.hamiltoncompany.com/knowledge-base/article/the-zero-point-of-a-ph-sensor
 
+
+## SD-051: The sign-in lockout counts per client
+
+Decided by the project owner on 2026-10-12 in the software session (fix
+it right away as a PR); the design follows `security`'s review. A security
+rule: the PR waits for "mergen".
+
+- **Why:** the lockout after 5 failed attempts (EN 18031-1 AUM-6) had one
+  count for all clients. A device in the network that sent a wrong
+  password every 15 minutes kept everyone locked out, the owner's phone
+  included, and with it "Stop" for anyone not signed in.
+- **Per client:** a client that signed in successfully (also by the
+  initial setup) gets a count of its own; at most 16, the one seen longest
+  ago (signed in or used its session) drops out first. Every other client
+  shares one count, which is also the brake: guessing from addresses that
+  never signed in is no faster than from one. A success resets only the
+  client's own count; a success from a new address does not lift the
+  shared lockout. The schedule stays: from
+  the 5th failure 30 s, doubling up to 15 min; a count forgets its
+  failures after a quiet day.
+- **The client** is the peer address of the connection, normalised in the
+  core (`clientKey`): IPv4 as is, IPv6 by its full address without the
+  zone (a /64 is shared by every device of a home network), an
+  IPv4-mapped address as IPv4, anything unreadable as unknown (the shared
+  count). Never from `X-Forwarded-For` or another header.
+- **Password change:** a wrong old password counts as a failed attempt
+  of the caller and is logged; a locked caller gets 429 before any
+  hashing. A change forgets the other known clients; the caller, who just
+  proved the old password, keeps its own count.
+- **Event log:** only counted failures are logged; neither a try refused
+  during the wait nor one before the first password is (flash wear, and
+  the log is not flushed by guessing).
+- **No header:** `tools/arch_check.sh` refuses `set_trusted_proxies`,
+  with which cpp-httplib would take the address from `X-Forwarded-For`.
+- **In memory only:** the known clients are not stored. After a restart
+  every device shares the count until it signs in again.
+- **Accepted:** during an attack, a device that has not signed in since
+  the hub started (a new phone, or after a restart) can be locked out with
+  the others; a device that is signed in keeps its session and "Stop". A
+  device whose IPv6 address changes counts as new. Behind one peer (Home
+  Assistant's ingress, SD-050, or a Docker proxy) all clients share one
+  count. A host that takes over the address of a known device (a static
+  address, a reused lease) gets that device's count: it can lock that
+  device and has one more guessing budget per known address, at most 17
+  in all. The hardware Stop never depends on the web.
+- **Later:** device cookies (OWASP) as the sign of a known client, with
+  encrypted NVS for their key; they need no address and survive address
+  changes. Open for `regulatorik`: whether addresses held in memory for
+  the lockout count as processing personal data.
+
 ---
 
 ## Drafts (waiting for "entschieden")
