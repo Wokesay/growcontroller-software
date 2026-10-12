@@ -18,6 +18,7 @@ struct ApiRequest {
   std::map<std::string, std::string> query;
   std::string body;
   std::string token;  // aus Cookie gc_session oder "Authorization: Bearer"
+  std::string client;  // the peer's address as clientKey() gives it, never from a header; "" when unknown
 };
 
 // Herkunftsprüfung für die Transportschicht, ohne Plattform-Header.

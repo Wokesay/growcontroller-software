@@ -33,6 +33,12 @@ if grep -rnE 'value_or\(0(\.0)?\)' core/; then
   err "fehlender Wert wird zu 0"
 fi
 
+# SD-051: the lockout knows a client by the socket's peer address. A trusted
+# proxy would let cpp-httplib take it from X-Forwarded-For instead.
+if grep -rn 'set_trusted_proxies' sim/ ha/ firmware/; then
+  err "client address from a header (set_trusted_proxies)"
+fi
+
 # SD-039: a value calibrated elsewhere goes into the history, never into
 # control: Reading::forHistory() is read only where the history is sampled.
 if grep -rnE 'forHistory\(' core/ | grep -vE '^core/include/gc/readmodel\.hpp:|^core/src/hub\.cpp:[0-9]+: +samples\.emplace_back'; then
