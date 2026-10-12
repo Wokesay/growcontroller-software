@@ -277,7 +277,7 @@ export function RecipesPage() {
         {!cans.length ? (
           <Empty icon={<FlaskConical size={34} />} title={t("recipes.noBottles")} text={t("recipes.noBottlesText")} />
         ) : (
-          <table class="table">
+          <table class="table rtable">
             <thead>
               <tr>
                 <th>{t("term.bottle")}</th>
@@ -293,7 +293,7 @@ export function RecipesPage() {
                 const flow = pumpFlow(k.pump);
                 return (
                   <tr>
-                    <td>
+                    <td class="full">
                       <span class="row" style="gap:8px">
                         <span class="swatch" style={`background:${k.color}`} />
                         <strong>{k.name}</strong>
@@ -301,10 +301,10 @@ export function RecipesPage() {
                       </span>
                     </td>
                     <td class="hide-sm muted">{t(KIND[k.kind])}</td>
-                    <td class="small">
+                    <td class="small" data-label={t("setup.nut.pump")}>
                       {k.pump ? (flow ? <span class="muted">{num(flow, 1)} ml/min</span> : <a href={`#/geraete?pump=${k.pump}`}>{t("recipes.calibrate")}</a>) : <span class="faint">{t("recipes.noPump")}</span>}
                     </td>
-                    <td>
+                    <td data-label={t("recipes.stock")}>
                       <div class="row" style="gap:8px;flex-wrap:nowrap">
                         <div class={`bar ${ml !== null && ml < (k.kind === "nutrient" ? 150 : 20) ? "low" : ""}`} style="width:80px">
                           <span style={`width:${k.capacityMl && ml !== null ? Math.min(100, (ml / k.capacityMl) * 100) : 0}%`} />
@@ -312,7 +312,7 @@ export function RecipesPage() {
                         <span class="small num nowrap">{ml === null ? "?" : `${num(ml, 0)} ml`}</span>
                       </div>
                     </td>
-                    <td class="num nowrap">
+                    <td class="num nowrap full actions">
                       <Button
                         size="sm"
                         variant="ghost"

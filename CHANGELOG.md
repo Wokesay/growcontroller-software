@@ -95,6 +95,17 @@ listed in every release under "Security".
   6.2, no value and 0.005 mS/cm.
 
 ### Fixed
+- **Phone: the app opens at 100 % and needs no zooming out** (#33): on an
+  iPhone, Safari zoomed in when the password field got the focus, because
+  the fields were smaller than 16 px, and stayed zoomed after signing in.
+  Fields are 16 px now. At 320 px nothing tested is wider than the screen
+  any more: the bottle table under Recipes becomes cards with larger
+  buttons, long device and Home Assistant sensor IDs wrap, the "new
+  devices" note puts its button below the text, and "Weiter" (next) in the
+  setup no longer runs off the screen. A phone test at 320 px checks the
+  pages of the menu in German and English, every setup step, and the Home
+  Assistant app's introduction, devices, assignment and sign-of-life
+  window with long sensor IDs.
 - **Event log: devices are "back" after a full outage** (#69): when every
   device stopped answering at once, for example while Home Assistant
   restarted, the log said "getrennt" (not responding) for each of them but
