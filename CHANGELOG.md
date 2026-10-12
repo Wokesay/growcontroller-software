@@ -49,13 +49,28 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-051 to
+  SD-054): at setup you will choose whether the ESP32-S3's web app can be
+  reached only in the home network (preselected), viewed from outside, or
+  viewed and controlled from outside. The Home Assistant window counts as
+  outside. "Stop" works from outside at both outside levels; calibration,
+  limits, updates and acknowledging a latch stay in the home network. The
+  ESP32-S3 reads only its own sensors and sends their values to Home
+  Assistant. Fans are only switched on and off, must start again in their
+  last setting, and are switched on when a climate value is outdated or
+  invalid; a dehumidifier with its own hygrostat keeps power, other
+  climate devices switch off. The ESP32-S3 will compensate EC for the
+  water temperature; if that sensor fails, EC and pH wait. Without a water
+  temperature sensor you can choose to control EC without compensation.
+  The pH calibration on the board's input will also check the probe's
+  zero point once its limit is set.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
-  security review of the design and a product decision on access from
-  outside the home network; control stays on the ESP. A step-by-step
+  security review of the design; access from outside is chosen at setup
+  (SD-051); control stays on the ESP. A step-by-step
   guide for flashing follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
