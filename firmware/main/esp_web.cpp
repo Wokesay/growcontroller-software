@@ -7,6 +7,9 @@
 
 #include <esp_http_server.h>
 #include <esp_log.h>
+#include <sdkconfig.h>
+#include <lwip/inet.h>
+#include <lwip/sockets.h>
 
 #include "esp_platform.hpp"
 #include "gc/web_assets.hpp"
@@ -93,6 +96,25 @@ std::string tokenOf(httpd_req_t* req) {
   return cookie.substr(pos + 11, end == std::string::npos ? std::string::npos : end - pos - 11);
 }
 
+// The peer's address from the socket, never from a header (SD-051); "" when
+// it cannot be read, which the lockout treats as an unknown client.
+std::string peerAddress(httpd_req_t* req) {
+  const int fd = httpd_req_to_sockfd(req);
+  if (fd < 0) return {};
+  sockaddr_storage addr{};
+  socklen_t len = sizeof addr;
+  if (getpeername(fd, reinterpret_cast<sockaddr*>(&addr), &len) != 0) return {};
+  char buf[48] = "";
+  const char* ok = nullptr;
+  if (addr.ss_family == AF_INET)
+    ok = inet_ntop(AF_INET, &reinterpret_cast<const sockaddr_in*>(&addr)->sin_addr, buf, sizeof buf);
+#if CONFIG_LWIP_IPV6
+  else if (addr.ss_family == AF_INET6)
+    ok = inet_ntop(AF_INET6, &reinterpret_cast<const sockaddr_in6*>(&addr)->sin6_addr, buf, sizeof buf);
+#endif
+  return ok ? std::string(buf) : std::string();
+}
+
 esp_err_t sendError(httpd_req_t* req, int status, const char* body) {
   httpd_resp_set_status(req, statusLine(status));
   httpd_resp_set_type(req, "application/json");
@@ -140,6 +162,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
     got += static_cast<size_t>(n);
   }
   r.token = tokenOf(req);
+  r.client = gc::clientKey(peerAddress(req));
   gc::ApiResponse res = g_api->handle(r);
   httpd_resp_set_status(req, statusLine(res.status));
   httpd_resp_set_type(req, res.contentType.c_str());

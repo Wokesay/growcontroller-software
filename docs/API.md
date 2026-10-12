@@ -11,9 +11,15 @@ UI can do, an integration can do as well.
   (otherwise 409). At least 8 characters.
 - `POST /auth/login {password}` sets the cookie `gc_session` (HttpOnly,
   SameSite=Strict). After 5 failed attempts the answer is 429 with a wait
-  time (30 s, doubling up to 15 min).
+  time (30 s, doubling up to 15 min). The count is per client (SD-051): an
+  address that signed in or used its session since the hub last started
+  has its own (at most 16); all others share one. Only counted failures
+  are logged, not a try refused during the wait or before the first
+  password.
 - `POST /auth/logout`. `PUT /auth/password {old,new}` logs out all
-  sessions.
+  sessions; a wrong old password counts as a failed attempt and is logged
+  (422, then 429). The device that changed the password keeps its count;
+  all other devices share the count until they sign in again.
 - Everything else requires a session (cookie or `Authorization: Bearer`),
   otherwise 401.
 - Security headers on the server: CSP `default-src 'self'`,

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createServer as httpServer, get } from "node:http";
+import { createServer as httpServer, get, request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -219,4 +219,42 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     ha.close();
   }
   assert.deepEqual(await ended, { code: 0, signal: null }, out);
+});
+
+// A JSON POST from a given local address: Linux has all of 127.0.0.0/8 on its
+// loopback, so 127.0.0.2 is another device to the server.
+function post(port, path, body, localAddress) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = request(
+      { host: "127.0.0.1", port, path, method: "POST", localAddress, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode));
+      },
+    );
+    req.on("error", reject);
+    req.end(data);
+  });
+}
+
+test("the lockout tells devices apart by the connection's address (SD-051)", { skip: skip || (process.platform !== "linux" && "needs 127.0.0.2 on the loopback (Linux)") }, async () => {
+  const port = await freePort();
+  const child = spawn(bin, ["--app", "--data", join(tmp, "lockout"), "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
+    env: env({ SUPERVISOR_TOKEN: "test-token" }),
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  const ended = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    assert.equal(await post(port, "/api/v1/auth/setup", { password: "mein-passwort" }, "127.0.0.1"), 200);  // signed in from here
+    const tries = [];
+    for (let i = 0; i < 6; i++) tries.push(await post(port, "/api/v1/auth/login", { password: "falsch" }, "127.0.0.2"));
+    assert.deepEqual(tries, [401, 401, 401, 401, 401, 429]);
+    assert.equal(await post(port, "/api/v1/auth/login", { password: "mein-passwort" }, "127.0.0.3"), 429, "a device that never signed in shares the lockout");
+    assert.equal(await post(port, "/api/v1/auth/login", { password: "mein-passwort" }, "127.0.0.1"), 200, "the device that signed in keeps its own count");
+  } finally {
+    child.kill("SIGTERM");
+  }
+  await ended;
 });
