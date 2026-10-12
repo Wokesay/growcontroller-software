@@ -204,7 +204,9 @@ sensor's channel. Then:
   30 s, yellow from 31 s, red from 60 s;
 - the value is stale when its last measurement is older than 60 s; a text
   older than 60 s makes all its sensors stale ("the device sends
-  nothing"); a channel shown as `-` for more than 60 s is stale;
+  nothing"), and the monitoring shows one problem for it, titled with the
+  readings it affects and naming the sign of life by its entity ID; a
+  channel shown as `-` for more than 60 s is stale;
 - an unavailable or unreadable sign of life, a missing channel, a time
   more than 2 s in the future, or a sign of life sent after the sensor's
   last report that dates the measurement more than 3 s before it (it

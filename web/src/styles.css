@@ -189,6 +189,7 @@ small, .small { font-size: 0.85rem; }
 .statusbar.ok .icon-wrap { background: var(--ok-weak); color: var(--ok); }
 .statusbar.problem .icon-wrap { background: var(--bad-weak); color: var(--bad); }
 .statusbar.neutral .icon-wrap { background: var(--neutral-weak); color: var(--neutral); }
+.statusbar .grow { overflow-wrap: anywhere; }  /* a Home Assistant entity ID has no break opportunity */
 .statusbar .title { font-weight: 650; }
 
 .banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--info-weak); color: var(--text); border: 1px solid color-mix(in srgb, var(--info) 25%, transparent); }
@@ -292,7 +293,7 @@ small, .small { font-size: 0.85rem; }
 .list { display: grid; }
 .list > .item { display: flex; align-items: center; gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--border); }
 .list > .item:last-child { border-bottom: 0; }
-.item .grow { flex: 1; min-width: 0; }
+.item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .item .title { font-weight: 600; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 .table th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 650; padding: 6px 8px; border-bottom: 1px solid var(--border); }

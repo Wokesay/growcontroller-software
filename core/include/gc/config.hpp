@@ -50,7 +50,8 @@ struct DeviceCfg {
   // A sign of life for a sensor on its own schedule (SD-042): the source
   // that gives the time of its last measurement (a Home Assistant entity)
   // and, for a sign-of-life text, its channel ("" for a timestamp sensor).
-  // Only the platform's bus reads it; empty without a sign of life.
+  // The platform's bus reads it for freshness; the watchdog groups a silent
+  // device's sensors by it (SD-047, #107). Empty without a sign of life.
   std::string life, lifeChannel;
   DeviceCfg() = default;
   DeviceCfg(std::string id_, std::string cls_, std::string name_, std::string life_ = "", std::string lifeChannel_ = "")

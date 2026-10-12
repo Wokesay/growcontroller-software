@@ -12,7 +12,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
   itself when the block ends. Rationale: RAT-037, RAT-039.
 - **Plain language instead of codes.** The colour shows the worst entry.
   Normal case: "Everything OK (13 checks)"; only what deviates is listed
-  individually. Rationale: RAT-042, RAT-072.
+  individually. Rationale: RAT-042, RAT-072. One cause is one entry: a
+  device that sends nothing is one problem titled with the readings it
+  affects (SD-047, #107).
 - **Keep three states apart:** "Sensor not responding", "not calibrated",
   "not applicable" (for example water temperature with an empty tank).
   Rationale: RAT-021, RAT-048. **Calibrated outside the hub** (Home

@@ -25,6 +25,10 @@ const char* qualityName(Quality q);
 // Reason key of a value calibrated outside the hub: Uncalibrated, shown, never
 // usable (RAT-025). The watchdog and the web app tell this case apart by it.
 inline constexpr const char* kCalibratedElsewhere = "truth.external";
+// Reason key of a sensor whose device sends nothing at all (SD-042): the
+// watchdog shows one problem for the device instead of one per sensor
+// (SD-047, #107).
+inline constexpr const char* kDeviceSilent = "truth.life_silent";
 
 struct Reading {
   std::string role, capability, unit;

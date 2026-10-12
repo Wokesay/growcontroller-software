@@ -52,11 +52,33 @@ WatchResult evaluate(const WatchInput& in) {
   else if (offline.empty()) add("devices", devices, "ok", say("watch.devices.ok"));
   else add("devices", devices, "problem", say("watch.devices.offline", {{"names", offline}}));
 
+  // A device that sends nothing (SD-042, SD-047, #107): each of its sensors
+  // is stale with the same cause; the watchdog shows one problem for the
+  // device, keyed by its sign of life, titled with the readings it affects.
+  struct Silent {
+    json ageS;
+    json sensors = json::array();
+  };
+  std::map<std::string, Silent> silent;
+
   // Messwerte: ungültig ist ein Problem ("Datenausfall"), nie neutral (RAT-015).
   for (const auto& [role, r] : in.readings) {
     if (r.quality == Quality::NotBound) continue;
     const RoleDef* rd = in.cat.role(role);
     const Msg label{"", rd ? rd->label : role};  // catalog label, translated with the catalog
+    if (r.quality == Quality::Stale && r.reason.key == kDeviceSilent) {
+      const Binding* b = in.cfg.binding(role);
+      const DeviceCfg* d = b ? in.cfg.device(b->device) : nullptr;
+      if (d && !d->life.empty()) {
+        Silent& s = silent[d->life];
+        // The sensors of one text share its age; should they differ, the
+        // oldest is shown, so nothing looks fresher than it is (R5: none is null)
+        const json age = r.reason.args.is_object() ? r.reason.args.value("ageS", json()) : json();
+        if (age.is_number() && (!s.ageS.is_number() || age > s.ageS)) s.ageS = age;
+        s.sensors.push_back(label);
+        continue;
+      }
+    }
     if (r.usable()) add("reading." + role, label, "ok", say("watch.reading.ok"));
     else if (r.quality == Quality::Uncalibrated) {
       bool needed = (role == "tank.ph" && fnEnabled(in.cfg, "ph_control")) ||
@@ -69,6 +91,9 @@ WatchResult evaluate(const WatchInput& in) {
     } else
       add("reading." + role, label, "problem", say("watch.reading.failed", {{"reason", r.reason}}));
   }
+  for (const auto& [source, s] : silent)
+    add("life." + source, say("watch.life.label", {{"sensors", s.sensors}}), "problem",
+        say("watch.life.silent", {{"ageS", s.ageS}, {"source", source}}));
 
   auto band = [&](const std::string& id, const Msg& label, const std::string& role, const std::string& fn,
                   const char* tKey, const char* tolKey) {

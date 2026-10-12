@@ -296,6 +296,55 @@ test("A value calibrated outside the hub shows for display only, with its age, n
   await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
 });
 
+test("Monitoring: a device that sends nothing is one problem titled with its readings; its long sign of life stays on a phone's screen (#107)", async ({ page }) => {
+  // The Home Assistant trial's state, made from the simulator's: one device's sign of life is silent
+  const source = "sensor.growbox_tank_controller_sign_of_life";
+  const sensor = (text: string) => ({ key: "", text, args: {} });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.watchdog = {
+      ...st.watchdog,
+      overall: "problem",
+      ok: 0,
+      problems: 1,
+      neutral: 0,
+      headline: { key: "watch.headline.problem", text: "1 problem", args: {} },
+      items: [
+        {
+          id: `life.${source}`,
+          status: "problem",
+          label: { key: "watch.life.label", text: "pH im Tank, Wassertemperatur", args: { sensors: [sensor("pH im Tank"), sensor("Wassertemperatur")] } },
+          text: {
+            key: "watch.life.silent",
+            text: `No valid reading: the device has sent nothing for 75 s – check or restart it (sign of life ${source})`,
+            args: { ageS: 75, source },
+          },
+        },
+      ],
+    };
+    await route.fulfill({ response: res, json: st });
+  });
+  await login(page);
+  const shown = `pH im Tank, Wassertemperatur: Datenausfall: Gerät sendet seit 75 s nichts – prüfen oder neu starten (Lebenszeichen ${source})`;
+  const bar = page.getByTestId("watchdog");
+  await expect(bar).toContainText("1 Problem");
+  await expect(bar).toContainText(shown);
+  const text = (await bar.locator(".grow").boundingBox())!;
+  const details = (await bar.getByRole("link", { name: "Details" }).boundingBox())!;
+  expect(text.x + text.width).toBeLessThanOrEqual(details.x);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await bar.getByRole("link", { name: "Details" }).click();
+  const item = page.locator(".list .item").filter({ hasText: source });
+  await expect(item.locator(".title")).toHaveText("pH im Tank, Wassertemperatur");
+  const box = (await item.locator(".grow").boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
+});
+
 test("Calibration: a window closed half way ends the calibration on the hub, and opened again it starts at the first buffer (RAT-042)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
