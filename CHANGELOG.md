@@ -73,8 +73,8 @@ listed in every release under "Security".
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
   security review of the design; access from outside is chosen at setup
-  (SD-055); control stays on the ESP. A step-by-step
-  guide for flashing follows with the first firmware release (SD-049).
+  (SD-055); control stays on the ESP. A step-by-step guide for flashing
+  follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not

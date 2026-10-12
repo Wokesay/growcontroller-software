@@ -14,7 +14,7 @@ Home Assistant app are options (PD-145 to PD-174, #91, #94, SD-045).
 | **M3 Home Assistant over the ESPHome native API** | Read-only first: all values and states, the watchdog included; then commands as jobs through the gateway; the Home Assistant app opens the ESP's web app in Home Assistant's sidebar, after a `security` review of the design; access from outside in three levels chosen at setup (SD-055); the Home Assistant app stays an option (SD-043, SD-050, #84) | M1 |
 | **M4 Grow functions in the core** | Grow type in the setup, automatic phase change with all parameters per phase, irrigation with drain from the drain tank's level (PD-094, PD-097, PD-098), humidity control, light schedule and dimming, CO2 (#42), heater (#24) | M1 safety component; product questions on grow types, drain and RDWC |
 | **M5 Notifications** | Push without a manufacturer cloud (ntfy, email, webhook), morning report, alarm levels (RAT-022, RAT-045) | – |
-| **M6 Archive and remote access** | Archive and comparison of grows, remote access over paths the user chooses (PD-024, PD-150; the way is a product question) | – |
+| **M6 Archive and remote access** | Archive and comparison of grows, remote access over paths the user chooses (PD-024, PD-150; whether and at which level: SD-055; the way is a product question) | – |
 | Paused | Home Assistant app: level (SD-041 step 2) and EC (step 3) from raw values, combined history view (SD-039), stop menu (SD-040) | after M1 |
 | ongoing | Languages (English default, German; PD-035), accessibility, fuzzing, long-run tests | – |
 

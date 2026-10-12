@@ -1186,6 +1186,8 @@ rule: the PR waits for "mergen".
   encrypted NVS for their key; they need no address and survive address
   changes. Open for `regulatorik`: whether addresses held in memory for
   the lockout count as processing personal data.
+- Extended by SD-055: a client from outside never shares a count with the
+  home network.
 
 
 ## SD-052: The ESP32-S3 reads its own sensors; Home Assistant only receives
@@ -1320,12 +1322,12 @@ and the simulator's raw EC has no temperature term (`sim/world.cpp`).
 ## SD-055: Access from outside the home network in three levels, chosen at setup
 
 Decided by the project owner on 2026-10-12 in the software session, as a
-question the software solves. Recorded as SD-051 in PR #123 and
-renumbered, as PR #122 recorded the lockout per client as SD-051 at the
-same time; the rules for building it come from the
+question the software solves; the rules for building it come from the
 `security` review of this entry. PD-150 left the way of remote access
 open; if the product session decides otherwise, its decision applies and
-a later SD records it (as with SD-033).
+a later SD records it (as with SD-033). Recorded as SD-051 in PR #123 and
+renumbered, as PR #122 recorded the lockout per client as SD-051 at the
+same time.
 
 - At setup the user chooses how the ESP's web app may be reached:
   - **Home network only** (preselected): the ESP answers nothing from
@@ -1399,34 +1401,46 @@ a later SD records it (as with SD-033).
 ## SD-056: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors 120 s
 
 Decided by the project owner on 2026-10-12 in the software session. It
-settles the rules SD-053 and SD-054 left open, so they need nothing from
-the product repository; the product session is told.
+settles the freshness limit SD-053 left open and the rules SD-054 left
+open, so they need nothing from the product repository; the product
+session is told.
 
 - **Compensating EC is the user's choice at setup:** "with temperature
   compensation" (needs a water temperature sensor) or "without". This
   changes SD-054, where the choice existed only without a sensor. With
   compensation chosen, a sensor that fails still stops EC and pH
   correction (SD-054). Changing the choice needs a new EC calibration,
-  since the calibration factor refers to another scale.
+  since the calibration factor refers to another scale, and like a
+  calibration it is done only in the home network (SD-055). Setting up a
+  water temperature sensor does not change the choice or void the EC
+  calibration; only changing the choice does. This replaces SD-054's
+  sentence on calibrations made under the choice.
 - **Coefficient:** 2 % per °C, linear to 25 °C (SD-054, sources 1 and 2).
   No measured value for nutrient solutions was found; the project owner
   accepts the figure.
 - **The hint at "without":** about 2 % per °C away from the temperature
-  at calibration; between 18 and 24 °C up to about 12 %, about ±6 % when
-  calibrated at about 21 °C. A tank colder than at calibration is
-  overdosed (RAT-012). Advice: calibrate at the usual tank temperature.
-- **pH zero point:** ±30 mV at pH 7, the DIN tolerance makers name
-  (SD-054, source 3), on the hub's own pH input after the firmware removes
-  the input's known bias. Outside it, the calibration is refused with the
-  message to replace the probe. The tolerance of the board's bias
+  at calibration; between 18 and 24 °C up to about 12–14 %, about ±6–7 %
+  when calibrated at about 21 °C, the larger figure on the overdosed side
+  (calculated with the linear model). A tank colder than at calibration
+  is overdosed (RAT-012). Advice: calibrate at the usual tank
+  temperature.
+- **pH zero point:** ±30 mV at pH 7, the tolerance makers name (SD-054,
+  source 3), on the hub's own pH input after the firmware removes the
+  input's known bias. Outside it, the calibration is refused with the
+  message to replace the probe; as a first step it suggests a fresh pH 7
+  buffer and cleaning the probe, since a used buffer or a dirty junction
+  shifts the zero point too (RAT-026). The tolerance of the board's bias
   reference is measured on the board samples; if it takes a noticeable
   part of the band, the band is looked at again.
 - **Bluetooth climate sensors:** outdated after 120 s without a report,
-  the catalog's limit for air temperature and humidity. If ordinary
-  dropouts of real devices then switch climate devices off too often, the
-  limit is looked at again (RAT-027).
-- The RAT entries (RAT-085 for EC compensation, RAT-086 for the zero
-  point) and their tests come with the implementation (M1).
+  the catalog's limit for air temperature and humidity. It allows about
+  two missed reports at a 60 s send interval, so it suits sensors that
+  send at a fixed interval of 60 s or less; `docs/COMPATIBILITY.md` says
+  so. A false outdated value switches climate devices (SD-053), so if
+  ordinary dropouts of real devices do that too often, the limit is
+  looked at again (RAT-027).
+- The RAT entries for EC compensation and the zero point, and their tests,
+  come with the implementation (M1); they take their IDs then.
 
 
 ---
