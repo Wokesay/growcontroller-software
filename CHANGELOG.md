@@ -61,6 +61,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
+  prototype release comes after a block of fixes from a review: the phone
+  layout, a message when Stop or a switch fails, plain words instead of
+  developer terms, "Stopp" instead of "Not-Halt", and English complete.
+  The menu will be grouped by topic (nutrient solution, room, system), and
+  climate, light and watering will say "manual" while they only switch by
+  hand. Mixing will aim at the phase's target EC, with the recipe giving
+  the ratio and order of its parts: to the target with an EC probe, as a
+  fixed pattern from litres and recipe or a fixed EC with the water's
+  measured EC (for soaking, for example), or with stirring by hand
+  between the parts.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-051 to
   SD-054): at setup you will choose whether the ESP32-S3's web app can be
   reached only in the home network (preselected), viewed from outside, or
