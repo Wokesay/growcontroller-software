@@ -89,10 +89,11 @@ listed in every release under "Security".
   `THIRD_PARTY_NOTICES.md`.
 - **Tests on the app image's toolchain** (#112): CI now also builds and
   runs the core tests with the Home Assistant app image's own toolchain
-  (musl and the GCC of its Alpine base, its linker flags), on amd64 and
-  aarch64, and runs the server that ships against a stand-in Home
-  Assistant: a pH of 6.2, an unavailable sensor and 5 µS/cm must arrive as
-  6.2, no value and 0.005 mS/cm.
+  (musl and the GCC of its Alpine base, its packages and build options,
+  checked against the Dockerfile), on amd64 and aarch64, and runs the
+  server that ships against a stand-in Home Assistant: a pH of 6.2, an
+  unavailable sensor and 5 µS/cm must arrive as 6.2, no value and
+  0.005 mS/cm, aged by Home Assistant's clock and timestamps.
 
 ### Fixed
 - **Phone: the app opens at 100 % and needs no zooming out** (#33): on an

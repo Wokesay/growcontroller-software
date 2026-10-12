@@ -125,20 +125,24 @@ test("--app starts with the Supervisor's token and honours --data, --host, --web
 });
 
 // A stand-in for Home Assistant: every read gets these states and a Date
-// header, as Home Assistant sends one.
-async function standIn(states) {
+// header by its own clock, as Home Assistant sends one.
+async function standIn(states, clock) {
   const seen = [];
   const server = httpServer((req, res) => {
     seen.push(`${req.method} ${req.url} ${req.headers.authorization ?? ""}`);
-    res.writeHead(200, { "Content-Type": "application/json", Date: new Date().toUTCString() });
+    res.writeHead(200, { "Content-Type": "application/json", Date: new Date(clock()).toUTCString() });
     res.end(JSON.stringify(states));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return { url: `http://127.0.0.1:${server.address().port}`, seen, close: () => server.close() };
 }
 
-test("values from Home Assistant reach the hub: a number, an unavailable sensor, a unit to convert (#112)", { skip }, async () => {
-  const now = new Date().toISOString();
+test("values from Home Assistant reach the hub: a number, an unavailable sensor, a unit to convert (#112)", { skip, timeout: 60000 }, async () => {
+  // Home Assistant's clock an hour ahead of this computer's, its values
+  // 120 s old by it: ages come from its clock, not from this one
+  const clock = () => Date.now() + 3600e3;
+  // in Home Assistant's format: microseconds and an offset
+  const now = new Date(clock() - 120e3).toISOString().replace("Z", "000+00:00");
   const state = (entity_id, value, unit, device_class) => ({
     entity_id,
     state: value,
@@ -151,7 +155,7 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     state("sensor.grow_ph", "6.2", "pH", "ph"),
     state("sensor.grow_rh", "unavailable", "%", "humidity"),
     state("sensor.grow_ec", "5", "µS/cm", "conductivity"),
-  ]);
+  ], clock);
   const dir = mkdtempSync(join(tmp, "values-"));
   const config = join(dir, "ha.json");
   writeFileSync(config, JSON.stringify({ url: ha.url }));
@@ -166,12 +170,26 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
   child.stderr.on("data", (c) => (out += c));
   const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
   try {
-    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    let up = null;
+    for (let i = 0; i < 60 && !up; i++) {
+      up = await info(port);
+      if (!up) await new Promise((r) => setTimeout(r, 250));
+    }
+    assert.ok(up, `the server answers on ${port}:\n${out}`);
     // as the web app does it: set the password, then pick a sensor per measurement
     const json = { "Content-Type": "application/json", Origin: base };
     const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1" }) });
     assert.equal(setup.status, 200, out);
     const cookie = (setup.headers.get("set-cookie") ?? "").split(";")[0];
+    // a sensor can be picked once the hub has read it from Home Assistant
+    const wanted = ["sensor.grow_ph", "sensor.grow_rh", "sensor.grow_ec"];
+    let listed = [];
+    for (let i = 0; i < 40 && !wanted.every((e) => listed.includes(e)); i++) {
+      const c = await (await fetch(`${base}/api/v1/ha/candidates?others=1`, { headers: { Cookie: cookie } })).json();
+      listed = [...(c.candidates ?? []), ...(c.others ?? [])].map((x) => x.entity);
+      if (!wanted.every((e) => listed.includes(e))) await new Promise((r) => setTimeout(r, 250));
+    }
+    assert.deepEqual(wanted.filter((e) => !listed.includes(e)), [], `read from the stand-in:\n${out}`);
     for (const [role, entity] of [["tank.ph", "sensor.grow_ph"], ["zone.humidity", "sensor.grow_rh"], ["tank.ec", "sensor.grow_ec"]]) {
       const r = await fetch(`${base}/api/v1/ha/assign`, { method: "POST", headers: { ...json, Cookie: cookie }, body: JSON.stringify({ role, entity }) });
       assert.equal(r.status, 200, `${role}: ${await r.text()}\n${out}`);
@@ -185,7 +203,15 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     assert.equal(readings["tank.ph"]?.value, 6.2, JSON.stringify(readings["tank.ph"]));
     assert.equal(readings["tank.ec"]?.value, 0.005, JSON.stringify(readings["tank.ec"]));
     assert.equal(readings["tank.ec"]?.unit, "mS/cm");
+    // taken as values calibrated elsewhere, 120 s old plus the test's run
+    // time: a time read wrongly, or this computer's clock, gives another age
+    for (const role of ["tank.ph", "tank.ec"]) {
+      const r = readings[role];
+      assert.equal(r?.quality, "uncalibrated", `${role}: ${JSON.stringify(r)}`);
+      assert.ok(r.ageMs >= 118000 && r.ageMs < 150000, `${role}: ${JSON.stringify(r)}`);
+    }
     assert.equal(readings["zone.humidity"]?.value, null, "unavailable stays missing, never 0 (R5)");
+    assert.equal(readings["zone.humidity"]?.quality, "offline", JSON.stringify(readings["zone.humidity"]));
     assert.ok(ha.seen.some((r) => r === "GET /api/states Bearer stand-in-token"), ha.seen.join("\n"));
     assert.doesNotMatch(out, /no Date header/, "the stand-in's Date header was read");
   } finally {
