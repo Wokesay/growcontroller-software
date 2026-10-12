@@ -71,7 +71,8 @@ lent must fully meet EN 18031-1. After that date the CRA applies. List:
    encrypted NVS, sessions only as hashes, USB-JTAG off at run time
    without a further eFuse (feasibility open). Over
    USB the owner can always install their own firmware (PD-022).
-   `tools/arch_check.sh` rejects sdkconfig options that would burn eFuses
+   `tools/arch_check.sh` rejects sdkconfig options, also in the board
+   profiles, that would burn eFuses
    for Secure Boot, flash encryption, a disabled download mode or
    anti-rollback. Residual risk, documented: someone with the device in
    hand can load own code and use the HMAC key. Open: whether a test lab
