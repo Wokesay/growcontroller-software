@@ -131,7 +131,7 @@ test("A Stop closed while it is being sent still says when it failed; a refusal 
   await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
   await expect(dialog.getByRole("alert")).toBeEmpty();
   await dialog.getByRole("button", { name: "Alles stoppen" }).click();
-  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt – Fehler 500 Zieh im Notfall");
+  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt – Fehler 500. Zieh im Notfall");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
@@ -159,6 +159,31 @@ test("Settings refuse a time zone that does not exist and save one in its usual 
   await tz.fill("Europe/Berlin");
   await card.getByRole("button", { name: "Speichern" }).click();
   await expect(tz).toHaveValue("Europe/Berlin");
+});
+
+test("A switch or choice in Settings that gets no answer says so", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/einstellungen");
+  await page.route(/\/api\/v1\/system$/, (route) => route.abort());
+  await page.locator('label.toggle[title="Automatisch nach Updates suchen"]').click();
+  await expect(page.getByText("Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("The badge on a wide screen goes by the age of the values, as the phone's bar", async ({ page }) => {
+  await login(page);
+  const badge = page.locator(".topbar .pill").first();
+  // Without the live stream the polls stand in for it: still live after more than 10 s
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.reload();
+  await expect(badge).toHaveText("live");
+  await page.waitForTimeout(12_000);
+  await expect(badge).toHaveText("live");
+  // No values at all any more: disconnected
+  await page.route(/\/api\/v1\/state(\?|$)/, (route) => route.abort());
+  await expect(badge).toHaveText("getrennt", { timeout: 20_000 });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await expect(badge).toHaveText("live", { timeout: 20_000 });
 });
 
 test("History: the time axis follows the page's language and the 24-hour clock", async ({ page }) => {

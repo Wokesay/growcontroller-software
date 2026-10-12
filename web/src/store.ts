@@ -9,7 +9,6 @@ export const authed = signal<boolean | null>(null);
 export const state = signal<HubState | null>(null);
 export const config = signal<Config | null>(null);
 export const catalog = signal<Catalog | null>(null);
-export const live = signal<"connecting" | "live" | "offline">("connecting");
 export const lastUpdate = signal<number>(0);
 /** The session ran out while the app was open: whatever was clicked last was not carried out. */
 export const sessionExpired = signal(false);
@@ -54,7 +53,6 @@ let pollTimer: number | undefined;
 
 function startLive() {
   stopLive();
-  live.value = "connecting";
   clockTimer = window.setInterval(() => {
     now.value = Date.now();
     // A stream that is open but brings nothing (a proxy holding it back): ask instead
@@ -65,10 +63,13 @@ function startLive() {
     source.addEventListener("state", (ev) => {
       state.value = JSON.parse((ev as MessageEvent).data);
       lastUpdate.value = Date.now();
-      live.value = "live";
+      // The stream brings values again: polls started while it was silent are not needed
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = undefined;
+      }
     });
     source.onerror = () => {
-      live.value = "offline";
       // EventSource verbindet sich selbst neu; zur Sicherheit zusätzlich abfragen
       if (!pollTimer) pollTimer = window.setInterval(refreshState, 3000);
     };
@@ -96,7 +97,6 @@ export async function refreshState() {
   try {
     state.value = await get<HubState>("/state");
     lastUpdate.value = Date.now();
-    if (live.value === "offline" && source?.readyState === EventSource.OPEN) live.value = "live";
   } catch {
     /* Verbindung später erneut */
   }

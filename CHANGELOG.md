@@ -155,18 +155,21 @@ listed in every release under "Security".
   antwortet nicht …" instead of "TypeError: Failed to fetch", any other
   unexpected failure says it did not work, everywhere in the app (switching
   functions and outputs, devices, Home Assistant, the simulator panel,
-  calibration, sign-in); a file that is no saved configuration says so.
+  calibration, sign-in); a switch or choice that fails says so too (in
+  Settings the update channel, the update check and the language failed
+  without a word); a file that is no saved configuration says so.
 - **Values that stop coming show:** after 10 seconds without new values
   from the live stream or the polls, a phone shows a bar under the top bar
   that stays in view while scrolling, and the badge on a wider screen says
   offline; while the polls stand in for the stream, neither does. A stream
-  that is open but brings nothing is polled. A device row with calibrate
+  that is open but brings nothing is polled, until it brings values again. A device row with calibrate
   buttons puts them below the name on a phone, which no longer breaks
   letter by letter.
 - **German mix page:** the hub's closing note on the plan ("pH zuletzt …")
   shows in German, not in English; the plan's errors and warnings go
   through the same translation, though some are still German on the
-  English page (#18).
+  English page (#18). The top-up note says plainly that the amounts are only
+  for the fresh water.
 - **History chart:** the time axis follows the page's language and the
   24-hour clock (it showed "3pm" and "10/11/26"); ticks a day apart show the
   date, and closer ones show it at midnight.

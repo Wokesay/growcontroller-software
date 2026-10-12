@@ -151,7 +151,8 @@ function StopButton() {
     } catch (e) {
       // Never silent: the dialog stays open to try again, or, closed while sending, a
       // message says so. It may have arrived late: a new state with the Stop closes the dialog.
-      const text = e instanceof ApiError ? t("shell.stopRefused", { reason: e.message }) : t("shell.stopFailed");
+      const said = e instanceof ApiError ? t("shell.stopRefused", { reason: e.message }) : t("shell.stopFailed");
+      const text = /[.!?…]$/.test(said) ? said : `${said}.`;  // the emergency hint follows as its own sentence
       if (open.current) setFailed(text);
       else toast(`${text} ${hint()}`, "error");
       void refreshState();
