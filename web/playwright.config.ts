@@ -27,6 +27,9 @@ export default defineConfig({
     timeout: 60_000,
   },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1360, height: 900 } } },
+    { name: "desktop", testIgnore: /phone\.spec/, use: { viewport: { width: 1360, height: 900 } } },
+    // A phone as Chromium can emulate it: device width and touch (#33). 320 px is
+    // the width WCAG 1.4.10 (reflow) asks for; phones today are 360 px or wider.
+    { name: "phone", testMatch: /phone\.spec/, use: { viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } },
   ],
 });
