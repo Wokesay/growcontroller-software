@@ -55,6 +55,7 @@ export const de = {
   "settings.backup": "Einstellungen sichern",
   "settings.restore": "Einstellungen laden",
   "settings.restored": "Einstellungen geladen",
+  "settings.importNotJson": "Diese Datei ist keine gesicherte Konfiguration.",
   "settings.historyCsv": "Verlauf (CSV, 7 Tage)",
 
   // Display and info
@@ -122,6 +123,7 @@ export const en: Record<keyof typeof de, string> = {
   "settings.backup": "Back up settings",
   "settings.restore": "Restore settings",
   "settings.restored": "Settings restored",
+  "settings.importNotJson": "This file is not a saved configuration.",
   "settings.historyCsv": "History (CSV, 7 days)",
 
   "settings.display": "Display and info",

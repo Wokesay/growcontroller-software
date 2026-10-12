@@ -143,14 +143,30 @@ export function setUnauthorizedHandler(f: () => void) {
   onUnauthorized = f;
 }
 
-export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: "same-origin",
-  });
-  const text = await res.text();
+// A request that got no answer: no connection, or none within its time limit
+export class NetworkError extends Error {}
+
+export async function api<T = any>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  let res: Response;
+  let text: string;
+  // AbortController, not AbortSignal.timeout: that is missing before iOS 16, and a
+  // Stop must still be sent from an old phone on the wall
+  const abort = timeoutMs ? new AbortController() : undefined;
+  const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : undefined;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "same-origin",
+      signal: abort?.signal,
+    });
+    text = await res.text();
+  } catch (e) {
+    throw new NetworkError(e instanceof Error ? e.message : String(e));
+  } finally {
+    clearTimeout(timer);
+  }
   let data: any = null;
   try {
     data = text ? JSON.parse(text) : null;
@@ -166,7 +182,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 }
 
 export const get = <T = any>(p: string) => api<T>("GET", p);
-export const post = <T = any>(p: string, b: unknown = {}) => api<T>("POST", p, b);
+export const post = <T = any>(p: string, b: unknown = {}, timeoutMs?: number) => api<T>("POST", p, b, timeoutMs);
 export const put = <T = any>(p: string, b: unknown) => api<T>("PUT", p, b);
 export const patch = <T = any>(p: string, b: unknown) => api<T>("PATCH", p, b);
 export const del = <T = any>(p: string) => api<T>("DELETE", p);

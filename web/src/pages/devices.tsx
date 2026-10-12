@@ -7,7 +7,7 @@ import { del, patch, post, probeKinds, put, type Device, type ProbeKind } from "
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { dateTime, num } from "../format";
 import { msg, t } from "../i18n";
-import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast } from "../store";
+import { binding, canisters, catalog, config, refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 import { HaRoles, isHa } from "../ha";
@@ -20,7 +20,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
   const flow = d.info?.flowMlPerMin ?? null;
   const where = devicePlace(d);
   return (
-    <div class="item" data-testid={`device-${d.id}`}>
+    <div class="item wrap-row" data-testid={`device-${d.id}`}>
       <div class="grow">
         <div class="row" style="gap:8px">
           <strong>{d.name || d.classLabel}</strong>
@@ -42,7 +42,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
         </div>
         {d.class.startsWith("shelly_") && <OutletRoles d={d} />}
       </div>
-      <div class="row" style="gap:6px">
+      <div class="row-actions">
         {!d.configured ? (
           <Button
             size="sm"
@@ -170,7 +170,7 @@ function Roles() {
                         await refreshState();
                         toast(t("devices.saved"));
                       } catch (x: any) {
-                        toast(x.message, "error");
+                        toastError(x);
                       }
                     }}
                   >

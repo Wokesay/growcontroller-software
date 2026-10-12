@@ -41,7 +41,7 @@ function StepBasics(p: { step: number; next: () => void }) {
       foot={{
         step: p.step,
         base: BASE,
-        total: STEPS.length,
+        total: DONE,
         onNext: async () => {
           await put("/system", { name: name.trim() || cfg.system.name, timezone: tz, language: lang.value });
           await refreshConfig();
@@ -80,7 +80,7 @@ function StepBasics(p: { step: number; next: () => void }) {
 
 function StepSensors(p: { step: number; next: () => void }) {
   return (
-    <Page foot={{ step: p.step, base: BASE, total: STEPS.length, onNext: p.next }}>
+    <Page foot={{ step: p.step, base: BASE, total: DONE, onNext: p.next }}>
       <h2 tabIndex={-1}>{t("welcome.sensors.h")}</h2>
       <HaRoles />
     </Page>
@@ -98,7 +98,7 @@ function StepControl(p: { step: number; next: () => void }) {
       foot={{
         step: p.step,
         base: BASE,
-        total: STEPS.length,
+        total: DONE,
         onNext: async () => {
           await put("/system", { control: choice });
           await refreshConfig();
@@ -130,7 +130,7 @@ function StepDone(p: { step: number }) {
   const control = config.value!.system.control ?? {};
   const withSensor = ROLES.filter(([role]) => binding(role)).map(([role]) => roleLabel(role));
   return (
-    <Page foot={{ step: p.step, base: BASE, total: STEPS.length, onNext: () => finish(), nextLabel: t("welcome.done.toApp") }}>
+    <Page foot={{ step: p.step, base: BASE, total: DONE, onNext: () => finish(), nextLabel: t("welcome.done.toApp") }}>
       <h2 tabIndex={-1}>{t("welcome.done.h")}</h2>
       <p data-testid="welcome-sensors">{withSensor.length ? t("welcome.done.sensors", { list: withSensor.join(", ") }) : t("welcome.done.noSensor")}</p>
       <div class="list">

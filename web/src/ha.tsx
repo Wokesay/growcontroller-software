@@ -10,7 +10,7 @@ import { get, post, probeKinds, type ProbeKind } from "./api";
 import { ProbeCalibration } from "./calibration";
 import { duration, num, numUpTo } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { binding, catalog, config, info, refreshConfig, refreshState, state, toast } from "./store";
+import { binding, catalog, config, info, refreshConfig, refreshState, state, toast, toastError } from "./store";
 import { Banner, Button, Modal, Pill } from "./ui";
 import { AgeText, millivoltsText, qualityText, rawSignalUncalibrated } from "./widgets";
 
@@ -320,7 +320,7 @@ function LifeDialog(p: { role: string; measure: string; entity: string; reload: 
       toast(source ? t("ha.lifeSaved", { role: label }) : t("ha.lifeRemoved", { role: label }));
       p.onClose();
     } catch (e: any) {
-      toast(e.message, "error");
+      toastError(e);
     } finally {
       setSaving(null);
     }
@@ -503,7 +503,7 @@ function HaPicker(p: { role: string; measure: string; list: HaList | null; faili
       toast(entity ? t(signal ? "ha.savedSignal" : "ha.saved", { name: name || entity, role: label }) : t("ha.removed", { role: label }));
       p.onClose();
     } catch (e: any) {
-      toast(e.message, "error");
+      toastError(e);
     } finally {
       setSaving(null);
     }

@@ -3,8 +3,8 @@
 // (EN 18031-1 AUM-5-1).
 import { useState } from "preact/hooks";
 import { KeyRound, Sprout } from "lucide-preact";
-import { ApiError, post } from "../api";
-import { afterLogin, info } from "../store";
+import { post } from "../api";
+import { afterLogin, errorText, hasPlugs, info, sessionExpired } from "../store";
 import { t } from "../i18n";
 import { sourceUrl } from "../source";
 import { Banner, Field } from "../ui";
@@ -25,7 +25,7 @@ export function Login() {
       await post(first ? "/auth/setup" : "/auth/login", { password: pw });
       await afterLogin();
     } catch (x) {
-      setErr(x instanceof ApiError ? x.message : String(x));
+      setErr(errorText(x));
     } finally {
       setBusy(false);
     }
@@ -43,6 +43,14 @@ export function Login() {
             <p class="muted small">{info.value?.name && info.value.name !== "growcontroller" ? info.value.name : t("login.tagline")}</p>
           </div>
         </div>
+        {/* What was clicked when the session ran out was not carried out: never silent */}
+        {sessionExpired.value && !first && (
+          <Banner tone="warn">
+            <span data-testid="session-expired">
+              {t("login.expired")} {t(hasPlugs.value ? "shell.stopHintPlugs" : "shell.stopHint")}
+            </span>
+          </Banner>
+        )}
         {first ? (
           <>
             <div>

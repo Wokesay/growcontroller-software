@@ -20,6 +20,21 @@ test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, reque
   // Assistent: Start (Sprache bleibt Deutsch)
   await expect(page.getByText("Einrichtung", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Deutsch" })).toHaveAttribute("aria-selected", "true");
+  // The browser proposes the time zone; it can be changed, a wrong one is refused at the field,
+  // and it is saved in its usual spelling
+  const tz = page.locator("input[name=timezone]");
+  await expect(tz).toHaveValue("Europe/Berlin");
+  await expect(page.getByText("Vom Browser vorgeschlagen.")).toBeVisible();
+  await tz.fill("Europa/Berlin");
+  await page.getByTestId("wizard-next").click();
+  await expect(page.getByText("Diese Zeitzone gibt es nicht. Schreib sie wie Europe/Berlin.")).toBeVisible();
+  await expect(tz).toHaveAttribute("aria-invalid", "true");
+  await tz.fill("europe/vienna ");
+  await page.getByTestId("wizard-next").click();
+  // Back to the first step: what was saved, not the browser's proposal again
+  await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText("Geräte");
+  await page.getByTestId("wizard-back").click();
+  await expect(tz).toHaveValue("Europe/Vienna");
   await page.getByTestId("wizard-next").click();
 
   // Geräte erkennen und übernehmen; Anschlüsse heißen „Anschluss n“, Pumpen „Pumpe n“
@@ -59,7 +74,7 @@ test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, reque
     await page.getByRole("button", { name: /übernehmen/ }).click({ timeout: 60_000 });
     await page.getByRole("button", { name: "Speichern" }).click();
     await expect(page.getByText(/Gespeichert in der Pumpe/)).toBeVisible();
-    await page.getByRole("button", { name: "Fertig", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Fertig", exact: true }).click();
     await expect(page.getByRole("button", { name: "Erneut" })).toHaveCount(i + 1);  // Live-Zustand abwarten
   }
   await expect(page.getByText("noch nicht eingemessen")).toHaveCount(0);
@@ -80,6 +95,24 @@ test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, reque
   }
   await expect(page.getByText(/Fertig: 10,0 L/)).toBeVisible({ timeout: 90_000 });
   await simSpeed(page, 1);
+
+  // Opened again later, the setup keeps the saved time zone instead of proposing the browser's
+  await page.goto("/#/einrichtung");
+  await expect(tz).toHaveValue("Europe/Vienna");
+  await expect(page.getByText("Vom Browser vorgeschlagen.")).toHaveCount(0);
+});
+
+test.describe("A browser in New York", () => {
+  test.use({ timezoneId: "America/New_York" });
+  test("Setup: the first run proposes the browser's time zone, not the hub's factory one", async ({ page, request }) => {
+    await scenario(request, "neu");
+    await page.goto("/");
+    await page.locator("input[name=password]").fill("mein-passwort");
+    await page.locator("input[name=password2]").fill("mein-passwort");
+    await page.getByRole("button", { name: "Passwort festlegen" }).click();
+    await expect(page.locator("input[name=timezone]")).toHaveValue("America/New_York");
+    await expect(page.getByText("Vom Browser vorgeschlagen.")).toBeVisible();
+  });
 });
 
 test("Einrichtung zeigt vorhandene Rezepte und schaltet auf Englisch", async ({ page, request }) => {

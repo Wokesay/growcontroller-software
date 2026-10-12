@@ -5,7 +5,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-preact";
 import { patch, type FunctionState, type ParamDef } from "../api";
-import { catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
+import { catalog, config, recipes, refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { msg, t, type TextKey } from "../i18n";
 import { figure } from "../format";
 import { Button, Card, CheckRow, Field, NumberInput, Pill, Toggle, ctlLabel, ctlTone, route, setupLabel } from "../ui";
@@ -98,7 +98,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
                   await refreshState();
                   toast(t(v ? "functions.switchedOn" : "functions.switchedOff", { name: p.f.label }));
                 } catch (e: any) {
-                  toast(e.message, "error");
+                  toastError(e);
                 }
               }}
             />
