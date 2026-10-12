@@ -1130,88 +1130,62 @@ the review questions below come from the `security` review of this entry.
   ingress; whether they get the link on the device page instead. Open
   too: whether the app's present mode (reading sensors from Home Assistant
   without an ESP, switching nothing, SD-034) stays once the window exists.
-- Changed by SD-051: access from outside is no product question any more;
+- Changed by SD-055: access from outside is no product question any more;
   the user chooses a level at setup. Requests through the window and
   commands over the native API count as from outside and follow that
   level, so the ESP is set up through the window only as far as the level
-  allows; what SD-051 keeps to the home network is done only directly
+  allows; what SD-055 keeps to the home network is done only directly
   there.
 
 
-## SD-051: Access from outside the home network in three levels, chosen at setup
+## SD-051: The sign-in lockout counts per client
 
-Decided by the project owner on 2026-10-12 in the software session, as a
-question the software solves; the rules for building it come from the
-`security` review of this entry. PD-150 left the way of remote access
-open; if the product session decides otherwise, its decision applies and
-a later SD records it (as with SD-033).
+Decided by the project owner on 2026-10-12 in the software session (fix
+it right away as a PR); the design follows `security`'s review. A security
+rule: the PR waits for "mergen".
 
-- At setup the user chooses how the ESP's web app may be reached:
-  - **Home network only** (preselected): the ESP answers nothing from
-    outside, not the login and not "Stop" either. Values still go to Home
-    Assistant over the native API once it is connected, but no command
-    from there is accepted.
-  - **View from outside:** values, states, history and messages, from an
-    explicit list; never the diagnostic package or the configuration
-    export.
-  - **View and control from outside:** in addition, operating from an
-    explicit list.
-- **Only in the home network, at every level:** calibration, limits,
-  firmware updates (rollback included), importing a configuration,
-  assignments and the protection settings of sockets, passwords, and
-  acknowledging a latch (a person at the tank has checked, RAT-031).
-  From outside, whatever is not on the explicit list is refused; `domain`
-  sorts out the operations that need a person at the tank.
-- **"Stop"** works from outside at both outside levels. "Resume" counts as
-  control: after a Stop from outside at "View", the setup says, only
-  "View and control" or the home network lifts it, and fans stay off
-  until then (PD-076).
-- **Raising the level** only from the home network, with the password
-  asked again. Lowering it, from wherever, ends outside sessions and their
-  live connections at once; whether it can be lowered from outside is
-  open (the safe direction).
-- **What counts as the home network:** the ESP checks this itself from
-  the connection (the peer address is in its own subnet or link-local),
-  never from a header. Everything else counts as from outside.
-- **The Home Assistant window and Home Assistant's commands over the
-  native API count as from outside** (decided by the project owner): they
-  come from the Home Assistant host, and the ESP cannot tell whether the
-  person is at home. So at "Home network only" the window is closed. This
-  changes SD-050. The ESP recognises the window by the Home Assistant
-  host's address set on it, never by a marker the app sends; how, and
-  what happens when that address changes, is part of SD-050's review.
-- **Ways in:** the outside levels apply only to defined ways, the Home
-  Assistant window (SD-050) and the way of M6, each with its own review of
-  transport, so no password crosses the internet as plain HTTP. A direct
-  request from a public address (a port forward, an open IPv6 address) or
-  from another private network that is no defined way (a VPN with its own
-  subnet, another VLAN) is refused at every level; whether further home
-  subnets can be listed, set from the home network, is open.
-- **Lockout:** failed logins from outside never lock out the home
-  network; they count separately (today the lockout is one counter,
-  `core/src/auth.cpp`).
-- **The level** is stored and enforced on the ESP and checked on every
-  request, before `/info`, the login and the first password. Until the
-  first password is set, and after a factory reset, it is "Home network
-  only". An import or a restored backup never raises it. Every change is
-  logged with its origin (home network or outside).
-- **What Home Assistant shows** is outside the level: once Home Assistant
-  is connected (SD-050) and reachable from outside, values and history
-  leave the home network that way. That is the user's choice; the setup
-  says so.
-- **Residual risks, named in the docs:** a proxy or tunnel the user runs
-  in the home network gets the rights of the home network; the way from
-  the internet to Home Assistant is Home Assistant's own transport, which
-  the user sets up; someone on the internet can lock the outside logins
-  while the owner is away, and a "Stop" from outside then works only from
-  a session already open.
-- Open for `regulatorik` in the product repository: EN 18031-1 (access
-  control, authentication, secure communication; whether a password alone
-  is enough from the internet), CRA Annex I, and GDPR for history, events
-  and logged addresses seen from outside.
-- Open for the design (M3, M6): the explicit lists; a shorter session from
-  outside; IPv6 prefixes; what `/info` shows from outside; the downgrade
-  check of M2 also refuses firmware without this gate.
+- **Why:** the lockout after 5 failed attempts (EN 18031-1 AUM-6) had one
+  count for all clients. A device in the network that sent a wrong
+  password every 15 minutes kept everyone locked out, the owner's phone
+  included, and with it "Stop" for anyone not signed in.
+- **Per client:** a client that signed in successfully (also by the
+  initial setup) gets a count of its own; at most 16, the one seen longest
+  ago (signed in or used its session) drops out first. Every other client
+  shares one count, which is also the brake: guessing from addresses that
+  never signed in is no faster than from one. A success resets only the
+  client's own count; a success from a new address does not lift the
+  shared lockout. The schedule stays: from
+  the 5th failure 30 s, doubling up to 15 min; a count forgets its
+  failures after a quiet day.
+- **The client** is the peer address of the connection, normalised in the
+  core (`clientKey`): IPv4 as is, IPv6 by its full address without the
+  zone (a /64 is shared by every device of a home network), an
+  IPv4-mapped address as IPv4, anything unreadable as unknown (the shared
+  count). Never from `X-Forwarded-For` or another header.
+- **Password change:** a wrong old password counts as a failed attempt
+  of the caller and is logged; a locked caller gets 429 before any
+  hashing. A change forgets the other known clients; the caller, who just
+  proved the old password, keeps its own count.
+- **Event log:** only counted failures are logged; neither a try refused
+  during the wait nor one before the first password is (flash wear, and
+  the log is not flushed by guessing).
+- **No header:** `tools/arch_check.sh` refuses `set_trusted_proxies`,
+  with which cpp-httplib would take the address from `X-Forwarded-For`.
+- **In memory only:** the known clients are not stored. After a restart
+  every device shares the count until it signs in again.
+- **Accepted:** during an attack, a device that has not signed in since
+  the hub started (a new phone, or after a restart) can be locked out with
+  the others; a device that is signed in keeps its session and "Stop". A
+  device whose IPv6 address changes counts as new. Behind one peer (Home
+  Assistant's ingress, SD-050, or a Docker proxy) all clients share one
+  count. A host that takes over the address of a known device (a static
+  address, a reused lease) gets that device's count: it can lock that
+  device and has one more guessing budget per known address, at most 17
+  in all. The hardware Stop never depends on the web.
+- **Later:** device cookies (OWASP) as the sign of a known client, with
+  encrypted NVS for their key; they need no address and survive address
+  changes. Open for `regulatorik`: whether addresses held in memory for
+  the lockout count as processing personal data.
 
 
 ## SD-052: The ESP32-S3 reads its own sensors; Home Assistant only receives
@@ -1264,6 +1238,8 @@ it.
   gateway gets cut-offs for humidifier and dehumidifier on an invalid
   humidity (today it only blocks switching the humidifier on,
   `core/src/dosing.cpp`).
+- Changed by SD-056: a Bluetooth climate sensor is outdated after 120 s
+  without a report.
 
 
 ## SD-054: EC compensated by the hub; pH not compensated; a zero-point check on the hub's pH input
@@ -1336,56 +1312,122 @@ and the simulator's raw EC has no temperature term (`sim/world.cpp`).
   https://knowledge.reagecon.com/wp-content/uploads/2021/09/Technical-Paper_The-Effect-of-Temperature-on-Conductivity-Measurement.pdf ;
   [3] Hamilton, "The Zero Point of a pH Sensor",
   https://www.hamiltoncompany.com/knowledge-base/article/the-zero-point-of-a-ph-sensor
+- Changed by SD-056: compensating EC is the user's choice at setup, also
+  with a water temperature sensor; the coefficient is 2 % per °C; the
+  zero-point band is ±30 mV, and a probe outside it is to be replaced.
 
 
-## SD-051: The sign-in lockout counts per client
+## SD-055: Access from outside the home network in three levels, chosen at setup
 
-Decided by the project owner on 2026-10-12 in the software session (fix
-it right away as a PR); the design follows `security`'s review. A security
-rule: the PR waits for "mergen".
+Decided by the project owner on 2026-10-12 in the software session, as a
+question the software solves. Recorded as SD-051 in PR #123 and
+renumbered, as PR #122 recorded the lockout per client as SD-051 at the
+same time; the rules for building it come from the
+`security` review of this entry. PD-150 left the way of remote access
+open; if the product session decides otherwise, its decision applies and
+a later SD records it (as with SD-033).
 
-- **Why:** the lockout after 5 failed attempts (EN 18031-1 AUM-6) had one
-  count for all clients. A device in the network that sent a wrong
-  password every 15 minutes kept everyone locked out, the owner's phone
-  included, and with it "Stop" for anyone not signed in.
-- **Per client:** a client that signed in successfully (also by the
-  initial setup) gets a count of its own; at most 16, the one seen longest
-  ago (signed in or used its session) drops out first. Every other client
-  shares one count, which is also the brake: guessing from addresses that
-  never signed in is no faster than from one. A success resets only the
-  client's own count; a success from a new address does not lift the
-  shared lockout. The schedule stays: from
-  the 5th failure 30 s, doubling up to 15 min; a count forgets its
-  failures after a quiet day.
-- **The client** is the peer address of the connection, normalised in the
-  core (`clientKey`): IPv4 as is, IPv6 by its full address without the
-  zone (a /64 is shared by every device of a home network), an
-  IPv4-mapped address as IPv4, anything unreadable as unknown (the shared
-  count). Never from `X-Forwarded-For` or another header.
-- **Password change:** a wrong old password counts as a failed attempt
-  of the caller and is logged; a locked caller gets 429 before any
-  hashing. A change forgets the other known clients; the caller, who just
-  proved the old password, keeps its own count.
-- **Event log:** only counted failures are logged; neither a try refused
-  during the wait nor one before the first password is (flash wear, and
-  the log is not flushed by guessing).
-- **No header:** `tools/arch_check.sh` refuses `set_trusted_proxies`,
-  with which cpp-httplib would take the address from `X-Forwarded-For`.
-- **In memory only:** the known clients are not stored. After a restart
-  every device shares the count until it signs in again.
-- **Accepted:** during an attack, a device that has not signed in since
-  the hub started (a new phone, or after a restart) can be locked out with
-  the others; a device that is signed in keeps its session and "Stop". A
-  device whose IPv6 address changes counts as new. Behind one peer (Home
-  Assistant's ingress, SD-050, or a Docker proxy) all clients share one
-  count. A host that takes over the address of a known device (a static
-  address, a reused lease) gets that device's count: it can lock that
-  device and has one more guessing budget per known address, at most 17
-  in all. The hardware Stop never depends on the web.
-- **Later:** device cookies (OWASP) as the sign of a known client, with
-  encrypted NVS for their key; they need no address and survive address
-  changes. Open for `regulatorik`: whether addresses held in memory for
-  the lockout count as processing personal data.
+- At setup the user chooses how the ESP's web app may be reached:
+  - **Home network only** (preselected): the ESP answers nothing from
+    outside, not the login and not "Stop" either. Values still go to Home
+    Assistant over the native API once it is connected, but no command
+    from there is accepted.
+  - **View from outside:** values, states, history and messages, from an
+    explicit list; never the diagnostic package or the configuration
+    export.
+  - **View and control from outside:** in addition, operating from an
+    explicit list.
+- **Only in the home network, at every level:** calibration, limits,
+  firmware updates (rollback included), importing a configuration,
+  assignments and the protection settings of sockets, passwords, and
+  acknowledging a latch (a person at the tank has checked, RAT-031).
+  From outside, whatever is not on the explicit list is refused; `domain`
+  sorts out the operations that need a person at the tank.
+- **"Stop"** works from outside at both outside levels. "Resume" counts as
+  control: after a Stop from outside at "View", the setup says, only
+  "View and control" or the home network lifts it, and fans stay off
+  until then (PD-076).
+- **Raising the level** only from the home network, with the password
+  asked again. Lowering it, from wherever, ends outside sessions and their
+  live connections at once; whether it can be lowered from outside is
+  open (the safe direction).
+- **What counts as the home network:** the ESP checks this itself from
+  the connection (the peer address is in its own subnet or link-local),
+  never from a header. Everything else counts as from outside.
+- **The Home Assistant window and Home Assistant's commands over the
+  native API count as from outside** (decided by the project owner): they
+  come from the Home Assistant host, and the ESP cannot tell whether the
+  person is at home. So at "Home network only" the window is closed. This
+  changes SD-050. The ESP recognises the window by the Home Assistant
+  host's address set on it, never by a marker the app sends; how, and
+  what happens when that address changes, is part of SD-050's review.
+- **Ways in:** the outside levels apply only to defined ways, the Home
+  Assistant window (SD-050) and the way of M6, each with its own review of
+  transport, so no password crosses the internet as plain HTTP. A direct
+  request from a public address (a port forward, an open IPv6 address) or
+  from another private network that is no defined way (a VPN with its own
+  subnet, another VLAN) is refused at every level; whether further home
+  subnets can be listed, set from the home network, is open.
+- **Lockout:** failed logins from outside never lock out the home
+  network; they count separately. The lockout per client (SD-051) is the
+  start: a client from outside must never share a count with the home
+  network.
+- **The level** is stored and enforced on the ESP and checked on every
+  request, before `/info`, the login and the first password. Until the
+  first password is set, and after a factory reset, it is "Home network
+  only". An import or a restored backup never raises it. Every change is
+  logged with its origin (home network or outside).
+- **What Home Assistant shows** is outside the level: once Home Assistant
+  is connected (SD-050) and reachable from outside, values and history
+  leave the home network that way. That is the user's choice; the setup
+  says so.
+- **Residual risks, named in the docs:** a proxy or tunnel the user runs
+  in the home network gets the rights of the home network; the way from
+  the internet to Home Assistant is Home Assistant's own transport, which
+  the user sets up; someone on the internet can lock the outside logins
+  while the owner is away, and a "Stop" from outside then works only from
+  a session already open.
+- Open for `regulatorik` in the product repository: EN 18031-1 (access
+  control, authentication, secure communication; whether a password alone
+  is enough from the internet), CRA Annex I, and GDPR for history, events
+  and logged addresses seen from outside.
+- Open for the design (M3, M6): the explicit lists; a shorter session from
+  outside; IPv6 prefixes; what `/info` shows from outside; the downgrade
+  check of M2 also refuses firmware without this gate.
+
+
+## SD-056: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors 120 s
+
+Decided by the project owner on 2026-10-12 in the software session. It
+settles the rules SD-053 and SD-054 left open, so they need nothing from
+the product repository; the product session is told.
+
+- **Compensating EC is the user's choice at setup:** "with temperature
+  compensation" (needs a water temperature sensor) or "without". This
+  changes SD-054, where the choice existed only without a sensor. With
+  compensation chosen, a sensor that fails still stops EC and pH
+  correction (SD-054). Changing the choice needs a new EC calibration,
+  since the calibration factor refers to another scale.
+- **Coefficient:** 2 % per °C, linear to 25 °C (SD-054, sources 1 and 2).
+  No measured value for nutrient solutions was found; the project owner
+  accepts the figure.
+- **The hint at "without":** about 2 % per °C away from the temperature
+  at calibration; between 18 and 24 °C up to about 12 %, about ±6 % when
+  calibrated at about 21 °C. A tank colder than at calibration is
+  overdosed (RAT-012). Advice: calibrate at the usual tank temperature.
+- **pH zero point:** ±30 mV at pH 7, the DIN tolerance makers name
+  (SD-054, source 3), on the hub's own pH input after the firmware removes
+  the input's known bias. Outside it, the calibration is refused with the
+  message to replace the probe. The tolerance of the board's bias
+  reference is measured on the board samples; if it takes a noticeable
+  part of the band, the band is looked at again.
+- **Bluetooth climate sensors:** outdated after 120 s without a report,
+  the catalog's limit for air temperature and humidity. If ordinary
+  dropouts of real devices then switch climate devices off too often, the
+  limit is looked at again (RAT-027).
+- The RAT entries (RAT-085 for EC compensation, RAT-086 for the zero
+  point) and their tests come with the implementation (M1).
+
 
 ---
 
