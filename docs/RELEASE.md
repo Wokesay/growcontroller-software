@@ -83,6 +83,19 @@ entry under `[Unreleased]`.
    - All actions are GitHub's own, pinned by commit SHA
      (`tools/workflows.test.mjs`); Dependabot proposes updates after a
      cooldown of 7 days.
+   - The web app's npm packages are pinned by their sha512 in
+     `web/package-lock.json`, each resolving to its own record on the npm
+     registry; Dependabot proposes updates after a cooldown of 7 days.
+     Wherever they are installed (`tools/ci.sh`, the firmware job, the
+     simulator packages, the release build, the app image),
+     `npm audit signatures` runs right after `npm ci`: a missing or
+     invalid registry signature or an invalid provenance attestation
+     fails the build, a package without provenance passes (SD-055). It
+     proves the registry's signed record of each installed version, not
+     the safety of a release from a hijacked maintainer account; against
+     that stand the cooldown and the lockfile pin.
+     `tools/workflows.test.mjs` keeps the step and the registry addresses
+     in place.
    - Anyone can check a download; the check must name the release
      workflow and the tag, otherwise any workflow of the repository would
      pass:

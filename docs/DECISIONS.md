@@ -1387,6 +1387,45 @@ rule: the PR waits for "mergen".
   changes. Open for `regulatorik`: whether addresses held in memory for
   the lockout count as processing personal data.
 
+
+## SD-055: The web app's npm packages are checked against their registry signatures
+
+Decided by the project owner on 2026-10-12 in the software session, for
+#100 (from `security`'s review of the dependency updates #96, #98, #99).
+
+- Wherever the web app's packages are installed, `npm audit signatures`
+  runs right after `npm ci`, before any package runs there: in `tools/ci.sh`
+  (CI's `checks` job), the firmware job, the simulator packages, the
+  release build and the Home Assistant app image. Each place installs the
+  builds for its own platform (Rolldown, lightningcss and the TypeScript
+  binaries run native code in every build), and only installed packages
+  are checked. `tools/workflows.test.mjs` keeps the step after every
+  `npm ci`, with no way around it on that line.
+- A missing or invalid registry signature fails, and so does an invalid
+  provenance attestation, a key npm does not know, or no answer from the
+  registry or from Sigstore.
+- A package without provenance passes; npm counts only the verified
+  attestations. Many packages publish none, TypeScript and lightningcss
+  among them. No list of them is printed; a warning that always comes is
+  soon not read.
+- What it proves: the registry's own record of each installed
+  `name@version` is signed, so a record changed on the registry's side
+  without npm's key fails while it is served. It does not compare that
+  record with the bytes on disk. Those are bound by the sha512 in
+  `web/package-lock.json`, which `npm ci` checks, and
+  `tools/workflows.test.mjs` requires every package there to resolve to
+  that very record (`https://registry.npmjs.org/<name>/-/<file>-<version>.tgz`).
+- What it does not do: it adds nothing against a hijacked maintainer
+  account, since the registry signs those releases too and a hijacked
+  publishing pipeline even produces valid provenance. Against that stand
+  Dependabot's cooldown of 7 days, the lockfile pin and
+  `npm ci --ignore-scripts`. The gain of this check is small; it is cheap
+  and fails closed. Later, if npm offers it: fail when a package that had
+  provenance publishes a version without it (`docs/SECURITY_MODEL.md`).
+- The check needs the npm registry and Sigstore's TUF repository
+  (`tuf-repo-cdn.sigstore.dev`), also for a local `tools/ci.sh`.
+
+
 ---
 
 ## Drafts (waiting for "entschieden")

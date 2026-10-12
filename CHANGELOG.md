@@ -177,6 +177,20 @@ session and "Stop". No GHSA or CVE is issued.
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
 
+Hardening, without a vulnerability behind it:
+
+- **Registry signatures of the web app's packages** (#100, SD-055):
+  wherever the web app's packages are installed (CI, the simulator
+  packages, the release build, the Home Assistant app image),
+  `npm audit signatures` now runs right after the install, before any of
+  them runs. A missing or invalid npm registry signature or an invalid
+  provenance attestation fails the build; packages without provenance
+  pass. Every package in the lockfile must come from its own record on
+  the npm registry. This proves the registry's signed record of each
+  package; it does not protect against a release from a hijacked
+  maintainer account, against which the 7-day wait for updates and the
+  lockfile's hashes stay the guards.
+
 ## [0.1.0-proto.4] – 2026-10-11
 
 Fourth prototype: more from the first test of the Home Assistant app.

@@ -160,7 +160,7 @@ jobs:
             mv "$f" out/dist/
           done
           rm -r out/pkgs
-          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+          (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build)
           node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
           cp LICENSE web/dist/LICENSE.txt
           tar -C web -czf "out/dist/growcontroller-web-$v.tar.gz" dist

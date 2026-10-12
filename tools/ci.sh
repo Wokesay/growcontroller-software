@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # All checks as CI runs them. Locally: tools/ci.sh  (E2E: E2E=1 tools/ci.sh)
 # Needs reuse (pipx install reuse==6.2.0; CI installs tools/requirements-reuse.txt
-# with its hashes); REUSE=<path> selects another binary.
+# with its hashes); REUSE=<path> selects another binary. Checking the npm
+# packages' signatures needs the npm registry and Sigstore's TUF repository
+# (tuf-repo-cdn.sigstore.dev).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -34,8 +36,10 @@ cmake --build build
 node --test tools/ha_server.test.mjs
 end
 
-group "Web app (type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
-(cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build && npm run typecheck:node)
+# The packages' registry signatures and provenance attestations are checked
+# right after they are installed, before any of them runs (SD-055).
+group "Web app (registry signatures, type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
+(cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build && npm run typecheck:node)
 end
 
 if [ "${E2E:-0}" = "1" ]; then
