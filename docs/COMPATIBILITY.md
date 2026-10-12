@@ -17,8 +17,8 @@ release". The list grows with every report
 - **Sensors you already have in Home Assistant:** the Home Assistant app
   shows them today and switches nothing. The ESP32-S3 measures with probes
   on its carrier board and, later, with Bluetooth sensors such as the
-  Shelly BLU H&T (#91). Whether it may also read sensors from Home
-  Assistant is open.
+  Shelly BLU H&T (#91). It does not read sensors from Home Assistant; it
+  sends its own values there to show them (SD-052).
 - **Probes you already have:** the carrier board's pH and EC inputs take
   the probe itself, not a signal board (see
   [Carrier board](#carrier-board-with-the-esp32-s3-from-m1)).
@@ -176,7 +176,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 | Connection | What fits | Status | Notes |
 |---|---|---|---|
 | 8 sensor ports | growcontroller sensor heads, found automatically; wired sensors of other makers that use Modbus over RS485 (9600 baud), once you pick their type in the app | Not yet (M1) | Each port is its own bus with 12 V. Which sensors of other makers the app will know is open; report yours. The app uses a value only after a plausibility check, and pH and EC only with a calibration made in growcontroller: a value calibrated in the sensor shows as "Calibrated elsewhere" and is never used for control (RAT-025). |
-| pH and EC inputs | a pH electrode; an EC probe with K=1 (calculated for about 20 µS/cm to 20 mS/cm); a 10 kΩ NTC for the water temperature (B 3950, assumed) | Not yet (M1) | Each input is isolated on its own, so the probes do not disturb each other. They take the probe itself: a signal board with its own amplifier (DFRobot Gravity) or an Atlas EZO circuit does not belong there. The pin assignment in #94 has no 1-Wire input for a DS18B20. |
+| pH and EC inputs | a pH electrode; an EC probe with K=1 (calculated for about 20 µS/cm to 20 mS/cm); a 10 kΩ NTC for the water temperature (B 3950, assumed) | Not yet (M1) | Each input is isolated on its own, so the probes do not disturb each other. They take the probe itself: a signal board with its own amplifier (DFRobot Gravity) or an Atlas EZO circuit does not belong there. The pin assignment in #94 has no 1-Wire input for a DS18B20. EC needs the water temperature: the ESP32-S3 compensates EC itself, and without a valid water temperature EC is shown but never used for control (SD-054). |
 | 3 contact inputs | switch contacts, for example a float switch, and leak sensors | Not yet (M1) | |
 | 10 dosing pump outputs, 12 V | 12 V DC dosing pumps | Not yet (M1) | One pump runs at a time. All 10 outputs together switch off above about 1.8 A (calculated). There is no time limit in the hardware; the firmware limits run time, volume and pause per pump (SD-045). For pH− in a tank under about 30 L, choose a pump of about 20–30 ml/min or less: a first pH− dose is capped at about 0.06 ml per litre of tank (0.6 ml in 10 L), and a pump runs at least 1 s (RAT-050; calculated, pH− products differ in strength). |
 | Refill valve output, 12 V | a 12 V solenoid valve, with an overflow float switch in series | Not yet (M1) | The float switch is required: it is the overflow guard, as a small tank overflows long before any time limit ends (RAT-032, RAT-079). Test it before the first fill. The output switches off above about 1.8 A (calculated). |
@@ -186,7 +186,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 | What | Status | Notes |
 |---|---|---|
-| Bluetooth sensors in the BTHome format (an open format, used by Shelly BLU and others) that send at a fixed interval: air temperature and humidity | Not yet: no milestone yet | Can control humidifier, dehumidifier, exhaust fan and air heater. Encrypted where the sensor can. If its value is outdated or invalid, the ESP32-S3 switches that device off. Keep the device's own setting (for example its humidistat) as the outer limit (PD-153, #91). |
+| Bluetooth sensors in the BTHome format (an open format, used by Shelly BLU and others) that send at a fixed interval: air temperature and humidity | Not yet: no milestone yet | Can control humidifier, dehumidifier, exhaust fan and air heater. Encrypted where the sensor can. If its value is outdated or invalid, the ESP32-S3 switches humidifier, dehumidifier and air heater off; fans keep running (SD-053). Keep the device's own setting (for example its humidistat) as the outer limit (PD-153, #91). |
 | Other wireless values | Not yet: no milestone yet | Shown, never used for control (PD-153). |
 | Level, overflow, leak, drain, pH, EC, water temperature, substrate, anything that drives the CO2 valve | No | Never over radio (PD-153): a lost message must not hide a full tank or a wrong pH. |
 
@@ -194,6 +194,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 | What | Status | Notes |
 |---|---|---|
+| Exhaust and circulation fans on a plug | Not yet: no milestone yet | The ESP32-S3 only switches a fan on and off; its speed or its own thermostat stays in the fan. The fan must start again in its last setting when power returns (SD-053). |
 | Shelly smart plugs, local, without the maker's cloud | Not yet: no milestone yet | Shelly comes first (SD-007); which Shelly generations is open (#85). Never connect a dosing pump to a plug (#91). An inlet valve or irrigation pump on a plug gets an automatic switch-off in the plug, just above the software's longest run (RAT-019); one for every run is planned (#39). The circulation pump runs for hours and gets none. You can try a Shelly Plug S Gen3 and a Power Strip 4 Gen4 in the simulator. |
 | A heater on a plug | Not yet (#24) | Only with an emergency cut-off that latches (RAT-060). |
 | Smart plugs of other makers | Not yet: no milestone yet | The ESP32-S3 sets the protection in the device and reads it back (SD-007), which needs its own code for each make. |

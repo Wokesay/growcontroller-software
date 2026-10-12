@@ -49,6 +49,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-051 to
+  SD-054): at setup the user chooses whether the ESP32-S3's web app can be
+  reached only in the home network (preselected), viewed from outside, or
+  viewed and controlled from outside; "Stop all" always works, while
+  calibration, limits and updates stay in the home network. The ESP32-S3
+  reads only its own sensors and sends their values to Home Assistant.
+  Fans are only switched on and off, must start again in their last
+  setting, and keep running when a wireless climate sensor goes quiet.
+  The hub compensates EC for the water temperature itself; EC without a
+  water temperature is never used for control. The pH calibration will
+  also check the probe's zero point once its limit is set.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3

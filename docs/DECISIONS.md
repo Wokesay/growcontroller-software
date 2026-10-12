@@ -1119,7 +1119,8 @@ the review questions below come from the `security` review of this entry.
 - **Product question** for the product repository's session (SD-029),
   before the window is built: whether the ESP's web app may be reached
   from outside the home network through Home Assistant at all. Remote
-  access is a product question so far (PD-150, M6).
+  access is a product question so far (PD-150, M6). Answered by SD-051:
+  the user chooses at setup.
 - Open for `regulatorik` in the product repository: whether access
   through Home Assistant changes the EN 18031-1 assessment (access
   control, authentication, secure communication) and CRA Annex I.
@@ -1130,6 +1131,91 @@ the review questions below come from the `security` review of this entry.
   ingress; whether they get the link on the device page instead. Open
   too: whether the app's present mode (reading sensors from Home Assistant
   without an ESP, switching nothing, SD-034) stays once the window exists.
+
+
+## SD-051: Access from outside the home network in three levels, chosen at setup
+
+Decided by the project owner on 2026-10-12 in the software session, as a
+question the software solves. PD-150 left the way of remote access open;
+if the product session decides otherwise, its decision applies and a
+later SD records it (as with SD-033).
+
+- At setup the user chooses how the ESP's web app may be reached:
+  - **Home network only** (preselected);
+  - **View from outside:** values, states, history and messages;
+  - **View and control from outside.**
+- The level can be raised only from the home network, so nobody outside
+  can open the way in. Lowering it works from anywhere. It can be changed
+  later in the settings.
+- "Stop all" works wherever the web app can be reached, at every level.
+- Calibration, limits and firmware updates only from the home network, at
+  every level.
+- The level applies to every way in: the Home Assistant window (SD-050)
+  and any later remote access of our own (M6).
+- Where the ESP cannot tell whether a request comes from the home network,
+  for example through the Home Assistant window, the request counts as
+  from outside. How the ESP tells the two apart is part of SD-050's
+  `security` review.
+- Open for `regulatorik` in the product repository: EN 18031-1 (access
+  control, authentication, secure communication) and CRA Annex I for the
+  two outside levels.
+
+
+## SD-052: The ESP32-S3 reads its own sensors; Home Assistant only receives
+
+Decided by the project owner on 2026-10-12 in the software session. It
+applies PD-149.
+
+- The ESP32-S3 reads only the sensors connected to it: on the carrier
+  board and, later, over Bluetooth (PD-153). It does not read sensors from
+  Home Assistant.
+- It sends its values and states to Home Assistant, which shows them
+  (SD-050). Devices and sensors of growcontroller are set up on the ESP,
+  not in Home Assistant.
+- The Home Assistant app's present mode (reading sensors from Home
+  Assistant without an ESP, switching nothing, SD-034) is not affected;
+  whether it stays is open (SD-050).
+
+
+## SD-053: Fans are switched on and off only, and keep running on a stale wireless value
+
+Decided by the project owner on 2026-10-12 in the software session. It
+deviates from PD-153 for fans in favour of PD-050; the product session is
+told.
+
+- Exhaust and circulation fans on smart plugs are only switched on and
+  off. Their own setting (speed, their own thermostat) stays in the fan.
+- A fan must start again in its last setting when power returns (black
+  start). `docs/COMPATIBILITY.md` names this as a requirement.
+- When a wireless climate value is outdated or invalid, exhaust and
+  circulation fans keep power and keep running in their own setting;
+  humidifier, dehumidifier and air heater switch off (PD-153). The app
+  reports the sensor.
+
+
+## SD-054: Temperature compensation for EC only, by the hub; a zero-point check for pH probes
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- **EC:** the hub compensates EC to 25 °C itself, from the water
+  temperature. An EC without a valid water temperature is shown, marked
+  "without temperature compensation", and never used for control. The
+  coefficient (a typical value is about 2 % per °C, an assumption) comes
+  as a rule from the product repository and gets a RAT entry and a test
+  when it is built.
+- **pH** is not temperature compensated (as SD-041). Issue #94 (§4.8)
+  marks pH "without temperature compensation" too when the water
+  temperature is invalid; under this entry only EC carries that mark.
+- **Zero point:** the pH calibration also checks the probe's zero point:
+  in the pH 7 buffer an ideal probe reads 0 mV, and a worn or dirty probe
+  reads further off. A calibration whose pH 7 reading lies outside a band
+  around 0 mV is refused with its reason, as a slope outside 47–74 mV/pH
+  is today (RAT-025). It catches a worn probe behind an amplifier board,
+  which can pass the slope check. The band comes as a rule from the
+  product repository (about ±30 mV is often named; no source yet, an
+  assumption); until then it is not built. Test first: a pH voltage from
+  an amplified board with a worn probe (1500 mV at pH 7, 62 mV/pH) is
+  refused.
 
 ---
 

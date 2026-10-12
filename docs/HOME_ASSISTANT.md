@@ -352,8 +352,9 @@ steer anything. Each point is open unless it says what is built.
    checked".
 4. **EC temperature compensation:** an EZO-EC circuit assumes 25 °C unless
    it is sent the water temperature; uncompensated EC is off by roughly
-   2 % per degree (a typical value, not measured here). Who compensates,
-   and how, is a product question.
+   2 % per degree (a typical value, not measured here). Who compensates
+   a value from Home Assistant, and how, is a product question; the hub
+   compensates its own EC itself (SD-054).
 5. **Galvanic isolation** of pH and EC probes (the hub's heads have it;
    many DIY builds do not). Interference gives wrong but plausible values;
    an acceptance test compares readings with the circulation pump on and
