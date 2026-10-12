@@ -1130,6 +1130,212 @@ the review questions below come from the `security` review of this entry.
   ingress; whether they get the link on the device page instead. Open
   too: whether the app's present mode (reading sensors from Home Assistant
   without an ESP, switching nothing, SD-034) stays once the window exists.
+- Changed by SD-051: access from outside is no product question any more;
+  the user chooses a level at setup. Requests through the window and
+  commands over the native API count as from outside and follow that
+  level, so the ESP is set up through the window only as far as the level
+  allows; what SD-051 keeps to the home network is done only directly
+  there.
+
+
+## SD-051: Access from outside the home network in three levels, chosen at setup
+
+Decided by the project owner on 2026-10-12 in the software session, as a
+question the software solves; the rules for building it come from the
+`security` review of this entry. PD-150 left the way of remote access
+open; if the product session decides otherwise, its decision applies and
+a later SD records it (as with SD-033).
+
+- At setup the user chooses how the ESP's web app may be reached:
+  - **Home network only** (preselected): the ESP answers nothing from
+    outside, not the login and not "Stop" either. Values still go to Home
+    Assistant over the native API once it is connected, but no command
+    from there is accepted.
+  - **View from outside:** values, states, history and messages, from an
+    explicit list; never the diagnostic package or the configuration
+    export.
+  - **View and control from outside:** in addition, operating from an
+    explicit list.
+- **Only in the home network, at every level:** calibration, limits,
+  firmware updates (rollback included), importing a configuration,
+  assignments and the protection settings of sockets, passwords, and
+  acknowledging a latch (a person at the tank has checked, RAT-031).
+  From outside, whatever is not on the explicit list is refused; `domain`
+  sorts out the operations that need a person at the tank.
+- **"Stop"** works from outside at both outside levels. "Resume" counts as
+  control: after a Stop from outside at "View", the setup says, only
+  "View and control" or the home network lifts it, and fans stay off
+  until then (PD-076).
+- **Raising the level** only from the home network, with the password
+  asked again. Lowering it, from wherever, ends outside sessions and their
+  live connections at once; whether it can be lowered from outside is
+  open (the safe direction).
+- **What counts as the home network:** the ESP checks this itself from
+  the connection (the peer address is in its own subnet or link-local),
+  never from a header. Everything else counts as from outside.
+- **The Home Assistant window and Home Assistant's commands over the
+  native API count as from outside** (decided by the project owner): they
+  come from the Home Assistant host, and the ESP cannot tell whether the
+  person is at home. So at "Home network only" the window is closed. This
+  changes SD-050. The ESP recognises the window by the Home Assistant
+  host's address set on it, never by a marker the app sends; how, and
+  what happens when that address changes, is part of SD-050's review.
+- **Ways in:** the outside levels apply only to defined ways, the Home
+  Assistant window (SD-050) and the way of M6, each with its own review of
+  transport, so no password crosses the internet as plain HTTP. A direct
+  request from a public address (a port forward, an open IPv6 address) or
+  from another private network that is no defined way (a VPN with its own
+  subnet, another VLAN) is refused at every level; whether further home
+  subnets can be listed, set from the home network, is open.
+- **Lockout:** failed logins from outside never lock out the home
+  network; they count separately (today the lockout is one counter,
+  `core/src/auth.cpp`).
+- **The level** is stored and enforced on the ESP and checked on every
+  request, before `/info`, the login and the first password. Until the
+  first password is set, and after a factory reset, it is "Home network
+  only". An import or a restored backup never raises it. Every change is
+  logged with its origin (home network or outside).
+- **What Home Assistant shows** is outside the level: once Home Assistant
+  is connected (SD-050) and reachable from outside, values and history
+  leave the home network that way. That is the user's choice; the setup
+  says so.
+- **Residual risks, named in the docs:** a proxy or tunnel the user runs
+  in the home network gets the rights of the home network; the way from
+  the internet to Home Assistant is Home Assistant's own transport, which
+  the user sets up; someone on the internet can lock the outside logins
+  while the owner is away, and a "Stop" from outside then works only from
+  a session already open.
+- Open for `regulatorik` in the product repository: EN 18031-1 (access
+  control, authentication, secure communication; whether a password alone
+  is enough from the internet), CRA Annex I, and GDPR for history, events
+  and logged addresses seen from outside.
+- Open for the design (M3, M6): the explicit lists; a shorter session from
+  outside; IPv6 prefixes; what `/info` shows from outside; the downgrade
+  check of M2 also refuses firmware without this gate.
+
+
+## SD-052: The ESP32-S3 reads its own sensors; Home Assistant only receives
+
+Decided by the project owner on 2026-10-12 in the software session. It
+applies PD-149.
+
+- The ESP32-S3 reads only the sensors connected to it directly: on the
+  carrier board and, later, over Bluetooth (PD-153). It does not read
+  sensors from Home Assistant.
+- It sends its values and states to Home Assistant, which shows them
+  (SD-050). Devices and sensors of growcontroller are set up on the ESP,
+  not in Home Assistant.
+- The Home Assistant app's present mode (reading sensors from Home
+  Assistant without an ESP, switching nothing, SD-034) is not affected;
+  whether it stays is open (SD-050).
+
+
+## SD-053: Fans only on and off; climate devices on an invalid climate value
+
+Decided by the project owner on 2026-10-12 in the software session. It
+deviates from PD-153 in favour of PD-050; the product session is told,
+and if it decides otherwise, its decision applies and a later SD records
+it.
+
+- Exhaust and circulation fans on smart plugs are only switched on and
+  off. Their own setting (speed, their own thermostat) stays in the fan.
+  A fan must start again in its last setting when power returns (black
+  start); the ESP sets its plug to "on after power loss" (PD-050).
+  `docs/COMPATIBILITY.md` names this as a requirement.
+- When a climate value that controls a device is outdated or invalid,
+  from a wired or a wireless sensor:
+  - every exhaust and circulation fan is switched on or kept on, also one
+    the control had switched off (the reasoning of PD-050: without fans
+    heat and humidity build up);
+  - a dehumidifier with its own hygrostat gets power and regulates itself
+    (PD-066 recommends one; outlet profile "supply", RAT-069), after its
+    pause and with the humidifier off first (RAT-034);
+  - a humidifier, and a dehumidifier without its own hygrostat, switch
+    off (PD-153); the dehumidifier's pause counts from then (RAT-034);
+  - the air heater switches off and, if it was running, latches (RAT-060,
+    RAT-062);
+  - the app reports the sensor.
+- "Stop" still switches everything off, fans included (PD-076).
+- Open: the freshness limit for Bluetooth sensors (the catalog's 120 s
+  allows about two missed reports; a rule like RAT-027 is needed); how the
+  ESP learns that a dehumidifier has its own hygrostat (a setting at
+  setup, an assumption).
+- When built: RAT-019, RAT-034, RAT-060 and RAT-068 are updated, and the
+  gateway gets cut-offs for humidifier and dehumidifier on an invalid
+  humidity (today it only blocks switching the humidifier on,
+  `core/src/dosing.cpp`).
+
+
+## SD-054: EC compensated by the hub; pH not compensated; a zero-point check on the hub's pH input
+
+Decided by the project owner on 2026-10-12 in the software session. It
+deviates from issue #94 (§4.8) for pH; the product session is told, and
+if it decides otherwise, its decision applies and a later SD records it.
+None of this is built: today nothing is compensated (`core/src/truth.cpp`),
+and the simulator's raw EC has no temperature term (`sim/world.cpp`).
+
+- **EC of the hub's own inputs** will be compensated to 25 °C by the hub,
+  from the water temperature. An EC that the sensor already compensates
+  (SD-041) is not compensated again.
+- **With a water temperature sensor set up:** while it gives no valid
+  value (missing, outdated, implausible, jump-locked), EC is shown, marked
+  "without temperature compensation", and never used for control; it is
+  never taken as if at 25 °C (R5). pH correction then waits too, since it
+  needs a usable EC (EC gate, RAT-046); the app says why (decided by the
+  project owner).
+- **Without a water temperature sensor,** the user can choose to control
+  EC without temperature compensation, knowing it is less exact (decided
+  by the project owner): about 2 % per °C away from the temperature at
+  calibration, so 5 °C off puts the tank about 10 % off its target. A tank
+  colder than at calibration reads low, so the hub doses too much, which
+  only dilution undoes (RAT-012); a warmer one gets too little. The choice
+  is explicit, shown with the number and the direction, and the EC stays
+  marked.
+  Without the choice, EC is not used for control. The choice applies only
+  while no water temperature sensor is set up; a sensor that is set up
+  and fails stops control as above, since otherwise EC would jump by
+  10–20 % and control would go on at another scale. Removing a failed
+  sensor does not switch the choice on; the user confirms it again.
+- **Calibration:** an EC calibration point is compensated with the
+  temperature at that moment and refused without a valid water
+  temperature, unless the user chose control without compensation.
+  Stored EC calibrations without a temperature, and those made under that
+  choice once a water temperature sensor is set up, need a new calibration
+  or a migration.
+- **Jump lock and history** judge the compensated value: the water
+  temperature dropping out and coming back does not lock EC, and an EC
+  without compensation is a gap in the history of the compensated EC.
+- **The coefficient** comes as a rule from the product repository and
+  gets a RAT entry and tests when built. About 2 % per °C is named for
+  fresh water and KCl standards [1, 2]; no measured value for nutrient
+  solutions was found (an assumption).
+- **pH is not temperature compensated.** The error of the electrode's
+  slope is about (pH − 7) · ΔT / 298 pH: about 0.04 pH at pH 5.8 and 10 °C
+  away from the calibration (calculated), below the smallest tolerance of
+  0.05 (RAT-008). Under this entry only EC carries the mark "without
+  temperature compensation".
+- **Zero point:** the pH calibration on the hub's own pH input also
+  checks the probe's zero point: the calibration line's value at pH 7
+  (extrapolated when the buffers are pH 4 and 10), as the electrode's own
+  voltage after the firmware removes the input's known bias (board data,
+  PD-170). A probe outside a band around 0 mV is refused with its reason,
+  as a slope outside 47–74 mV/pH is today (RAT-025). Voltages from Home
+  Assistant keep today's check (slope only): their front end may lift the
+  signal on purpose, and they never feed control (SD-052); the test
+  "the offset does not matter" in `tests/core/test_ha.cpp` stays. The band
+  comes as a rule from the product repository; makers name ±30 mV at
+  pH 7 [3], and the tolerance of the board's bias reference counts
+  against it (a product question). Until then it is not built.
+- **Simulator,** when built: the twin's raw EC gets a temperature term
+  with a coefficient deliberately different from the hub's, recorded as
+  an assumption in `docs/SIMULATOR.md`.
+- Sources, retrieved 2026-10-12 by the `domain` review from search
+  summaries (the pages themselves did not load): [1] USGS, WaQI 06.01,
+  https://water.usgs.gov/usgs/owq/WaQI/WaQI06.01.pdf ; [2] Reagecon, "The
+  Effect of Temperature on Conductivity Measurement",
+  https://knowledge.reagecon.com/wp-content/uploads/2021/09/Technical-Paper_The-Effect-of-Temperature-on-Conductivity-Measurement.pdf ;
+  [3] Hamilton, "The Zero Point of a pH Sensor",
+  https://www.hamiltoncompany.com/knowledge-base/article/the-zero-point-of-a-ph-sensor
 
 ---
 
