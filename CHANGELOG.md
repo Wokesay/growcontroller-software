@@ -61,6 +61,9 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Decision numbers:** the decision on access from outside the home
+  network is now SD-059. It (#123) and the sign-in lockout (#122) had both
+  been recorded as SD-051 on the same day; SD-051 stays the lockout.
 - **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
   prototype release comes after a block of fixes from a review: the phone
   layout, a message when Stop or a switch fails, plain words instead of
@@ -89,9 +92,7 @@ listed in every release under "Security".
   without it; with compensation, EC and pH wait while the water
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
-  or replace it; pH correction then waits for your confirmation. The
-  access levels were first recorded as SD-051 and are now SD-059, as the
-  lockout per client also took SD-051.
+  or replace it; pH correction then waits for your confirmation.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
