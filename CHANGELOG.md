@@ -43,6 +43,10 @@ listed in every release under "Security".
   MPL-2.0 for lightningcss as a build tool, which is never shipped
   (SD-046). The code of the app does not change; Vite 8 bundles it with
   Rolldown, so the built files differ.
+- **Home Assistant app on Alpine 3.24** (proposed by Dependabot): the
+  server in the app is now linked against musl 1.2.6 and the runtime of
+  GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
+  ships musl 1.2.6's license notice.
 
 ### Fixed
 - **Calibrating a probe:** closing the window half way no longer leaves the

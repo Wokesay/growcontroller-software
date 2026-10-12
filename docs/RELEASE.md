@@ -121,11 +121,11 @@ entry under `[Unreleased]`.
      the statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
      yet (#81): it holds the same server code, the web app, and musl and the
-     GCC runtime from Alpine 3.22, whose exact package versions the image
+     GCC runtime from Alpine 3.24, whose exact package versions the image
      names in `/licenses/BUILD_PACKAGES.txt`; image scanners see none of
      them in a static binary. The Alpine packages of the build are not
-     pinned: each build takes the current ones of Alpine 3.22 (supported
-     until 2027-05). Security fixes for musl, the GCC runtime,
+     pinned: each build takes the current ones of Alpine 3.24 (supported
+     until 2028-06). Security fixes for musl, the GCC runtime,
      cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
      the app's base image (pinned by digest; `tools/app.test.mjs` keeps
      the smoke test's stand-in on the same digest, so such an update
