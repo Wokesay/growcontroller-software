@@ -2,6 +2,7 @@
 #include "gc/watchdog.hpp"
 
 #include <cmath>
+#include <set>
 
 #include "gc/messages.hpp"  // texts only (SD-032); no path to actuators
 
@@ -55,30 +56,39 @@ WatchResult evaluate(const WatchInput& in) {
   // A device that sends nothing (SD-042, SD-047, #107): each of its sensors
   // is stale with the same cause; the watchdog shows one problem for the
   // device, keyed by its sign of life, titled with the readings it affects.
+  // A sensor whose device has no sign of life set keeps its own item.
+  auto roleLabel = [&](const std::string& role) {
+    const RoleDef* rd = in.cat.role(role);
+    return Msg{"", rd ? rd->label : role};  // catalog label, translated with the catalog
+  };
   struct Silent {
     json ageS;
     json sensors = json::array();
   };
   std::map<std::string, Silent> silent;
+  std::set<std::string> grouped;
+  for (const auto& [role, r] : in.readings) {
+    if (r.quality != Quality::Stale || r.reason.key != kDeviceSilent) continue;
+    const Binding* b = in.cfg.binding(role);
+    const DeviceCfg* d = b ? in.cfg.device(b->device) : nullptr;
+    if (!d || d->life.empty()) continue;
+    Silent& s = silent[d->life];
+    // The sensors of one text share its age; should they differ, the oldest
+    // is shown, so nothing looks fresher than it is (R5: none is null)
+    const json age = r.reason.args.is_object() ? r.reason.args.value("ageS", json()) : json();
+    if (age.is_number() && (!s.ageS.is_number() || age > s.ageS)) s.ageS = age;
+    s.sensors.push_back(roleLabel(role));
+    grouped.insert(role);
+  }
+  // Next to the devices, so the overview's first three problems show it
+  for (const auto& [source, s] : silent)
+    add("life." + source, say("watch.life.label", {{"sensors", s.sensors}}), "problem",
+        say("watch.life.silent", {{"ageS", s.ageS}, {"source", source}}));
 
   // Messwerte: ungültig ist ein Problem ("Datenausfall"), nie neutral (RAT-015).
   for (const auto& [role, r] : in.readings) {
-    if (r.quality == Quality::NotBound) continue;
-    const RoleDef* rd = in.cat.role(role);
-    const Msg label{"", rd ? rd->label : role};  // catalog label, translated with the catalog
-    if (r.quality == Quality::Stale && r.reason.key == kDeviceSilent) {
-      const Binding* b = in.cfg.binding(role);
-      const DeviceCfg* d = b ? in.cfg.device(b->device) : nullptr;
-      if (d && !d->life.empty()) {
-        Silent& s = silent[d->life];
-        // The sensors of one text share its age; should they differ, the
-        // oldest is shown, so nothing looks fresher than it is (R5: none is null)
-        const json age = r.reason.args.is_object() ? r.reason.args.value("ageS", json()) : json();
-        if (age.is_number() && (!s.ageS.is_number() || age > s.ageS)) s.ageS = age;
-        s.sensors.push_back(label);
-        continue;
-      }
-    }
+    if (r.quality == Quality::NotBound || grouped.count(role)) continue;
+    const Msg label = roleLabel(role);
     if (r.usable()) add("reading." + role, label, "ok", say("watch.reading.ok"));
     else if (r.quality == Quality::Uncalibrated) {
       bool needed = (role == "tank.ph" && fnEnabled(in.cfg, "ph_control")) ||
@@ -91,9 +101,6 @@ WatchResult evaluate(const WatchInput& in) {
     } else
       add("reading." + role, label, "problem", say("watch.reading.failed", {{"reason", r.reason}}));
   }
-  for (const auto& [source, s] : silent)
-    add("life." + source, say("watch.life.label", {{"sensors", s.sensors}}), "problem",
-        say("watch.life.silent", {{"ageS", s.ageS}, {"source", source}}));
 
   auto band = [&](const std::string& id, const Msg& label, const std::string& role, const std::string& fn,
                   const char* tKey, const char* tolKey) {

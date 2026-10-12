@@ -111,8 +111,8 @@ TEST_CASE("Watchdog: a silent device is one problem titled with its readings; a 
   stale("tank.ph", say(kDeviceSilent, {{"ageS", 70}}));
   stale("tank.water_temp", say(kDeviceSilent, {{"ageS", 75}}));
   stale("tank.ec", say("truth.life_stale", {{"limitS", 60}}));
-  auto eval = [&] {
-    WatchInput in{f.cat, f.cfg, f.rt, f.readings, {}, {}, {}, 1790010000, 1790000000, 0, false};
+  auto eval = [&](Epoch epoch = 1790010000, Epoch boot = 1790000000, Epoch maint = 0) {
+    WatchInput in{f.cat, f.cfg, f.rt, f.readings, {}, {}, {}, epoch, boot, maint, false};
     for (const auto& d : f.cfg.devices) in.devices.push_back({d.id, d.name, true});  // Home Assistant has them
     return evaluate(in);
   };
@@ -138,6 +138,21 @@ TEST_CASE("Watchdog: a silent device is one problem titled with its readings; a 
   CHECK(f.item(w, "reading.tank.ec")->text.args["reason"]["key"] == "truth.life_stale");
   CHECK(f.item(w, "band.ph")->text.key == "watch.band.no_value");  // one cause, one message
   CHECK(w.problems == 2);
+  // Next to the devices, before the readings, so the overview's first three problems show it
+  auto at = [](const WatchResult& r, const std::string& id) {
+    for (size_t i = 0; i < r.items.size(); ++i)
+      if (r.items[i].id == id) return static_cast<int>(i);
+    return -1;
+  };
+  CHECK(at(w, "life.sensor.hub_life") == at(w, "devices") + 1);
+  CHECK(at(w, "life.sensor.hub_life") < at(w, "reading.tank.ec"));
+  // In maintenance mode and during the start-up grace it is still a problem; only the bands rest (RAT-015)
+  w = eval(1790010000, 1790000000, 1790010600);
+  CHECK(f.item(w, "life.sensor.hub_life")->status == "problem");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.maintenance");
+  w = eval(1790000050, 1790000000);
+  CHECK(f.item(w, "life.sensor.hub_life")->status == "problem");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.startup");
   // EC's device falls silent too, without a known age: a second item, the age stays missing (R5)
   stale("tank.ec", say(kDeviceSilent));
   w = eval();

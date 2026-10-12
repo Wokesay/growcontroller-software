@@ -979,7 +979,8 @@ named here stays as SD-042 says.
 - **A silent device:** each of its sensors is stale with the device's
   message ("the device sends nothing"), not a message about its own age.
   SD-042 had one message for the device; readings are per sensor, and one
-  message per device in the watchdog is a follow-up.
+  message per device in the watchdog is a follow-up (done in #107: one
+  problem titled with the readings it affects).
 - **Own rule for a sign of life that does not fit:** one sent more than a
   second after the sensor's last report that dates the sensor's last
   measurement more than 3 s before that report belongs to another sensor

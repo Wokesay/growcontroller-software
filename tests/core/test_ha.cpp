@@ -2270,13 +2270,14 @@ TEST_CASE("Home Assistant: a device that sends nothing is one problem in the wat
   LifeRig rig;
   int counter = 0;
   bool sending = true;
+  std::string ph = "1";  // the pH channel's age, "-" without a measurement
   std::int64_t textMs = kNoonMs;
   rig.extra = [&] {
     if (sending) {
       textMs = kNoonMs + rig.clk.ms;
       ++counter;
     }
-    return json::array({lifeText("n=" + std::to_string(counter) + "|wt=1|ph=1", textMs)});
+    return json::array({lifeText("n=" + std::to_string(counter) + "|wt=1|ph=" + ph, textMs)});
   };
   rig.step(2);
   REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
@@ -2304,4 +2305,25 @@ TEST_CASE("Home Assistant: a device that sends nothing is one problem in the wat
   }
   CHECK(devices == 1);
   CHECK(wd["problems"] == 1);  // one cause, one problem
+  CHECK(wd["headline"]["key"] == "watch.headline.problem");
+  // Sending again: the device's problem is gone at once, and each reading shows its own state
+  sending = true;
+  rig.step(6);
+  const json again = rig.hub.state()["watchdog"];
+  for (const auto& i : again["items"]) CHECK(i["id"] != "life.sensor.hub_life");
+  CHECK(rig.reading()["quality"] == "ok");
+  CHECK(again["problems"] == 0);
+  // The text goes on, but pH has no measurement: pH's own problem, not the device's
+  ph = "-";
+  rig.step(70);
+  const json own = rig.hub.state()["watchdog"];
+  bool phItem = false;
+  for (const auto& i : own["items"]) {
+    CHECK(i["id"] != "life.sensor.hub_life");
+    if (i["id"] == "reading.tank.ph") {
+      phItem = true;
+      CHECK(i["status"] == "problem");
+    }
+  }
+  CHECK(phItem);
 }
