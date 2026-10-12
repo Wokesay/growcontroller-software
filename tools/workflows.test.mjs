@@ -2,7 +2,8 @@
 // Every action in the workflows is made by GitHub (SD-027) and pinned by
 // its full commit SHA with the version as a comment (#29); Dependabot
 // keeps both up to date. Node's types for the web app's tests are those of
-// the Node that CI runs (#101).
+// the Node that CI runs (#101). The web app's packages are checked against
+// their registry signatures right after they are installed (#100, SD-058).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -179,4 +180,42 @@ test("Node's types are those of the Node that CI runs (#101)", () => {
   const npm = dependabot.slice(dependabot.indexOf("package-ecosystem: npm"), dependabot.indexOf("- package-ecosystem:", dependabot.indexOf("package-ecosystem: npm")));
   assert.match(npm, /directory: \/web\n/);
   assert.match(npm, /- dependency-name: "@types\/node"\n[ \t]+update-types: \["version-update:semver-major"\]/);
+});
+
+test("the web app's packages are checked against their registry signatures (#100, SD-058)", () => {
+  // Wherever they are installed, before any of them runs: each place
+  // installs the builds for its own platform, and only installed ones are
+  // checked.
+  const root = join(dir, "..", "..");
+  const places = [
+    ...files.map((f) => join(".github", "workflows", f)),
+    join("tools", "ci.sh"),
+    join("ha", "app", "Dockerfile"),
+  ];
+  let installs = 0;
+  for (const place of places) {
+    for (const line of readFileSync(join(root, place), "utf8").split("\n")) {
+      if (!/\bnpm ci\b/.test(line) || /^\s*#/.test(line)) continue;
+      installs++;
+      assert.doesNotMatch(line, /\|\||;|#/, `${place}: no way around the check: ${line}`);
+      const steps = line.split("&&").map((x) => x.trim().replace(/\)$/, ""));
+      const at = steps.findIndex((x) => /^npm ci\b/.test(x));
+      assert.ok(at >= 0, `${place}: npm ci starts a step: ${line}`);
+      assert.equal(steps[at + 1], "npm audit signatures", `${place}: right after npm ci: ${line}`);
+    }
+  }
+  // tools/ci.sh, the firmware job, the packages, the release, the app image
+  assert.ok(installs >= 5, `npm ci found ${installs} times`);
+  assert.match(readFileSync(join(dir, "ci.yml"), "utf8"), /^ {10}tools\/ci\.sh$/m, "CI runs tools/ci.sh");
+  // The check proves the registry's own record is signed; the lockfile must
+  // point at that record, not at a tarball elsewhere.
+  const lock = JSON.parse(readFileSync(join(root, "web", "package-lock.json"), "utf8"));
+  const entries = Object.entries(lock.packages).filter(([path]) => path !== "");
+  assert.ok(entries.length > 100, "packages in the lockfile");
+  for (const [path, pkg] of entries) {
+    const name = path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length);
+    const file = `${name.split("/").pop()}-${pkg.version}.tgz`;
+    assert.equal(pkg.resolved, `https://registry.npmjs.org/${name}/-/${file}`, `${path} comes from the npm registry`);
+    assert.match(pkg.integrity ?? "", /^sha512-/, `${path} is pinned by its sha512`);
+  }
 });

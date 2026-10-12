@@ -355,7 +355,7 @@ steer anything. Each point is open unless it says what is built.
    2 % per degree (a typical value, not measured here). Who compensates
    a value from Home Assistant, and how, is a product question; the
    ESP32-S3 will compensate the EC of its own probes if the user chooses
-   so (SD-054, SD-056).
+   so (SD-054, SD-060).
 5. **Galvanic isolation** of pH and EC probes (the hub's heads have it;
    many DIY builds do not). Interference gives wrong but plausible values;
    an acceptance test compares readings with the circulation pump on and

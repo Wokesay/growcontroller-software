@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ESP32-S3-DevKitC-1-N32R16V (PD-162): module ESP32-S3-WROOM-2-N32R16V,
+# 32 MB octal flash, 16 MB octal PSRAM. GPIO 33-37 belong to flash and PSRAM.
+# Flash above 16 MB: the bootloader's 32-bit cache addressing follows from
+# octal flash and 32 MB by itself (ESP-IDF v5.4).
+CONFIG_ESPTOOLPY_OCT_FLASH=y
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/n32r16v.csv"

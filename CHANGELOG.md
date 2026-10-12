@@ -8,6 +8,18 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Firmware for two boards** (SD-043, M1): the firmware is built for
+  the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
+  N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
+  history. Each board has its own profile and partition table in
+  `firmware/boards/`. CI builds both. Per board it keeps the images to
+  flash, `flash_args` for esptool, a manifest for flashing from the
+  browser with ESP Web Tools, and their SHA-256 checksums. Each image goes
+  to its own offset: flashing the same board with an unchanged partition
+  table keeps NVS and the data partitions, unless you choose to erase.
+  NVS gets 64 KB for the encrypted secrets to come. The architecture
+  check now also rejects eFuse-burning options in a board profile. The
+  firmware is still a skeleton and has not run on a board yet.
 - **Home Assistant: a sign of life per sensor** (SD-042, SD-047): Home Assistant
   does not report a value again while it stays the same, so a calm water
   temperature looked "1 min" old. Under Devices › Assignment,
@@ -49,31 +61,44 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
+  prototype release comes after a block of fixes from a review: the phone
+  layout, a message when Stop or a switch fails, plain words instead of
+  developer terms, "Stopp" instead of "Not-Halt", and English complete.
+  The menu will be grouped by topic (nutrient solution, room, system), and
+  climate, light and watering will say "manual" while they only switch by
+  hand. Mixing will aim at the phase's target EC, with the recipe giving
+  the ratio and order of its parts: to the target with an EC probe, as a
+  fixed pattern from litres and recipe or a fixed EC with the water's
+  measured EC (for soaking, for example), or with stirring by hand
+  between the parts.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
-  SD-056): at setup you will choose whether the ESP32-S3's web app can be
-  reached only in the home network (preselected), viewed from outside, or
-  viewed and controlled from outside. The Home Assistant window counts as
-  outside. "Stop" works from outside at both outside levels; calibration,
-  limits, updates and acknowledging a latch stay in the home network. The
-  ESP32-S3 reads only its own sensors and sends their values to Home
-  Assistant. Fans are only switched on and off, must start again in their
-  last setting, and are switched on when a climate value is outdated or
-  invalid; a dehumidifier with its own hygrostat keeps power, other
-  climate devices switch off; a Bluetooth climate sensor is outdated
-  after 120 s. You will choose whether the ESP32-S3 compensates EC for the
-  water temperature (2 % per °C) or not, with a hint how far off EC can
-  be without it; with compensation, EC and pH wait while the water
+  SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
+  web app can be reached only in the home network (preselected), viewed
+  from outside, or viewed and controlled from outside. The Home Assistant
+  window counts as outside. "Stop" works from outside at both outside
+  levels; calibration, limits, updates and acknowledging a latch stay in
+  the home network. The ESP32-S3 reads only its own sensors and sends
+  their values to Home Assistant. Fans are only switched on and off, must
+  start again in their last setting, and are switched on when a climate
+  value is outdated or invalid; a dehumidifier with its own hygrostat
+  keeps power, other climate devices switch off; a Bluetooth climate
+  sensor is outdated after three missed reports, never sooner than 120 s.
+  You will choose whether the ESP32-S3 compensates EC for the water
+  temperature (2 % per °C) or not, with a hint how far off EC can be
+  without it; with compensation, EC and pH wait while the water
   temperature sensor fails. The pH calibration on the board's input will
-  refuse a probe whose zero point is more than 30 mV off and ask to
-  replace it. The access levels were first recorded as SD-051 and are now
-  SD-055, as the lockout per client also took SD-051.
+  refuse a probe whose zero point is more than 30 mV off and ask to clean
+  or replace it; pH correction then waits for your confirmation. The
+  access levels were first recorded as SD-051 and are now SD-059, as the
+  lockout per client also took SD-051.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
   security review of the design; access from outside is chosen at setup
-  (SD-055); control stays on the ESP. A step-by-step guide for flashing
+  (SD-059); control stays on the ESP. A step-by-step guide for flashing
   follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
@@ -179,6 +204,20 @@ session and "Stop". No GHSA or CVE is issued.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+
+Hardening, without a vulnerability behind it:
+
+- **Registry signatures of the web app's packages** (#100, SD-058):
+  wherever the web app's packages are installed (CI, the simulator
+  packages, the release build, the Home Assistant app image),
+  `npm audit signatures` now runs right after the install, before any of
+  them runs. A missing or invalid npm registry signature or an invalid
+  provenance attestation fails the build; packages without provenance
+  pass. Every package in the lockfile must come from its own record on
+  the npm registry. This proves the registry's signed record of each
+  package; it does not protect against a release from a hijacked
+  maintainer account, against which the 7-day wait for updates and the
+  lockfile's hashes stay the guards.
 
 ## [0.1.0-proto.4] – 2026-10-11
 

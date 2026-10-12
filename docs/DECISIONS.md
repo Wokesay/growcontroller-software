@@ -1130,11 +1130,11 @@ the review questions below come from the `security` review of this entry.
   ingress; whether they get the link on the device page instead. Open
   too: whether the app's present mode (reading sensors from Home Assistant
   without an ESP, switching nothing, SD-034) stays once the window exists.
-- Changed by SD-055: access from outside is no product question any more;
+- Changed by SD-059: access from outside is no product question any more;
   the user chooses a level at setup. Requests through the window and
   commands over the native API count as from outside and follow that
   level, so the ESP is set up through the window only as far as the level
-  allows; what SD-055 keeps to the home network is done only directly
+  allows; what SD-059 keeps to the home network is done only directly
   there.
 
 
@@ -1186,7 +1186,7 @@ rule: the PR waits for "mergen".
   encrypted NVS for their key; they need no address and survive address
   changes. Open for `regulatorik`: whether addresses held in memory for
   the lockout count as processing personal data.
-- Extended by SD-055: a client from outside never shares a count with the
+- Extended by SD-059: a client from outside never shares a count with the
   home network.
 
 
@@ -1240,8 +1240,8 @@ it.
   gateway gets cut-offs for humidifier and dehumidifier on an invalid
   humidity (today it only blocks switching the humidifier on,
   `core/src/dosing.cpp`).
-- Changed by SD-056: a Bluetooth climate sensor is outdated after 120 s
-  without a report.
+- Changed by SD-060: a Bluetooth climate sensor is outdated after three
+  missed reports, never sooner than 120 s.
 
 
 ## SD-054: EC compensated by the hub; pH not compensated; a zero-point check on the hub's pH input
@@ -1314,20 +1314,197 @@ and the simulator's raw EC has no temperature term (`sim/world.cpp`).
   https://knowledge.reagecon.com/wp-content/uploads/2021/09/Technical-Paper_The-Effect-of-Temperature-on-Conductivity-Measurement.pdf ;
   [3] Hamilton, "The Zero Point of a pH Sensor",
   https://www.hamiltoncompany.com/knowledge-base/article/the-zero-point-of-a-ph-sensor
-- Changed by SD-056: compensating EC is the user's choice at setup, also
+- Changed by SD-060: compensating EC is the user's choice at setup, also
   with a water temperature sensor; the coefficient is 2 % per °C; the
   zero-point band is ±30 mV, and a probe outside it is to be replaced.
 
 
-## SD-055: Access from outside the home network in three levels, chosen at setup
+## SD-055: Prototype 0.1.0-proto.5 after a polish block; English complete before it
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a review by `ux`, `qa` and `release` and the outside views of an end
+customer and a grower.
+
+- **No release before the polish.** 0.1.0-proto.5 (sign of life, raw pH
+  calibration, phone fixes, the security fixes in the CHANGELOG) comes after a block of
+  work that fixes what the review found visible:
+  - phone: a device row that breaks letter by letter (Devices), the
+    connection state hidden on phones;
+  - a message when Stop, Resume or a manual switch fails;
+  - developer words and codes out of the interface ("Sensorwahrheit",
+    "Quelle: RAT-039", "Aktor-Gateway" and the like);
+  - "Stopp" / "Alles stoppen" everywhere instead of "Not-Halt" (SD-045,
+    PD-172);
+  - the history chart's time axis in the page's language;
+  - setup: its step count, and the browser's time zone no longer
+    overwriting the saved one;
+  - the German Mix page showing an English sentence;
+  - the test of the 3 s margin of a sign of life (#109);
+  - the menu (SD-056) and the target EC (SD-057).
+- **English is complete before proto.5** (#18, #73): every text the core
+  sends gets a key and both languages (errors, sensor reasons, checklists,
+  mix plan), the catalog's names and descriptions, and the CSV export.
+  Setup offers English first (SD-014). Not chosen: English marked "beta"
+  for proto.5.
+- **Then the release:** CHANGELOG with a summary and "Known limitations",
+  the version raised everywhere; the release waits for "mergen". Before
+  the tag the project owner tests the Home Assistant app on a real Home
+  Assistant: install, password, sensors, restart, update from proto.4,
+  backup, a sign of life and a raw pH calibration.
+- **Work split:** the software session that wrote this entry does the
+  polish block and then M1; the other software session does not touch
+  these topics. SD numbers are
+  taken right before the pull request opens, after a look at `main`.
+
+
+## SD-056: Menu grouped by topic; pages without automation say "manual"
+
+Decided by the project owner on 2026-10-12 in the software session
+(proposal by `ux`, in line with the grower's view).
+
+- The menu on the left, with small headings:
+  - Übersicht (Overview), Verlauf (History)
+  - **Nährlösung** (Nutrient solution): Mischen, Tank & Regelung, Rezepte
+    & Kanister, Bewässerung
+  - **Raum** (Room): Klima, Licht
+  - **System:** Geräte, Funktionen, Einstellungen
+- Watering moves next to the tank, as it draws from it and its dry-run
+  lock needs the tank's level; recipes move next to mixing.
+- The bar at the bottom on phones stays as it is.
+- Climate, light and watering carry the label "Handbetrieb" (manual) as
+  long as they only show values and switch by hand, with the advice to
+  keep their own timer or controller (as the Home Assistant introduction
+  already says). With nothing assigned, a page shows an empty state that
+  says what to connect.
+- Not chosen: a menu by daily routine with new pages for phases and the
+  room (a larger rebuild), and leaving the menu as it is.
+
+
+## SD-057: Mixing to the phase's target EC; the recipe gives ratio and order
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a check by `domain` of the manufacturer's guidance; the safeguards marked
+"(review)" come from the reviews by `domain` and `reviewer` of this entry.
+It replaces the fixed targets of the grow dialog; the EC correction
+(RAT-054, RAT-055, RAT-080) already keeps the recipe's ratio. Not built
+yet; built in the polish block (SD-055), with a RAT entry, tests and
+simulator numbers per `docs/SIMULATOR.md`.
+
+- **The target is the phase's target EC** (`ec_target`), as the total EC
+  of the solution, the water's own EC included, as the manufacturers'
+  charts give it. Athena, for example, scales the amounts of its parts in
+  a fixed ratio to a target EC and gives its charts for water with an EC
+  up to about 0.4 mS/cm [1][2].
+- **The recipe gives the way there:** the ratio of its parts to each
+  other and their order. Its EC at its chart amounts is kept as a
+  reference point, not as a target.
+- **Amounts are real millilitres** from the measured flow of each pump,
+  never run times. Without a measured flow nothing is dosed.
+- **Three ways to mix,** chosen by what the user has:
+  1. **To the target:** a valid EC of the water being mixed from the
+     hub's own probe, usable for control under SD-054 (compensated, or
+     uncompensated by the user's explicit choice), and the water
+     circulated. The litres come from the level sensor or are entered.
+     The hub measures the water's EC first, then doses about 80 % of the
+     gap to the target in the recipe's ratio and order, waits the settling
+     time (RAT-052, at least `settle_min`; a factor by volume is still an
+     assumption) and only then lets the EC correction close the rest
+     (review). If the EC fails during the mix,
+     the mix stops and says why; it does not go on as a fixed pattern
+     without the user (review). Water at or above the target gets
+     nothing, with a note.
+  2. **A fixed pattern** (no valid EC in the water being mixed: no probe,
+     or no circulation): the user enters the litres and either the
+     recipe's amounts per litre, or a target EC within the catalog's range
+     together with the EC of the water, taken from a meter or entered as
+     0 for reverse-osmosis water. Without the water's EC only the recipe's
+     amounts are offered; it is never taken as 0 (R5, RAT-006, review).
+     The hub works out the amounts from the recipe's ratio and reference,
+     runs the pattern without feedback and says so.
+  3. **Stirring by hand:** after each part the hub stops and asks to stir,
+     and goes on only when the user confirms, in the recipe's order. The
+     wait has a time limit; cancelling or a timeout after one part of a
+     pair ends the mix with the pair's message (RAT-054); after a restart
+     the mix is reported, not resumed (R6) (review).
+- **The grow** takes each phase's target EC and pH from the recipe as a
+  proposal (for a pH band its middle, RAT-066); the fixed 1.4 and 1.8 of today's dialog go. Without a grow the
+  overview shows which default targets apply and offers to set one up.
+- **Safeguards (review):**
+  - The step limit (`max_ec_step`, RAT-055) is converted to ml/L with
+    the largest of the start effect fixed in code (R7), the recipe's
+    reference and the learned effect, so a typo in a recipe can never
+    raise a dose. A reference far from the start effect (below a quarter
+    or above four times) is refused.
+  - The learned effect belongs to a recipe; another recipe starts from
+    its reference.
+  - A part marked as a fixed addition (a cleanser, for example) is dosed
+    per litre of fresh water, also when the water is already at the
+    target, and never scaled by an EC correction; its expected EC counts
+    in the first step's gap.
+  - Water above the charts' 0.4 mS/cm gets a note on a new fill.
+  - The mix plan says when EC runs without temperature compensation
+    (SD-054); cold tap water then reads low and the tank gets too much.
+- **Open:** mixing outside the tank (a bucket for soaking) and whether the
+  pumps then dose into it, given that consumption goes only into the tank
+  (RAT-040, RAT-070) and rounds stay clean (RAT-057); large tanks, where
+  a correction round may need more partial runs than allowed (RAT-054);
+  a low target whose reserve falls below the EC gate for pH (RAT-046,
+  RAT-053).
+- Not chosen: the target as the EC on top of the water (it does not match
+  the charts), and fixed ml/L with the target only as a check (with tap
+  water or a probe that reads differently the tank misses the target).
+- Sources, retrieved 2026-10-12 (search results; athenaag.com could not be
+  loaded): [1] https://www.hydroponics.eu/db_img/pdf/Athena-Pro-Dosage-Guidelines-Metric.pdf ;
+  [2] https://www.rivierahorticulture.co.uk/pages/how-to-use-the-athena-feed-schedules
+
+
+## SD-058: The web app's npm packages are checked against their registry signatures
+
+Decided by the project owner on 2026-10-12 in the software session, for
+#100 (from `security`'s review of the dependency updates #96, #98, #99).
+
+- Wherever the web app's packages are installed, `npm audit signatures`
+  runs right after `npm ci`, before any package runs there: in `tools/ci.sh`
+  (CI's `checks` job), the firmware job, the simulator packages, the
+  release build and the Home Assistant app image. Each place installs the
+  builds for its own platform (Rolldown, lightningcss and the TypeScript
+  binaries run native code in every build), and only installed packages
+  are checked. `tools/workflows.test.mjs` keeps the step after every
+  `npm ci`, with no way around it on that line.
+- A missing or invalid registry signature fails, and so does an invalid
+  provenance attestation, a key npm does not know, or no answer from the
+  registry or from Sigstore.
+- A package without provenance passes; npm counts only the verified
+  attestations. Many packages publish none, TypeScript and lightningcss
+  among them. No list of them is printed; a warning that always comes is
+  soon not read.
+- What it proves: the registry's own record of each installed
+  `name@version` is signed, so a record changed on the registry's side
+  without npm's key fails while it is served. It does not compare that
+  record with the bytes on disk. Those are bound by the sha512 in
+  `web/package-lock.json`, which `npm ci` checks, and
+  `tools/workflows.test.mjs` requires every package there to resolve to
+  that very record (`https://registry.npmjs.org/<name>/-/<file>-<version>.tgz`).
+- What it does not do: it adds nothing against a hijacked maintainer
+  account, since the registry signs those releases too and a hijacked
+  publishing pipeline even produces valid provenance. Against that stand
+  Dependabot's cooldown of 7 days, the lockfile pin and
+  `npm ci --ignore-scripts`. The gain of this check is small; it is cheap
+  and fails closed. Later, if npm offers it: fail when a package that had
+  provenance publishes a version without it (`docs/SECURITY_MODEL.md`).
+- The check needs the npm registry and Sigstore's TUF repository
+  (`tuf-repo-cdn.sigstore.dev`), also for a local `tools/ci.sh`.
+
+
+## SD-059: Access from outside the home network in three levels, chosen at setup
 
 Decided by the project owner on 2026-10-12 in the software session, as a
 question the software solves; the rules for building it come from the
 `security` review of this entry. PD-150 left the way of remote access
 open; if the product session decides otherwise, its decision applies and
 a later SD records it (as with SD-033). Recorded as SD-051 in PR #123 and
-renumbered, as PR #122 recorded the lockout per client as SD-051 at the
-same time.
+renumbered: PR #122 recorded the lockout per client as SD-051 at the same
+time, and SD-055 to SD-058 were taken by then.
 
 - At setup the user chooses how the ESP's web app may be reached:
   - **Home network only** (preselected): the ESP answers nothing from
@@ -1398,12 +1575,13 @@ same time.
   check of M2 also refuses firmware without this gate.
 
 
-## SD-056: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors 120 s
+## SD-060: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors after three missed reports
 
 Decided by the project owner on 2026-10-12 in the software session. It
 settles the freshness limit SD-053 left open and the rules SD-054 left
 open, so they need nothing from the product repository; the product
-session is told.
+session is told. Recorded as SD-056 in PR #125 and renumbered, as SD-055
+to SD-058 were taken by then.
 
 - **Compensating EC is the user's choice at setup:** "with temperature
   compensation" (needs a water temperature sensor) or "without". This
@@ -1411,7 +1589,7 @@ session is told.
   compensation chosen, a sensor that fails still stops EC and pH
   correction (SD-054). Changing the choice needs a new EC calibration,
   since the calibration factor refers to another scale, and like a
-  calibration it is done only in the home network (SD-055). Setting up a
+  calibration it is done only in the home network (SD-059). Setting up a
   water temperature sensor does not change the choice or void the EC
   calibration; only changing the choice does. This replaces SD-054's
   sentence on calibrations made under the choice. Until the user has
@@ -1424,24 +1602,45 @@ session is told.
   at calibration; between 18 and 24 °C up to about 12–14 %, about ±6–7 %
   when calibrated at about 21 °C, the larger figure on the overdosed side
   (calculated with the linear model). A tank colder than at calibration
-  is overdosed (RAT-012). Advice: calibrate at the usual tank
-  temperature.
+  is overdosed (RAT-012), and as EC control only raises EC, the tank ends
+  at the target as read in its coldest hour. Advice: calibrate when the
+  tank is at its coolest usual temperature (for example at the end of the
+  night); then the error only goes towards too little.
+- **"Without" with a water temperature sensor present:** EC is marked as
+  a chosen setting (a note, not a fault) and stays usable, so pH runs
+  normally (EC gate, RAT-046); a failing water temperature sensor is only
+  its own finding.
+- **With compensation and a failing sensor,** the app names the way out:
+  replace the sensor, or switch to "without" and calibrate EC again.
+- **The calibration value** is the reference solution's value at 25 °C
+  (printed on the bottle), under both choices; the calibration asks for it
+  in these words.
 - **pH zero point:** ±30 mV at pH 7, the tolerance makers name (SD-054,
   source 3), on the hub's own pH input after the firmware removes the
   input's known bias. Outside it, the calibration is refused with the
-  message to replace the probe; as a first step it suggests a fresh pH 7
-  buffer and cleaning the probe, since a used buffer or a dirty junction
-  shifts the zero point too (RAT-026). The tolerance of the board's bias
+  message to replace the probe; as a first step it suggests cleaning the
+  probe, soaking it in storage solution and fresh buffers, since a used
+  buffer or a dirty junction shifts the zero point too (RAT-026).
+- **After a refused zero point** (decided by the project owner): pH
+  correction pauses and the app warns that the probe's zero point has
+  moved. Only after the user confirms the warning, in the home network
+  like acknowledging a latch (SD-059), does it dose again with the old
+  calibration; the warning stays visible until a valid calibration is
+  saved. The zero point is stored with each calibration, so its trend
+  shows. The tolerance of the board's bias
   reference is measured on the board samples; if it takes a noticeable
   part of the band, the band is looked at again.
-- **Bluetooth climate sensors:** outdated after 120 s without a report,
-  the catalog's limit for air temperature and humidity (today 120 s); their
-  device classes take this fixed limit, not a learned one. It tolerates
-  one missed report at a 60 s send interval and two at 40 s; RAT-027 asks
-  for several, so it suits sensors that send at a fixed interval of 40 s
-  or less, and `docs/COMPATIBILITY.md` says so. A false outdated value switches climate devices (SD-053), so if
-  ordinary dropouts of real devices do that too often, the limit is
-  looked at again (RAT-027).
+- **Bluetooth climate sensors:** outdated after three missed reports,
+  never sooner than 120 s (the catalog's limit for air temperature and
+  humidity): three times the device's send interval, so 180 s for the
+  Shelly BLU H&T, which sends every 60 s. The project owner first set a
+  fixed 120 s; the `domain` review found that this makes such a sensor
+  outdated after one missed report, against RAT-027, while a false
+  outdated value switches climate devices and latches a running heater
+  (SD-053), which only the home network can acknowledge (SD-059), and
+  the project owner then decided on three missed reports. The send
+  interval is the device's own; it is never learned looser. A
+  repeated report with the same packet counter is no new measurement.
 - The RAT entries for EC compensation and the zero point, and their tests,
   come with the implementation (M1); they take their IDs then.
 
