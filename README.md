@@ -87,6 +87,34 @@ E2E=1 tools/ci.sh      # plus the browser tests against the simulator
 - Never report vulnerabilities as an issue: [`SECURITY.md`](SECURITY.md)
 - Changes: [`CHANGELOG.md`](CHANGELOG.md)
 
+## Hardware: which way fits you
+
+From the first firmware release (M1) on, an ESP32-S3 does all control;
+Home Assistant is an option on top (SD-050).
+
+- **ESP32-S3 on its own** (in development, M1): an Espressif
+  ESP32-S3-DevKitC-1 (N32R16V; N8R8 works too, with a shorter history) on
+  the growcontroller carrier board, with sensors and pumps. You flash the
+  firmware yourself and use the web app on the ESP in your browser.
+- **ESP32-S3 with Home Assistant** (planned, M3): the same, plus Home
+  Assistant. All values and states, the watchdog included, show in Home
+  Assistant, and the Home Assistant app opens the ESP's web app there.
+  Control stays on the ESP.
+- **Try it today:** the simulator needs no hardware. The Home Assistant app
+  shows sensors you already have in Home Assistant and switches nothing
+  (see "Try it without installing" above).
+
+Does my hardware work?
+
+- The [compatibility list](docs/COMPATIBILITY.md) covers ESP32 boards,
+  sensors in Home Assistant (for example DFRobot, Atlas Scientific,
+  DS18B20), the carrier board's inputs and outputs, Bluetooth sensors and
+  smart plugs, each with its status. Tested a device?
+  [Report it](https://github.com/Wokesay/growcontroller-software/issues/new?template=device.yml).
+- **Flashing the ESP32-S3:** a step-by-step guide follows with the first
+  firmware release. For developers:
+  [build and flash your own firmware](firmware/FLASHING.md).
+
 ## License
 
 This software is free software under the **GNU Affero General Public
@@ -119,7 +147,7 @@ The hardware (circuit boards) is not part of this repository.
 
 ## Trademarks
 
-Product and company names such as Athena and Shelly are trademarks of
-their respective owners. They are used only to describe compatibility or
-to cite a source; this project is not affiliated with, endorsed or
-sponsored by them.
+Product and company names such as Athena, Atlas Scientific, DFRobot,
+Espressif and Shelly are trademarks of their respective owners. They are
+used only to describe compatibility or to cite a source; this project is
+not affiliated with, endorsed or sponsored by them.

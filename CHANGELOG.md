@@ -37,8 +37,26 @@ listed in every release under "Security".
   is wrong: buffers swapped, an amplifier in between, or a worn probe. A
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
+- **Hardware compatibility list** (SD-049, `docs/COMPATIBILITY.md`): what
+  works with growcontroller, by connection: ESP32 boards, sensors in Home
+  Assistant (for example what DFRobot's analog pH and EC boards, Atlas
+  Scientific EZO circuits and a DS18B20 give today), the carrier board's
+  inputs and outputs, wireless sensors and smart plugs, each Tested,
+  Expected, Not yet or No, with warnings where a wrong choice is risky
+  (pH and EC probes without isolation in one tank, pumps too large for
+  pH− in a small tank). The README says which way fits you: the ESP32-S3
+  on its own, or with Home Assistant on top. The issue form "Device or
+  sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: one release for every package, Home Assistant as a window on
+  the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
+  Assistant app and simulator keep one version and one release. From M3
+  on, Home Assistant shows all values and states of the ESP32-S3, and the
+  Home Assistant app opens the ESP's web app in Home Assistant, after a
+  security review of the design and a product decision on access from
+  outside the home network; control stays on the ESP. A step-by-step
+  guide for flashing follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not
@@ -93,6 +111,10 @@ listed in every release under "Security".
   buffer instead of showing a step the hub did not have. The window now
   says when the hub ended the calibration (a restart, a long pause) and
   offers to start again after a refused save.
+- **The web app ships no code of Vite:** Vite added its modulepreload
+  polyfill to the built app, while the third-party notices list Vite as
+  used for building only. The app preloads nothing, so the polyfill is off,
+  and the build now fails if code of Vite shows up in the app again.
 
 ### Security
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).

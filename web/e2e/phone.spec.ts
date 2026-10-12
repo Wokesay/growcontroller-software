@@ -71,8 +71,9 @@ async function fits(page: Page, where: string) {
   expect((await smallFields(page)).small, where).toEqual([]);
 }
 
-function apart(a: { x: number; y: number; width: number; height: number } | null, b: typeof a) {
-  return !a || !b || a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+type Box = { x: number; y: number; width: number; height: number };
+function apart(a: Box, b: Box) {
+  return a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
 }
 
 async function newPassword(page: Page) {
@@ -106,7 +107,10 @@ test("The setup fits the phone's screen in every step; its footer leaves the sim
     await page.goto(`/#/einrichtung?s=${s}`);
     await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText(String(s + 1));
     await fits(page, `setup step ${s + 1}`);
-    expect(apart(await page.locator(".sim-fab").boundingBox(), await page.locator(".wizard-foot").boundingBox()), `setup step ${s + 1}`).toBe(true);
+    const fab = await page.locator(".sim-fab").boundingBox();
+    const foot = await page.locator(".wizard-foot").boundingBox();
+    expect(fab && foot, `setup step ${s + 1}: simulator button and footer shown`).toBeTruthy();
+    expect(apart(fab!, foot!), `setup step ${s + 1}`).toBe(true);
   }
 });
 
