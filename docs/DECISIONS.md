@@ -1134,8 +1134,8 @@ the review questions below come from the `security` review of this entry.
   the user chooses a level at setup. Requests through the window and
   commands over the native API count as from outside and follow that
   level, so the ESP is set up through the window only as far as the level
-  allows; calibration, limits and updates only directly in the home
-  network.
+  allows; what SD-051 keeps to the home network is done only directly
+  there.
 
 
 ## SD-051: Access from outside the home network in three levels, chosen at setup
@@ -1148,7 +1148,9 @@ a later SD records it (as with SD-033).
 
 - At setup the user chooses how the ESP's web app may be reached:
   - **Home network only** (preselected): the ESP answers nothing from
-    outside, not the login and not "Stop" either.
+    outside, not the login and not "Stop" either. Values still go to Home
+    Assistant over the native API once it is connected, but no command
+    from there is accepted.
   - **View from outside:** values, states, history and messages, from an
     explicit list; never the diagnostic package or the configuration
     export.
@@ -1165,8 +1167,9 @@ a later SD records it (as with SD-033).
   "View and control" or the home network lifts it, and fans stay off
   until then (PD-076).
 - **Raising the level** only from the home network, with the password
-  asked again. Whether it can be lowered from outside is open (the safe
-  direction; outside sessions would then end at once).
+  asked again. Lowering it, from wherever, ends outside sessions and their
+  live connections at once; whether it can be lowered from outside is
+  open (the safe direction).
 - **What counts as the home network:** the ESP checks this itself from
   the connection (the peer address is in its own subnet or link-local),
   never from a header. Everything else counts as from outside.
@@ -1174,12 +1177,16 @@ a later SD records it (as with SD-033).
   native API count as from outside** (decided by the project owner): they
   come from the Home Assistant host, and the ESP cannot tell whether the
   person is at home. So at "Home network only" the window is closed. This
-  changes SD-050.
+  changes SD-050. The ESP recognises the window by the Home Assistant
+  host's address set on it, never by a marker the app sends; how, and
+  what happens when that address changes, is part of SD-050's review.
 - **Ways in:** the outside levels apply only to defined ways, the Home
   Assistant window (SD-050) and the way of M6, each with its own review of
   transport, so no password crosses the internet as plain HTTP. A direct
-  request from a public address (a port forward, an open IPv6 address) is
-  refused at every level.
+  request from a public address (a port forward, an open IPv6 address) or
+  from another private network that is no defined way (a VPN with its own
+  subnet, another VLAN) is refused at every level; whether further home
+  subnets can be listed, set from the home network, is open.
 - **Lockout:** failed logins from outside never lock out the home
   network; they count separately (today the lockout is one counter,
   `core/src/auth.cpp`).
@@ -1192,8 +1199,12 @@ a later SD records it (as with SD-033).
   is connected (SD-050) and reachable from outside, values and history
   leave the home network that way. That is the user's choice; the setup
   says so.
-- **Residual risk, named in the docs:** a proxy or tunnel the user runs in
-  the home network gets the rights of the home network.
+- **Residual risks, named in the docs:** a proxy or tunnel the user runs
+  in the home network gets the rights of the home network; the way from
+  the internet to Home Assistant is Home Assistant's own transport, which
+  the user sets up; someone on the internet can lock the outside logins
+  while the owner is away, and a "Stop" from outside then works only from
+  a session already open.
 - Open for `regulatorik` in the product repository: EN 18031-1 (access
   control, authentication, secure communication; whether a password alone
   is enough from the internet), CRA Annex I, and GDPR for history, events
