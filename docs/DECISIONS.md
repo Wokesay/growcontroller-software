@@ -1105,7 +1105,10 @@ the review questions below come from the `security` review of this entry.
     per request, and never points to loopback or Home Assistant's internal
     network.
   - **Secrets:** the app stores no password, session or key of the ESP;
-    Home Assistant's backups include the app's data.
+    Home Assistant's backups include the app's data. If the app's present
+    mode stays (below), the Supervisor token, an administrator's right in
+    Home Assistant, sits in the same process as the code that reads the
+    ESP's answers.
   - **From outside:** Home Assistant is often reachable from outside the
     home network, and the window would make the ESP's web app reachable
     the same way. Which functions that may allow (setup, manual runs,

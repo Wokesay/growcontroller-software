@@ -47,7 +47,7 @@ body:
     id: shown
     attributes:
       label: What did you try, and what did the app show?
-      description: "Home Assistant: how the sensor gets there (ESPHome, Zigbee, Bluetooth …), the unit next to its value, and its device class (Developer tools › States); then what the app shows under Devices › Assignment. Carrier board: what Devices › Hub ports shows. A screenshot helps."
+      description: "Home Assistant: how the sensor gets there (ESPHome, Zigbee, Bluetooth …), the unit next to its value, and its device class (Developer tools › States); then what the app shows under Devices › Assignment. Carrier board: what Devices › Hub ports shows. A screenshot helps; crop the browser's address bar."
   - type: input
     id: version
     attributes:
