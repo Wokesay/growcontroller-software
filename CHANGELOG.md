@@ -148,8 +148,9 @@ listed in every release under "Security".
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
 Severity: low. The first concerns the hub's own probes, which only the
 simulator has so far; the second needed the password for an import, and
-nothing in the Home Assistant app reads a value to switch. No GHSA or CVE
-is issued.
+nothing in the Home Assistant app reads a value to switch; the third needs
+a device in the home network, and a device already signed in kept its
+session and "Stop". No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -162,6 +163,19 @@ is issued.
   (SD-041): a device whose reported class differs from the configured one
   now has no value, and an import gives a calibration only to a class that
   offers it.
+- **Someone guessing the password no longer locks everyone out** (SD-051):
+  the lockout after 5 failed attempts counted for all devices together, so
+  a device in the network that sent a wrong password every 15 minutes kept
+  every other one from signing in, the owner's phone included, and so from
+  "Stop" unless it was still signed in. Now a device that has signed in
+  since the hub last started has its own count, so guessing from another
+  address no longer locks it out; all devices that never signed in share
+  one count, so guessing from many of them stays as slow as from one. The
+  address comes from the connection, never from a header. A wrong old
+  password when changing it counts as a failed attempt and is logged; the
+  device that changed the password keeps its own count. Only counted
+  failures are written to the event log: neither a try refused during the
+  wait nor one before the first password is.
 
 ## [0.1.0-proto.4] – 2026-10-11
 
