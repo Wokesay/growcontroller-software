@@ -83,6 +83,33 @@ const gc::json& attributesOf(const gc::json& state) {
   return state.contains("attributes") && state["attributes"].is_object() ? state["attributes"] : kNone;
 }
 
+// What a state offers as a sign of life (SD-042): a sign-of-life text, or a
+// timestamp sensor (offered also while it states no time).
+std::optional<LifeCandidate> lifeOf(const std::string& id, const gc::json& state, std::int64_t haNowMs) {
+  const std::string st = gc::jstr(state, "state");
+  const gc::json& a = attributesOf(state);
+  LifeCandidate c;
+  c.entityId = id;
+  c.name = printable(gc::jstr(a, "friendly_name"), 60);
+  if (gc::jstr(a, "device_class") == "timestamp") {
+    c.timestamp = true;
+    // A time ahead is no last measurement: no age, so nothing invites picking a "next …" sensor
+    if (auto t = parseTimestampMs(st); t && *t <= haNowMs + 2 * gc::kSecond) c.ageS = std::max<std::int64_t>(0, (haNowMs - *t) / 1000);
+    return c;
+  }
+  auto channels = parseLifeText(st);
+  if (!channels) return std::nullopt;
+  // The ages now: as sent, plus how long ago the text was sent
+  const auto reported = parseTimestampMs(gc::jstr(state, "last_reported"));
+  const auto updated = parseTimestampMs(gc::jstr(state, "last_updated"));
+  const std::int64_t sentAt = std::max(reported.value_or(INT64_MIN), updated.value_or(INT64_MIN));
+  const int since = reported || updated ? static_cast<int>(std::clamp<std::int64_t>((haNowMs - sentAt) / 1000, 0, 9999999)) : 0;
+  for (auto& [code, age] : *channels)
+    if (age) *age += since;
+  c.channels = std::move(*channels);
+  return c;
+}
+
 // The numeric value of a state; NaN for "unknown", "unavailable", empty or
 // anything else that is not a plain number, never 0 (R5).
 double numericState(const gc::json& state) {
@@ -266,6 +293,47 @@ bool validEntityId(const std::string& id) {
   const size_t dot = id.find('.');
   return id.size() <= 255 && dot != std::string::npos && dot > 0 && dot + 1 < id.size() && id.find('.', dot + 1) == std::string::npos &&
          std::all_of(id.begin(), id.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.'; });
+}
+
+bool validLifeChannel(const std::string& code) {
+  return !code.empty() && code.size() <= 16 &&
+         std::all_of(code.begin(), code.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
+}
+
+std::optional<LifeChannels> parseLifeText(const std::string& text, std::string* counter) {
+  constexpr size_t kMaxChannels = 64;
+  constexpr int kMaxAgeS = 9999999;  // about 115 days; a longer age is no number this text sends
+  if (text.empty() || text.size() > 255) return std::nullopt;
+  auto digits = [](const std::string& s) { return !s.empty() && s.size() <= 9 && std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; }); };
+  LifeChannels out;
+  std::set<std::string> seen;
+  size_t start = 0;
+  bool first = true;
+  while (true) {
+    const size_t bar = text.find('|', start);
+    const std::string field = text.substr(start, bar == std::string::npos ? std::string::npos : bar - start);
+    const size_t eq = field.find('=');
+    if (eq == std::string::npos) return std::nullopt;
+    const std::string key = field.substr(0, eq), value = field.substr(eq + 1);
+    if (first) {  // the counter that makes every send a new state; any count of up to 20 digits
+      if (key != "n" || value.empty() || value.size() > 20 || !std::all_of(value.begin(), value.end(), [](char c) { return c >= '0' && c <= '9'; }))
+        return std::nullopt;
+      if (counter) *counter = value;
+      first = false;
+    } else {
+      if (!validLifeChannel(key) || key == "n" || !seen.insert(key).second || out.size() >= kMaxChannels) return std::nullopt;
+      if (value == "-") {
+        out.emplace_back(key, std::nullopt);
+      } else {
+        if (!digits(value) || std::stoll(value) > kMaxAgeS) return std::nullopt;
+        out.emplace_back(key, static_cast<int>(std::stoll(value)));
+      }
+    }
+    if (bar == std::string::npos) break;
+    start = bar + 1;
+  }
+  if (out.empty()) return std::nullopt;
+  return out;
 }
 
 namespace {
@@ -631,12 +699,27 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
   std::vector<Candidate> found, others;
   std::map<std::string, gc::json> raw;
   std::set<std::string> truncated;
+  std::vector<LifeCandidate> lives;
+  std::map<std::string, gc::json> lifeRaw;
+  size_t lifeTexts = 0, lifeStamps = 0;
   if (states.is_array())
     for (const auto& s : states) {
       if (!s.is_object()) continue;
       const std::string id = gc::jstr(s, "entity_id");
       if (!validEntityId(id) || byId.count(id)) continue;
       byId[id] = &s;
+      if (auto lc = lifeOf(id, s, haNowMs)) {
+        // Per kind, so many timestamp sensors cannot hide a device's own text
+        size_t& n = lc->timestamp ? lifeStamps : lifeTexts;
+        if (n < kMaxLives) {
+          ++n;
+          lifeRaw[id] = s;
+          lives.push_back(std::move(*lc));
+        } else {
+          truncated.insert("lives");
+        }
+        continue;  // a sign of life measures nothing itself
+      }
       const bool signal = phSignal(s);  // before classify: Home Assistant may call a voltage pH
       // A voltage Home Assistant calls pH is a signal or nothing, never a pH calibrated there
       const gc::json& a0 = attributesOf(s);
@@ -698,14 +781,26 @@ void HaBus::updateAll(const gc::json& states, std::int64_t haNowMs, gc::Ms nowMs
   others_ = std::move(others);
   raw_ = std::move(raw);
   truncated_ = std::move(truncated);
+  lifeCandidates_ = std::move(lives);
+  lifeRaw_ = std::move(lifeRaw);
+  // The signs of life in use, read every round; one no sensor uses any more is forgotten
+  std::set<std::string> used;
+  for (const auto& e : entities_)
+    if (!e.life.empty()) used.insert(e.life);
+  for (auto it = lives_.begin(); it != lives_.end();) it = used.count(it->first) ? std::next(it) : lives_.erase(it);
+  for (const auto& id : used) {
+    auto b = byId.find(id);
+    updateLifeLocked(id, b == byId.end() ? nullptr : b->second, haNowMs, nowMs);
+  }
   lastHaNowMs_ = haNowMs;
   lastNowMs_ = nowMs;
 }
 
-gc::json HaBus::candidatesJson(bool withOthers) const {
+gc::json HaBus::candidatesJson(bool withOthers, bool withLives) const {
   // Copied under the lock, built without it: up to a thousand others must not hold up the hub's tick
   std::vector<Candidate> candidates, others;
   std::vector<Entity> entities;
+  std::vector<LifeCandidate> lives;
   std::string connection;
   std::set<std::string> truncated;
   std::map<std::string, size_t> fits;  // per measure, how many others can serve it
@@ -715,6 +810,7 @@ gc::json HaBus::candidatesJson(bool withOthers) const {
     candidates = candidates_;
     if (withOthers) others = others_;
     entities = entities_;
+    lives = lifeCandidates_;  // their details only when asked for: what Home Assistant has goes out only as needed
     connection = connection_;
     truncated = truncated_;
     for (const auto& o : others_)
@@ -723,14 +819,16 @@ gc::json HaBus::candidatesJson(bool withOthers) const {
   }
   auto entry = [&](const Candidate& c, const std::vector<std::string>& measures) {
     auto e = std::find_if(entities.begin(), entities.end(), [&](const Entity& x) { return x.entityId == c.entityId; });
-    return gc::json{{"entity", c.entityId},
-                    {"name", c.name},
-                    {"measures", measures},
-                    {"value", std::isfinite(c.value) ? gc::json(c.value) : gc::json(nullptr)},
-                    {"raw", std::isfinite(c.raw) ? gc::json(c.raw) : gc::json(nullptr)},
-                    {"unit", c.unit},
-                    {"problem", c.problem.empty() ? gc::json(nullptr) : gc::json(c.problem)},
-                    {"used", e != entities.end() ? gc::json(e->measures) : gc::json(nullptr)}};
+    gc::json j{{"entity", c.entityId},
+               {"name", c.name},
+               {"measures", measures},
+               {"value", std::isfinite(c.value) ? gc::json(c.value) : gc::json(nullptr)},
+               {"raw", std::isfinite(c.raw) ? gc::json(c.raw) : gc::json(nullptr)},
+               {"unit", c.unit},
+               {"problem", c.problem.empty() ? gc::json(nullptr) : gc::json(c.problem)},
+               {"used", e != entities.end() ? gc::json(e->measures) : gc::json(nullptr)}};
+    if (e != entities.end() && !e->life.empty()) j["life"] = {{"entity", e->life}, {"channel", e->lifeChannel}};
+    return j;
   };
   auto marked = [](gc::json j, const Candidate& c) {
     if (c.signal) j["signal"] = true;
@@ -742,7 +840,24 @@ gc::json HaBus::candidatesJson(bool withOthers) const {
     j["kind"] = c.kind;
     list.push_back(std::move(j));
   }
-  gc::json out = {{"connection", connection}, {"truncated", truncated}, {"candidates", list}, {"otherFits", fits}, {"otherCount", otherCount}};
+  gc::json lifeNames = gc::json::object();  // the signs of life in use, by name
+  for (const auto& e : entities)
+    for (const auto& l : lives)
+      if (!e.life.empty() && l.entityId == e.life) lifeNames[l.entityId] = l.name;
+  gc::json lifeList = gc::json::array();
+  for (const auto& l : withLives ? lives : std::vector<LifeCandidate>{}) {
+    gc::json j = {{"entity", l.entityId}, {"name", l.name}, {"kind", l.timestamp ? "timestamp" : "text"}};
+    if (l.timestamp) {
+      j["ageS"] = l.ageS ? gc::json(*l.ageS) : gc::json(nullptr);
+    } else {
+      j["channels"] = gc::json::array();
+      for (const auto& [code, age] : l.channels) j["channels"].push_back({{"code", code}, {"ageS", age ? gc::json(*age) : gc::json(nullptr)}});
+    }
+    lifeList.push_back(std::move(j));
+  }
+  gc::json out = {{"connection", connection}, {"truncated", truncated}, {"candidates", list}, {"otherFits", fits}, {"otherCount", otherCount},
+                  {"lifeCount", lives.size()}, {"lifeNames", lifeNames}};
+  if (withLives) out["lives"] = std::move(lifeList);
   if (withOthers) {
     gc::json list2 = gc::json::array();
     for (const auto& c : others) {
@@ -788,6 +903,136 @@ void HaBus::deselect(const std::string& entityId) {
   entities_.erase(std::remove_if(entities_.begin(), entities_.end(), [&](const Entity& e) { return e.entityId == entityId; }),
                   entities_.end());
   states_.erase(entityId);
+}
+
+void HaBus::setLife(const std::string& entityId, const std::string& life, const std::string& channel) {
+  std::lock_guard<std::mutex> l(m_);
+  for (auto& e : entities_) {
+    if (e.entityId != entityId) continue;
+    const std::string ch = life.empty() ? std::string() : channel;
+    if (e.life == life && e.lifeChannel == ch) return;
+    e.life = life;
+    e.lifeChannel = ch;
+    if (!life.empty() && !lives_.count(life)) {  // known from the last round: no gap until the next one
+      auto r = lifeRaw_.find(life);
+      updateLifeLocked(life, r == lifeRaw_.end() ? nullptr : &r->second, lastHaNowMs_, lastNowMs_);
+    }
+    return;
+  }
+}
+
+std::optional<LifeCandidate> HaBus::lifeCandidate(const std::string& entityId) const {
+  std::lock_guard<std::mutex> l(m_);
+  for (const auto& c : lifeCandidates_)
+    if (c.entityId == entityId) return c;
+  return std::nullopt;
+}
+
+void HaBus::updateLifeLocked(const std::string& id, const gc::json* state, std::int64_t haNowMs, gc::Ms nowMs) {
+  LifeState& ls = lives_[id];
+  const LifeState before = ls;
+  ls = LifeState{};
+  ls.waitingSince = before.waitingSince;  // a channel's wait goes on through the rounds; rebuilt from each readable text
+  ls.counter = before.counter;            // so does the last counter, through a round without the text
+  ls.counterTs = before.counterTs;
+  if (!state || gc::jstr(*state, "entity_id") != id) return;  // not listed: not seen
+  ls.seen = true;
+  const std::string st = gc::jstr(*state, "state");
+  ls.available = !st.empty() && st != "unavailable" && st != "unknown";
+  if (!ls.available) return;
+  // When Home Assistant last got it, on the hub's clock: a sign of life sent after the
+  // sensor's last report must date its measurement no earlier than that report
+  const auto reported = parseTimestampMs(gc::jstr(*state, "last_reported"));
+  const auto updated = parseTimestampMs(gc::jstr(*state, "last_updated"));
+  if (reported || updated) {
+    ls.reportedAt = std::max(reported.value_or(INT64_MIN), updated.value_or(INT64_MIN));
+    ls.ts = before.reportedAt == ls.reportedAt && before.seen ? before.ts : nowMs - std::max<std::int64_t>(0, haNowMs - ls.reportedAt);
+  }
+  if (gc::jstr(attributesOf(*state), "device_class") == "timestamp") {
+    ls.timestamp = true;
+    const auto t = parseTimestampMs(st);
+    if (!t) return;
+    ls.readable = true;
+    ls.stampMs = *t;
+    // A time more than 2 s ahead of Home Assistant's own is no last
+    // measurement; within that, whole-second rounding, it counts as now
+    if (*t - haNowMs > 2 * gc::kSecond) {
+      ls.future = true;
+      return;
+    }
+    ls.measuredAt = before.stampMs == *t && before.readable && !before.future ? before.measuredAt : nowMs - std::max<std::int64_t>(0, haNowMs - *t);
+    return;
+  }
+  std::string counter;
+  auto channels = parseLifeText(st, &counter);
+  if (!channels || (!reported && !updated)) return;
+  ls.readable = true;
+  // The same counter dated again (a restored or retained text, a state dump on reconnect, also
+  // after an outage) is no new send: it keeps the time it was first seen, so an old text gives
+  // no fresh sign of life
+  if (!before.counter.empty() && before.counter == counter) ls.ts = before.counterTs;
+  ls.counter = counter;
+  ls.counterTs = ls.ts;
+  // A channel waits while it shows "-" in a row; one that left the text or measured starts over
+  std::map<std::string, gc::Ms> waiting;
+  for (const auto& [code, age] : *channels) {
+    ls.ages[code] = age;
+    if (!age) {
+      auto w = before.waitingSince.find(code);
+      waiting[code] = w != before.waitingSince.end() ? w->second : nowMs;
+    }
+  }
+  ls.waitingSince = std::move(waiting);
+}
+
+void HaBus::fillLifeLocked(const Entity& e, gc::Sample& s) const {
+  s.life = gc::Sample::Life::Fault;
+  auto it = lives_.find(e.life);
+  if (it == lives_.end() || !it->second.seen || !it->second.available) {
+    s.lifeFault = gc::say("truth.life_unavailable");
+    return;
+  }
+  const LifeState& ls = it->second;
+  if (e.lifeChannel.empty()) {  // a timestamp sensor
+    if (!ls.timestamp || !ls.readable) s.lifeFault = gc::say("truth.life_unreadable");
+    else if (ls.future) s.lifeFault = gc::say("truth.life_future");
+    else if (mismatchLocked(ls, ls.measuredAt, s.ts)) s.lifeFault = gc::say("truth.life_mismatch");
+    else {
+      s.life = gc::Sample::Life::Ok;
+      s.measuredAt = ls.measuredAt;
+    }
+    return;
+  }
+  if (ls.timestamp || !ls.readable) {
+    s.lifeFault = gc::say("truth.life_unreadable");
+    return;
+  }
+  s.lifeText = true;
+  s.lifeAt = ls.ts;
+  auto a = ls.ages.find(e.lifeChannel);
+  if (a == ls.ages.end()) {
+    s.lifeFault = gc::say("truth.life_no_channel", {{"channel", e.lifeChannel}});
+    return;
+  }
+  if (!a->second) {  // no measurement since the device started
+    auto w = ls.waitingSince.find(e.lifeChannel);
+    s.life = gc::Sample::Life::Waiting;
+    s.measuredAt = w != ls.waitingSince.end() ? w->second : ls.ts;
+    return;
+  }
+  const gc::Ms measured = ls.ts - static_cast<gc::Ms>(*a->second) * gc::kSecond;
+  if (mismatchLocked(ls, measured, s.ts)) {
+    s.lifeFault = gc::say("truth.life_mismatch");
+    return;
+  }
+  s.life = gc::Sample::Life::Ok;
+  s.measuredAt = measured;
+}
+
+bool HaBus::mismatchLocked(const LifeState& ls, gc::Ms measuredAt, gc::Ms reportTs) {
+  // Sent clearly after the sensor's last report, a sign of life that belongs to the sensor
+  // dates its last measurement no earlier than that report (each time is dated to a second)
+  return ls.ts > reportTs + gc::kSecond && measuredAt < reportTs - 3 * gc::kSecond;
 }
 
 void HaBus::setConnection(const std::string& c) {
@@ -879,6 +1124,13 @@ void HaBus::lostAll() {
   for (auto& c : candidates_) c.value = c.raw = gc::kNaN;
   for (auto& c : others_) c.value = c.raw = gc::kNaN;
   raw_.clear();
+  for (auto& [id, ls] : lives_) {  // only the last counter stays: the same text after the outage is no new send
+    LifeState kept;
+    kept.counter = ls.counter;
+    kept.counterTs = ls.counterTs;
+    ls = std::move(kept);
+  }
+  lifeRaw_.clear();
 }
 
 std::vector<gc::DeviceReport> HaBus::devices() const {
@@ -904,7 +1156,11 @@ std::optional<gc::Sample> HaBus::sample(const std::string& dev, const std::strin
     if (deviceId(e.entityId) != dev || cap != "measure." + e.measures) continue;
     auto it = states_.find(e.entityId);
     if (it == states_.end() || !it->second.seen || !std::isfinite(it->second.value)) return std::nullopt;
-    return gc::Sample{it->second.value, it->second.ts};
+    gc::Sample s;
+    s.raw = it->second.value;
+    s.ts = it->second.ts;
+    if (!e.life.empty()) fillLifeLocked(e, s);
+    return s;
   }
   return std::nullopt;
 }

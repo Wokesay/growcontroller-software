@@ -8,6 +8,23 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Home Assistant: a sign of life per sensor** (SD-042, SD-047): Home Assistant
+  does not report a value again while it stays the same, so a calm water
+  temperature looked "1 min" old. Under Devices › Assignment,
+  "Lebenszeichen" (sign of life) picks for a sensor the channel of its
+  device's sign-of-life text (`n=<counter>|<code>=<s>|…`, the age of each
+  channel's last measurement) or a timestamp sensor. The age then counts
+  from the last measurement, shown green up to 30 s, yellow from 31 s and
+  red from 60 s, and the value is outdated after 60 s without a
+  measurement. Without a sign of life the age now says "unverändert seit"
+  (unchanged for), as the app sees only the last change. A sign of life
+  that is unavailable, unreadable, misses the channel, lies in the future
+  or dates the measurement before the sensor's own report makes the value
+  outdated; it never falls back to the longer learned limit. The same
+  text dated again keeps its first time, also after an outage, so it goes
+  out of date 60 s later. Which sign of life belongs to a sensor rests
+  on your pick: the list marks the sensor's own device and another one.
+  `docs/HOME_ASSISTANT.md` has an ESPHome example.
 - **Home Assistant: a pH probe's voltage is calibrated in the app**
   (SD-038, SD-041): a pH probe connected without amplification that
   reports its voltage (mV or V) instead of a pH is suggested first in the

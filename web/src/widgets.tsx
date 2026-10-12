@@ -5,7 +5,7 @@ import { useEffect, useState } from "preact/hooks";
 import { AlertTriangle, Cable, ChevronDown, ChevronRight, CircleCheck, CircleDot, Cpu, Droplet, FlaskConical, Gauge, Info, Play, Plug, Power, RotateCcw, Square, Waves, Zap } from "lucide-preact";
 import { Sparkline } from "./chart";
 import { del, get, isSignalClass, millivoltsOf, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
-import { ago, day, num, numUpTo, time } from "./format";
+import { ago, day, duration, num, numUpTo, time } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
 import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
@@ -29,6 +29,28 @@ export function rawSignalUncalibrated(role: string): boolean {
   return isSignalClass(catalog.value, cls) && !state.value?.devices.find((d) => d.id === dev)?.calibrations?.ph;
 }
 export const millivoltsText = (rawPh: number) => `${numUpTo(millivoltsOf(rawPh), 1)} mV`;
+
+/** With a sign of life (SD-042): green up to 30 s, yellow from 31 s, red from 60 s, in whole seconds rounded half up. */
+export function ageTone(r: Reading | undefined): "fresh" | "late" | "old" | null {
+  if (!r || r.ageOf !== "measurement" || r.ageMs == null) return null;
+  const s = Math.round(r.ageMs / 1000);
+  return s <= 30 ? "fresh" : s < 60 ? "late" : "old";
+}
+
+/** How old a value is, by what its age counts from: the last measurement, the last change, or the hub's reading. */
+export function AgeText(p: { r?: Reading }) {
+  const r = p.r;
+  if (!r || r.ageS == null) return null;
+  const tone = ageTone(r);
+  if (tone)
+    return (
+      <span class={`age age-${tone}`} title={t(tone === "fresh" ? "widgets.ageFresh" : tone === "late" ? "widgets.ageLate" : "widgets.ageOld")}>
+        {t("widgets.measuredAgo", { d: duration(r.ageMs!) })}
+      </span>
+    );
+  if (r.ageOf === "change") return <span class="age">{t("widgets.unchangedFor", { d: duration(r.ageS * 1000) })}</span>;
+  return <span class="age">{ago(r.ageS)}</span>;
+}
 
 export function MetricTile(p: { label: string; reading?: Reading; color: string; band?: [number, number] | null; spark?: (number | null)[]; notApplicable?: string; millivolts?: boolean }) {
   const r = p.reading;
@@ -73,7 +95,7 @@ export function MetricTile(p: { label: string; reading?: Reading; color: string;
       {external && <div class="metric-note">{msg(r!.reason)}</div>}
       <div class="metric-foot">
         <span>{p.band ? t("widgets.target", { lo: num(p.band[0], 2), hi: num(p.band[1], 2) }) : p.notApplicable ?? ""}</span>
-        {!bad && <span>{r?.ageS !== null && r?.ageS !== undefined ? ago(r.ageS) : ""}</span>}
+        {!bad && <AgeText r={r} />}
       </div>
     </div>
   );

@@ -610,6 +610,112 @@ test("Home Assistant: a pH probe's voltage is suggested first, as a raw value ca
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Home Assistant: a sensor gets a sign of life; its age then counts from the last measurement, in colour and words (SD-042)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await asHomeAssistant(page, "ok");
+  await newPassword(page);
+  const device = "ha.sensor.tank_water";
+  let life: { source: string; channel: string } | undefined;
+  const sent: Record<string, unknown>[] = [];
+  let ageMs = 12000;
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());  // the state comes from the polls below
+  const lives = [
+    { entity: "sensor.other_life", name: "Anderes Gerät", kind: "text", channels: [{ code: "zz", ageS: 4 }] },
+    { entity: "sensor.tank_hub_life", name: "Hub Lebenszeichen", kind: "text", channels: [{ code: "wt", ageS: 3 }, { code: "ph", ageS: null }] },
+    { entity: "sensor.tent_life", name: "Zelt Lebenszeichen", kind: "text", channels: [{ code: "at", ageS: 2 }] },  // shares only "sensor.t"
+    { entity: "sensor.water_read", name: "Wasser gelesen", kind: "timestamp", ageS: 20 },
+  ];
+  let askedLives = 0;
+  await page.route(/\/api\/v1\/ha\/candidates(\?|$)/, (route) => {
+    // The list of signs of life only on request, as the other sensors (SD-036)
+    const withLives = new URL(route.request().url()).searchParams.get("lives") === "1";
+    if (withLives) askedLives++;
+    return route.fulfill({
+      json: {
+        connection: "ok",
+        truncated: [],
+        candidates: [
+          { entity: "sensor.tank_water", name: "Tank Wasser", kind: "temperature", measures: ["water_temp", "air_temp"], value: 21.5, raw: 21.5, unit: "°C", problem: null, used: "water_temp",
+            ...(life ? { life: { entity: life.source, channel: life.channel } } : {}) },
+        ],
+        otherFits: {},
+        otherCount: 0,
+        lifeCount: lives.length,
+        lifeNames: life ? { [life.source]: lives.find((l) => l.entity === life!.source)?.name } : {},
+        ...(withLives ? { lives } : {}),
+      },
+    });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [...cfg.devices, { id: device, class: "ha_water_temp", name: "Tank Wasser", ...(life ? { life } : {}) }];
+    cfg.tanks[0].roles["tank.water_temp"] = { device, channel: 0 };
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.devices = [...st.devices, { id: device, class: "ha_water_temp", classLabel: "Wassertemperatur aus Home Assistant", name: "Tank Wasser", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_water" }, calibrations: {} }];
+    st.readings["tank.water_temp"] = { value: 21.5, quality: "ok", usable: true, unit: "°C", decimals: 1, ageS: Math.floor(ageMs / 1000), ageMs, ageOf: life ? "measurement" : "change", reason: { key: "truth.ok", text: "", args: {} } };
+    await route.fulfill({ response: res, json: st });
+  });
+  await page.route(/\/api\/v1\/ha\/life(\?|$)/, (route) => {
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    life = body.source ? { source: body.source, channel: body.channel } : undefined;
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/#/geraete?tab=zuordnung");
+  await page.reload();
+  const row = page.getByTestId("ha-role-tank.water_temp");
+  // Without a sign of life the app cannot see the last measurement, only the last change
+  await expect(row).toContainText("unverändert seit 12 s");
+  expect(askedLives).toBe(0);
+  // On a phone the buttons sit below the sensor; nothing runs off the screen
+  await page.setViewportSize({ width: 375, height: 740 });
+  expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.getByTestId("ha-life-tank.water_temp").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Home Assistant meldet einen gleichen Wert nicht neu");
+  // The device's own sign of life first, marked so, each channel with its age now; another device is said so
+  await expect(dialog.locator("fieldset legend").first()).toContainText("Hub Lebenszeichen");
+  await expect(dialog.locator("fieldset legend").first()).toContainText("vermutlich gleiches Gerät");
+  await expect(dialog.locator("fieldset legend").nth(1)).toContainText("Anderes Gerät – nur wählen, wenn dein Sensor daran hängt");
+  // One shared letter is no shared device name: sorted by name among the others, marked as another device
+  await expect(dialog.locator("fieldset legend").nth(2)).toContainText("Zelt Lebenszeichen");
+  await expect(dialog.locator("fieldset legend").nth(2)).toContainText("Anderes Gerät – nur wählen, wenn dein Sensor daran hängt");
+  await expect(dialog.getByTestId("ha-life-option-sensor.tank_hub_life-wt")).toContainText(/passt zu/);
+  await expect(dialog.getByTestId("ha-life-option-sensor.tank_hub_life-ph")).toContainText("noch keine Messung");
+  await expect(dialog.getByTestId("ha-life-option-sensor.water_read")).toContainText("vor 20 s");
+  await dialog.getByTestId("ha-life-option-sensor.tank_hub_life-wt").click();
+  await expect(page.getByText(/Lebenszeichen für .+ gespeichert/)).toBeVisible();
+  expect(sent).toEqual([{ role: "tank.water_temp", source: "sensor.tank_hub_life", channel: "wt" }]);
+  await expect(row).toContainText("Lebenszeichen: Hub Lebenszeichen, Kanal wt");
+  // Now by the measurement: green up to 30 s, yellow from 31 s, in words too
+  await expect(row.locator(".age")).toHaveText("gemessen vor 12 s");
+  await expect(row.locator(".age")).toHaveClass(/age-fresh/);
+  ageMs = 45000;
+  await expect(row.locator(".age")).toHaveText("gemessen vor 45 s", { timeout: 10000 });
+  await expect(row.locator(".age")).toHaveClass(/age-late/);
+  await expect(row.locator(".age")).toHaveAttribute("title", "über 30 s alt");
+  // In whole seconds rounded half up: 30.499 s is still green, 30.5 s is yellow, 60 s red
+  for (const [ms, tone] of [[30499, "age-fresh"], [30500, "age-late"], [60000, "age-old"]] as const) {
+    ageMs = ms;
+    await expect(row.locator(".age")).toHaveClass(new RegExp(tone), { timeout: 10000 });
+  }
+  await expect(row.locator(".age")).toHaveText("gemessen vor 1 min");
+  // And off again
+  await page.getByTestId("ha-life-tank.water_temp").click();
+  await dialog.getByRole("button", { name: "Kein Lebenszeichen" }).click();
+  await expect(page.getByText(/Lebenszeichen für .+ entfernt/)).toBeVisible();
+  expect(sent[1]).toEqual({ role: "tank.water_temp", source: "", channel: "" });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("Home Assistant: a pH voltage is calibrated from the assignment; each step waits for the sensor's next reading (SD-041)", async ({ page, request }) => {
   await scenario(request, "neu");
   await asHomeAssistant(page, "ok");

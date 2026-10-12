@@ -20,6 +20,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "gc/bus.hpp"
@@ -30,9 +31,36 @@ namespace ha {
 // One Home Assistant entity and what it measures ("ph", "ec", "water_temp",
 // "level", "air_temp", "humidity", "co2"). signal: it reports a raw signal
 // the app calibrates (SD-041), so far a pH probe's voltage in mV or V.
+// life: its sign of life (SD-042), the entity that says when it last
+// measured: a sign-of-life text with lifeChannel, or a timestamp sensor
+// (lifeChannel ""); "" without one.
 struct Entity {
   std::string entityId, measures;
   bool signal = false;
+  std::string life, lifeChannel;
+  Entity() = default;
+  Entity(std::string id, std::string m, bool sig = false, std::string l = "", std::string lc = "")
+      : entityId(std::move(id)), measures(std::move(m)), signal(sig), life(std::move(l)), lifeChannel(std::move(lc)) {}
+};
+
+// A sign-of-life text (SD-042): n=<counter>|<code>=<s>|…, the age of each
+// channel's last measurement in whole seconds, "-" for a channel without one
+// since the device started. The channels in their order, none for "-";
+// nothing if the text is not one (no counter first, a bad code or age, a
+// code twice, more than 64 channels).
+using LifeChannels = std::vector<std::pair<std::string, std::optional<int>>>;
+std::optional<LifeChannels> parseLifeText(const std::string& text, std::string* counter = nullptr);
+// A channel code: 1–16 of a–z, 0–9 and _.
+bool validLifeChannel(const std::string& code);
+
+// What can serve as a sign of life: a sign-of-life text (with its channels
+// and their ages now) or a timestamp sensor (Home Assistant's device class
+// timestamp; ageS how old the time it states is).
+struct LifeCandidate {
+  std::string entityId, name;
+  bool timestamp = false;
+  LifeChannels channels;
+  std::optional<std::int64_t> ageS;
 };
 
 // The ideal slope of a pH electrode at 25 °C (Nernst, RT·ln10/F). A probe's
@@ -57,7 +85,7 @@ struct Address {
 std::optional<Address> parseAddress(std::string url, std::string& err);
 
 // The mapping file: {"url": "...", "entities": [{"entity": "...", "measures": "ph", "signal": true}]},
-// "signal" only for a raw pH signal;
+// "signal" only for a raw pH signal (a sign of life is set in the web app, SD-042);
 // "entities" may be left out, the user then selects in the web app.
 struct Mapping {
   std::string url;
@@ -144,6 +172,12 @@ class HaBus : public gc::IBus {
   std::optional<bool> offeredAsSignal(const std::string& entityId) const;
   // Stop using an entity; it stays a candidate.
   void deselect(const std::string& entityId);
+  // An entity's sign of life (SD-042): life "" removes it. Read from the
+  // last round at once if that listed it.
+  void setLife(const std::string& entityId, const std::string& life, const std::string& channel);
+  // A sign of life Home Assistant listed in the last round.
+  std::optional<LifeCandidate> lifeCandidate(const std::string& entityId) const;
+  static constexpr size_t kMaxLives = 100;  // per kind: texts and timestamp sensors
   // How the last round went, for the web app: "starting", "ok", "unreachable" or "refused".
   void setConnection(const std::string& c);
 
@@ -156,8 +190,12 @@ class HaBus : public gc::IBus {
   // otherFits how many other sensors can serve each measure and otherCount
   // how many are listed (also those listed only with a reason). withOthers adds "others":
   // [{entity, name, measures, value, raw, unit, problem, deviceClass, used, signal}],
-  // sorted by name; only asked for while someone looks.
-  gc::json candidatesJson(bool withOthers = false) const;
+  // sorted by name; only asked for while someone looks. "lifeCount" says how many signs of life
+  // (SD-042) Home Assistant offers and "lifeNames" names those in use; a picked sensor carries
+  // "life": {entity, channel}. withLives adds "lives": [{entity, name, kind ("text" or
+  // "timestamp"), channels: [{code, ageS}] for a text, ageS for a timestamp sensor}], only
+  // asked for while someone picks one.
+  gc::json candidatesJson(bool withOthers = false, bool withLives = false) const;
 
   void poll(gc::Ms) override {}
   std::vector<gc::PortReport> ports() const override { return {}; }
@@ -180,11 +218,31 @@ class HaBus : public gc::IBus {
     std::string fault;             // e.g. a unit the hub cannot convert
     std::string name;              // Home Assistant's friendly name
   };
+  // A sign of life as Home Assistant last reported it (SD-042)
+  struct LifeState {
+    bool seen = false, available = false, readable = false, timestamp = false, future = false;
+    std::int64_t reportedAt = -1;  // Home Assistant's time of its last report
+    gc::Ms ts = 0;                 // that report on the hub's clock, fixed once seen
+    std::string counter;           // a text: its last counter; the same counter again is no new send
+    gc::Ms counterTs = 0;          // when that counter was first seen; both kept through rounds without it
+    std::int64_t stampMs = -1;     // a timestamp sensor: the time it states, Home Assistant's clock
+    gc::Ms measuredAt = 0;         // that time on the hub's clock, fixed once seen
+    std::map<std::string, std::optional<int>> ages;  // a text: channel → age in s, none for "-"
+    std::map<std::string, gc::Ms> waitingSince;      // channel → since when it shows "-" (hub clock)
+  };
   void updateLocked(const Entity& e, const gc::json& state, std::int64_t haNowMs, gc::Ms nowMs);
+  void updateLifeLocked(const std::string& id, const gc::json* state, std::int64_t haNowMs, gc::Ms nowMs);
+  void fillLifeLocked(const Entity& e, gc::Sample& s) const;
+  // A sign of life that dates the sensor's last measurement before a report it was sent after
+  // belongs to another sensor (a wrong pick): the hub's own rule, SD-042
+  static bool mismatchLocked(const LifeState& ls, gc::Ms measuredAt, gc::Ms reportTs);
   std::vector<Entity> entities_;
   std::vector<Candidate> candidates_;
   std::vector<Candidate> others_;
   std::map<std::string, gc::json> raw_;  // the last states of what can be picked, to start a pick with
+  std::vector<LifeCandidate> lifeCandidates_;
+  std::map<std::string, gc::json> lifeRaw_;  // their last states, to start a sign of life with
+  std::map<std::string, LifeState> lives_;   // by entity ID, the signs of life in use
   std::set<std::string> truncated_;  // kinds with more candidates than kMaxPerKind, "other" past kMaxOthers
   std::int64_t lastHaNowMs_ = 0;
   gc::Ms lastNowMs_ = 0;

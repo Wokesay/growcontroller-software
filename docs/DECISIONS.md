@@ -808,6 +808,10 @@ and SD-041 for sensors with a sign of life; RAT-027 is updated with it.
   format is the app's own; it will be documented in
   `docs/HOME_ASSISTANT.md` with an example for an ESPHome device and the
   advice to keep the text out of Home Assistant's recorder.
+- Changed by SD-047: details from the implementation (each channel
+  measured at least every 30 s, picking the channel from a list, an own
+  rule for a sign of life that does not fit, a 3 s margin for a
+  calibration point, what goes out, only classes on their own schedule).
 
 
 ## SD-043: Firmware base: own ESP-IDF firmware that speaks the ESPHome native API
@@ -929,6 +933,54 @@ full behaviour; this entry names what changes earlier decisions.
 - Pin assignment, bus devices and conversion values of the board are
   public firmware configuration (PD-157, PD-168, PD-170).
 - Built as M1 in `docs/ROADMAP.md`.
+
+
+## SD-047: Sign of life: details from the implementation
+
+Decided by the project owner on 2026-10-12 in the software session, from
+the reviews of the implementation of SD-042. Changes SD-042; what is not
+named here stays as SD-042 says.
+
+- **30 s per channel:** besides the text every 15 s, each channel is
+  measured at least every 30 s, or a healthy one would come too close to
+  the 60 s limit.
+- **The same counter dated again** is the old send, also after an outage
+  of the text or of Home Assistant: a restored or retained text gives no
+  fresh sign of life.
+- **Picking instead of a suggestion:** the user picks the sensor's
+  channel from a list at the assignment; SD-042 had the app suggest a
+  code. Which channel belongs to a sensor cannot be told from the times
+  alone, as every live channel reports often. The list shows the
+  device's own text first (its entity ID shares a whole word after
+  `sensor.` with the sensor's), marked as probably the same device,
+  another device's marked as a warning, and each channel with its age
+  now; recommended codes (`ph`, `ec`, `wt`, `at`, `rh`, `co2`, `lvl`)
+  are marked as fitting.
+- **A silent device:** each of its sensors is stale with the device's
+  message ("the device sends nothing"), not a message about its own age.
+  SD-042 had one message for the device; readings are per sensor, and one
+  message per device in the watchdog is a follow-up.
+- **Own rule for a sign of life that does not fit:** one sent more than a
+  second after the sensor's last report that dates the sensor's last
+  measurement more than 3 s before that report belongs to another sensor
+  and makes it stale (each time is dated to a second). Right after a
+  reconnect this can show until the next measurement; it fails safe.
+- **Only a class whose sensors report on their own schedule** (set in
+  code, R7) takes a sign of life; the hub's own probes keep the catalog's
+  limits.
+- **What goes out:** the list of signs of life Home Assistant offers
+  (texts and timestamp sensors, at most 100 of each) is sent only while
+  someone picks one; otherwise only their count and the names of those in
+  use. A sign of life is set in the web app and stored in the hub's
+  configuration, not in the mapping file.
+- **Calibration point:** the first measurement more than 3 s after the
+  request (SD-042: 2 s), as two whole-second roundings and the delay add
+  up.
+- **Standstill clock:** only switching a sensor's sign of life on or off
+  starts it over; a round offline or without a value does not.
+- **Open:** the jump lock of a calm sensor from Home Assistant (a value
+  unchanged for 5 min drops out of its window) must be solved before such
+  values feed control. The 90 s for substrate sensors is not built yet.
 
 
 ---

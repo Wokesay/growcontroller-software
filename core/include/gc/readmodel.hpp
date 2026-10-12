@@ -34,6 +34,11 @@ struct Reading {
   Msg reason;
   Ms ts = 0;
   Ms ageMs = -1;
+  // What the age counts from: "reading" (the hub read the sensor),
+  // "measurement" (a sign of life gives the last measurement, SD-042) or
+  // "change" (a sensor on its own schedule without one: its report times
+  // show only when its value last changed). "" without a value.
+  std::string ageOf;
   bool usable() const { return quality == Quality::Ok && value.has_value(); }
   // Passed every check the hub makes, though perhaps calibrated elsewhere:
   // what the history records (SD-039). Only for the history: control, the
