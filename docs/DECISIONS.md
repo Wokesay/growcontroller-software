@@ -1237,10 +1237,12 @@ it.
     the control had switched off (the reasoning of PD-050: without fans
     heat and humidity build up);
   - a dehumidifier with its own hygrostat gets power and regulates itself
-    (PD-066 recommends one; outlet profile "supply", RAT-069);
+    (PD-066 recommends one; outlet profile "supply", RAT-069), after its
+    pause and with the humidifier off first (RAT-034);
   - a humidifier, and a dehumidifier without its own hygrostat, switch
     off (PD-153); the dehumidifier's pause counts from then (RAT-034);
-  - the air heater switches off and latches (RAT-060, RAT-062);
+  - the air heater switches off and, if it was running, latches (RAT-060,
+    RAT-062);
   - the app reports the sensor.
 - "Stop" still switches everything off, fans included (PD-076).
 - Open: the freshness limit for Bluetooth sensors (the catalog's 120 s
@@ -1273,16 +1275,22 @@ and the simulator's raw EC has no temperature term (`sim/world.cpp`).
 - **Without a water temperature sensor,** the user can choose to control
   EC without temperature compensation, knowing it is less exact (decided
   by the project owner): about 2 % per °C away from the temperature at
-  calibration, so 5 °C off puts the tank about 10 % off its target. The
-  choice is explicit, shown with this number, and the EC stays marked.
+  calibration, so 5 °C off puts the tank about 10 % off its target. A tank
+  colder than at calibration reads low, so the hub doses too much, which
+  only dilution undoes (RAT-012); a warmer one gets too little. The choice
+  is explicit, shown with the number and the direction, and the EC stays
+  marked.
   Without the choice, EC is not used for control. The choice applies only
   while no water temperature sensor is set up; a sensor that is set up
   and fails stops control as above, since otherwise EC would jump by
-  10–20 % and control would go on at another scale.
+  10–20 % and control would go on at another scale. Removing a failed
+  sensor does not switch the choice on; the user confirms it again.
 - **Calibration:** an EC calibration point is compensated with the
   temperature at that moment and refused without a valid water
   temperature, unless the user chose control without compensation.
-  Stored EC calibrations without a temperature need a migration.
+  Stored EC calibrations without a temperature, and those made under that
+  choice once a water temperature sensor is set up, need a new calibration
+  or a migration.
 - **Jump lock and history** judge the compensated value: the water
   temperature dropping out and coming back does not lock EC, and an EC
   without compensation is a gap in the history of the compensated EC.
