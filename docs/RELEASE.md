@@ -90,7 +90,7 @@ entry under `[Unreleased]`.
      simulator packages, the release build, the app image),
      `npm audit signatures` runs right after `npm ci`: a missing or
      invalid registry signature or an invalid provenance attestation
-     fails the build, a package without provenance passes (SD-055). It
+     fails the build, a package without provenance passes (SD-058). It
      proves the registry's signed record of each installed version, not
      the safety of a release from a hijacked maintainer account; against
      that stand the cooldown and the lockfile pin.

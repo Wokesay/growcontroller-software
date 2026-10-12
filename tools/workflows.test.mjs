@@ -3,7 +3,7 @@
 // its full commit SHA with the version as a comment (#29); Dependabot
 // keeps both up to date. Node's types for the web app's tests are those of
 // the Node that CI runs (#101). The web app's packages are checked against
-// their registry signatures right after they are installed (#100, SD-055).
+// their registry signatures right after they are installed (#100, SD-058).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -182,7 +182,7 @@ test("Node's types are those of the Node that CI runs (#101)", () => {
   assert.match(npm, /- dependency-name: "@types\/node"\n[ \t]+update-types: \["version-update:semver-major"\]/);
 });
 
-test("the web app's packages are checked against their registry signatures (#100, SD-055)", () => {
+test("the web app's packages are checked against their registry signatures (#100, SD-058)", () => {
   // Wherever they are installed, before any of them runs: each place
   // installs the builds for its own platform, and only installed ones are
   // checked.
