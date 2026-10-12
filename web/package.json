@@ -7,7 +7,7 @@
   "description": "Web app of the growcontroller hub (runs from the flash of the ESP32-S3 or against the simulator)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs && node scripts/no-tool-code.mjs",
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "sbom": "npm sbom --sbom-format cyclonedx --omit dev > ../build/sbom-web.cdx.json"

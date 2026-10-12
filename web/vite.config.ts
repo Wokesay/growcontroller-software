@@ -33,6 +33,9 @@ export default defineConfig({
     assetsInlineLimit: 0,
     cssCodeSplit: false,
     sourcemap: false,
+    // The app is one chunk that preloads nothing, and Vite's polyfill for it
+    // would ship code of a build tool (scripts/no-tool-code.mjs).
+    modulePreload: { polyfill: false },
   },
   server: {
     // Host bleibt localhost:5173: Herkunftsprüfung des Simulators greift auch hier
