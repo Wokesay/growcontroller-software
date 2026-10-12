@@ -37,8 +37,22 @@ listed in every release under "Security".
   is wrong: buffers swapped, an amplifier in between, or a worn probe. A
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
+- **Hardware compatibility list** (SD-049, `docs/COMPATIBILITY.md`): what
+  works with growcontroller, by connection: ESP32 boards, sensors in Home
+  Assistant (for example why an amplified DFRobot pH board is display only
+  for now), the carrier board's inputs and outputs, wireless sensors and
+  smart plugs, each Tested, Expected, Not yet or No. The README says
+  which way fits you: the ESP32-S3 on its own, or with Home Assistant on
+  top. The issue form "Device or sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: one release for every package, Home Assistant as a window on
+  the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
+  Assistant app and simulator keep one version and one release. From M3
+  on, Home Assistant shows all values and states of the ESP32-S3, and the
+  Home Assistant app opens the ESP's web app in Home Assistant; control
+  stays on the ESP. A step-by-step guide for flashing follows with the
+  first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not

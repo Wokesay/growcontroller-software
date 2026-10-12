@@ -87,6 +87,25 @@ E2E=1 tools/ci.sh      # plus the browser tests against the simulator
 - Never report vulnerabilities as an issue: [`SECURITY.md`](SECURITY.md)
 - Changes: [`CHANGELOG.md`](CHANGELOG.md)
 
+## Hardware: which way fits you
+
+In every set-up an ESP32-S3 controls; Home Assistant is an option on top
+(SD-050).
+
+| Way | What you need | Status |
+|---|---|---|
+| **ESP32-S3 on its own** | An Espressif ESP32-S3-DevKitC-1 (N32R16V; N8R8 with a shorter history) on the growcontroller carrier board, with sensors and pumps. You flash the firmware yourself and operate everything in the web app on the ESP. | in development (M1) |
+| **ESP32-S3 with Home Assistant** | The same, plus Home Assistant. All values and states, the watchdog included, show in Home Assistant, and the Home Assistant app opens the ESP's web app there. Control stays on the ESP. | planned (M3) |
+| **Try it today** | The simulator, without hardware, or the Home Assistant app, which reads sensors you already have in Home Assistant and switches nothing ("Try it without installing" above). | available |
+
+- **Does my hardware work?** [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)
+  lists ESP32 boards, sensors in Home Assistant, the carrier board's inputs
+  and outputs, wireless sensors and smart plugs, each with its status.
+  Tested a device? Report it with the issue form "Device or sensor".
+- **Flashing the ESP32-S3:** a step-by-step guide follows with the first
+  firmware release (M1). Building and flashing your own firmware:
+  [`firmware/FLASHING.md`](firmware/FLASHING.md).
+
 ## License
 
 This software is free software under the **GNU Affero General Public

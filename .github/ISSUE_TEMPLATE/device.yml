@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: Device or sensor
-description: A device is not detected or should be supported.
+description: A device does not work, should be supported, or you tested one for the compatibility list (docs/COMPATIBILITY.md).
 labels: ["device", "triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Please do not post passwords, access tokens, Wi-Fi details or locations – issues are public.
   - type: input
     id: device
     attributes:
@@ -13,12 +17,35 @@ body:
     id: connection
     attributes:
       label: Connection
-      options: ["Hub port (RJ45, Modbus)", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
+      options:
+        - "Home Assistant (through the growcontroller app)"
+        - "Sensor port of the carrier board (RS485, Modbus)"
+        - "pH or EC input of the carrier board"
+        - "Contact input of the carrier board"
+        - "Bluetooth (for example BTHome)"
+        - "Smart plug in the local network (for example Shelly)"
+        - "ESP32 board"
+        - "Don't know"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - "Works"
+        - "Works in part"
+        - "Does not work"
+        - "Not tried yet (question)"
+    validations:
+      required: true
   - type: textarea
     id: shown
     attributes:
-      label: What does the hub show under Devices › Hub ports?
+      label: What did you try, and what did the app show?
+      description: For Home Assistant, the sensor's unit and device class; on the carrier board, what Devices › Hub ports shows.
   - type: input
     id: version
     attributes:
       label: Software version
+      description: Settings › Display and info

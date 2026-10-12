@@ -1002,6 +1002,87 @@ named here stays as SD-042 says.
   unchanged for 5 min drops out of its window) must be solved before such
   values feed control. The 90 s for substrate sensors is not built yet.
 
+
+## SD-048: One release carries every package
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- The firmware for the ESP32-S3, the Home Assistant app and the simulator
+  are one software: the same core and the same web app. They are released
+  together: one version (`VERSION`), one tag `vX.Y.Z`, one changelog, one
+  GitHub release.
+- The release carries every package: from M1 on the firmware image per
+  board profile (DevKitC-1-N32R16V and N8R8, SD-043), once it is signed
+  (`docs/RELEASE.md`); the Home Assistant app image; and in Beta and
+  Development the simulator (PD-036).
+- Every package carries the version, also when it did not change; the
+  release notes say per package what is new. Home Assistant then offers an
+  app update that brings nothing new for the app; that is accepted.
+- Firmware and Home Assistant app of the same version belong together
+  (SD-050); there is no compatibility matrix between version lines.
+- Not chosen: separate releases with their own version lines for the app
+  and the firmware (two changelogs, a version matrix, a fix in the shared
+  core shipped twice).
+
+
+## SD-049: A hardware compatibility list; the flashing guide follows with M1
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- `docs/COMPATIBILITY.md` lists what works with the software, by
+  connection: ESP32 boards, the Home Assistant app and the sensors it
+  reads, the carrier board's inputs and outputs, wireless sensors and smart
+  plugs. The README links it.
+- Four statuses: **Tested** (with version, date and a link to the report),
+  **Expected** (should work by how it is built; not tested yet), **Not
+  yet** (names what is missing: a milestone or a rule), **No** (names why).
+- Reports come through the issue form "Device or sensor"; an entry is
+  added by a pull request with review. Only "Tested" needs a report; a
+  test of our own counts too, with its version and date.
+- Product names are used only to describe compatibility (README,
+  trademarks).
+- The list describes connections, not the board: pin assignment, bus
+  devices and conversion values are public (PD-157, PD-170); the rest of
+  the board stays private (PD-103).
+- A step-by-step guide for flashing the ESP32-S3 (board, cable, USB port,
+  browser, steps, duration, problems, other tools, pictures) is written
+  with M1, once a flashing page and a firmware release exist. Until then
+  `firmware/FLASHING.md` describes building and flashing own firmware.
+- A link to buy hardware is a product question: PD-061 says the README
+  makes no reference to selling hardware. It waits for the product
+  repository's session (SD-029).
+- Not chosen: a data file with a generated page (more work before there
+  are entries; possible later, if the web app is to show known devices),
+  and the GitHub wiki (no review, not versioned with the software).
+
+
+## SD-050: The Home Assistant app opens the ESP's web app in Home Assistant
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- The ESP32-S3 controls in both ways of use (PD-149): on its own with its
+  web app, or with Home Assistant as well. Home Assistant holds no control
+  logic.
+- With Home Assistant, the firmware sends all values and states, the
+  watchdog's assessment included, as Home Assistant entities over the
+  ESPHome native API (SD-043, M3). No app is needed for that.
+- From M3 on, the Home Assistant app also opens the web app of an ESP in
+  Home Assistant's sidebar (ingress), so the ESP can be set up from Home
+  Assistant, also where Home Assistant is reached from outside the home
+  network. The app is a window: it holds no control logic and sends no
+  commands of its own.
+- Before it is built, `security` reviews the design: whether the ESP's own
+  login stays in front of the web app, how sessions, cookies and CSRF
+  protection pass the proxy, which addresses the app may connect to, and
+  how the ESP's web app works under the ingress path.
+- Not chosen: first only a link on the device page in Home Assistant, with
+  the window later (the project owner wants the window from the start of
+  M3); no app at all for the ESP.
+- Open: Home Assistant installations without apps (Container, Core) have
+  no ingress; whether they get the link on the device page instead. Open
+  too: whether the app's present mode (reading sensors from Home Assistant
+  without an ESP, switching nothing, SD-034) stays once the window exists.
+
 ---
 
 ## Drafts (waiting for "entschieden")
