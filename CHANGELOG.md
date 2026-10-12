@@ -71,6 +71,12 @@ listed in every release under "Security".
   `THIRD_PARTY_NOTICES.md`.
 
 ### Fixed
+- **Event log: devices are "back" after a full outage** (#69): when every
+  device stopped answering at once, for example while Home Assistant
+  restarted, the log said "getrennt" (not responding) for each of them but
+  never "wieder da" (is back). Now each device you added logs that it is
+  back. After a start, the devices that answer first are still not logged
+  as back.
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
   buffer instead of showing a step the hub did not have. The window now
