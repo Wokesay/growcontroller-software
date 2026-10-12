@@ -1387,6 +1387,146 @@ rule: the PR waits for "mergen".
   changes. Open for `regulatorik`: whether addresses held in memory for
   the lockout count as processing personal data.
 
+
+## SD-055: Prototype 0.1.0-proto.5 after a polish block; English complete before it
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a review by `ux`, `qa` and `release` and the outside views of an end
+customer and a grower.
+
+- **No release before the polish.** 0.1.0-proto.5 (sign of life, raw pH
+  calibration, phone fixes, the security fixes in the CHANGELOG) comes after a block of
+  work that fixes what the review found visible:
+  - phone: a device row that breaks letter by letter (Devices), the
+    connection state hidden on phones;
+  - a message when Stop, Resume or a manual switch fails;
+  - developer words and codes out of the interface ("Sensorwahrheit",
+    "Quelle: RAT-039", "Aktor-Gateway" and the like);
+  - "Stopp" / "Alles stoppen" everywhere instead of "Not-Halt" (SD-045,
+    PD-172);
+  - the history chart's time axis in the page's language;
+  - setup: its step count, and the browser's time zone no longer
+    overwriting the saved one;
+  - the German Mix page showing an English sentence;
+  - the test of the 3 s margin of a sign of life (#109);
+  - the menu (SD-056) and the target EC (SD-057).
+- **English is complete before proto.5** (#18, #73): every text the core
+  sends gets a key and both languages (errors, sensor reasons, checklists,
+  mix plan), the catalog's names and descriptions, and the CSV export.
+  Setup offers English first (SD-014). Not chosen: English marked "beta"
+  for proto.5.
+- **Then the release:** CHANGELOG with a summary and "Known limitations",
+  the version raised everywhere; the release waits for "mergen". Before
+  the tag the project owner tests the Home Assistant app on a real Home
+  Assistant: install, password, sensors, restart, update from proto.4,
+  backup, a sign of life and a raw pH calibration.
+- **Work split:** the software session that wrote this entry does the
+  polish block and then M1; the other software session does not touch
+  these topics. SD numbers are
+  taken right before the pull request opens, after a look at `main`.
+
+
+## SD-056: Menu grouped by topic; pages without automation say "manual"
+
+Decided by the project owner on 2026-10-12 in the software session
+(proposal by `ux`, in line with the grower's view).
+
+- The menu on the left, with small headings:
+  - Übersicht (Overview), Verlauf (History)
+  - **Nährlösung** (Nutrient solution): Mischen, Tank & Regelung, Rezepte
+    & Kanister, Bewässerung
+  - **Raum** (Room): Klima, Licht
+  - **System:** Geräte, Funktionen, Einstellungen
+- Watering moves next to the tank, as it draws from it and its dry-run
+  lock needs the tank's level; recipes move next to mixing.
+- The bar at the bottom on phones stays as it is.
+- Climate, light and watering carry the label "Handbetrieb" (manual) as
+  long as they only show values and switch by hand, with the advice to
+  keep their own timer or controller (as the Home Assistant introduction
+  already says). With nothing assigned, a page shows an empty state that
+  says what to connect.
+- Not chosen: a menu by daily routine with new pages for phases and the
+  room (a larger rebuild), and leaving the menu as it is.
+
+
+## SD-057: Mixing to the phase's target EC; the recipe gives ratio and order
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a check by `domain` of the manufacturer's guidance; the safeguards marked
+"(review)" come from the reviews by `domain` and `reviewer` of this entry.
+It replaces the fixed targets of the grow dialog; the EC correction
+(RAT-054, RAT-055, RAT-080) already keeps the recipe's ratio. Not built
+yet; built in the polish block (SD-055), with a RAT entry, tests and
+simulator numbers per `docs/SIMULATOR.md`.
+
+- **The target is the phase's target EC** (`ec_target`), as the total EC
+  of the solution, the water's own EC included, as the manufacturers'
+  charts give it. Athena, for example, scales the amounts of its parts in
+  a fixed ratio to a target EC and gives its charts for water with an EC
+  up to about 0.4 mS/cm [1][2].
+- **The recipe gives the way there:** the ratio of its parts to each
+  other and their order. Its EC at its chart amounts is kept as a
+  reference point, not as a target.
+- **Amounts are real millilitres** from the measured flow of each pump,
+  never run times. Without a measured flow nothing is dosed.
+- **Three ways to mix,** chosen by what the user has:
+  1. **To the target:** a valid EC of the water being mixed from the
+     hub's own probe, usable for control under SD-054 (compensated, or
+     uncompensated by the user's explicit choice), and the water
+     circulated. The litres come from the level sensor or are entered.
+     The hub measures the water's EC first, then doses about 80 % of the
+     gap to the target in the recipe's ratio and order, waits the settling
+     time (RAT-052, at least `settle_min`; a factor by volume is still an
+     assumption) and only then lets the EC correction close the rest
+     (review). If the EC fails during the mix,
+     the mix stops and says why; it does not go on as a fixed pattern
+     without the user (review). Water at or above the target gets
+     nothing, with a note.
+  2. **A fixed pattern** (no valid EC in the water being mixed: no probe,
+     or no circulation): the user enters the litres and either the
+     recipe's amounts per litre, or a target EC within the catalog's range
+     together with the EC of the water, taken from a meter or entered as
+     0 for reverse-osmosis water. Without the water's EC only the recipe's
+     amounts are offered; it is never taken as 0 (R5, RAT-006, review).
+     The hub works out the amounts from the recipe's ratio and reference,
+     runs the pattern without feedback and says so.
+  3. **Stirring by hand:** after each part the hub stops and asks to stir,
+     and goes on only when the user confirms, in the recipe's order. The
+     wait has a time limit; cancelling or a timeout after one part of a
+     pair ends the mix with the pair's message (RAT-054); after a restart
+     the mix is reported, not resumed (R6) (review).
+- **The grow** takes each phase's target EC and pH from the recipe as a
+  proposal (for a pH band its middle, RAT-066); the fixed 1.4 and 1.8 of today's dialog go. Without a grow the
+  overview shows which default targets apply and offers to set one up.
+- **Safeguards (review):**
+  - The step limit (`max_ec_step`, RAT-055) is converted to ml/L with
+    the largest of the start effect fixed in code (R7), the recipe's
+    reference and the learned effect, so a typo in a recipe can never
+    raise a dose. A reference far from the start effect (below a quarter
+    or above four times) is refused.
+  - The learned effect belongs to a recipe; another recipe starts from
+    its reference.
+  - A part marked as a fixed addition (a cleanser, for example) is dosed
+    per litre of fresh water, also when the water is already at the
+    target, and never scaled by an EC correction; its expected EC counts
+    in the first step's gap.
+  - Water above the charts' 0.4 mS/cm gets a note on a new fill.
+  - The mix plan says when EC runs without temperature compensation
+    (SD-054); cold tap water then reads low and the tank gets too much.
+- **Open:** mixing outside the tank (a bucket for soaking) and whether the
+  pumps then dose into it, given that consumption goes only into the tank
+  (RAT-040, RAT-070) and rounds stay clean (RAT-057); large tanks, where
+  a correction round may need more partial runs than allowed (RAT-054);
+  a low target whose reserve falls below the EC gate for pH (RAT-046,
+  RAT-053).
+- Not chosen: the target as the EC on top of the water (it does not match
+  the charts), and fixed ml/L with the target only as a check (with tap
+  water or a probe that reads differently the tank misses the target).
+- Sources, retrieved 2026-10-12 (search results; athenaag.com could not be
+  loaded): [1] https://www.hydroponics.eu/db_img/pdf/Athena-Pro-Dosage-Guidelines-Metric.pdf ;
+  [2] https://www.rivierahorticulture.co.uk/pages/how-to-use-the-athena-feed-schedules
+
+
 ---
 
 ## Drafts (waiting for "entschieden")
