@@ -34,7 +34,7 @@ cmake --build build
 node --test tools/ha_server.test.mjs
 end
 
-group "Web app (type check, build, size budget)"
+group "Web app (type check, build, size budget, no build tool code)"
 (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
 end
 

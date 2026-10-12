@@ -12,6 +12,7 @@
 | [API.md](API.md) | REST API v1, access, live channel |
 | [SIMULATOR.md](SIMULATOR.md) | Digital twin, numbers and sources, fault switches |
 | [HOME_ASSISTANT.md](HOME_ASSISTANT.md) | Read-only spike: the core next to Home Assistant |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | Hardware compatibility: ESP32 boards, sensors in Home Assistant, the carrier board's inputs and outputs, wireless sensors, smart plugs |
 | [TESTING.md](TESTING.md) | Test strategy, levels, running the tests |
 | [RELEASE.md](RELEASE.md) | Versions, changelog, releases, OTA, support obligations |
 | [SECURITY_MODEL.md](SECURITY_MODEL.md) | Threat model, EN 18031/CRA implementation |
