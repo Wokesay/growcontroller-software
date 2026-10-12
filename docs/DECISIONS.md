@@ -1192,8 +1192,8 @@ a later SD records it (as with SD-033).
   subnet, another VLAN) is refused at every level; whether further home
   subnets can be listed, set from the home network, is open.
 - **Lockout:** failed logins from outside never lock out the home
-  network; they count separately (today the lockout is one counter,
-  `core/src/auth.cpp`).
+  network; they count separately (when this was decided the lockout was
+  one counter; since SD-051 it counts per client, `core/src/auth.cpp`).
 - **The level** is stored and enforced on the ESP and checked on every
   request, before `/info`, the login and the first password. Until the
   first password is set, and after a factory reset, it is "Home network
