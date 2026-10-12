@@ -12,6 +12,10 @@ export type Reading = {
   quality: Quality;
   reason: Msg;
   ageS: number | null;
+  ageMs?: number | null;
+  // What the age counts from (SD-042): the hub's reading, the last measurement a sign of life gives,
+  // or, for a sensor on its own schedule without one, the last change of its value
+  ageOf?: "reading" | "measurement" | "change" | "";
   unit: string;
   decimals: number;
   usable: boolean;
@@ -86,7 +90,7 @@ export type Config = {
   schemaVersion: number; revision: number;
   system: { name: string; setupDone: boolean; timezone: string; language: string; updateCheck: boolean; updateChannel: string; control?: Partial<Record<ControlArea, ControlMode>> };
   limits: { handDoseMaxMl: number; minRunS: number; maxRunS: number; maxPartialRuns: number };
-  devices: { id: string; class: string; name: string }[];
+  devices: { id: string; class: string; name: string; life?: { source: string; channel: string } }[];
   tanks: { id: string; name: string; capacityL: number | null; minL: number | null; water: string; roles: Record<string, { device: string; channel: number }> }[];
   zones: { id: string; name: string; kind: "room" | "tent" | "greenhouse"; tank: string; roles: Record<string, { device: string; channel: number }> }[];
   canisters: Canister[]; recipes: Recipe[];

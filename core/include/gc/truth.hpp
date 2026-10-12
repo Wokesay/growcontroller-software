@@ -18,6 +18,9 @@ namespace gc {
 
 // A jump lock lifts after 15 min of calm (RAT-044).
 inline constexpr Epoch kJumpHoldS = 15 * 60;
+// A sensor with a sign of life is stale when its last measurement is older
+// than this (SD-042, RAT-027).
+inline constexpr Ms kLifeLimit = 60 * kSecond;
 
 // Stückweise lineare Kennlinie aus Stützpunkten (Quelle: RAT-078):
 // gültig ab 2 Punkten, Rohwerte streng steigend; unter dem ersten Punkt der
@@ -41,7 +44,8 @@ class SensorTruth {
 
   const Reading& get(const std::string& role) const;
   // How old a value of this role may be before it is stale: the catalog's
-  // limit, for a sensor on its own schedule the one learned from its reports (SD-035).
+  // limit, for a sensor on its own schedule the one learned from its reports
+  // (SD-035), for one with a sign of life 60 s after its last measurement (SD-042).
   Ms limit(const std::string& role) const;
   const std::map<std::string, Reading>& all() const { return readings_; }
 
@@ -57,12 +61,14 @@ class SensorTruth {
   struct Track {
     double lastRaw = kNaN;
     Ms lastRawChange = 0;
+    bool rawLife = false;  // lastRawChange counts measurements of a sign of life (SD-042)
     Ms lastTs = 0;
     std::deque<std::pair<Ms, double>> window;  // für die Sprungprüfung
     Ms explainedUntil = 0;
     // A sensor on its own schedule (SD-035): the device the gaps belong to,
     // its last report and the last gaps between reports
     bool ownSchedule = false;
+    bool life = false;  // it has a sign of life (SD-042): nothing is learned
     std::string device;
     bool reported = false;
     Ms lastReport = 0;

@@ -8,6 +8,7 @@
 #include <array>
 #include <map>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -46,6 +47,14 @@ struct ZoneCfg {
 
 struct DeviceCfg {
   std::string id, cls, name;
+  // A sign of life for a sensor on its own schedule (SD-042): the source
+  // that gives the time of its last measurement (a Home Assistant entity)
+  // and, for a sign-of-life text, its channel ("" for a timestamp sensor).
+  // Only the platform's bus reads it; empty without a sign of life.
+  std::string life, lifeChannel;
+  DeviceCfg() = default;
+  DeviceCfg(std::string id_, std::string cls_, std::string name_, std::string life_ = "", std::string lifeChannel_ = "")
+      : id(std::move(id_)), cls(std::move(cls_)), name(std::move(name_)), life(std::move(life_)), lifeChannel(std::move(lifeChannel_)) {}
 };
 
 struct CanisterCfg {

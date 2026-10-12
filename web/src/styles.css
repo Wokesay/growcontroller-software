@@ -221,6 +221,7 @@ small, .small { font-size: 0.85rem; }
 .modal .ha-search { position: sticky; top: 0; z-index: 1; }
 .ha-others-title { font-size: 1rem; margin: 0; scroll-margin-top: 64px; }
 .ha-used { color: var(--muted); }
+.ha-warn { color: var(--warn); }
 .ha-signal { color: var(--ok); font-weight: 600; }
 .ha-value { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
 .ha-novalue { text-align: right; max-width: 45%; }
@@ -457,3 +458,16 @@ body:has(.wizard-foot) .sim-fab { bottom: 86px; }
 .radio-pill.on { border-color: var(--accent); background: var(--accent-weak); color: var(--text); }
 .radio-pill:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 700px) { .ctl-modes { width: 100%; } .radio-pill { flex: 1 1 auto; } }
+
+/* The age of a value with a sign of life (SD-042): colour and words, never colour alone */
+.age-fresh { color: var(--ok); }
+.age-late { color: var(--warn); }
+.age-old { color: var(--bad); font-weight: 600; }
+.ha-life-text { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ha-life-text legend { padding: 0; margin-bottom: 4px; }
+.ha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 600px) {
+  /* On a phone the buttons sit below the sensor, never squeezing its name */
+  .list > .item.ha-row { flex-wrap: wrap; }
+  .list > .item.ha-row .grow { flex-basis: 100%; }
+}

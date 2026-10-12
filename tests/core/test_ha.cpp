@@ -1596,3 +1596,555 @@ TEST_CASE("Home Assistant: picked from the list as a raw value, an entity the ma
   CHECK(hub.config().device("ha.sensor.tank_ph_mv")->cls == "ha_ph_raw");
   CHECK(bus.selected("sensor.tank_ph_mv")->signal);
 }
+
+// ---- Sign of life (SD-042) ----
+
+namespace {
+
+// A sign-of-life text as an ESPHome device sends it, reported at reportedMs
+json lifeText(const std::string& text, std::int64_t reportedMs, const std::string& entity = "sensor.hub_life") {
+  return {{"entity_id", entity},
+          {"state", text},
+          {"attributes", {{"friendly_name", "Hub sign of life"}}},
+          {"last_updated", iso(reportedMs)},
+          {"last_reported", iso(reportedMs)}};
+}
+
+// A timestamp sensor that states when a sensor last read
+json lifeStamp(const std::string& stamp, const std::string& entity = "sensor.water_read") {
+  return {{"entity_id", entity},
+          {"state", stamp},
+          {"attributes", {{"device_class", "timestamp"}, {"friendly_name", "Water temperature read"}}},
+          {"last_updated", "2026-10-09T10:00:00+00:00"}};
+}
+
+// A Home Assistant with a calm water temperature (its value reported once,
+// at noon, then dropped by Home Assistant as unchanged) and a pH, and a hub
+// that reads them; the test sets what Home Assistant answers each second.
+struct LifeRig {
+  gc::Catalog cat = ha::catalog();
+  ha::HaBus bus{{{"sensor.water", "water_temp"}, {"sensor.ph_mv", "ph", true}}};
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub{cat, bus, store, clk, pseudoRandom};
+  std::function<json()> extra = [] { return json::array(); };  // the sign of life, as the test wants it
+  double mv = 10;
+  bool phGone = false;  // Home Assistant has the pH as "unavailable" this round
+  std::string water = "21.5";
+  std::int64_t waterAt = kNoonMs, phAt = kNoonMs;  // when Home Assistant last got each value
+  LifeRig() {
+    clk.ms = 100000;  // Home Assistant has run for a while: its values date from before the hub started
+    hub.boot();
+    step(1);
+    REQUIRE(hub.acceptDevice("ha.sensor.water", "").status == 200);
+    REQUIRE(hub.acceptDevice("ha.sensor.ph_mv", "").status == 200);
+  }
+  json states() {
+    json all = json::array({state("sensor.water", water, "°C", iso(waterAt)), state("sensor.ph_mv", phGone ? "unavailable" : std::to_string(mv), "mV", iso(phAt))});
+    for (const auto& s : extra()) all.push_back(s);
+    return all;
+  }
+  void step(int seconds) {
+    for (int i = 0; i < seconds; ++i) {
+      clk.ms += 1000;
+      bus.updateAll(states(), kNoonMs + clk.ms, clk.ms);
+      std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      ha::syncLife(hub, bus);
+      hub.tick();
+    }
+  }
+  json reading(const std::string& role = "tank.water_temp") { return hub.state()["readings"][role]; }
+};
+
+}  // namespace
+
+TEST_CASE("Home Assistant: a sign-of-life text is read only in its own format (SD-042)") {
+  auto ok = ha::parseLifeText("n=4711|wt=2|ph=-|s_1=0");
+  REQUIRE(ok);
+  REQUIRE(ok->size() == 3);
+  CHECK((*ok)[0] == std::make_pair(std::string("wt"), std::optional<int>(2)));
+  CHECK_FALSE((*ok)[1].second.has_value());  // "-": no measurement since the device started
+  CHECK((*ok)[2].second == 0);
+  for (const char* bad : {"", "wt=2", "n=1", "n=x|wt=2", "n=1|wt=2|wt=3", "n=1|WT=2", "n=1|wt=-1", "n=1|wt=2.5", "n=1|wt=", "n=1|wt",
+                          "n=1|n=2", "n=1|wt=2|", "n=1|a_very_long_channel_name=2", "n=1|wt=99999999"})
+    CHECK_MESSAGE(!ha::parseLifeText(bad), bad);
+  std::string many = "n=1";
+  for (int i = 0; i < 65; ++i) many += "|c" + std::to_string(i) + "=1";
+  CHECK_FALSE(ha::parseLifeText(many));
+  CHECK(ha::validLifeChannel("wt"));
+  CHECK_FALSE(ha::validLifeChannel(""));
+  CHECK_FALSE(ha::validLifeChannel("w.t"));
+}
+
+TEST_CASE("Home Assistant: with a sign of life a calm sensor is fresh by its last measurement, stale 60 s after it (SD-042, RAT-027)") {
+  LifeRig rig;
+  // The device measures the water temperature every 5 s and sends its sign of life every 15 s
+  std::int64_t measuredMs = kNoonMs, textMs = kNoonMs;
+  int counter = 0;
+  bool measuring = true, sending = true;
+  rig.extra = [&] {
+    const std::int64_t haNow = kNoonMs + rig.clk.ms;
+    if (measuring && haNow - measuredMs >= 5000) measuredMs = haNow;
+    if (sending && haNow - textMs >= 15000) {
+      textMs = haNow;
+      ++counter;
+    }
+    const std::int64_t age = (textMs - measuredMs) / 1000;
+    return json::array({lifeText("n=" + std::to_string(counter) + "|wt=" + std::to_string(std::max<std::int64_t>(0, age)) + "|ph=1", textMs)});
+  };
+  rig.step(20);
+  // Without a sign of life the age counts from the last change (SD-035)
+  CHECK(rig.reading()["ageOf"] == "change");
+  // The sign of life is listed with its channels
+  const json listed = rig.bus.candidatesJson(false, true);
+  REQUIRE(listed["lives"].size() == 1);
+  CHECK(listed["lives"][0]["entity"] == "sensor.hub_life");
+  CHECK(listed["lives"][0]["kind"] == "text");
+  CHECK(listed["lives"][0]["channels"][0]["code"] == "wt");
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  rig.step(1);
+  // Unchanged for 20 min in Home Assistant, but measured: valid, and its age is the measurement's
+  rig.step(20 * 60);
+  json r = rig.reading();
+  CHECK(r["quality"] == "ok");
+  CHECK(r["ageOf"] == "measurement");
+  CHECK(r["ageMs"].get<std::int64_t>() <= 21000);
+  const json picks = rig.bus.candidatesJson(true);  // kept: a loop over a temporary's part would dangle
+  for (const auto& c : picks["candidates"]) CHECK(c["entity"] != "sensor.hub_life");  // a sign of life is no sensor to pick
+  for (const auto& c : picks["others"]) CHECK(c["entity"] != "sensor.hub_life");
+  // The channel falls silent while the text goes on: valid up to 60 s after its last measurement, then stale
+  measuring = false;
+  const std::int64_t last = measuredMs;
+  while (kNoonMs + rig.clk.ms - last < 60000) {
+    rig.step(1);
+    // a new text may date the measurement only to whole seconds
+    if (kNoonMs + rig.clk.ms - last <= 59000) CHECK(rig.reading()["quality"] == "ok");
+  }
+  rig.step(16);  // the next text shows it
+  r = rig.reading();
+  CHECK(r["quality"] == "stale");
+  CHECK(r["reason"]["key"] == "truth.life_stale");
+  CHECK(r["reason"]["args"]["limitS"] == 60);
+  CHECK_FALSE(r["usable"].get<bool>());
+  // Measuring again: valid at once
+  measuring = true;
+  rig.step(20);
+  CHECK(rig.reading()["quality"] == "ok");
+  // The device sends nothing at all: every sensor with this sign of life says so, by one cause
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "sensor.hub_life", "ph").status == 200);
+  rig.step(1);
+  sending = false;
+  rig.step(62);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_silent");
+  CHECK(rig.reading("tank.ph")["reason"]["key"] == "truth.life_silent");
+  CHECK(rig.reading("tank.ph")["quality"] == "stale");
+  // Without the sign of life again, the learned limit applies and nothing is learned from before
+  sending = true;
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "", "").status == 200);
+  rig.step(1);
+  CHECK(rig.reading()["ageOf"] == "change");
+  CHECK(rig.hub.config().device("ha.sensor.water")->life.empty());
+}
+
+TEST_CASE("Home Assistant: the sign of life adds the text's age; 60 s is still valid, above is stale (SD-042)") {
+  LifeRig rig;
+  std::string text = "n=1|wt=40";
+  const std::int64_t textMs = kNoonMs + rig.clk.ms + 1000;
+  rig.extra = [&] { return json::array({lifeText(text, textMs)}); };
+  rig.step(2);  // the text arrives with the first step, now is a second later
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  // 40 s at the text, 20 s since: 60 s
+  rig.step(19);
+  json r = rig.reading();
+  CHECK(r["ageMs"].get<std::int64_t>() == 60000);
+  CHECK(r["quality"] == "ok");
+  rig.step(1);
+  CHECK(rig.reading()["quality"] == "stale");
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_stale");
+}
+
+TEST_CASE("Home Assistant: a sign of life that cannot say when the sensor measured makes it stale, never looser (SD-042, RAT-006)") {
+  LifeRig rig;
+  std::string text = "n=1|wt=3";
+  std::string life = "ok";
+  rig.extra = [&] {
+    const std::int64_t now = kNoonMs + rig.clk.ms;
+    if (life == "gone") return json::array();
+    json t = lifeText(text, now);
+    if (life == "unavailable") t["state"] = "unavailable";
+    return json::array({t});
+  };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  rig.step(2);
+  REQUIRE(rig.reading()["quality"] == "ok");
+  auto reason = [&] {
+    rig.step(2);
+    return rig.reading()["reason"]["key"].get<std::string>();
+  };
+  text = "n=2|ph=3";  // the channel is missing
+  CHECK(reason() == "truth.life_no_channel");
+  CHECK(rig.reading()["reason"]["args"]["channel"] == "wt");
+  CHECK(rig.reading()["quality"] == "stale");
+  text = "this is no sign of life";
+  CHECK(reason() == "truth.life_unreadable");
+  text = "n=3|wt=3";
+  life = "unavailable";
+  CHECK(reason() == "truth.life_unavailable");
+  life = "gone";  // Home Assistant no longer lists it
+  CHECK(reason() == "truth.life_unavailable");
+  CHECK_FALSE(rig.reading()["usable"].get<bool>());
+  life = "ok";
+  CHECK(reason().rfind("truth.life", 0) != 0);
+  CHECK(rig.reading()["quality"] == "ok");
+}
+
+TEST_CASE("Home Assistant: a channel without a measurement since the device started has no value, and is stale after 60 s (SD-042)") {
+  LifeRig rig;
+  std::string wt = "3";
+  int counter = 0;
+  rig.extra = [&] { return json::array({lifeText("n=" + std::to_string(++counter) + "|wt=" + wt, kNoonMs + rig.clk.ms)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  rig.step(2);
+  REQUIRE(rig.reading()["quality"] == "ok");
+  // The device restarted: Home Assistant still holds the old value, which is no value now
+  wt = "-";
+  rig.step(30);
+  json r = rig.reading();
+  CHECK(r["quality"] == "no_data");
+  CHECK(r["reason"]["key"] == "truth.life_waiting");
+  CHECK(r["value"].is_null());
+  rig.step(32);
+  r = rig.reading();
+  CHECK(r["quality"] == "stale");
+  CHECK(r["reason"]["key"] == "truth.life_never");
+  wt = "1";
+  rig.step(2);
+  CHECK(rig.reading()["quality"] == "ok");
+}
+
+TEST_CASE("Home Assistant: a timestamp sensor gives the last measurement; a time ahead of Home Assistant's is refused (SD-042)") {
+  LifeRig rig;
+  std::int64_t readMs = kNoonMs;
+  std::string stamp;
+  rig.extra = [&] { return json::array({lifeStamp(stamp.empty() ? iso(readMs) : stamp)}); };
+  rig.step(30);
+  const json listed = rig.bus.candidatesJson(false, true);
+  REQUIRE(listed["lives"].size() == 1);
+  CHECK(listed["lives"][0]["kind"] == "timestamp");
+  // A timestamp sensor has no channel
+  CHECK(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.water_read", "wt").status == 422);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.water_read", "").status == 200);
+  readMs = kNoonMs + rig.clk.ms - 20000;
+  rig.step(1);
+  json r = rig.reading();
+  CHECK(r["quality"] == "ok");
+  CHECK(r["ageOf"] == "measurement");
+  CHECK(r["ageMs"].get<std::int64_t>() >= 20000);
+  CHECK(r["ageMs"].get<std::int64_t>() <= 21000);
+  rig.step(41);
+  CHECK(rig.reading()["quality"] == "stale");
+  // Up to 2 s ahead is rounding and counts as now; more is no last measurement
+  readMs = kNoonMs + rig.clk.ms + 2000;
+  rig.step(1);
+  CHECK(rig.reading()["quality"] == "ok");
+  readMs = kNoonMs + rig.clk.ms + 5000;
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_future");
+  stamp = "unknown";
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_unavailable");
+  stamp = "yesterday";
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_unreadable");
+}
+
+TEST_CASE("Home Assistant: a sign of life is set only from what Home Assistant offers, stored in the configuration and checked on import (SD-042, R7)") {
+  LifeRig rig;
+  rig.extra = [&] { return json::array({lifeText("n=1|wt=3|ph=2", kNoonMs + rig.clk.ms), lifeStamp(iso(kNoonMs))}); };
+  rig.step(2);
+  using ha::setLife;
+  CHECK(setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.not_listed", "wt").body["error"]["key"] == "ha.life_unknown");
+  CHECK(setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "xx").body["error"]["key"] == "ha.life_channel");
+  CHECK(setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "").body["error"]["key"] == "ha.life_channel");
+  CHECK(setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.water", "").body["error"]["key"] == "ha.life_unknown");  // a sensor is no sign of life
+  CHECK(setLife(rig.hub, rig.bus, "zone.co2", "sensor.hub_life", "wt").body["error"]["key"] == "ha.life_role");  // no sensor from Home Assistant there
+  CHECK(setLife(rig.hub, rig.bus, "tank.level_low", "sensor.hub_life", "wt").status == 422);
+  REQUIRE(setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  // Stored with the device and in a backup
+  const gc::DeviceCfg* d = rig.hub.config().device("ha.sensor.water");
+  REQUIRE(d);
+  CHECK(d->life == "sensor.hub_life");
+  CHECK(d->lifeChannel == "wt");
+  json file = gc::json(rig.hub.config());
+  bool found = false;
+  for (const auto& dj : file["devices"])
+    if (dj["id"] == "ha.sensor.water") found = dj["life"] == json{{"source", "sensor.hub_life"}, {"channel", "wt"}};
+  CHECK(found);
+  // An import changes it, and the bus reads the new one with the next tick
+  for (auto& dj : file["devices"])
+    if (dj["id"] == "ha.sensor.water") dj["life"]["channel"] = "ph";
+  REQUIRE(rig.hub.importConfig(file).status == 200);
+  rig.step(1);
+  CHECK(rig.bus.selected("sensor.water")->lifeChannel == "ph");
+  // Only a sensor on its own schedule has a sign of life, and only in the platform's own form
+  for (auto [id, life] : {std::pair<std::string, json>{"ha.sensor.water", {{"source", "sensor.Hub"}, {"channel", "wt"}}},
+                          {"ha.sensor.water", {{"source", ""}, {"channel", "wt"}}},
+                          {"ha.sensor.water", {{"source", "sensor.hub_life"}, {"channel", "w.t"}}}}) {
+    json bad = file;
+    for (auto& dj : bad["devices"])
+      if (dj["id"] == id) dj["life"] = life;
+    CHECK(rig.hub.importConfig(bad).status == 422);
+  }
+  gc::Config c = rig.hub.config();
+  c.devices.push_back({"HEAD-1", "head_ph_ec", "pH/EC", "sensor.hub_life", "wt"});
+  bool refused = false;
+  for (const auto& e : gc::validateConfig(c, rig.cat)) refused = refused || e.key == "cfg.device.life";
+  CHECK(refused);
+}
+
+TEST_CASE("Home Assistant: with a sign of life a stuck pH signal is frozen by its measurements, and a calibration point takes a new measurement (SD-042, RAT-023)") {
+  LifeRig rig;
+  int counter = 0;
+  rig.extra = [&] { return json::array({lifeText("n=" + std::to_string(++counter) + "|ph=1|wt=1", kNoonMs + rig.clk.ms)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "sensor.hub_life", "ph").status == 200);
+  // Calibrated as an ideal probe
+  json file = gc::json(rig.hub.config());
+  file["calibrations"]["ha.sensor.ph_mv"]["ph"] = {{"points", json::array({json::array({7.0, 7.0}), json::array({4.0, 4.0})})}, {"at", 0}};
+  REQUIRE(rig.hub.importConfig(file).status == 200);
+  rig.step(2);
+  REQUIRE(rig.reading("tank.ph")["quality"] == "ok");
+  // Home Assistant drops the unchanged reports of a stuck probe; the sign of life shows it still measures the same
+  rig.step(14 * 60);
+  CHECK(rig.reading("tank.ph")["quality"] == "ok");
+  rig.step(2 * 60);
+  CHECK(rig.reading("tank.ph")["quality"] == "frozen");
+}
+
+TEST_CASE("Home Assistant: with a sign of life a stuck pH stays frozen through short drop-outs; only switching the sign of life starts its clock over (SD-042, RAT-023)") {
+  LifeRig rig;
+  int counter = 0;
+  rig.extra = [&] { return json::array({lifeText("n=" + std::to_string(++counter) + "|ph=1|wt=1", kNoonMs + rig.clk.ms)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "sensor.hub_life", "ph").status == 200);
+  json file = gc::json(rig.hub.config());
+  file["calibrations"]["ha.sensor.ph_mv"]["ph"] = {{"points", json::array({json::array({7.0, 7.0}), json::array({4.0, 4.0})})}, {"at", 0}};
+  REQUIRE(rig.hub.importConfig(file).status == 200);
+  rig.step(2);
+  REQUIRE(rig.reading("tank.ph")["quality"] == "ok");
+  // A flaky network: the pH is "unavailable" for one round after 5 min, and a whole poll is lost after 10 min
+  rig.step(5 * 60);
+  rig.phGone = true;
+  rig.step(1);
+  CHECK(rig.reading("tank.ph")["quality"] == "offline");
+  rig.phGone = false;
+  rig.step(5 * 60);
+  rig.bus.lostAll();
+  {
+    std::lock_guard<std::recursive_mutex> l(rig.hub.mutex());
+    rig.hub.tick();
+  }
+  CHECK(rig.reading("tank.ph")["quality"] == "offline");
+  // The value has stood still for 16 min of measurements: frozen, the drop-outs started nothing over
+  rig.step(6 * 60);
+  CHECK(rig.reading("tank.ph")["quality"] == "frozen");
+  // Switching the sign of life off changes the clock: it starts over
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "", "").status == 200);
+  rig.step(2);
+  CHECK(rig.reading("tank.ph")["quality"] != "frozen");
+}
+
+TEST_CASE("Home Assistant: with a sign of life a calibration point takes the first measurement after the request and fails when the device falls silent (SD-042, RAT-006)") {
+  LifeRig rig;
+  int counter = 0;
+  bool sending = true;
+  std::int64_t textMs = kNoonMs;
+  rig.extra = [&] {
+    if (sending) {
+      textMs = kNoonMs + rig.clk.ms;
+      ++counter;
+    }
+    return json::array({lifeText("n=" + std::to_string(counter) + "|ph=0", textMs)});
+  };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "sensor.hub_life", "ph").status == 200);
+  rig.step(2);
+  auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+    json j = {{"device", "ha.sensor.ph_mv"}, {"kind", "ph"}, {"action", action}};
+    if (std::isfinite(ref)) j["reference"] = ref;
+    return rig.hub.probeCalibration(j);
+  };
+  auto session = [&] { return rig.hub.state()["probeCalibration"]["ha.sensor.ph_mv:ph"]; };
+  REQUIRE(probe("start").status == 200);
+  REQUIRE(probe("point", 7.0).status == 200);
+  // No new report in Home Assistant (the voltage did not change), but a measurement after the request
+  rig.step(4);
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["points"].size() == 1);
+  // The device falls silent during the next point: it fails, it does not wait the learned limit
+  REQUIRE(probe("point", 4.0).status == 200);
+  sending = false;
+  rig.step(62);
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["failed"]["key"] == "probe.no_raw");
+}
+
+TEST_CASE("Home Assistant: a sign of life lives in the hub's configuration, not in the mapping file (SD-042)") {
+  std::string err;
+  auto list = ha::parseEntities(json::array({{{"entity", "sensor.water"}, {"measures", "water_temp"}, {"life", {{"entity", "sensor.hub_life"}, {"channel", "wt"}}}}}), err);
+  REQUIRE(err.empty());
+  REQUIRE(list.size() == 1);
+  CHECK(list[0].life.empty());  // set in the web app, where Home Assistant's offer is checked
+  list[0].life = "sensor.hub_life";
+  CHECK_FALSE(ha::entitiesJson(list)[0].contains("life"));
+}
+
+TEST_CASE("Home Assistant: a sign of life that dates the sensor's measurement before the sensor's own report does not fit it (SD-042)") {
+  LifeRig rig;
+  // A channel of another device: it measured 40 s ago, the sensor reported a new value 5 s ago
+  int counter = 0;
+  rig.extra = [&] { return json::array({lifeText("n=" + std::to_string(++counter) + "|wt=40|zz=1", kNoonMs + rig.clk.ms)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  rig.water = "22.0";
+  rig.waterAt = kNoonMs + rig.clk.ms + 1000;  // reported now
+  rig.step(5);
+  json r = rig.reading();
+  CHECK(r["quality"] == "stale");
+  CHECK(r["reason"]["key"] == "truth.life_mismatch");
+  // The right channel measured with that report: it fits
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "zz").status == 200);
+  rig.step(1);
+  CHECK(rig.reading()["quality"] == "ok");
+}
+
+TEST_CASE("Home Assistant: the same sign-of-life text dated again is no new send; a channel waits only while it shows \"-\" in a row (SD-042)") {
+  LifeRig rig;
+  std::string text = "n=7|wt=1";
+  std::int64_t sentMs = kNoonMs + rig.clk.ms + 1000;
+  rig.extra = [&] { return json::array({lifeText(text, sentMs)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  // Home Assistant dates the same text again (restored, retained, a state dump on reconnect): it keeps its first time
+  for (int i = 0; i < 70; ++i) {
+    sentMs = kNoonMs + rig.clk.ms + 1000;
+    rig.step(1);
+  }
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_silent");
+  // Also after a round with the text "unavailable", and after a lost poll
+  text = "unavailable";
+  rig.step(1);
+  text = "n=7|wt=1";
+  sentMs = kNoonMs + rig.clk.ms + 1000;
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_silent");
+  rig.bus.lostAll();
+  sentMs = kNoonMs + rig.clk.ms + 1000;
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_silent");
+  // "-" waits in a row: a channel that leaves the text and comes back as "-" starts over
+  int n = 10;
+  auto send = [&](const std::string& rest, int seconds) {
+    for (int i = 0; i < seconds; ++i) {
+      text = "n=" + std::to_string(++n) + rest;
+      sentMs = kNoonMs + rig.clk.ms + 1000;
+      rig.step(1);
+    }
+  };
+  send("|wt=-", 40);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_waiting");
+  send("|ph=1", 2);  // wt is gone from the text
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_no_channel");
+  send("|wt=-", 30);  // back as "-": 30 s in a row, not 72
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_waiting");
+  // A counter of many digits (a running millisecond count) is fine
+  text = "n=12345678901234|wt=2";
+  sentMs = kNoonMs + rig.clk.ms + 1000;
+  rig.step(1);
+  CHECK(rig.reading()["quality"] == "ok");
+}
+
+TEST_CASE("Home Assistant: a timestamp sensor first seen ahead of Home Assistant's clock gets its real age once it is behind (SD-042, R5)") {
+  LifeRig rig;
+  const std::int64_t stampMs = kNoonMs + rig.clk.ms + 6000;  // 5 s ahead when first seen
+  rig.extra = [&] { return json::array({lifeStamp(iso(stampMs))}); };
+  rig.step(1);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.water_read", "").status == 200);
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_future");
+  rig.step(10);  // now 6 s behind; taken as now while within 2 s ahead, so it may read up to 2 s older, never younger
+  json r = rig.reading();
+  CHECK(r["quality"] == "ok");
+  CHECK(r["ageMs"].get<std::int64_t>() >= 6000);
+  CHECK(r["ageMs"].get<std::int64_t>() <= 9000);
+}
+
+TEST_CASE("Home Assistant: signs of life are listed only when asked for, with today's ages, per kind and cut at 100 each (SD-042)") {
+  ha::HaBus bus({{"sensor.water", "water_temp"}});
+  json states = json::array({state("sensor.water", "21.5", "°C", iso(kNoonMs))});
+  states.push_back(lifeText("n=1|wt=5|ph=-", kNoonMs + 10000));
+  for (int i = 0; i < 120; ++i) states.push_back(lifeStamp(iso(kNoonMs), "sensor.stamp_" + std::to_string(i)));
+  bus.updateAll(states, kNoonMs + 20000, 20000);
+  const json brief = bus.candidatesJson();
+  CHECK_FALSE(brief.contains("lives"));
+  CHECK(brief["lifeCount"] == 101);
+  const json full = bus.candidatesJson(false, true);
+  REQUIRE(full["lives"].size() == 101);  // the text is not crowded out by the timestamp sensors
+  CHECK(std::find(full["truncated"].begin(), full["truncated"].end(), "lives") != full["truncated"].end());
+  for (const auto& l : full["lives"])
+    if (l["entity"] == "sensor.hub_life") {
+      CHECK(l["channels"][0]["ageS"] == 15);  // 5 s when sent, sent 10 s ago
+      CHECK(l["channels"][1]["ageS"].is_null());
+    }
+  // A time ahead shows no age, so nothing invites picking it
+  bus.updateAll(json::array({lifeStamp(iso(kNoonMs + 60000), "sensor.next_run")}), kNoonMs + 20000, 21000);
+  CHECK(bus.candidatesJson(false, true)["lives"][0]["ageS"].is_null());
+  // A sign-of-life text of 255 characters is read, one of 256 is none
+  std::string channels;
+  for (int i = 10; i <= 30; ++i) channels += "|c" + std::to_string(i) + "=1234567";
+  REQUIRE(("n=1" + channels).size() == 255);
+  CHECK(ha::parseLifeText("n=1" + channels));
+  CHECK_FALSE(ha::parseLifeText("n=12" + channels));
+}
+
+TEST_CASE("Home Assistant: with a sign of life a live pH that moves a little stays valid; a calibration point needs a measurement 3 s after the request (SD-042, RAT-023)") {
+  LifeRig rig;
+  int counter = 0;
+  int phAge = 1;
+  rig.extra = [&] { return json::array({lifeText("n=" + std::to_string(++counter) + "|ph=" + std::to_string(phAge), kNoonMs + rig.clk.ms)}); };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.ph", "sensor.hub_life", "ph").status == 200);
+  json file = gc::json(rig.hub.config());
+  file["calibrations"]["ha.sensor.ph_mv"]["ph"] = {{"points", json::array({json::array({7.0, 7.0}), json::array({4.0, 4.0})})}, {"at", 0}};
+  REQUIRE(rig.hub.importConfig(file).status == 200);
+  // 0.1 mV every 10 min: a living probe in calm water, not frozen
+  for (int k = 0; k < 4; ++k) {
+    rig.mv += 0.1;
+    rig.phAt = kNoonMs + rig.clk.ms + 1000;
+    rig.step(10 * 60);
+    CHECK(rig.reading("tank.ph")["quality"] == "ok");
+  }
+  // A measurement 2 s after the request is not taken; one 4 s after is
+  auto probe = [&](const std::string& action, double ref = gc::kNaN) {
+    json j = {{"device", "ha.sensor.ph_mv"}, {"kind", "ph"}, {"action", action}};
+    if (std::isfinite(ref)) j["reference"] = ref;
+    return rig.hub.probeCalibration(j);
+  };
+  auto session = [&] { return rig.hub.state()["probeCalibration"]["ha.sensor.ph_mv:ph"]; };
+  REQUIRE(probe("start").status == 200);
+  REQUIRE(probe("point", 7.0).status == 200);
+  phAge = 0;  // measured right at each send, every second: 1 s after the request
+  rig.step(1);
+  phAge = 30;  // then silent: its last measurement stays at the request
+  rig.step(1);
+  CHECK(session().contains("pending"));
+  // The channel stays silent while the text goes on: the point fails within the limit
+  for (int i = 0; i < 62; ++i) {
+    ++phAge;
+    rig.step(1);
+  }
+  CHECK_FALSE(session().contains("pending"));
+  CHECK(session()["failed"]["key"] == "probe.no_raw");
+}

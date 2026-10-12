@@ -156,14 +156,12 @@ labels follow Home Assistant's developer documentation for apps
   each by its own learned limit, however far apart their last reports are:
   a sensor that reports on a change keeps its value until it changes. The
   hub's own climate head still pairs its two readings within 60 s (SD-035).
-- **`force_update: true` for calm channels:** Home Assistant's ESPHome
+- **A sign of life for calm channels (SD-042):** Home Assistant's ESPHome
   integration drops a state that did not change unless `force_update` is
-  set, so `last_reported` does not move [3]. Water temperature and level
-  change rarely and would go stale; set `force_update: true` on such
-  ESPHome or MQTT sensors (default off [2]). It makes Home Assistant record
-  every reading, so its database grows.
-  Planned (SD-042): a sign of life per sensor replaces this advice; a
-  sensor is then fresh by its last measurement, stale after 60 s.
+  set, so `last_reported` does not move [3]. A calm water temperature then
+  looks like a silent one. Better than `force_update` (which records every
+  reading in Home Assistant's database) is a sign of life per sensor, see
+  below: the sensor is then fresh by its last measurement.
 - **Map the sensor itself, not a rounding template:** a `round()` template
   sensor only writes when its source changes, so a steady value would go
   stale (assumption from how templates work, not tested here).
@@ -171,6 +169,93 @@ labels follow Home Assistant's developer documentation for apps
   as `| float(0)` turn "unavailable" into 0, which the hub cannot tell from
   a real 0 (RAT-006). Give them an `availability` template instead.
 - **Units:** see below. Without a unit only pH is taken.
+
+## Sign of life (SD-042, SD-047)
+
+Home Assistant does not report a value again while it stays the same, so
+the app cannot tell a calm sensor from a silent one by its reports. A sign
+of life says when each sensor last measured:
+
+- **A sign-of-life text** of the device, sent at least every 15 s:
+  `n=<counter>|<code>=<s>|<code>=<s>|…`, for each channel the age of its
+  last valid measurement in whole seconds, `-` for a channel without one
+  since the device started. Each channel must be measured at least every
+  30 s, or a healthy one would come too close to the 60 s limit. The
+  counter (up to 20 digits) makes every send a new state, so Home
+  Assistant never drops it; the same counter dated again counts as the
+  old send, also after an outage of the text or of Home Assistant. Codes are 1–16 of `a–z`, `0–9` and `_`, at most 64 channels,
+  ages up to 9 999 999 s, the whole text at most 255 characters; anything
+  else is unreadable. Recommended codes, which the app marks as fitting:
+  `ph`, `ec`, `wt` (water temperature), `at` (air temperature), `rh`
+  (humidity), `co2`, `lvl` (level).
+- **Or a timestamp sensor** (device class `timestamp`) that states when a
+  sensor last read, for example a template sensor next to a 1-Wire probe.
+
+Under Devices › Assignment, "Lebenszeichen" (sign of life) next to a
+sensor lists what Home Assistant offers, fetched only while the list is
+open: each text with its channels and their ages now, and the timestamp
+sensors (at most 100 of each). The device's own text comes first and is
+marked "vermutlich gleiches Gerät" (probably the same device: its entity
+ID shares a whole word after `sensor.` with the sensor's, such as
+`sensor.tank_`); another device's is marked as such, as a warning. Pick your
+sensor's channel. Then:
+
+- the age next to the value counts from the last measurement, green up to
+  30 s, yellow from 31 s, red from 60 s;
+- the value is stale when its last measurement is older than 60 s; a text
+  older than 60 s makes all its sensors stale ("the device sends
+  nothing"); a channel shown as `-` for more than 60 s is stale;
+- an unavailable or unreadable sign of life, a missing channel, a time
+  more than 2 s in the future, or a sign of life sent after the sensor's
+  last report that dates the measurement more than 3 s before it (it
+  cannot belong to this sensor) makes the sensor stale; it never falls
+  back to the learned limit;
+- the standstill check and a calibration point count by the last
+  measurement too.
+
+Without a sign of life the learned limit stays (above), and the age says
+"unverändert seit" (unchanged for), since the app sees only the last
+change. The sign of life is stored with the sensor in the hub's
+configuration and in a backup; it is set in the web app, where what Home
+Assistant offers is checked, not in the mapping file.
+
+An example for an ESPHome device, in outline: every measuring sensor
+notes the time of its last valid output (`on_value`, a NaN does not
+count), and a template text sensor publishes the ages every 15 s with a
+counter in front. Keep the text out of Home Assistant's recorder; it says
+nothing worth keeping.
+
+```yaml
+globals:
+  - { id: life_n, type: uint32_t, initial_value: "0" }
+  - { id: wt_at, type: int64_t, initial_value: "0" }   # ms since start of the last valid output, 0 = none yet
+sensor:
+  - platform: dallas_temp
+    name: "Water temperature"
+    update_interval: 15s          # at least every 30 s: ESPHome's default of 60 s leaves no margin
+    on_value:
+      then:
+        - lambda: 'if (!std::isnan(x)) id(wt_at) = esp_timer_get_time() / 1000;'
+text_sensor:
+  - platform: template
+    name: "Sign of life"
+    update_interval: 15s
+    lambda: |-
+      const int64_t now = esp_timer_get_time() / 1000;   // 64 bit: millis() wraps after 49 days
+      auto age = [now](int64_t at) -> std::string {
+        return at == 0 ? "-" : std::to_string((now - at) / 1000);
+      };
+      id(life_n) += 1;
+      return "n=" + std::to_string(id(life_n)) + "|wt=" + age(id(wt_at));
+```
+
+```yaml
+# configuration.yaml of Home Assistant
+recorder:
+  exclude:
+    entities:
+      - sensor.hub_sign_of_life
+```
 
 ## Raw values calibrated in the app
 
@@ -205,13 +290,12 @@ app (SD-038, SD-041):
   probe may still be in a buffer.
 - **On the node:** no calibration there (no `offset`, `multiply` or
   `calibrate_linear` filter), or the app checks the wrong thing;
-  `force_update: true`; no `delta` filter and no rounding coarser than the
+  `force_update: true` or a sign of life (above); no `delta` filter and no rounding coarser than the
   probe's noise (keep at least 0.1 mV, or 4 decimals in V; assumption), a
-  report every 60 s or faster (assumption). A probe that keeps reporting
+  report every 30 s or faster (assumption). A probe that keeps reporting
   one value goes "frozen" after 15 min of its reports (RAT-023); one that
-  stops reporting goes stale. Planned (SD-042):
-  with a sign of life, `force_update` is not needed and both checks count
-  by the last measurement.
+  stops reporting goes stale. With a sign of life, `force_update` is not
+  needed and both checks count by the last measurement (SD-042).
 - **If the unit changes** to anything other than mV or V (the node now
   reports pH), the sensor has no value, and the assignment says so: choose
   "Kein Sensor" (no sensor), then pick it again. The old calibration never
@@ -304,6 +388,16 @@ steer anything. Each point is open unless it says what is built.
     humidity or CO2. Control should accept only sensors whose device class
     confirms the measure, or that pass a check of the hub's own, and check
     the device class again every round.
+12. **Which sign of life belongs to a sensor** (SD-042, SD-047) rests on the
+    user's pick. The app marks a text of another device and catches a
+    channel that dates the measurement before the sensor's own report, but
+    a wrong pick that measures often (another channel, a clock-like
+    timestamp sensor) could keep a dead sensor fresh. Before control reads
+    such a value, the pick must be confirmed, for example that the text
+    and the sensor belong to the same device in Home Assistant's registry.
+    The jump check also needs the held value of a calm sensor kept while
+    its sign of life is fresh (today a value unchanged for 5 min drops out
+    of the jump window).
 
 ## Units
 
@@ -404,10 +498,19 @@ time is no value.
   one serves, the number of other sensors and the connection state
   (`starting`, `ok`, `unreachable`, `refused`), so the web app can tell "no
   sensors" from "Home Assistant not answering"; `?others=1` adds the other
-  sensors. Both need a signed-in session.
+  sensors; `lifeCount` and `lifeNames` count and name the signs of life,
+  `?lives=1` adds `lives` with the texts (channels and ages) and timestamp
+  sensors, and a picked sensor carries its `life`. `POST /api/v1/ha/life` with a role, `source` and `channel` sets
+  a sensor's sign of life (SD-042): only one Home Assistant lists now, a
+  text's channel it has now, a timestamp sensor without one; `source` ""
+  removes it. All need a signed-in session.
 - The picks live in the hub's configuration (devices `ha.<entity>` of
-  class `ha_<measure>`), saved at once after each pick; at start they are
-  handed back to the bus. There is no second file to get out of step.
+  class `ha_<measure>`, a sign of life as `life: {source, channel}`),
+  saved at once after each pick; at start they are handed back to the bus,
+  the signs of life also with every tick, so an import takes effect at
+  once. There is no second file to get out of step. The configuration
+  takes a sign of life only for a class whose sensors report on their own
+  schedule (set in code, R7) and only in the platform's own form.
 - Text from Home Assistant is cut and cleaned before it is shown, without
   control or invisible format characters: a unit in a fault to 32 bytes, a
   sensor's name to 60 in the list (40 as the device's name).

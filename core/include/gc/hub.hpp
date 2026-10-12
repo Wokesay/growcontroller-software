@@ -82,6 +82,8 @@ class Hub {
   Result setSystem(const json& j);
   Result acceptDevice(const std::string& id, const std::string& name);
   Result renameDevice(const std::string& id, const std::string& name);
+  // A sensor's sign of life (SD-042): source "" removes it.
+  Result setDeviceLife(const std::string& id, const std::string& source, const std::string& channel);
   Result removeDevice(const std::string& id);
   Result bindRole(const std::string& role, const std::string& device, int channel);
   Result unbindRole(const std::string& role);
