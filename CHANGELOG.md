@@ -82,6 +82,10 @@ listed in every release under "Security".
   buffer instead of showing a step the hub did not have. The window now
   says when the hub ended the calibration (a restart, a long pause) and
   offers to start again after a refused save.
+- **The web app ships no code of Vite:** Vite added its modulepreload
+  polyfill to the built app, while the third-party notices list Vite as
+  used for building only. The app preloads nothing, so the polyfill is off,
+  and the build now fails if code of Vite shows up in the app again.
 
 ### Security
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
