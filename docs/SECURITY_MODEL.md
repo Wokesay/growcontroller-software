@@ -11,7 +11,9 @@ so are those for SD-041 (raw values calibrated in the app) and SD-042
 Two kinds of safety and security:
 
 - **functional:** no overdose, no overflow, no dry run;
-- **IT security:** no outside access to the pumps.
+- **IT security:** no outside access to the pumps, unless the user
+  chooses an outside level at setup, and then only through defined ways
+  (SD-051).
 
 ## Threats and responses
 
