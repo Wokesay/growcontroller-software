@@ -1645,6 +1645,22 @@ to SD-058 were taken by then.
   come with the implementation (M1); they take their IDs then.
 
 
+## SD-061: A new SD or RAT ID is final only when its PR is merged
+
+Decided by the project owner on 2026-10-12 in the software session, after
+parallel sessions took the same numbers twice in one day (SD-051 in #122
+and #123; SD-055 and SD-056 in #125 and #127).
+
+- Right before merging, the session checks the last SD and RAT ID on
+  `main` and renumbers its PR's new entries, and every reference to them
+  in the PR (docs, code comments, test names), to the next free IDs.
+- A number in a PR's text or title can therefore still change until the
+  merge; the squash commit carries the final one.
+- `CLAUDE.md` names the rule.
+- Not chosen: reserving numbers through issues (public issues for
+  bookkeeping, and a race stays possible); fixing clashes by hand.
+
+
 ---
 
 ## Drafts (waiting for "entschieden")
