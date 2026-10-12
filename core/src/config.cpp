@@ -98,7 +98,11 @@ void to_json(json& j, const Config& c) {
                  {"maxRunS", c.limits.maxRunS},
                  {"maxPartialRuns", c.limits.maxPartialRuns}};
   j["devices"] = json::array();
-  for (const auto& d : c.devices) j["devices"].push_back({{"id", d.id}, {"class", d.cls}, {"name", d.name}});
+  for (const auto& d : c.devices) {
+    json dj = {{"id", d.id}, {"class", d.cls}, {"name", d.name}};
+    if (!d.life.empty()) dj["life"] = {{"source", d.life}, {"channel", d.lifeChannel}};
+    j["devices"].push_back(std::move(dj));
+  }
   j["tanks"] = json::array();
   for (const auto& t : c.tanks) {
     json roles = json::object();
@@ -209,8 +213,14 @@ Config configFromJson(const json& in) {
     double runs = jnum(l, "maxPartialRuns", c.limits.maxPartialRuns);
     c.limits.maxPartialRuns = isNum(runs) && runs >= 0 && runs <= 1000 ? static_cast<int>(runs) : -1;
   }
-  for (const auto& d : j.value("devices", json::array()))
-    c.devices.push_back({jstr(d, "id"), jstr(d, "class"), jstr(d, "name")});
+  for (const auto& d : j.value("devices", json::array())) {
+    DeviceCfg dc{jstr(d, "id"), jstr(d, "class"), jstr(d, "name")};
+    if (d.is_object() && d.contains("life") && d["life"].is_object()) {
+      dc.life = jstr(d["life"], "source");
+      dc.lifeChannel = jstr(d["life"], "channel");
+    }
+    c.devices.push_back(std::move(dc));
+  }
   for (const auto& t : j.value("tanks", json::array())) {
     TankCfg tc;
     tc.id = t.value("id", tc.id);
@@ -352,6 +362,19 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!ok) err("cfg.role.cap", rd->label + ": " + d->name + " liefert das nicht");
     const int channels = dc && dc->channels > 0 ? dc->channels : 1;
     if (b.channel < 0 || b.channel >= channels) err("cfg.role.channel", rd->label + ": " + d->name + " hat keinen Kanal " + std::to_string(b.channel + 1));
+  }
+  // A sign of life only for a sensor on its own schedule, whose class says so
+  // in code, never by catalog data (SD-042, R7); source and channel as the
+  // platform writes them, so nothing else rides along in the configuration.
+  auto lifeChars = [](const std::string& s, bool dot) {
+    return std::all_of(s.begin(), s.end(), [&](char ch) { return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || (dot && ch == '.'); });
+  };
+  for (const auto& d : c.devices) {
+    if (d.life.empty() && d.lifeChannel.empty()) continue;
+    const DeviceClassDef* dc = cat.deviceClass(d.cls);
+    if (!dc || !dc->ownReportSchedule || d.life.empty() || d.life.size() > 255 || !lifeChars(d.life, true) ||
+        d.lifeChannel.size() > 16 || !lifeChars(d.lifeChannel, false))
+      err("cfg.device.life", d.name + ": Lebenszeichen ungültig");
   }
   std::set<std::string> pumps, canIds;
   for (const auto& k : c.canisters) {

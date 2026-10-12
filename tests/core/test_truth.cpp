@@ -3,6 +3,7 @@
 
 #include "fakes.hpp"
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 #include "gc/truth.hpp"
 
 using namespace gc;
@@ -443,4 +444,75 @@ TEST_CASE("Sensor truth: VPD from one reading of the hub and one on its own sche
   bus.set("HA-RH", "measure.humidity", 60.0, clk.ms - 4 * 60 * 1000);  // reported on its last change
   truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
   CHECK(truth.get("zone.vpd").usable());
+}
+
+TEST_CASE("Sensor truth: the age says what it counts from; a sign of life sets the clock and the 60 s limit (SD-042)") {
+  // The hub's own probe: the age of its reading and the catalog's limit, whatever a bus says (R7)
+  {
+    Fix f;
+    f.clk.ms = 600000;
+    gc::Sample own(7.18, f.clk.ms - 5000);
+    own.life = gc::Sample::Life::Ok;
+    own.measuredAt = f.clk.ms;
+    f.bus.samples["PH-1|measure.ph"] = own;
+    const Reading& r = f.run("tank.ph");
+    CHECK(r.ageOf == "reading");
+    CHECK(r.ageMs == 5000);
+    CHECK(f.truth.limit("tank.ph") == 60000);
+  }
+  // A sensor on its own schedule (its class says so in code) with a sign of life
+  auto j = json::parse(gc::embedded::kCatalogJson);
+  j["deviceClasses"]["ext_temp"] = {{"label", "Temperature from elsewhere"}, {"attach", "ha"}, {"provides", {"measure.water_temp"}}};
+  Catalog cat = Catalog::fromJson(j);
+  cat.deviceClasses["ext_temp"].ownReportSchedule = true;
+  Config cfg;
+  RuntimeState rt;
+  test::FakeBus bus;
+  test::Clock clk;
+  clk.ms = 600000;
+  SensorTruth truth{cat};
+  cfg.devices = {{"HA-T", "ext_temp", "Water"}};
+  cfg.tank().roles["tank.water_temp"] = {"HA-T", 0};
+  bus.head("HA-T", true, "ext_temp");
+  auto run = [&]() -> const Reading& {
+    truth.update(cfg, bus, rt, clk.nowMs(), clk.epoch());
+    return truth.get("tank.water_temp");
+  };
+  bus.set("HA-T", "measure.water_temp", 21.5, clk.ms - 300000);  // reported 5 min ago, unchanged since
+  CHECK(run().ageOf == "change");
+  gc::Sample& s = bus.samples["HA-T|measure.water_temp"];
+  s.life = gc::Sample::Life::Ok;
+  s.measuredAt = clk.ms - 10000;  // but measured 10 s ago
+  const Reading& r = run();
+  CHECK(r.ageOf == "measurement");
+  CHECK(r.ageMs == 10000);
+  CHECK(r.quality == Quality::Ok);
+  CHECK(truth.limit("tank.water_temp") == kLifeLimit);
+  s.measuredAt = clk.ms - 60000;
+  CHECK(run().quality == Quality::Ok);  // 60 s is still valid
+  s.measuredAt = clk.ms - 61000;
+  CHECK(run().reason.key == "truth.life_stale");
+  // A fault of the sign of life is stale with its reason, never a value
+  s.life = gc::Sample::Life::Fault;
+  s.lifeFault = say("truth.life_unreadable");
+  CHECK(run().quality == Quality::Stale);
+  CHECK(run().reason.key == "truth.life_unreadable");
+  CHECK_FALSE(run().usable());
+  // Waiting: no value for 60 s, then stale
+  s.life = gc::Sample::Life::Waiting;
+  s.measuredAt = clk.ms - 30000;
+  CHECK(run().quality == Quality::NoData);
+  CHECK_FALSE(run().value.has_value());
+  s.measuredAt = clk.ms - 61000;
+  CHECK(run().reason.key == "truth.life_never");
+  // A sign-of-life text older than 60 s outweighs everything else
+  s.life = gc::Sample::Life::Ok;
+  s.measuredAt = clk.ms - 1000;
+  s.lifeText = true;
+  s.lifeAt = clk.ms - 61000;
+  CHECK(run().reason.key == "truth.life_silent");
+  // Without it again, the learned limit applies and the age counts from the change
+  bus.set("HA-T", "measure.water_temp", 21.5, clk.ms - 300000);
+  CHECK(run().ageOf == "change");
+  CHECK(truth.limit("tank.water_temp") == 10 * kMinute);
 }

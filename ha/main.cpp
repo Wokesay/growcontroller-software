@@ -195,6 +195,10 @@ int main(int argc, char** argv) {
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
   ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
+  // A sign of life holds 60 s (SD-042): reading more seldom than every 10 s
+  // would leave a healthy sensor read every 30 s too little margin
+  if (everyS > 10)
+    std::cerr << "--every " << everyS << ": a sensor with a sign of life may show as outdated; read every 10 s or more often\n";
   gc::Api api(hub, clock);
   ha::Poller poller(bus, mapping.url, token, [&clock] { return clock.nowMs(); });
 
@@ -283,6 +287,14 @@ int main(int argc, char** argv) {
     if (r.status == 200) r.body = {{"ok", true}};
     reply(res, r);
   });
+  svr.Post("/api/v1/ha/life", [&](const httplib::Request& req, httplib::Response& res) {
+    const gc::ApiRequest areq = toApi(req);
+    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));
+    std::lock_guard<std::mutex> one(assigning);
+    gc::Result r = ha::lifeRoute(api, hub, bus, areq);
+    if (r.status == 200) r.body = {{"ok", true}};
+    reply(res, r);
+  });
   svr.Get(R"(/api/v1/.*)", apiHandler);
   svr.Post(R"(/api/v1/.*)", apiHandler);
   svr.Put(R"(/api/v1/.*)", apiHandler);
@@ -307,6 +319,7 @@ int main(int argc, char** argv) {
     while (g_running) {
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       std::lock_guard<std::recursive_mutex> l(hub.mutex());
+      ha::syncLife(hub, bus);  // an import may have changed a sign of life (SD-042)
       hub.tick();
     }
     svr.stop();

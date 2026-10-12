@@ -110,20 +110,48 @@ void adoptFromConfig(gc::Hub& hub, HaBus& bus) {
     const bool signal = measures.size() > kSignalSuffix.size() &&
                         measures.compare(measures.size() - kSignalSuffix.size(), kSignalSuffix.size(), kSignalSuffix) == 0;
     if (signal) measures.resize(measures.size() - kSignalSuffix.size());
-    const Entity picked{entity, measures, signal};
+    const Entity picked{entity, measures, signal, d.life, d.lifeChannel};
     // Only a class the catalog has: a configuration cannot invent a signal (ha_ec_raw does not exist yet)
     if (!validEntityId(entity) || !knownMeasure(measures) || deviceClassOf(picked) != d.cls || !hub.catalog().deviceClass(d.cls)) continue;
     // The configuration wins over the mapping file: a sensor picked for
     // another measure than the file says, or as a signal or not, is read as it is bound.
     if (const auto listed = bus.selected(entity); listed && deviceClassOf(*listed) != d.cls) bus.deselect(entity);
     bus.adopt(picked);
+    bus.setLife(entity, d.life, d.lifeChannel);  // also over one the mapping file lists
   }
+}
+
+void syncLife(gc::Hub& hub, HaBus& bus) {
+  for (const auto& d : hub.config().devices)
+    if (const std::string entity = entityOf(d.id); !entity.empty()) bus.setLife(entity, d.life, d.lifeChannel);
+}
+
+gc::Result setLife(gc::Hub& hub, HaBus& bus, const std::string& role, const std::string& source, const std::string& channel) {
+  std::lock_guard<std::recursive_mutex> l(hub.mutex());
+  const gc::Binding* b = hub.config().binding(role);
+  const std::string entity = b ? entityOf(b->device) : "";
+  if (measureOfRole(hub.catalog(), role).empty() || entity.empty()) return gc::Result::fail(422, gc::say("ha.life_role"));
+  if (!source.empty()) {
+    // Only what Home Assistant lists as a sign of life now, and a channel the text has
+    // What comes back in a message is only what has the form of an ID, never the raw input
+    const auto c = validEntityId(source) && source != entity ? bus.lifeCandidate(source) : std::nullopt;
+    if (!c) return gc::Result::fail(422, gc::say("ha.life_unknown", {{"entity", validEntityId(source) ? source : "?"}}));
+    const bool hasChannel = std::any_of(c->channels.begin(), c->channels.end(), [&](const auto& ch) { return ch.first == channel; });
+    if (c->timestamp ? !channel.empty() : !hasChannel)
+      return gc::Result::fail(422, gc::say("ha.life_channel", {{"entity", source}, {"channel", validLifeChannel(channel) ? channel : "?"}}));
+  }
+  if (auto r = hub.setDeviceLife(b->device, source, channel); r.status != 200) return r;
+  bus.setLife(entity, source, channel);
+  return gc::Result::ok();
 }
 
 gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest& req) {
   if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
-  auto others = req.query.find("others");
-  return gc::Result::ok(bus.candidatesJson(others != req.query.end() && others->second == "1"));
+  auto asked = [&](const char* key) {
+    auto it = req.query.find(key);
+    return it != req.query.end() && it->second == "1";
+  };
+  return gc::Result::ok(bus.candidatesJson(asked("others"), asked("lives")));
 }
 
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,
@@ -134,6 +162,16 @@ gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequ
   if (!body.is_object() || !body.contains("entity") || !body["entity"].is_string())
     return gc::Result::fail(400, "api.bad_input", "Eingabe hat das falsche Format");
   return assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"), letHubSee);
+}
+
+gc::Result lifeRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req) {
+  if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  const auto body = gc::json::parse(req.body, nullptr, false);
+  // "source" must be given ("" removes it), so a request that forgot it removes nothing
+  if (!body.is_object() || !body.contains("source") || !body["source"].is_string() ||
+      (body.contains("channel") && !body["channel"].is_string()))
+    return gc::Result::fail(400, "api.bad_input", "Eingabe hat das falsche Format");
+  return setLife(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "source"), gc::jstr(body, "channel"));
 }
 
 }  // namespace ha

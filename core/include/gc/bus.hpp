@@ -39,6 +39,22 @@ struct DeviceReport {
 struct Sample {
   double raw = kNaN;
   Ms ts = 0;
+  // A sign of life (SD-042), for a sensor whose reports do not show each
+  // measurement (Home Assistant drops a state equal to the previous one).
+  // Ok: measuredAt is its last measurement on the hub's clock. Waiting: the
+  // device has measured nothing on this channel since it started;
+  // measuredAt is since when the hub sees it so. Fault: assigned but not
+  // usable, lifeFault says why. lifeText: the sign of life is a text, and
+  // lifeAt is when it was last sent (a timestamp sensor has none). None: no
+  // sign of life is assigned.
+  enum class Life { None, Ok, Waiting, Fault };
+  Life life = Life::None;
+  Ms measuredAt = 0;
+  bool lifeText = false;
+  Ms lifeAt = 0;
+  Msg lifeFault;
+  Sample() = default;
+  Sample(double raw_, Ms ts_) : raw(raw_), ts(ts_) {}
 };
 
 struct RunStatus {

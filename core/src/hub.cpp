@@ -723,7 +723,8 @@ json Hub::state() {
   json readings = json::object();
   for (const auto& [role, r] : truth_.all())
     readings[role] = {{"value", numOrNull(r.value)}, {"quality", qualityName(r.quality)}, {"reason", r.reason},
-                      {"ageS", r.ageMs >= 0 ? json(r.ageMs / 1000) : json(nullptr)}, {"unit", r.unit},
+                      {"ageS", r.ageMs >= 0 ? json(r.ageMs / 1000) : json(nullptr)},
+                      {"ageMs", r.ageMs >= 0 ? json(r.ageMs) : json(nullptr)}, {"ageOf", r.ageOf}, {"unit", r.unit},
                       {"decimals", r.decimals}, {"usable", r.usable()}};
   j["readings"] = readings;
   const auto& lvl = truth_.get("tank.level");
@@ -957,6 +958,23 @@ Result Hub::renameDevice(const std::string& id, const std::string& name) {
       return Result::ok();
     }
   return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+}
+
+Result Hub::setDeviceLife(const std::string& id, const std::string& source, const std::string& channel) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  Config next = cfg_;
+  auto d = std::find_if(next.devices.begin(), next.devices.end(), [&](const DeviceCfg& x) { return x.id == id; });
+  if (d == next.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  const std::string ch = source.empty() ? std::string() : channel;
+  if (d->life == source && d->lifeChannel == ch) return Result::ok();
+  d->life = source;
+  d->lifeChannel = ch;
+  auto errs = validateConfig(next, cat_);
+  if (!errs.empty()) return errors(errs);
+  const std::string name = d->name;
+  cfg_ = std::move(next);
+  saveConfig(source.empty() ? say("ev.cfg.device_life_off", {{"name", name}}) : say("ev.cfg.device_life", {{"name", name}}));
+  return Result::ok();
 }
 
 Result Hub::removeDevice(const std::string& id) {
@@ -1791,10 +1809,24 @@ void Hub::tendProbeSessions(Ms now) {
     }
     const Ms since = pending["since"].get<Ms>();
     auto s = bus_.sample(dev, cap);
+    // With a sign of life, a measurement after the request counts, as Home
+    // Assistant drops an unchanged report; the point fails once the sensor
+    // turns stale (SD-042)
+    const DeviceCfg* dcfg = cfg_.device(dev);
+    const DeviceClassDef* dclass = dcfg ? cat_.deviceClass(dcfg->cls) : nullptr;
+    const bool life = s && s->life != Sample::Life::None && dclass && dclass->ownReportSchedule;  // as sensor truth (R7)
+    if (life && (s->life == Sample::Life::Fault || (s->lifeText && now - s->lifeAt > kLifeLimit))) {
+      fail();
+      ++it;
+      continue;
+    }
+    const Ms taken = !s ? 0 : life ? (s->life == Sample::Life::Ok ? s->measuredAt : 0) : s->ts;
     // A report from before the request may still be from the tank, not the
     // buffer (RAT-006); its time can be dated up to a second late, so it must
     // be clearly later (as SD-035 takes reports under 2 s apart as one)
-    if (s && isNum(s->raw) && s->ts > since + kSameReportMs) {
+    // A measurement's time is dated to a second twice (Home Assistant's Date header, the age in
+    // whole seconds): it must be 3 s later
+    if (s && isNum(s->raw) && taken > since + (life ? 3 * kSecond : kSameReportMs)) {
       addProbePoint(sess, s->raw, pending["reference"].get<double>());
       sess.erase("pending");
       sess["at"] = now;

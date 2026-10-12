@@ -187,6 +187,7 @@ Ms SensorTruth::limit(const std::string& role) const {
   const CapabilityDef* cap = rd ? cat_.capability(rd->capability) : nullptr;
   if (!cap) return 0;
   auto it = tracks_.find(role);
+  if (it != tracks_.end() && it->second.life) return kLifeLimit;
   return freshLimit(*cap, it != tracks_.end() && it->second.ownSchedule ? &it->second : nullptr);
 }
 
@@ -207,6 +208,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     r.decimals = cap->decimals;
     auto& tr = tracks_[roleId];
     tr.ownSchedule = false;  // set from the bound device below
+    tr.life = false;
     auto setQ = [&](Quality q, const std::string& key, const std::string& text, json args = json::object()) {
       r.quality = q;
       r.reason = {key, text, std::move(args)};
@@ -244,22 +246,58 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       readings_[roleId] = r;
       continue;
     }
+    // A sign of life (SD-042): the sensor is fresh by its last measurement.
+    // Whatever keeps it from saying when that was makes the sensor stale,
+    // never the looser learned limit; an old value Home Assistant still holds
+    // after the device restarted is no value.
+    // Only for a sensor on its own schedule, whose class says so in code (R7):
+    // no bus can swap the clock or the limit of the hub's own probes
+    const bool life = s && s->life != Sample::Life::None && tr.ownSchedule;
+    tr.life = life;
+    if (life) {
+      auto lifeStale = [&](Msg why) {
+        r.quality = Quality::Stale;
+        r.reason = std::move(why);
+        readings_[roleId] = r;
+      };
+      if (s->lifeText && now - s->lifeAt > kLifeLimit) {  // the device sends nothing at all: one cause for all its sensors
+        lifeStale(say("truth.life_silent", {{"ageS", (now - s->lifeAt + kSecond - 1) / kSecond}}));
+        continue;
+      }
+      if (s->life == Sample::Life::Fault) {
+        lifeStale(s->lifeFault);
+        continue;
+      }
+      if (s->life == Sample::Life::Waiting) {
+        if (now - s->measuredAt > kLifeLimit) {
+          lifeStale(say("truth.life_never"));
+        } else {
+          r.quality = Quality::NoData;
+          r.reason = say("truth.life_waiting");
+          readings_[roleId] = r;
+        }
+        continue;
+      }
+    }
     if (!s || !isNum(s->raw)) {
       setQ(Quality::NoData, "truth.no_data", "Noch kein Messwert");
       readings_[roleId] = r;
       continue;
     }
-    r.ts = s->ts;
-    r.ageMs = now - s->ts;
+    r.ts = life ? s->measuredAt : s->ts;
+    r.ageMs = life ? std::max<Ms>(0, now - r.ts) : now - r.ts;  // the poller's clock may read a few ms ahead of the tick's
+    r.ageOf = life ? "measurement" : tr.ownSchedule ? "change" : "reading";
 
-    // A sensor on its own schedule: learn the gaps between its reports (SD-035)
+    // A sensor on its own schedule: learn the gaps between its reports
+    // (SD-035); one with a sign of life learns nothing (SD-042)
     const bool ownSchedule = tr.ownSchedule;
-    if (!ownSchedule || tr.device != b->device) {  // another sensor for the role starts over
-      tr.device = ownSchedule ? b->device : std::string();
+    const bool learns = ownSchedule && !life;
+    if (!learns || tr.device != b->device) {  // another sensor for the role, or a sign of life added or removed, starts over
+      tr.device = learns ? b->device : std::string();
       tr.reported = false;
       tr.gaps.clear();
     }
-    if (ownSchedule) {
+    if (learns) {
       if (!tr.reported) {
         tr.reported = true;
         tr.lastReport = s->ts;
@@ -271,13 +309,21 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         tr.lastReport = s->ts;
       }
     }
-    const Ms limit = freshLimit(*cap, ownSchedule ? &tr : nullptr);
+    const Ms limit = life ? kLifeLimit : freshLimit(*cap, learns ? &tr : nullptr);
 
     // Stillstand des Rohwerts getrennt von der Frische prüfen (RAT-023). A
     // sensor on its own schedule counts by its reports: one that reports
     // every 20 min is not frozen between two of them; one that keeps
-    // reporting the same raw value is (SD-041).
-    const Ms rawClock = ownSchedule ? s->ts : now;
+    // reporting the same raw value is (SD-041). With a sign of life it
+    // counts by its measurements, as Home Assistant drops the unchanged
+    // reports of a stuck signal (SD-042).
+    const Ms rawClock = life ? s->measuredAt : ownSchedule ? s->ts : now;
+    // Only a sign of life switched on or off changes that clock and starts it
+    // over; a round offline or without a value in between does not
+    if (life != tr.rawLife) {
+      tr.rawLife = life;
+      tr.lastRaw = kNaN;
+    }
     if (s->raw != tr.lastRaw) {
       tr.lastRaw = s->raw;
       tr.lastRawChange = rawClock;
@@ -298,7 +344,10 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     // stay the same, so it gets no standstill check and freshness covers
     // silence (RAT-059).
     const std::optional<double> assessed = calibratedElsewhere ? std::optional<double>(s->raw) : value;
-    if (r.ageMs > limit) {
+    if (life && r.ageMs > limit) {
+      r.quality = Quality::Stale;
+      r.reason = say("truth.life_stale", {{"ageS", (r.ageMs + kSecond - 1) / kSecond}, {"limitS", limit / kSecond}});
+    } else if (r.ageMs > limit) {
       setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
            {{"ageS", r.ageMs / 1000}, {"limitS", limit / 1000}});
     } else if (!assessed) {

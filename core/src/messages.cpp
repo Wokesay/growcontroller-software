@@ -120,6 +120,16 @@ constexpr Entry kMessages[] = {
 
     // Sensor truth (truth.cpp)
     {"truth.class_mismatch", "The device reports another type than set up – assign it again"},
+    // Sign of life (SD-042): the age counts from the last measurement
+    {"truth.life_stale", "Last measurement {ageS} s ago – no measurement for longer than {limitS} s"},
+    {"truth.life_silent", "The device's sign of life is {ageS} s old – the device sends nothing"},
+    {"truth.life_waiting", "No measurement on this channel since the device started"},
+    {"truth.life_never", "No measurement on this channel for over a minute since the device started"},
+    {"truth.life_unavailable", "Sign of life not available – the age of the value is unknown"},
+    {"truth.life_unreadable", "Sign of life cannot be read – the age of the value is unknown"},
+    {"truth.life_no_channel", "The sign of life has no channel {channel}"},
+    {"truth.life_future", "The sign of life lies in the future – check the clocks"},
+    {"truth.life_mismatch", "The sign of life does not fit the sensor's last report: its channel last measured before it. Right after a reconnect this passes with the next measurement; if it stays, check the channel"},
     // Monitoring: headline, labels and assessments (watchdog.cpp, hub.cpp)
     {"watch.headline.problem", "1 problem"},
     {"watch.headline.problems", "{n} problems"},
@@ -144,6 +154,9 @@ constexpr Entry kMessages[] = {
     {"ha.mismatch", "This sensor measures something else."},
     {"ha.used", "This sensor is already used for another reading."},
     {"ha.timeout", "The hub didn't see the sensor in time. Try again."},
+    {"ha.life_role", "This reading has no sensor from Home Assistant to give a sign of life to."},
+    {"ha.life_unknown", "Home Assistant doesn't offer {entity} as a sign of life right now."},
+    {"ha.life_channel", "The sign of life {entity} has no channel \"{channel}\"."},
     {"watch.reading.failed", "No valid reading: {reason}"},
     {"watch.band.ph.label", "pH limits"},
     {"watch.band.ec.label", "EC limits"},
@@ -245,6 +258,8 @@ constexpr Entry kMessages[] = {
     {"ev.cfg.device_added", "Device added: {name}"},
     {"ev.cfg.device_renamed", "Device renamed: {name}"},
     {"ev.cfg.device_removed", "Device removed: {name}"},
+    {"ev.cfg.device_life", "Sign of life set: {name}"},
+    {"ev.cfg.device_life_off", "Sign of life removed: {name}"},
     {"ev.cfg.role", "Assignment saved: {label}"},
     {"ev.cfg.role_removed", "Assignment removed: {role}"},
     {"ev.cfg.tank", "Tank saved: {name}"},

@@ -23,7 +23,12 @@ the sensors from it and shows them with growcontroller's checks.
 - A sensor that reports only when its value changes shows as outdated
   once its value stays the same longer than that. Then let it report at
   least every 10 min (ESPHome or MQTT: `force_update: true`). Reports that
-  keep the same value count only from Home Assistant 2024.4 on.
+  keep the same value count only from Home Assistant 2024.4 on. Better: a
+  sign of life (Devices › Assignment, "Lebenszeichen"), which tells the
+  app when the sensor last measured; then a value is outdated 60 s after
+  its last measurement. An ESPHome example is in the section "Sign of
+  life" of
+  <https://github.com/Wokesay/growcontroller-software/blob/main/docs/HOME_ASSISTANT.md>.
 - A sensor that Home Assistant marks as unavailable shows as **Not
   responding** at once.
 - pH, EC and level were calibrated in Home Assistant, which growcontroller
