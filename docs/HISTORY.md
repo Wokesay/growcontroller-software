@@ -52,7 +52,8 @@ a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
   given to the hub, which writes it again. Without a data folder (or one
   that cannot be created) everything stays in memory.
 
-Not for the device yet: its 2 MB storage partition cannot hold the
+Not for the device yet: its storage partition (2 MB on the N32R16V, 1 MB
+on the N8R8) cannot hold the
 snapshot of several series; there the ring buffer below is the plan.
 
 **On the hub** (proposal by `software`, not implemented yet):
@@ -61,8 +62,12 @@ snapshot of several series; there the ring buffer below is the plan.
   to erased sectors; erase only on wrap-around.
 - Values as scaled int16 plus a 4-byte timestamp. For about 12 channels
   this comes to about 4.7 MB, event log included.
-- Partitions on 16 MB: 2 × 3 MB app (A/B), 1 MB LittleFS for the
-  configuration, about 9 MB history.
+- Partitions (`firmware/boards/`, SD-043): on the N32R16V (32 MB flash)
+  2 × 4 MB app (A/B), 2 MB for the configuration and 21.9 MB history,
+  about 4 years for 12 channels; on the N8R8 (8 MB) 2 × 2.5 MB app, 1 MB
+  configuration and 1.9 MB history, about 5 months for 12 channels. The
+  history is read with `esp_partition_read`, not mapped: flash code and
+  PSRAM share the 32 MB address space of the cache.
 - Wear is not critical: NOR flash lasts about 100,000 cycles; L0 lasts
   over 250 years by calculation.
 

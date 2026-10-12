@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ESP32-S3-DevKitC-1-N32R16V, 32 MB flash. The apps start at 0x20000, history ends at 32 MB.
+# NVS gets 64 KB for the encrypted secrets to come (SD-024): OTA cannot change this table.
+# Name,   Type, SubType, Offset, Size
+nvs,      data, nvs,     ,       64K
+otadata,  data, ota,     ,       0x2000
+phy_init, data, phy,     ,       0x1000
+ota_0,    app,  ota_0,   ,       4M
+ota_1,    app,  ota_1,   ,       4M
+storage,  data, spiffs,  ,       2M
+history,  data, 0x40,    ,       22400K
