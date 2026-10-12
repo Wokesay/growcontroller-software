@@ -8,6 +8,18 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Firmware for two boards** (SD-043, M1): the firmware is built for
+  the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
+  N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
+  history. Each board has its own profile and partition table in
+  `firmware/boards/`. CI builds both. Per board it keeps the images to
+  flash, `flash_args` for esptool, a manifest for flashing from the
+  browser with ESP Web Tools, and their SHA-256 checksums. Each image goes
+  to its own offset: flashing the same board with an unchanged partition
+  table keeps NVS and the data partitions, unless you choose to erase.
+  NVS gets 64 KB for the encrypted secrets to come. The architecture
+  check now also rejects eFuse-burning options in a board profile. The
+  firmware is still a skeleton and has not run on a board yet.
 - **Home Assistant: a sign of life per sensor** (SD-042, SD-047): Home Assistant
   does not report a value again while it stays the same, so a calm water
   temperature looked "1 min" old. Under Devices › Assignment,

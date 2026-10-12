@@ -32,19 +32,37 @@ image you build runs.
 
 ## Build
 
+First find out which board you have; it is printed on the board and on
+the module:
+
+| Board | `GC_BOARD` |
+|---|---|
+| ESP32-S3-DevKitC-1-N32R16V (32 MB flash, the main board) | `n32r16v` |
+| ESP32-S3-DevKitC-1-N8R8 (8 MB flash, the fallback) | `n8r8` |
+
 From the repository root:
 
 ```bash
 (cd web && npm ci --ignore-scripts && npm run build)
 node tools/embed_web.mjs
 cd firmware
-idf.py set-target esp32s3
-idf.py build
+idf.py -B build-n32r16v -D GC_BOARD=n32r16v -D IDF_TARGET=esp32s3 build
 ```
 
-The image is `firmware/build/growcontroller_hub.bin`; bootloader and
-partition table are next to it (`build/bootloader/`,
-`build/partition_table/`).
+For the N8R8 write `n8r8` instead of `n32r16v`, here and below. The image
+is `firmware/build-n32r16v/growcontroller_hub.bin`; bootloader and
+partition table are next to it (`bootloader/`, `partition_table/`). Never
+flash an image built for one board onto the other: it may start, format
+the storage partition and so lose configuration and password for good;
+flashing the right image afterwards does not bring them back.
+
+For development you can take the CI artifact `firmware-<board>` of a run
+on `main` instead of building: the same images, `flash_args` and their
+SHA-256 checksums (`SHA256SUMS`). Runs for a pull request build code that
+nobody has reviewed yet; do not flash those. The checksums only show that
+the download is complete; they are no signature and do not say who built
+it. Flashing from the browser (ESP Web Tools) comes with the first signed
+release.
 
 ## Flash
 
@@ -54,20 +72,30 @@ partition table are next to it (`build/bootloader/`,
 2. Flash and watch the log:
 
    ```bash
-   idf.py -p /dev/ttyACM0 flash monitor     # Windows: -p COM5, macOS: -p /dev/cu.usbmodem*
+   idf.py -B build-n32r16v -p /dev/ttyACM0 flash monitor     # Windows: -p COM5, macOS: -p /dev/cu.usbmodem*
    ```
 
    Without the ESP-IDF tooling, esptool works with the offsets ESP-IDF
-   wrote to `build/flash_args`:
+   wrote to `flash_args`:
 
    ```bash
-   cd firmware/build
+   cd firmware/build-n32r16v
+   python -m esptool --chip esp32s3 -b 460800 write_flash @flash_args
+   ```
+
+   From a CI artifact, check the checksums first, then flash the same
+   way in its folder:
+
+   ```bash
+   sha256sum -c SHA256SUMS
    python -m esptool --chip esp32s3 -b 460800 write_flash @flash_args
    ```
 
 3. Configuration, password, calibration values and history stay on the
-   `storage` and `history` partitions as long as you flash only app,
-   bootloader and partition table with an unchanged `partitions.csv`. On a
+   `storage` and `history` partitions as long as you flash only
+   bootloader, partition table, OTA data and app, onto the same board,
+   with an unchanged partition table (`firmware/boards/<board>.csv`). The
+   OTA data makes the hub start the app you flashed. On a
    new or erased hub, setup starts as usual (first password in the web
    app).
 

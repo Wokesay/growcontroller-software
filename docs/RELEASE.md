@@ -168,7 +168,8 @@ entry under `[Unreleased]`.
   (PD-022). Decided for the first devices (PD-043, SD-021): signature
   check in the firmware, no eFuses burned except the HMAC key for
   encrypted NVS (PD-047, SD-024), downgrade protection in software.
-  `tools/arch_check.sh` rejects the sdkconfig options that would burn
+  `tools/arch_check.sh` rejects the sdkconfig options, also in the board
+  profiles, that would burn
   eFuses for Secure Boot, flash encryption, a disabled download mode or
   anti-rollback.
 - **Web UI in the app image:** An update is atomic; a rollback takes the
