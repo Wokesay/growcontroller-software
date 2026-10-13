@@ -1573,6 +1573,8 @@ time, and SD-055 to SD-058 were taken by then.
 - Open for the design (M3, M6): the explicit lists; a shorter session from
   outside; IPv6 prefixes; what `/info` shows from outside; the downgrade
   check of M2 also refuses firmware without this gate.
+- Extended by SD-062: the way of M6 is a relay; at "View from outside" a
+  message can be acknowledged, which only pauses its repetition.
 
 
 ## SD-060: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors after three missed reports
@@ -1659,6 +1661,169 @@ and #123; SD-055 and SD-056 in #125 and #127).
 - `CLAUDE.md` names the rule.
 - Not chosen: reserving numbers through issues (public issues for
   bookkeeping, and a race stays possible); fixing clashes by hand.
+
+
+## SD-062: The way from outside is a relay the project runs; no port forwarding
+
+Decided by the project owner on 2026-10-13 in the software session, one
+question at a time; the rules for building it come from the reviews of
+`security`, `domain`, `reviewer` and `qa`. It fills "the way of M6" that
+SD-059 leaves open and extends SD-059 by one write at "View from
+outside". The way and the levels are questions the software solves, as
+in SD-059. That the project runs the relay, what it costs and whether a
+store app comes touch PD-013 and PD-024: the project owner takes these
+to the product session, which decides and records them (SD-029); until
+then they are the software's working basis.
+
+- **For every user, off by default:** reaching the ESP's web app from
+  outside needs no network knowledge. At setup, or later in the settings,
+  the user picks the level (SD-059); the ESP then shows a QR code with
+  its own address, the phone opens it, the user adds it to the home
+  screen and signs in with the ESP's password. Whether a password alone
+  is enough from the internet stays open (SD-059). Changing the level
+  later follows SD-059. "Off" means no tunnel, no registration with the
+  relay and no certificate: every certificate appears in the public
+  Certificate Transparency logs, so an ESP's name exists only once its
+  user switches access from outside on.
+- **The way is a relay:** the ESP opens an outbound, encrypted connection
+  over its Wi-Fi to a relay. No port is opened on the router, so it works
+  without router settings and behind a shared public address (CGNAT,
+  DS-Lite). The relay is built not to read the traffic: TLS ends on the ESP,
+  with a key made on the ESP that never leaves it and a certificate for
+  the ESP's own name, and the web app always comes from the ESP, never
+  from the relay. For the design:
+  - each name is bound to the ESP's key (for example derived from it),
+    and the ESP proves the key when it opens its tunnel; the relay routes
+    a name only to the tunnel that holds its key, the certificate's
+    check of the name included;
+  - every request that comes through the tunnel counts as from outside
+    (SD-059), whatever the relay's own address, and the relay never
+    connects to the ESP's local port;
+  - every ESP is a site of its own to the browser, because anyone can
+    flash their own firmware (PD-022) and get a name under the same
+    domain: the relay's domain belongs in the Public Suffix List, the
+    ESP's `Host` check accepts only its own name there, and its session
+    cookie is `Secure` with the `__Host-` prefix;
+  - nothing that protects the plant depends on the relay; after an outage
+    ESPs reconnect with backoff and jitter; the relay limits connections
+    per name and the ESP limits its parallel TLS sessions, so load from
+    outside does not disturb control (RLM);
+  - the relay's address is set only from the home network, is logged and
+    is never changed by an import; a factory reset makes a new key and
+    deregisters the old name;
+  - residual risk, named in the docs: whoever controls the relay's domain
+    or its DNS could obtain a certificate for an ESP's name and read or
+    change its traffic, the password included; Certificate Transparency
+    shows this but does not prevent it. Names are public in those logs,
+    so security never rests on a name staying secret.
+- **No port forwarding:** a direct way from the internet (a port forward,
+  UPnP, an open IPv6 address) is not offered, and the docs advise
+  against it. SD-059 already refuses such requests at every level.
+- **Who runs it:** the project runs a relay for all users. Its software
+  is open source, so anyone can run their own on a server reachable from
+  the internet and set its address on the ESP. The relay stores no
+  values; it keeps the registry of names and sees the connections'
+  addresses, times and amounts of data. No account per user (PD-013);
+  how an ESP registers is part of the design.
+- **Cost:** free for the user, carried by the device price; PD-024 (no
+  subscription) stays. How long it stays free, and a fair-use limit
+  against abuse, are open for the product session.
+- **"View from outside"** (extends SD-059) covers values, states, history,
+  the watchdog's assessment and messages; "Stop"; and acknowledging a
+  message, which only pauses its repetition (RAT-022) and changes no
+  lock, no output and nothing the gateway or a controller may do. At
+  every level only in the home network: acknowledging a latch (SD-059,
+  RAT-031) and confirming a pH zero point (SD-060). "View and control"
+  stays the user's choice; `domain` sets its explicit list (SD-059).
+- **A store app is decided later,** once the relay and the web app exist
+  and the effort and fees are known (estimate below). Until then the web
+  app is used from the home screen; with the ESP's own certificate it
+  can be installed as an app, and Web Push through the browser makers'
+  push services becomes possible (Android; iPhone from iOS 16.4, from the
+  home screen); whether it is used is decided with M5. ntfy and e-mail
+  stay for everyone (M5, PD-024).
+- **Needed besides M2's local HTTPS:** the ESP's own key and certificate
+  through the relay; a device cookie instead of the address to tell
+  devices apart, because behind the relay every visitor comes through
+  the same tunnel (SD-051); the ESP never uses a visitor's address that
+  the relay passes on.
+- **Traffic, measured** on 2026-10-13 in the simulator (demo scenario,
+  `--prefill 48`, speed 1, no job running; 1 KB = 1,000 bytes): the live
+  view's stream (`/api/v1/events/stream`, the whole state once a second)
+  carried 182,673 bytes in 10 s, about 18 KB/s or 65 MB per hour with
+  the app open; compressed as one gzip stream across its frames, 6,663
+  bytes, about 0.7 KB/s. For the relay the ESP sends the stream
+  compressed or as changes only, about 25 times less; a value that goes
+  missing is sent as `null`, never left at its old value (R5, RAT-006).
+- **Estimate, 2026-10-13** (assumed: every user with access from outside
+  has the app open 15 min a day; two servers each in Europe, the US and
+  Asia; 10 to 50 KB of memory per idle connection):
+  - Traffic: about 0.5 GB per user and month with today's stream, about
+    0.02 GB compressed.
+  - Servers: six small cloud servers, assumed to carry 100,000 ESPs, cost
+    about €120 to €300 a month at Hetzner's prices after June 2026, with
+    most traffic included (per server 20 TB in the EU, 1 TB in the US,
+    0.5 TB in Singapore; beyond that €1 per TB, in Singapore €7.40). The
+    same traffic on AWS (about $0.09 per GB) would cost about $4,000 a
+    month at 100,000 users with today's stream.
+  - Per user and month, servers only: about €0.12 to €0.30 at 1,000
+    users, €0.012 to €0.03 at 10,000, €0.001 to €0.003 at 100,000.
+    Running the relay (updates, monitoring, incidents, abuse, privacy)
+    costs more than the servers.
+  - Certificates: Let's Encrypt issues 50 new certificates per registered
+    domain and week; renewals through ARI are exempt. More needs an
+    override (a few weeks) or the Public Suffix List entry, which the
+    design needs anyway (above); the list refuses entries whose only
+    purpose is to avoid rate limits and is hard to join for a small
+    project.
+  - A store app: Apple $99 a year, Google $25 once; a Mac for the build;
+    for an organisation a D-U-N-S number; in the EU the trader's address,
+    phone and e-mail are shown; a new personal Google account first
+    needs a closed test with 12 testers for 14 days. Assumed 3 to 6
+    person-weeks at first, then 1 to 3 a year (yearly SDK and target-API
+    rules, review rounds); Apple may refuse an app that is only a
+    repackaged website. Push through Apple and Google needs a server with
+    their keys; whether the relay is that server is open, as it is more
+    than forwarding bytes. To weigh then: a store app could pin the ESP's
+    key from the QR code, the only measure against the residual risk
+    above.
+  - Web Push needs no store and no developer account; the ESP can send it
+    itself. That an ESP is offline only something outside the home can
+    tell; whether the relay reports it is open, for the same reason.
+  - Sources, retrieved 2026-10-13:
+    https://developer.apple.com/programs/enroll/ ;
+    https://developer.apple.com/distribute/app-review/ ;
+    https://github.com/letsencrypt/website/blob/main/content/en/docs/rate-limits.md ;
+    https://github.com/publicsuffix/list/wiki/Guidelines ;
+    https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
+    (search summary). Not checked against a primary source: Google
+    Play's fee and test rule
+    (https://support.google.com/googleplay/android-developer/answer/14151465)
+    and AWS's price for outbound traffic.
+- Open for `regulatorik` in the product repository: whether a relay run
+  by the project falls under the CRA as part of the product; EN 18031-1
+  for access from the internet; GDPR for what the relay sees. A license
+  question for the product session (SD-010, PD-022): AGPL code and the
+  App Store's terms may conflict (GNU Go was removed in 2010, VLC, then
+  under GPLv2, in 2011); an App Store exception would need the consent of
+  every copyright holder.
+- Open for the design: if the Public Suffix List refuses the relay's
+  domain, a fallback that keeps ESPs apart in the browser anyway (CSRF
+  protection that does not rely on SameSite, the `Origin` check and the
+  exact `Host`); what happens to an ESP's name when a factory reset or
+  switching access off finds the relay unreachable (for example, the
+  relay drops names unused for a set time).
+- Open for the design (`domain`): at "View", whether a paused alarm of
+  the level "immediately, also at night" (`docs/UX.md` §6) repeats after
+  a shorter time (proposed: 60 min) and at once when it gets worse (for
+  example "Off not confirmed"); whether a pause holds per recipient, so
+  one person away does not silence another at home; the Stop dialog from
+  outside says that circulation and the air pump stay off until someone
+  resumes (RAT-036).
+- Not chosen: port forwarding as an option for experts; a relay that only
+  users run themselves (too hard for most); a third-party tunnel that
+  needs an account per user (PD-013); a subscription for the relay
+  (PD-024).
 
 
 ---

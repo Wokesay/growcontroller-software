@@ -93,6 +93,18 @@ listed in every release under "Security".
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
   or replace it; pH correction then waits for your confirmation.
+- **Plan: access from outside through a relay** (SD-062,
+  `docs/ROADMAP.md` M6): if you switch on access from outside at setup or
+  later, your ESP32-S3 connects out over its Wi-Fi to a relay. You scan a
+  QR code, put the app's icon on your home screen and sign in with your
+  password, from anywhere; no router settings, no open port. The
+  encryption ends on your ESP32-S3, so the relay is built not to read
+  your data. At "View from outside" you see values and history, can
+  press "Stop" and acknowledge messages; a latch is acknowledged only at
+  home. The
+  project runs a relay free of charge, and you can run your own. A
+  direct way through a port forward is not offered. Whether an app comes
+  into the stores is decided later.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
