@@ -206,20 +206,23 @@ export function NumberInput(p: { value: number | null | undefined; onValue: (v: 
   );
 }
 
-export function Toggle(p: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) {
+// A change that fails says why, as a Button does; a switch or choice never fails without a word
+const changed = (f: () => unknown) => void Promise.resolve().then(f).catch(toastError);
+
+export function Toggle(p: { checked: boolean; onChange: (v: boolean) => unknown; disabled?: boolean; label?: string }) {
   return (
     <label class="toggle" title={p.label}>
-      <input type="checkbox" checked={p.checked} disabled={p.disabled} aria-label={p.label} onChange={(e) => p.onChange((e.target as HTMLInputElement).checked)} />
+      <input type="checkbox" checked={p.checked} disabled={p.disabled} aria-label={p.label} onChange={(e) => changed(() => p.onChange((e.target as HTMLInputElement).checked))} />
       <span />
     </label>
   );
 }
 
-export function Seg<T extends string>(p: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
+export function Seg<T extends string>(p: { value: T; options: [T, string][]; onChange: (v: T) => unknown }) {
   return (
     <div class="seg" role="tablist">
       {p.options.map(([v, l]) => (
-        <button type="button" role="tab" aria-selected={p.value === v} class={p.value === v ? "on" : ""} onClick={() => p.onChange(v)}>
+        <button type="button" role="tab" aria-selected={p.value === v} class={p.value === v ? "on" : ""} onClick={() => changed(() => p.onChange(v))}>
           {l}
         </button>
       ))}

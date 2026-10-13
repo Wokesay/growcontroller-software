@@ -6,7 +6,7 @@ import { Beaker, Droplet, FlaskConical, Hand, Play } from "lucide-preact";
 import { ApiError, post, type MixPlan } from "../api";
 import { duration, num } from "../format";
 import { canisters, config, recipes, refreshState, state, toast } from "../store";
-import { t } from "../i18n";
+import { msg, t } from "../i18n";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, Seg, Toggle } from "../ui";
 import { JobView } from "../widgets";
 
@@ -14,7 +14,7 @@ function Preview(p: { plan: MixPlan | null; loading: boolean }) {
   const plan = p.plan;
   if (!plan) return <p class="muted">{t("mix.previewEmpty")}</p>;
   return (
-    <div class="stack-sm">
+    <div class="stack-sm" data-testid="mix-preview">
       <table class="table">
         <thead>
           <tr>
@@ -47,13 +47,13 @@ function Preview(p: { plan: MixPlan | null; loading: boolean }) {
       </table>
       <div class="row-between small">
         <span class="muted">{t("mix.total", { ml: num(plan.totalMl, 1), time: duration(plan.totalMs) })}</span>
-        <span class="muted">{plan.after.text}</span>
+        <span class="muted">{msg(plan.after)}</span>
       </div>
       {plan.errors.map((e) => (
-        <Banner tone="bad">{e.text}</Banner>
+        <Banner tone="bad">{msg(e)}</Banner>
       ))}
       {plan.warnings.map((w) => (
-        <Banner tone="warn">{w.text}</Banner>
+        <Banner tone="warn">{msg(w)}</Banner>
       ))}
     </div>
   );

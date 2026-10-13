@@ -8,7 +8,9 @@ web/test-results/
 web/playwright-report/
 *.tmp
 .DS_Store
-firmware/build/
+# A board's images to flash (tools/flash_manifest.mjs); local builds may hold a Wi-Fi password
+flash-*/
+# Older local builds kept the sdkconfig here, with the development Wi-Fi password
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/main/web_assets.cpp

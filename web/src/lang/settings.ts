@@ -45,7 +45,7 @@ export const de = {
   "settings.passwordChanged": "Passwort geändert – bitte neu anmelden",
   "settings.changePassword": "Passwort ändern",
   "settings.signOut": "Abmelden",
-  "settings.accessNote": "Nach 5 Fehlversuchen sperrt der Hub die Anmeldung kurz. Passwörter liegen nur als gesalzener Hash im Hub.",
+  "settings.accessNote": "Nach 5 Fehlversuchen sperrt der Hub die Anmeldung, erst 30 s, dann bis zu 15 min. Ein Gerät, auf dem du dich seit dem letzten Neustart des Hubs angemeldet hast, zählt für sich: Fehlversuche anderer Geräte sperren es nicht. Passwörter liegen nur als gesalzener Hash im Hub.",
   "settings.updates": "Updates",
   "settings.report": "Problem melden",
 
@@ -55,6 +55,7 @@ export const de = {
   "settings.backup": "Einstellungen sichern",
   "settings.restore": "Einstellungen laden",
   "settings.restored": "Einstellungen geladen",
+  "settings.importNotJson": "Diese Datei ist keine gesicherte Konfiguration.",
   "settings.historyCsv": "Verlauf (CSV, 7 Tage)",
 
   // Display and info
@@ -113,7 +114,7 @@ export const en: Record<keyof typeof de, string> = {
   "settings.passwordChanged": "Password changed – please sign in again",
   "settings.changePassword": "Change password",
   "settings.signOut": "Sign out",
-  "settings.accessNote": "After 5 failed attempts the hub blocks sign-in for a short time. Passwords are only stored on the hub as a salted hash.",
+  "settings.accessNote": "After 5 failed attempts the hub blocks sign-in, first for 30 s, then for up to 15 min. A device you have signed in on since the hub last restarted counts on its own: failed attempts on other devices don't block it. Passwords are only stored on the hub as a salted hash.",
   "settings.updates": "Updates",
   "settings.report": "Report a problem",
 
@@ -122,6 +123,7 @@ export const en: Record<keyof typeof de, string> = {
   "settings.backup": "Back up settings",
   "settings.restore": "Restore settings",
   "settings.restored": "Settings restored",
+  "settings.importNotJson": "This file is not a saved configuration.",
   "settings.historyCsv": "History (CSV, 7 days)",
 
   "settings.display": "Display and info",

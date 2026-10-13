@@ -42,6 +42,97 @@ TEST_CASE("API: Fehlversuche führen zur Sperre (429), Abmelden beendet die Sitz
   CHECK(c.call("GET", "/api/v1/state").first == 401);
 }
 
+TEST_CASE("API: someone guessing in the network does not lock out a client that signed in before (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client owner{s, {}, "192.168.1.20"};
+  owner.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});  // signed in by the setup
+  owner.ok("POST", "/api/v1/auth/logout");
+  Client bad{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 5; ++i) CHECK(bad.call("POST", "/api/v1/auth/login", {{"password", "falsch"}}).first == 401);
+  CHECK(bad.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+  Client other{s, {}, "192.168.1.77"};  // never signed in: shares the lockout
+  CHECK(other.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+  CHECK(owner.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 200);
+  CHECK(owner.call("POST", "/api/v1/stop").first == 200);
+  // A refused try during the lockout writes no event: only counted failures do (flash wear)
+  auto failed = [&] {
+    const gc::json events = owner.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+    int n = 0;
+    for (const auto& e : events)
+      if (e["title"].is_object() && e["title"].value("key", std::string()) == "ev.auth.failed") ++n;
+    return n;
+  };
+  const int before = failed();
+  CHECK(before == 5);
+  for (int i = 0; i < 10; ++i) CHECK(bad.call("POST", "/api/v1/auth/login", {{"password", "falsch"}}).first == 429);
+  CHECK(failed() == before);
+}
+
+TEST_CASE("API: a locked client gets 429 when changing the password, too (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s, {}, "192.168.1.20"};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (int i = 0; i < 5; ++i) CHECK(c.call("PUT", "/api/v1/auth/password", {{"old", "falsch"}, {"new", "neues-passwort"}}).first == 422);
+  CHECK(c.call("PUT", "/api/v1/auth/password", {{"old", "mein-passwort"}, {"new", "neues-passwort"}}).first == 429);
+  // Each wrong old password is logged like a failed sign-in; the refused try is not
+  const gc::json events = c.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  int failed = 0;
+  for (const auto& e : events)
+    if (e["title"].is_object() && e["title"].value("key", std::string()) == "ev.auth.failed") ++failed;
+  CHECK(failed == 5);
+  Client other{s, {}, "192.168.1.77"};  // the count was the caller's own, not the shared one
+  CHECK(other.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 200);
+  s.step(31000);
+  c.ok("PUT", "/api/v1/auth/password", {{"old", "mein-passwort"}, {"new", "neues-passwort"}});
+  Client guesser{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 5; ++i) guesser.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  CHECK(c.call("POST", "/api/v1/auth/login", {{"password", "neues-passwort"}}).first == 200);  // the caller kept its count
+  CHECK(other.call("POST", "/api/v1/auth/login", {{"password", "neues-passwort"}}).first == 429);
+}
+
+TEST_CASE("API: after a restart every device shares the count until it signs in again (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client phone{s, {}, "192.168.1.20"};
+  phone.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  s.reboot();  // the known devices are kept in memory only
+  Client guesser{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 5; ++i) guesser.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  Client again{s, {}, "192.168.1.20"};
+  CHECK(again.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+}
+
+TEST_CASE("API: before the first password, a sign-in try is not logged (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 20; ++i) CHECK(c.call("POST", "/api/v1/auth/login", {{"password", "falsch"}}).first == 401);
+  Client owner{s, {}, "192.168.1.20"};
+  owner.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  const gc::json events = owner.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  for (const auto& e : events) {
+    const bool failed = e["title"].is_object() && e["title"].value("key", std::string()) == "ev.auth.failed";
+    CHECK_FALSE(failed);
+  }
+}
+
+TEST_CASE("API: a phone that stays signed in keeps its own lockout count while other devices sign in (SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  Client phone{s, {}, "192.168.1.20"};
+  phone.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (int i = 1; i <= 16; ++i) {  // 16 other devices sign in, one a second; the phone keeps using the app
+    s.step(1000);
+    Client other{s, {}, "192.168.1." + std::to_string(100 + i)};
+    other.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+    phone.ok("GET", "/api/v1/state");
+  }
+  Client bad{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 5; ++i) bad.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  CHECK(bad.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+  phone.ok("POST", "/api/v1/auth/logout");
+  CHECK(phone.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 200);  // the first other device dropped out instead
+  Client first{s, {}, "192.168.1.101"};
+  CHECK(first.call("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}}).first == 429);
+}
+
 TEST_CASE("API: ungültiges JSON, unbekannter Pfad, Validierung") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

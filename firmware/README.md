@@ -1,27 +1,62 @@
 # Hub firmware (ESP32-S3, ESP-IDF)
 
-Status 2026-10-06: **skeleton.** It builds the unchanged core from `core/`
-together with the embedded web app into an image for the
-ESP32-S3-WROOM-1-N16R8. CI builds it on every PR (job "firmware") and so
-proves that the core and the web app compile for the target chip and fit
-into the image: first green run on 2026-10-06, **image 1.24 MB** (41 % of
-the 3 MB app partition), static DIRAM 19 %. The image is kept for 14 days
-as the artifact `firmware-esp32s3` of the run. It has not been started on
-real hardware yet. No bus yet: Modbus, port enable and the dosing block
-follow in milestone M1.
+Status 2026-10-12: **skeleton.** It builds the unchanged core from `core/`
+together with the embedded web app into an image for two boards
+(SD-043, PD-162):
+
+| Board | Module | Flash | PSRAM | Profile |
+|---|---|---|---|---|
+| ESP32-S3-DevKitC-1-N32R16V (main board) | ESP32-S3-WROOM-2-N32R16V | 32 MB octal | 16 MB octal | `boards/n32r16v.*` |
+| ESP32-S3-DevKitC-1-N8R8 (fallback) | ESP32-S3-WROOM-1-N8R8 | 8 MB quad | 8 MB octal | `boards/n8r8.*` |
+
+CI builds both on every PR (job "firmware") and so proves that the core
+and the web app compile for the target chip and fit into the image (first
+green run on 2026-10-06: image 1.24 MB, static DIRAM 19 %). Per board it
+keeps for 14 days the artifact `firmware-<board>`
+(`tools/flash_manifest.mjs`): the images ESP-IDF flashes (bootloader,
+partition table, OTA data, app), `flash_args` for esptool, the manifest
+for flashing from the browser with ESP Web Tools, and their SHA-256
+checksums. Each image goes to its own offset, so NVS and the data
+partitions stay as they are. It has not been started on real hardware yet.
+No bus yet: Modbus, port enable and the board v0.1 drivers follow in
+milestone M1 (#94).
+
+To check on the first N32R16V: ESP-IDF v5.4 recognises only octal flash
+chips of MXIC; another chip stops at boot with "No detected Flash chip".
+Open before outputs get pins: an image for the other board may start on a
+board (ESP-IDF detects octal or quad flash by itself), then not find its
+storage partition and format it. The firmware is to compare the board's
+flash size with the build at boot and, on a mismatch, format nothing,
+keep the outputs locked and report it.
+GPIO 33–37 belong to flash and PSRAM on the N32R16V, GPIO 35–37 on the
+N8R8; on the N32R16V GPIO 47 and 48 run at 1.8 V.
 
 ## Building
 
 ```bash
 (cd ../web && npm ci && npm run build) && node ../tools/embed_web.mjs
-idf.py set-target esp32s3
-idf.py menuconfig        # growcontroller › Wi-Fi (development only), output GPIOs
-idf.py build flash monitor
+idf.py -B build-n32r16v -D GC_BOARD=n32r16v -D IDF_TARGET=esp32s3 build   # or n8r8
+idf.py -B build-n32r16v menuconfig    # growcontroller › Wi-Fi (development only), output GPIOs
+idf.py -B build-n32r16v flash monitor
 ```
 
-Tested with ESP-IDF v5.4 (CI: container `espressif/idf:v5.4.1`). On the
-breadboard with the N8R8 (8 MB flash): shrink `partitions.csv` (history
-3 MB).
+Each board gets a build folder of its own, with its own `sdkconfig` in it:
+`GC_BOARD` picks `sdkconfig.defaults` plus `boards/<board>.defaults`
+(flash, PSRAM, partition table) when the folder is configured the first
+time; a folder of the other board stops the build. Without `GC_BOARD` the
+N32R16V is built. OTA cannot change the partition table, so it is fixed
+before the first device ships.
+
+Partitions (`boards/<board>.csv`):
+
+| | N32R16V | N8R8 |
+|---|---|---|
+| `nvs` (Wi-Fi, keys; encrypted later, SD-024) | 64 KB | 64 KB |
+| App A and B (`ota_0`, `ota_1`) | 4 MB each | 2.5 MB each |
+| `storage` (configuration) | 2 MB | 1 MB |
+| `history` | 21.9 MB | 1.9 MB |
+
+Tested with ESP-IDF v5.4 (CI: container `espressif/idf:v5.4.1`).
 
 ## What the skeleton already does
 
@@ -67,7 +102,9 @@ breadboard with the N8R8 (8 MB flash): shrink `partitions.csv` (history
 6. **Security before the first device goes to someone else**
    (`docs/SECURITY_MODEL.md`): HTTPS, signed OTA with self-test, setup
    access point via a button. Signed updates must still let the owner
-   install their own firmware (PD-022).
+   install their own firmware (PD-022). The update key and the lowest
+   allowed version belong to the running app, not to NVS, so erasing NVS
+   does not open a downgrade.
 
 Acceptance on the breadboard follows `docs/prototyp/README.md` §5 in the
 product repository (P0, acceptance tests 1–8).

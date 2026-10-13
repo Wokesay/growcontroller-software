@@ -8,6 +8,18 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Firmware for two boards** (SD-043, M1): the firmware is built for
+  the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
+  N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
+  history. Each board has its own profile and partition table in
+  `firmware/boards/`. CI builds both. Per board it keeps the images to
+  flash, `flash_args` for esptool, a manifest for flashing from the
+  browser with ESP Web Tools, and their SHA-256 checksums. Each image goes
+  to its own offset: flashing the same board with an unchanged partition
+  table keeps NVS and the data partitions, unless you choose to erase.
+  NVS gets 64 KB for the encrypted secrets to come. The architecture
+  check now also rejects eFuse-burning options in a board profile. The
+  firmware is still a skeleton and has not run on a board yet.
 - **Home Assistant: a sign of life per sensor** (SD-042, SD-047): Home Assistant
   does not report a value again while it stays the same, so a calm water
   temperature looked "1 min" old. Under Devices › Assignment,
@@ -40,8 +52,58 @@ listed in every release under "Security".
   is wrong: buffers swapped, an amplifier in between, or a worn probe. A
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
+- **Hardware compatibility list** (SD-049, `docs/COMPATIBILITY.md`): what
+  works with growcontroller, by connection: ESP32 boards, sensors in Home
+  Assistant (for example what DFRobot's analog pH and EC boards, Atlas
+  Scientific EZO circuits and a DS18B20 give today), the carrier board's
+  inputs and outputs, wireless sensors and smart plugs, each Tested,
+  Expected, Not yet or No, with warnings where a wrong choice is risky
+  (pH and EC probes without isolation in one tank, pumps too large for
+  pH− in a small tank). The README says which way fits you: the ESP32-S3
+  on its own, or with Home Assistant on top. The issue form "Device or
+  sensor" takes test reports for the list.
 
 ### Changed
+- **Decision numbers:** the decision on access from outside the home
+  network is now SD-059. It (#123) and the sign-in lockout (#122) had both
+  been recorded as SD-051 on the same day; SD-051 stays the lockout.
+- **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
+  prototype release comes after a block of fixes from a review: the phone
+  layout, a message when Stop or a switch fails, plain words instead of
+  developer terms, "Stopp" instead of "Not-Halt", and English complete.
+  The menu will be grouped by topic (nutrient solution, room, system), and
+  climate, light and watering will say "manual" while they only switch by
+  hand. Mixing will aim at the phase's target EC, with the recipe giving
+  the ratio and order of its parts: to the target with an EC probe, as a
+  fixed pattern from litres and recipe or a fixed EC with the water's
+  measured EC (for soaking, for example), or with stirring by hand
+  between the parts.
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
+  SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
+  web app can be reached only in the home network (preselected), viewed
+  from outside, or viewed and controlled from outside. The Home Assistant
+  window counts as outside. "Stop" works from outside at both outside
+  levels; calibration, limits, updates and acknowledging a latch stay in
+  the home network. The ESP32-S3 reads only its own sensors and sends
+  their values to Home Assistant. Fans are only switched on and off, must
+  start again in their last setting, and are switched on when a climate
+  value is outdated or invalid; a dehumidifier with its own hygrostat
+  keeps power, other climate devices switch off; a Bluetooth climate
+  sensor is outdated after three missed reports, never sooner than 120 s.
+  You will choose whether the ESP32-S3 compensates EC for the water
+  temperature (2 % per °C) or not, with a hint how far off EC can be
+  without it; with compensation, EC and pH wait while the water
+  temperature sensor fails. The pH calibration on the board's input will
+  refuse a probe whose zero point is more than 30 mV off and ask to clean
+  or replace it; pH correction then waits for your confirmation.
+- **Plan: one release for every package, Home Assistant as a window on
+  the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
+  Assistant app and simulator keep one version and one release. From M3
+  on, Home Assistant shows all values and states of the ESP32-S3, and the
+  Home Assistant app opens the ESP's web app in Home Assistant, after a
+  security review of the design; access from outside is chosen at setup
+  (SD-059); control stays on the ESP. A step-by-step guide for flashing
+  follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not
@@ -72,8 +134,72 @@ listed in every release under "Security".
   A package listed as a build tool would be bundled into the app but
   checked only as a build tool, without a notice in
   `THIRD_PARTY_NOTICES.md`.
+- **Tests on the app image's toolchain** (#112): CI now also builds and
+  runs the core tests with the Home Assistant app image's own toolchain
+  (musl and the GCC of its Alpine base, its packages and build options,
+  checked against the Dockerfile), on amd64 and aarch64, and runs the
+  server that ships against a stand-in Home Assistant: a pH of 6.2, an
+  unavailable sensor and 5 µS/cm must arrive as 6.2, no value and
+  0.005 mS/cm, aged by Home Assistant's clock and timestamps.
+- **Type check of the end-to-end tests** (#101): `tools/ci.sh` and CI now
+  also type-check `web/e2e`, `web/playwright.config.ts` and
+  `web/vite.config.ts` (`npm run typecheck:node`, `web/tsconfig.node.json`).
+  Until now Playwright only stripped their types, so a type error showed
+  up only when its path ran. Node's types (`@types/node`, MIT, a build
+  tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Stop is never silent** (SD-055): a Stop the hub does not confirm
+  within 5 seconds, or that gets no connection, says so in its dialog
+  ("Stopp nicht bestätigt – keine Antwort vom Hub") with what to do in an
+  emergency (unplug the hub; with smart plugs, also switch off the devices
+  on them directly), and offers to try again; while sending, the button
+  says so. A refusal from the hub starts with the same words and gives its
+  reason. A Stop that arrives after all closes the dialog; one that fails
+  after the dialog was closed shows a message. The time limit also works in
+  browsers before iOS 16. A failed Resume says why instead of nothing.
+  When the session has run out, the sign-in page says that what was just
+  clicked was not carried out.
+- **No raw error texts:** an action without an answer says "Der Hub
+  antwortet nicht …" instead of "TypeError: Failed to fetch", any other
+  unexpected failure says it did not work, everywhere in the app (switching
+  functions and outputs, devices, Home Assistant, the simulator panel,
+  calibration, sign-in); a switch or choice that fails says so too (in
+  Settings the update channel, the update check and the language failed
+  without a word); a file that is no saved configuration says so.
+- **Values that stop coming show:** after 10 seconds without new values
+  from the live stream or the polls, a phone shows a bar under the top bar
+  that stays in view while scrolling, and the badge on a wider screen says
+  offline; while the polls stand in for the stream, neither does. A stream
+  that is open but brings nothing is polled, until it brings values again. A device row with calibrate
+  buttons puts them below the name on a phone, which no longer breaks
+  letter by letter.
+- **German mix page:** the hub's closing note on the plan ("pH zuletzt …")
+  shows in German, not in English; the plan's errors and warnings go
+  through the same translation, though some are still German on the
+  English page (#18). The top-up note says plainly that the amounts are only
+  for the fresh water.
+- **History chart:** the time axis follows the page's language and the
+  24-hour clock (it showed "3pm" and "10/11/26"); ticks a day apart show the
+  date, and closer ones show it at midnight.
+- **Time zone:** the setup proposes the browser's time zone on the first
+  run and keeps the chosen one when you go back or open it again later,
+  instead of overwriting it. Setup and Settings refuse a time zone that does
+  not exist at the field and save it in its usual spelling
+  ("europe/berlin" becomes "Europe/Berlin"). The setup's first step is
+  called "Grundlagen", its text names its five steps, and Done has no
+  number, also in the Home Assistant introduction.
+- **Phone: the app opens at 100 % and needs no zooming out** (#33): on an
+  iPhone, Safari zoomed in when the password field got the focus, because
+  the fields were smaller than 16 px, and stayed zoomed after signing in.
+  Fields are 16 px now. At 320 px nothing tested is wider than the screen
+  any more: the bottle table under Recipes becomes cards with larger
+  buttons, long device and Home Assistant sensor IDs wrap, the "new
+  devices" note puts its button below the text, and "Weiter" (next) in the
+  setup no longer runs off the screen. A phone test at 320 px checks the
+  pages of the menu in German and English, every setup step, and the Home
+  Assistant app's introduction, devices, assignment and sign-of-life
+  window with long sensor IDs.
 - **Event log: devices are "back" after a full outage** (#69): when every
   device stopped answering at once, for example while Home Assistant
   restarted, the log said "getrennt" (not responding) for each of them but
@@ -85,13 +211,18 @@ listed in every release under "Security".
   buffer instead of showing a step the hub did not have. The window now
   says when the hub ended the calibration (a restart, a long pause) and
   offers to start again after a refused save.
+- **The web app ships no code of Vite:** Vite added its modulepreload
+  polyfill to the built app, while the third-party notices list Vite as
+  used for building only. The app preloads nothing, so the polyfill is off,
+  and the build now fails if code of Vite shows up in the app again.
 
 ### Security
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
 Severity: low. The first concerns the hub's own probes, which only the
 simulator has so far; the second needed the password for an import, and
-nothing in the Home Assistant app reads a value to switch. No GHSA or CVE
-is issued.
+nothing in the Home Assistant app reads a value to switch; the third needs
+a device in the home network, and a device already signed in kept its
+session and "Stop". No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -104,6 +235,33 @@ is issued.
   (SD-041): a device whose reported class differs from the configured one
   now has no value, and an import gives a calibration only to a class that
   offers it.
+- **Someone guessing the password no longer locks everyone out** (SD-051):
+  the lockout after 5 failed attempts counted for all devices together, so
+  a device in the network that sent a wrong password every 15 minutes kept
+  every other one from signing in, the owner's phone included, and so from
+  "Stop" unless it was still signed in. Now a device that has signed in
+  since the hub last started has its own count, so guessing from another
+  address no longer locks it out; all devices that never signed in share
+  one count, so guessing from many of them stays as slow as from one. The
+  address comes from the connection, never from a header. A wrong old
+  password when changing it counts as a failed attempt and is logged; the
+  device that changed the password keeps its own count. Only counted
+  failures are written to the event log: neither a try refused during the
+  wait nor one before the first password is.
+
+Hardening, without a vulnerability behind it:
+
+- **Registry signatures of the web app's packages** (#100, SD-058):
+  wherever the web app's packages are installed (CI, the simulator
+  packages, the release build, the Home Assistant app image),
+  `npm audit signatures` now runs right after the install, before any of
+  them runs. A missing or invalid npm registry signature or an invalid
+  provenance attestation fails the build; packages without provenance
+  pass. Every package in the lockfile must come from its own record on
+  the npm registry. This proves the registry's signed record of each
+  package; it does not protect against a release from a hijacked
+  maintainer account, against which the 7-day wait for updates and the
+  lockfile's hashes stay the guards.
 
 ## [0.1.0-proto.4] – 2026-10-11
 

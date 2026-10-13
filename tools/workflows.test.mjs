@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Every action in the workflows is made by GitHub (SD-027) and pinned by
 // its full commit SHA with the version as a comment (#29); Dependabot
-// keeps both up to date.
+// keeps both up to date. Node's types for the web app's tests are those of
+// the Node that CI runs (#101). The web app's packages are checked against
+// their registry signatures right after they are installed (#100, SD-058).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -152,5 +154,68 @@ test("tools and containers come pinned: reuse by hashes, images by digest", () =
     assert.ok(pinned.length > 0, file);
     assert.deepEqual(hashed, pinned, `${file}: every package has hashes`);
     assert.doesNotMatch(req, /^\s*(-e|--index-url|--extra-index-url|--find-links)\b|^\S+ @ /m, `${file}: no other source`);
+  }
+});
+
+test("Node's types are those of the Node that CI runs (#101)", () => {
+  // every setup-node names its version, and all name the same
+  const versions = new Set();
+  let setups = 0;
+  let named = 0;
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    setups += text.match(/uses:[ \t]*actions\/setup-node@/g)?.length ?? 0;
+    for (const m of text.matchAll(/node-version:[ \t]*(\S+)/g)) {
+      named++;
+      versions.add(m[1]);
+    }
+  }
+  assert.ok(setups > 0, "setup-node found");
+  assert.equal(named, setups, "every setup-node has a node-version");
+  assert.equal(versions.size, 1, `one Node version in CI: ${[...versions].join(", ")}`);
+  const web = JSON.parse(readFileSync(join(dir, "..", "..", "web", "package.json"), "utf8"));
+  assert.equal(web.devDependencies["@types/node"]?.split(".")[0], [...versions][0], "@types/node in web/package.json");
+  // Dependabot does not raise them to another major on its own.
+  const dependabot = readFileSync(join(dir, "..", "dependabot.yml"), "utf8");
+  const npm = dependabot.slice(dependabot.indexOf("package-ecosystem: npm"), dependabot.indexOf("- package-ecosystem:", dependabot.indexOf("package-ecosystem: npm")));
+  assert.match(npm, /directory: \/web\n/);
+  assert.match(npm, /- dependency-name: "@types\/node"\n[ \t]+update-types: \["version-update:semver-major"\]/);
+});
+
+test("the web app's packages are checked against their registry signatures (#100, SD-058)", () => {
+  // Wherever they are installed, before any of them runs: each place
+  // installs the builds for its own platform, and only installed ones are
+  // checked.
+  const root = join(dir, "..", "..");
+  const places = [
+    ...files.map((f) => join(".github", "workflows", f)),
+    join("tools", "ci.sh"),
+    join("ha", "app", "Dockerfile"),
+  ];
+  let installs = 0;
+  for (const place of places) {
+    for (const line of readFileSync(join(root, place), "utf8").split("\n")) {
+      if (!/\bnpm ci\b/.test(line) || /^\s*#/.test(line)) continue;
+      installs++;
+      assert.doesNotMatch(line, /\|\||;|#/, `${place}: no way around the check: ${line}`);
+      const steps = line.split("&&").map((x) => x.trim().replace(/\)$/, ""));
+      const at = steps.findIndex((x) => /^npm ci\b/.test(x));
+      assert.ok(at >= 0, `${place}: npm ci starts a step: ${line}`);
+      assert.equal(steps[at + 1], "npm audit signatures", `${place}: right after npm ci: ${line}`);
+    }
+  }
+  // tools/ci.sh, the firmware job, the packages, the release, the app image
+  assert.ok(installs >= 5, `npm ci found ${installs} times`);
+  assert.match(readFileSync(join(dir, "ci.yml"), "utf8"), /^ {10}tools\/ci\.sh$/m, "CI runs tools/ci.sh");
+  // The check proves the registry's own record is signed; the lockfile must
+  // point at that record, not at a tarball elsewhere.
+  const lock = JSON.parse(readFileSync(join(root, "web", "package-lock.json"), "utf8"));
+  const entries = Object.entries(lock.packages).filter(([path]) => path !== "");
+  assert.ok(entries.length > 100, "packages in the lockfile");
+  for (const [path, pkg] of entries) {
+    const name = path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length);
+    const file = `${name.split("/").pop()}-${pkg.version}.tgz`;
+    assert.equal(pkg.resolved, `https://registry.npmjs.org/${name}/-/${file}`, `${path} comes from the npm registry`);
+    assert.match(pkg.integrity ?? "", /^sha512-/, `${path} is pinned by its sha512`);
   }
 });

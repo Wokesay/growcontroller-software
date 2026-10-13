@@ -119,6 +119,17 @@ test("the server's --app mode and the image match the app", () => {
   // Dependabot's update of the Dockerfile shows up here.
   assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${base.replace(/[.]/g, "\\.")}$`, "m"));
   const server = docker.slice(docker.indexOf(" AS server"), docker.indexOf(" AS licenses"));
+  // The core tests in the smoke test are built as this stage builds the
+  // server: the same packages, the same options but the tests (#112).
+  const workflow = read(".github/workflows/app.yml");
+  const step = workflow.slice(workflow.indexOf("name: Core tests with the image's toolchain"), workflow.indexOf("name: The image's server against"));
+  const packages = server.match(/^RUN apk add --no-cache (.+)$/m)?.[1];
+  assert.ok(packages, "the server stage installs its packages in one line");
+  assert.ok(step.includes(`apk add --no-cache ${packages} `), `the core tests get the server's packages: ${packages}`);
+  const configure = server.slice(server.indexOf("RUN cmake -S"), server.indexOf("cmake --build"));
+  const options = configure.match(/"-D[^"]*"|-[DG] ?\S+/g).filter((o) => !o.startsWith("-DGC_BUILD_TESTS"));
+  assert.ok(options.some((o) => o.includes("CMAKE_EXE_LINKER_FLAGS")), configure);
+  for (const o of options) assert.ok(step.includes(o), `the core tests are configured with ${o}`);
   assert.doesNotMatch(server, /nodejs|npm|--from=web/, "the server stage gets no node and no web packages");
   assert.doesNotMatch(server, /^COPY (?:--\S+ )*(?:\.|web\/?|tools\/?)\s/m, "nor the whole tree, web/ or tools/");
   const image = docker.slice(docker.indexOf("FROM scratch"));

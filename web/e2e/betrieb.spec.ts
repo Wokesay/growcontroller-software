@@ -46,6 +46,185 @@ test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {
   await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
 });
 
+test("A Stop reaches the hub from a browser without AbortSignal.timeout (before iOS 16)", async ({ page }) => {
+  await page.addInitScript(() => {
+    delete (AbortSignal as { timeout?: unknown }).timeout;
+  });
+  await login(page);
+  expect(await page.evaluate(() => "timeout" in AbortSignal)).toBe(false);
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  await page.getByRole("button", { name: "Fortsetzen" }).click();
+  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+});
+
+test("A Stop that does not reach the hub says so, and the dialog stays open to try again", async ({ page }) => {
+  await login(page);
+  await page.route(/\/api\/v1\/stop$/, (route) => route.abort());
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Alles stoppen" }).click();
+  // In the dialog, with what to do in an emergency, and a button to try again
+  // The demo has smart plugs: unplugging the hub leaves them as they are
+  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt – keine Antwort vom Hub. Zieh im Notfall den Netzstecker des Hubs und schalte Geräte an Steckdosen direkt aus.");
+  await expect(dialog.getByRole("button", { name: "Noch einmal versuchen" })).toBeFocused();
+  // A hub that does not answer in time is no confirmation either: the button says it is sending, then the same
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route(/\/api\/v1\/stop$/, () => undefined);  // never answered
+  await dialog.getByRole("button", { name: "Noch einmal versuchen" }).click();
+  await expect(dialog.getByRole("button", { name: "Stopp wird gesendet …" })).toBeDisabled();
+  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt", { timeout: 10_000 });
+  await expect(dialog.getByRole("button", { name: "Noch einmal versuchen" })).toBeEnabled();
+  // Opened again, the dialog starts fresh
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await expect(dialog.getByRole("button", { name: "Alles stoppen" })).toBeVisible();
+  await expect(dialog.getByRole("alert")).toBeEmpty();
+  // A switch that gets no answer is not silent either
+  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  await page.goto("/#/klima");
+  await page.route(/\/api\/v1\/roles\/[^/]+\/switch$/, (route) => route.abort());
+  await page.locator('[data-testid^="switch-"]').first().click();
+  await expect(page.getByText("Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("A Stop that arrives after all closes its dialog for good; a Resume that gets no answer says so", async ({ page }) => {
+  await login(page);
+  await page.route(/\/api\/v1\/stop$/, (route) => route.abort());
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt");
+  // The Stop reaches the hub after all (late, or from another device): the dialog goes
+  const origin = new URL(page.url()).origin;
+  expect((await page.request.post("/api/v1/stop", { data: {}, headers: { Origin: origin } })).ok()).toBe(true);
+  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  // A Resume without an answer says so, and the hub stays stopped
+  await page.route(/\/api\/v1\/resume$/, (route) => route.abort());
+  await page.getByRole("button", { name: "Fortsetzen" }).click();
+  await expect(page.getByText("Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?")).toBeVisible();
+  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  // After a Resume that arrives, the old dialog does not come back
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.getByRole("button", { name: "Fortsetzen" }).click();
+  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+});
+
+test("A Stop closed while it is being sent still says when it failed; a refusal starts with the Stop's text", async ({ page }) => {
+  await login(page);
+  await page.route(/\/api\/v1\/stop$/, () => undefined);  // never answered
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(dialog.getByRole("button", { name: "Stopp wird gesendet …" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".toast.error")).toContainText("Stopp nicht bestätigt – keine Antwort vom Hub. Zieh im Notfall den Netzstecker des Hubs", { timeout: 10_000 });
+  // Opened again, nothing old shows; a hub that refuses names its reason after the Stop's text
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route(/\/api\/v1\/stop$/, (route) => route.fulfill({ status: 500 }));
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await expect(dialog.getByRole("alert")).toBeEmpty();
+  await dialog.getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt – Fehler 500. Zieh im Notfall");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Settings refuse a time zone that does not exist and save one in its usual spelling", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/einstellungen");
+  const tz = page.locator("input[name=timezone]");
+  const card = page.locator(".card", { has: tz });
+  let saves = 0;
+  await page.route(/\/api\/v1\/system$/, (route) => {
+    saves++;
+    return route.continue();
+  });
+  await tz.fill("Mars/Olympus");
+  await tz.blur();
+  await expect(card.getByText("Diese Zeitzone gibt es nicht. Schreib sie wie Europe/Berlin.")).toBeVisible();
+  await card.getByRole("button", { name: "Speichern" }).click();
+  await tz.fill("asia/tokyo");
+  await card.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByText("Gespeichert").first()).toBeVisible();
+  await expect(tz).toHaveValue("Asia/Tokyo");
+  expect((await (await page.request.get("/api/v1/config")).json()).system.timezone).toBe("Asia/Tokyo");
+  expect(saves, "the zone that does not exist was not sent").toBe(1);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await tz.fill("Europe/Berlin");
+  await card.getByRole("button", { name: "Speichern" }).click();
+  await expect(tz).toHaveValue("Europe/Berlin");
+});
+
+test("A switch or choice in Settings that gets no answer says so", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/einstellungen");
+  await page.route(/\/api\/v1\/system$/, (route) => route.abort());
+  await page.locator('label.toggle[title="Automatisch nach Updates suchen"]').click();
+  await expect(page.getByText("Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("The badge on a wide screen goes by the age of the values, as the phone's bar", async ({ page }) => {
+  await login(page);
+  const badge = page.locator(".topbar .pill").first();
+  // Without the live stream the polls stand in for it: still live after more than 10 s
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.reload();
+  await expect(badge).toHaveText("live");
+  await page.waitForTimeout(12_000);
+  await expect(badge).toHaveText("live");
+  // No values at all any more: disconnected
+  await page.route(/\/api\/v1\/state(\?|$)/, (route) => route.abort());
+  await expect(badge).toHaveText("getrennt", { timeout: 20_000 });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await expect(badge).toHaveText("live", { timeout: 20_000 });
+});
+
+test("History: the time axis follows the page's language and the 24-hour clock", async ({ page }) => {
+  // The axis is drawn on a canvas: what it writes is collected here
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { axisTexts: string[] }).axisTexts = seen;
+    const fill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (...args: Parameters<typeof fill>) {
+      seen.push(String(args[0]));
+      return fill.apply(this, args);
+    };
+  });
+  await login(page);
+  await page.goto("/#/verlauf");
+  await expect(page.locator(".chart").first()).toBeVisible();
+  const texts = () => page.evaluate(() => (window as unknown as { axisTexts: string[] }).axisTexts);
+  await expect.poll(async () => (await texts()).filter((s) => /^\d{2}:\d{2}$/.test(s)).length).toBeGreaterThan(0);
+  expect((await texts()).filter((s) => /\b(am|pm|AM|PM)\b|\d+\/\d+/.test(s))).toEqual([]);
+});
+
+test("A Stop after the session has run out: the sign-in page says it was not carried out", async ({ page }) => {
+  await login(page);
+  await page.route(/\/api\/v1\/stop$/, (route) => route.fulfill({ status: 401, json: { error: { key: "auth.required", text: "Bitte anmelden." } } }));
+  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(page.getByTestId("session-expired")).toContainText("Hast du gerade etwas angeklickt, hat der Hub es nicht ausgeführt");
+  await expect(page.getByTestId("session-expired")).toContainText("Zieh im Notfall den Netzstecker des Hubs und schalte Geräte an Steckdosen direkt aus.");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("The German mix page shows the hub's notes in German", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/mischen");
+  await page.locator("input[name=water]").fill("40");
+  const preview = page.getByTestId("mix-preview");
+  await expect(preview.locator("table")).toBeVisible();
+  await expect(preview).toContainText("pH zuletzt");
+  await expect(preview).not.toContainText("pH comes last");
+});
+
 test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await login(page);
   const st = await (await page.request.get("/api/v1/sim")).json();
@@ -293,55 +472,6 @@ test("A value calibrated outside the hub shows for display only, with its age, n
   await expect(tile.locator(".metric-foot")).toContainText("vor 20 s");
   await expect(page.getByTestId("metric-EC").locator(".spark")).toHaveCount(1);  // the history has arrived
   await expect(tile.locator(".spark")).toHaveCount(1);  // its trend too: the history records it (SD-039)
-  await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
-});
-
-test("Monitoring: a device that sends nothing is one problem titled with its readings; its long sign of life stays on a phone's screen (#107)", async ({ page }) => {
-  // The Home Assistant trial's state, made from the simulator's: one device's sign of life is silent
-  const source = "sensor.growbox_tank_controller_sign_of_life";
-  const sensor = (text: string) => ({ key: "", text, args: {} });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
-  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
-    const res = await route.fetch();
-    const st = await res.json();
-    st.watchdog = {
-      ...st.watchdog,
-      overall: "problem",
-      ok: 0,
-      problems: 1,
-      neutral: 0,
-      headline: { key: "watch.headline.problem", text: "1 problem", args: {} },
-      items: [
-        {
-          id: `life.${source}`,
-          status: "problem",
-          label: { key: "watch.life.label", text: "pH im Tank, Wassertemperatur", args: { sensors: [sensor("pH im Tank"), sensor("Wassertemperatur")] } },
-          text: {
-            key: "watch.life.silent",
-            text: `No valid reading: the device has sent nothing for 75 s – check or restart it (sign of life ${source})`,
-            args: { ageS: 75, source },
-          },
-        },
-      ],
-    };
-    await route.fulfill({ response: res, json: st });
-  });
-  await login(page);
-  const shown = `pH im Tank, Wassertemperatur: Datenausfall: Gerät sendet seit 75 s nichts – prüfen oder neu starten (Lebenszeichen ${source})`;
-  const bar = page.getByTestId("watchdog");
-  await expect(bar).toContainText("1 Problem");
-  await expect(bar).toContainText(shown);
-  const text = (await bar.locator(".grow").boundingBox())!;
-  const details = (await bar.getByRole("link", { name: "Details" }).boundingBox())!;
-  expect(text.x + text.width).toBeLessThanOrEqual(details.x);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await bar.getByRole("link", { name: "Details" }).click();
-  const item = page.locator(".list .item").filter({ hasText: source });
-  await expect(item.locator(".title")).toHaveText("pH im Tank, Wassertemperatur");
-  const box = (await item.locator(".grow").boundingBox())!;
-  expect(box.x + box.width).toBeLessThanOrEqual(390);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
 });
 

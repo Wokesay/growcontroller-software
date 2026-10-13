@@ -2020,6 +2020,32 @@ TEST_CASE("Home Assistant: a sign of life that dates the sensor's measurement be
   CHECK(rig.reading()["quality"] == "ok");
 }
 
+TEST_CASE("Home Assistant: a sign of life rounded to whole seconds still fits its sensor's report; more than 3 s before it does not (SD-042, #109)") {
+  LifeRig rig;
+  int counter = 0;
+  std::int64_t reportAt = 0;  // the sensor's report, on Home Assistant's clock
+  int before = 2;             // the text dates the measurement this many seconds before that report
+  rig.extra = [&] {
+    const int age = reportAt ? int((kNoonMs + rig.clk.ms - reportAt) / 1000) + before : 1;
+    return json::array({lifeText("n=" + std::to_string(++counter) + "|wt=" + std::to_string(age), kNoonMs + rig.clk.ms)});
+  };
+  rig.step(2);
+  REQUIRE(ha::setLife(rig.hub, rig.bus, "tank.water_temp", "sensor.hub_life", "wt").status == 200);
+  rig.water = "22.0";
+  rig.waterAt = reportAt = kNoonMs + rig.clk.ms + 1000;  // reported with the next round
+  // The text comes 5 s after the report and dates the measurement 2 s before it: rounding, it fits
+  rig.step(5);
+  CHECK(rig.reading()["quality"] == "ok");
+  // Exactly 3 s before it is still within the margin
+  before = 3;
+  rig.step(1);
+  CHECK(rig.reading()["quality"] == "ok");
+  // 4 s before the report is beyond the margin: another channel
+  before = 4;
+  rig.step(1);
+  CHECK(rig.reading()["reason"]["key"] == "truth.life_mismatch");
+}
+
 TEST_CASE("Home Assistant: the same sign-of-life text dated again is no new send; a channel waits only while it shows \"-\" in a row (SD-042)") {
   LifeRig rig;
   std::string text = "n=7|wt=1";

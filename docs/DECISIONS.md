@@ -1003,6 +1003,665 @@ named here stays as SD-042 says.
   unchanged for 5 min drops out of its window) must be solved before such
   values feed control. The 90 s for substrate sensors is not built yet.
 
+
+## SD-048: One release carries every package
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- The firmware for the ESP32-S3, the Home Assistant app and the simulator
+  are one software: the same core and the same web app. They are released
+  together: one version (`VERSION`), one tag `vX.Y.Z`, one changelog, one
+  GitHub release.
+- The release carries every package: the firmware image per board profile
+  (DevKitC-1-N32R16V and N8R8, SD-043) once firmware goes into releases,
+  which happens only signed offline (`docs/RELEASE.md`); the Home Assistant
+  app image; and in Beta and Development the simulator (PD-036).
+- Every package carries the version, also when it did not change; the
+  release notes say per package what is new. Home Assistant then offers an
+  app update that brings nothing new for the app; that is accepted.
+- Firmware and Home Assistant app of the same version belong together;
+  there is no compatibility matrix between version lines. How the app
+  handles an ESP of another version is part of the design in SD-050.
+- Open (M2, update manifest): whether an ESP is offered an update whose
+  firmware did not change. A firmware update restarts the controller (R6),
+  so it should not come for nothing.
+- Not chosen: separate releases with their own version lines for the app
+  and the firmware (two changelogs, a version matrix, a fix in the shared
+  core shipped twice).
+
+
+## SD-049: A hardware compatibility list; the flashing guide follows with M1
+
+Decided by the project owner on 2026-10-12 in the software session.
+
+- `docs/COMPATIBILITY.md` lists what works with the software, by
+  connection: ESP32 boards, the Home Assistant app and the sensors it
+  reads, the carrier board's inputs and outputs, wireless sensors and smart
+  plugs. The README links it.
+- Four statuses: **Tested** (with version, date and a link to the report),
+  **Expected** (should work by how it is built; not tested yet), **Not
+  yet** (names what is missing: a milestone, a feature or a rule), **No**
+  (names why).
+- The list describes the code on `main`; what is not in the latest
+  release yet is marked as such.
+- Reports come through the issue form "Device or sensor"; an entry is
+  added by a pull request with review. Only "Tested" needs a report; a
+  test of our own counts too, with its version and date.
+- Product names are used only to describe compatibility (README,
+  trademarks).
+- The list describes connections, not the board. It takes from the board
+  only what is public in issues #91 and #94 (pin assignment, bus devices
+  and conversion values: PD-157, PD-168, PD-170), and of that only what a
+  user needs to choose a sensor, pump or valve; the rest of the board
+  stays private (PD-103).
+- A step-by-step guide for flashing the ESP32-S3 (board, cable, USB port,
+  browser, steps, duration, problems, other tools, pictures) is written
+  with M1, once a flashing page and a release with firmware exist. Until
+  then `firmware/FLASHING.md` describes building and flashing own
+  firmware.
+- A link to buy hardware is a product question: PD-061 says the README
+  makes no reference to selling hardware. It waits for the product
+  repository's session (SD-029).
+- Not chosen: a data file with a generated page (more work before there
+  are entries; possible later, if the web app is to show known devices),
+  and the GitHub wiki (no review, not versioned with the software).
+
+
+## SD-050: The Home Assistant app opens the ESP's web app in Home Assistant
+
+Decided by the project owner on 2026-10-12 in the software session;
+the review questions below come from the `security` review of this entry.
+
+- The ESP32-S3 controls in both ways of use (PD-149): on its own with its
+  web app, or with Home Assistant as well. Home Assistant holds no control
+  logic.
+- With Home Assistant, the firmware sends all values and states, the
+  watchdog's assessment included, as Home Assistant entities over the
+  ESPHome native API (SD-043, M3). No app is needed for that.
+- From M3 on, the Home Assistant app also opens the web app of an ESP in
+  Home Assistant's sidebar (ingress), so the ESP can be set up from Home
+  Assistant. The app is a window: it holds no control logic, sends no
+  commands of its own and never repeats a write.
+- Before it is built, `security` reviews the design. The review answers at
+  least:
+  - **Login:** whether the ESP's own login stays in front of its web app;
+    Home Assistant's login does not replace it without a decision. How
+    lockout and the event log work when every request comes from one peer,
+    the app.
+  - **Trust across the proxy:** the ESP's pages run on Home Assistant's
+    origin. An XSS in the web app or a forged ESP could reach Home
+    Assistant's session tokens, and other apps on that origin could act
+    with the ESP's session. What this means for sessions, cookies, CSRF
+    and the ban on framing (`X-Frame-Options: DENY`, CSP), which is not
+    simply dropped; the `Host` and origin checks of the ESP and of the app
+    (DNS rebinding) are not loosened for the app's own port.
+  - **Who reaches the window:** only through ingress (connections only
+    from the Supervisor), never on the app's published port; which Home
+    Assistant users see the panel.
+  - **Transport and identity:** whether the way from the app to the ESP may
+    be plain HTTP before local HTTPS (M2) or waits for it; how the app
+    knows it talks to the right ESP; which request headers (cookies,
+    `Authorization`) reach the ESP.
+  - **Addresses:** the ESP's address is set in the configuration, never
+    per request, and never points to loopback or Home Assistant's internal
+    network.
+  - **Secrets:** the app stores no password, session or key of the ESP;
+    Home Assistant's backups include the app's data. If the app's present
+    mode stays (below), the Supervisor token, an administrator's right in
+    Home Assistant, sits in the same process as the code that reads the
+    ESP's answers.
+  - **From outside:** Home Assistant is often reachable from outside the
+    home network, and the window would make the ESP's web app reachable
+    the same way. Which functions that may allow (setup, manual runs,
+    Stop) and what it does to the lockout; the Stop never depends on Home
+    Assistant.
+  - **Versions:** with an ESP of another version, the window shows a
+    message and does not change requests (SD-048).
+- **Product question** for the product repository's session (SD-029),
+  before the window is built: whether the ESP's web app may be reached
+  from outside the home network through Home Assistant at all. Remote
+  access is a product question so far (PD-150, M6).
+- Open for `regulatorik` in the product repository: whether access
+  through Home Assistant changes the EN 18031-1 assessment (access
+  control, authentication, secure communication) and CRA Annex I.
+- Not chosen: first only a link on the device page in Home Assistant, with
+  the window later (the project owner wants the window from the start of
+  M3); no app at all for the ESP.
+- Open: Home Assistant installations without apps (Container) have no
+  ingress; whether they get the link on the device page instead. Open
+  too: whether the app's present mode (reading sensors from Home Assistant
+  without an ESP, switching nothing, SD-034) stays once the window exists.
+- Changed by SD-059: access from outside is no product question any more;
+  the user chooses a level at setup. Requests through the window and
+  commands over the native API count as from outside and follow that
+  level, so the ESP is set up through the window only as far as the level
+  allows; what SD-059 keeps to the home network is done only directly
+  there.
+
+
+## SD-051: The sign-in lockout counts per client
+
+Decided by the project owner on 2026-10-12 in the software session (fix
+it right away as a PR); the design follows `security`'s review. A security
+rule: the PR waits for "mergen".
+
+- **Why:** the lockout after 5 failed attempts (EN 18031-1 AUM-6) had one
+  count for all clients. A device in the network that sent a wrong
+  password every 15 minutes kept everyone locked out, the owner's phone
+  included, and with it "Stop" for anyone not signed in.
+- **Per client:** a client that signed in successfully (also by the
+  initial setup) gets a count of its own; at most 16, the one seen longest
+  ago (signed in or used its session) drops out first. Every other client
+  shares one count, which is also the brake: guessing from addresses that
+  never signed in is no faster than from one. A success resets only the
+  client's own count; a success from a new address does not lift the
+  shared lockout. The schedule stays: from
+  the 5th failure 30 s, doubling up to 15 min; a count forgets its
+  failures after a quiet day.
+- **The client** is the peer address of the connection, normalised in the
+  core (`clientKey`): IPv4 as is, IPv6 by its full address without the
+  zone (a /64 is shared by every device of a home network), an
+  IPv4-mapped address as IPv4, anything unreadable as unknown (the shared
+  count). Never from `X-Forwarded-For` or another header.
+- **Password change:** a wrong old password counts as a failed attempt
+  of the caller and is logged; a locked caller gets 429 before any
+  hashing. A change forgets the other known clients; the caller, who just
+  proved the old password, keeps its own count.
+- **Event log:** only counted failures are logged; neither a try refused
+  during the wait nor one before the first password is (flash wear, and
+  the log is not flushed by guessing).
+- **No header:** `tools/arch_check.sh` refuses `set_trusted_proxies`,
+  with which cpp-httplib would take the address from `X-Forwarded-For`.
+- **In memory only:** the known clients are not stored. After a restart
+  every device shares the count until it signs in again.
+- **Accepted:** during an attack, a device that has not signed in since
+  the hub started (a new phone, or after a restart) can be locked out with
+  the others; a device that is signed in keeps its session and "Stop". A
+  device whose IPv6 address changes counts as new. Behind one peer (Home
+  Assistant's ingress, SD-050, or a Docker proxy) all clients share one
+  count. A host that takes over the address of a known device (a static
+  address, a reused lease) gets that device's count: it can lock that
+  device and has one more guessing budget per known address, at most 17
+  in all. The hardware Stop never depends on the web.
+- **Later:** device cookies (OWASP) as the sign of a known client, with
+  encrypted NVS for their key; they need no address and survive address
+  changes. Open for `regulatorik`: whether addresses held in memory for
+  the lockout count as processing personal data.
+- Extended by SD-059: a client from outside never shares a count with the
+  home network.
+
+
+## SD-052: The ESP32-S3 reads its own sensors; Home Assistant only receives
+
+Decided by the project owner on 2026-10-12 in the software session. It
+applies PD-149.
+
+- The ESP32-S3 reads only the sensors connected to it directly: on the
+  carrier board and, later, over Bluetooth (PD-153). It does not read
+  sensors from Home Assistant.
+- It sends its values and states to Home Assistant, which shows them
+  (SD-050). Devices and sensors of growcontroller are set up on the ESP,
+  not in Home Assistant.
+- The Home Assistant app's present mode (reading sensors from Home
+  Assistant without an ESP, switching nothing, SD-034) is not affected;
+  whether it stays is open (SD-050).
+
+
+## SD-053: Fans only on and off; climate devices on an invalid climate value
+
+Decided by the project owner on 2026-10-12 in the software session. It
+deviates from PD-153 in favour of PD-050; the product session is told,
+and if it decides otherwise, its decision applies and a later SD records
+it.
+
+- Exhaust and circulation fans on smart plugs are only switched on and
+  off. Their own setting (speed, their own thermostat) stays in the fan.
+  A fan must start again in its last setting when power returns (black
+  start); the ESP sets its plug to "on after power loss" (PD-050).
+  `docs/COMPATIBILITY.md` names this as a requirement.
+- When a climate value that controls a device is outdated or invalid,
+  from a wired or a wireless sensor:
+  - every exhaust and circulation fan is switched on or kept on, also one
+    the control had switched off (the reasoning of PD-050: without fans
+    heat and humidity build up);
+  - a dehumidifier with its own hygrostat gets power and regulates itself
+    (PD-066 recommends one; outlet profile "supply", RAT-069), after its
+    pause and with the humidifier off first (RAT-034);
+  - a humidifier, and a dehumidifier without its own hygrostat, switch
+    off (PD-153); the dehumidifier's pause counts from then (RAT-034);
+  - the air heater switches off and, if it was running, latches (RAT-060,
+    RAT-062);
+  - the app reports the sensor.
+- "Stop" still switches everything off, fans included (PD-076).
+- Open: the freshness limit for Bluetooth sensors (the catalog's 120 s
+  allows about two missed reports; a rule like RAT-027 is needed); how the
+  ESP learns that a dehumidifier has its own hygrostat (a setting at
+  setup, an assumption).
+- When built: RAT-019, RAT-034, RAT-060 and RAT-068 are updated, and the
+  gateway gets cut-offs for humidifier and dehumidifier on an invalid
+  humidity (today it only blocks switching the humidifier on,
+  `core/src/dosing.cpp`).
+- Changed by SD-060: a Bluetooth climate sensor is outdated after three
+  missed reports, never sooner than 120 s.
+
+
+## SD-054: EC compensated by the hub; pH not compensated; a zero-point check on the hub's pH input
+
+Decided by the project owner on 2026-10-12 in the software session. It
+deviates from issue #94 (§4.8) for pH; the product session is told, and
+if it decides otherwise, its decision applies and a later SD records it.
+None of this is built: today nothing is compensated (`core/src/truth.cpp`),
+and the simulator's raw EC has no temperature term (`sim/world.cpp`).
+
+- **EC of the hub's own inputs** will be compensated to 25 °C by the hub,
+  from the water temperature. An EC that the sensor already compensates
+  (SD-041) is not compensated again.
+- **With a water temperature sensor set up:** while it gives no valid
+  value (missing, outdated, implausible, jump-locked), EC is shown, marked
+  "without temperature compensation", and never used for control; it is
+  never taken as if at 25 °C (R5). pH correction then waits too, since it
+  needs a usable EC (EC gate, RAT-046); the app says why (decided by the
+  project owner).
+- **Without a water temperature sensor,** the user can choose to control
+  EC without temperature compensation, knowing it is less exact (decided
+  by the project owner): about 2 % per °C away from the temperature at
+  calibration, so 5 °C off puts the tank about 10 % off its target. A tank
+  colder than at calibration reads low, so the hub doses too much, which
+  only dilution undoes (RAT-012); a warmer one gets too little. The choice
+  is explicit, shown with the number and the direction, and the EC stays
+  marked.
+  Without the choice, EC is not used for control. The choice applies only
+  while no water temperature sensor is set up; a sensor that is set up
+  and fails stops control as above, since otherwise EC would jump by
+  10–20 % and control would go on at another scale. Removing a failed
+  sensor does not switch the choice on; the user confirms it again.
+- **Calibration:** an EC calibration point is compensated with the
+  temperature at that moment and refused without a valid water
+  temperature, unless the user chose control without compensation.
+  Stored EC calibrations without a temperature, and those made under that
+  choice once a water temperature sensor is set up, need a new calibration
+  or a migration.
+- **Jump lock and history** judge the compensated value: the water
+  temperature dropping out and coming back does not lock EC, and an EC
+  without compensation is a gap in the history of the compensated EC.
+- **The coefficient** comes as a rule from the product repository and
+  gets a RAT entry and tests when built. About 2 % per °C is named for
+  fresh water and KCl standards [1, 2]; no measured value for nutrient
+  solutions was found (an assumption).
+- **pH is not temperature compensated.** The error of the electrode's
+  slope is about (pH − 7) · ΔT / 298 pH: about 0.04 pH at pH 5.8 and 10 °C
+  away from the calibration (calculated), below the smallest tolerance of
+  0.05 (RAT-008). Under this entry only EC carries the mark "without
+  temperature compensation".
+- **Zero point:** the pH calibration on the hub's own pH input also
+  checks the probe's zero point: the calibration line's value at pH 7
+  (extrapolated when the buffers are pH 4 and 10), as the electrode's own
+  voltage after the firmware removes the input's known bias (board data,
+  PD-170). A probe outside a band around 0 mV is refused with its reason,
+  as a slope outside 47–74 mV/pH is today (RAT-025). Voltages from Home
+  Assistant keep today's check (slope only): their front end may lift the
+  signal on purpose, and they never feed control (SD-052); the test
+  "the offset does not matter" in `tests/core/test_ha.cpp` stays. The band
+  comes as a rule from the product repository; makers name ±30 mV at
+  pH 7 [3], and the tolerance of the board's bias reference counts
+  against it (a product question). Until then it is not built.
+- **Simulator,** when built: the twin's raw EC gets a temperature term
+  with a coefficient deliberately different from the hub's, recorded as
+  an assumption in `docs/SIMULATOR.md`.
+- Sources, retrieved 2026-10-12 by the `domain` review from search
+  summaries (the pages themselves did not load): [1] USGS, WaQI 06.01,
+  https://water.usgs.gov/usgs/owq/WaQI/WaQI06.01.pdf ; [2] Reagecon, "The
+  Effect of Temperature on Conductivity Measurement",
+  https://knowledge.reagecon.com/wp-content/uploads/2021/09/Technical-Paper_The-Effect-of-Temperature-on-Conductivity-Measurement.pdf ;
+  [3] Hamilton, "The Zero Point of a pH Sensor",
+  https://www.hamiltoncompany.com/knowledge-base/article/the-zero-point-of-a-ph-sensor
+- Changed by SD-060: compensating EC is the user's choice at setup, also
+  with a water temperature sensor; the coefficient is 2 % per °C; the
+  zero-point band is ±30 mV, and a probe outside it is to be replaced.
+
+
+## SD-055: Prototype 0.1.0-proto.5 after a polish block; English complete before it
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a review by `ux`, `qa` and `release` and the outside views of an end
+customer and a grower.
+
+- **No release before the polish.** 0.1.0-proto.5 (sign of life, raw pH
+  calibration, phone fixes, the security fixes in the CHANGELOG) comes after a block of
+  work that fixes what the review found visible:
+  - phone: a device row that breaks letter by letter (Devices), the
+    connection state hidden on phones;
+  - a message when Stop, Resume or a manual switch fails;
+  - developer words and codes out of the interface ("Sensorwahrheit",
+    "Quelle: RAT-039", "Aktor-Gateway" and the like);
+  - "Stopp" / "Alles stoppen" everywhere instead of "Not-Halt" (SD-045,
+    PD-172);
+  - the history chart's time axis in the page's language;
+  - setup: its step count, and the browser's time zone no longer
+    overwriting the saved one;
+  - the German Mix page showing an English sentence;
+  - the test of the 3 s margin of a sign of life (#109);
+  - the menu (SD-056) and the target EC (SD-057).
+- **English is complete before proto.5** (#18, #73): every text the core
+  sends gets a key and both languages (errors, sensor reasons, checklists,
+  mix plan), the catalog's names and descriptions, and the CSV export.
+  Setup offers English first (SD-014). Not chosen: English marked "beta"
+  for proto.5.
+- **Then the release:** CHANGELOG with a summary and "Known limitations",
+  the version raised everywhere; the release waits for "mergen". Before
+  the tag the project owner tests the Home Assistant app on a real Home
+  Assistant: install, password, sensors, restart, update from proto.4,
+  backup, a sign of life and a raw pH calibration.
+- **Work split:** the software session that wrote this entry does the
+  polish block and then M1; the other software session does not touch
+  these topics. SD numbers are
+  taken right before the pull request opens, after a look at `main`.
+
+
+## SD-056: Menu grouped by topic; pages without automation say "manual"
+
+Decided by the project owner on 2026-10-12 in the software session
+(proposal by `ux`, in line with the grower's view).
+
+- The menu on the left, with small headings:
+  - Übersicht (Overview), Verlauf (History)
+  - **Nährlösung** (Nutrient solution): Mischen, Tank & Regelung, Rezepte
+    & Kanister, Bewässerung
+  - **Raum** (Room): Klima, Licht
+  - **System:** Geräte, Funktionen, Einstellungen
+- Watering moves next to the tank, as it draws from it and its dry-run
+  lock needs the tank's level; recipes move next to mixing.
+- The bar at the bottom on phones stays as it is.
+- Climate, light and watering carry the label "Handbetrieb" (manual) as
+  long as they only show values and switch by hand, with the advice to
+  keep their own timer or controller (as the Home Assistant introduction
+  already says). With nothing assigned, a page shows an empty state that
+  says what to connect.
+- Not chosen: a menu by daily routine with new pages for phases and the
+  room (a larger rebuild), and leaving the menu as it is.
+
+
+## SD-057: Mixing to the phase's target EC; the recipe gives ratio and order
+
+Decided by the project owner on 2026-10-12 in the software session, after
+a check by `domain` of the manufacturer's guidance; the safeguards marked
+"(review)" come from the reviews by `domain` and `reviewer` of this entry.
+It replaces the fixed targets of the grow dialog; the EC correction
+(RAT-054, RAT-055, RAT-080) already keeps the recipe's ratio. Not built
+yet; built in the polish block (SD-055), with a RAT entry, tests and
+simulator numbers per `docs/SIMULATOR.md`.
+
+- **The target is the phase's target EC** (`ec_target`), as the total EC
+  of the solution, the water's own EC included, as the manufacturers'
+  charts give it. Athena, for example, scales the amounts of its parts in
+  a fixed ratio to a target EC and gives its charts for water with an EC
+  up to about 0.4 mS/cm [1][2].
+- **The recipe gives the way there:** the ratio of its parts to each
+  other and their order. Its EC at its chart amounts is kept as a
+  reference point, not as a target.
+- **Amounts are real millilitres** from the measured flow of each pump,
+  never run times. Without a measured flow nothing is dosed.
+- **Three ways to mix,** chosen by what the user has:
+  1. **To the target:** a valid EC of the water being mixed from the
+     hub's own probe, usable for control under SD-054 (compensated, or
+     uncompensated by the user's explicit choice), and the water
+     circulated. The litres come from the level sensor or are entered.
+     The hub measures the water's EC first, then doses about 80 % of the
+     gap to the target in the recipe's ratio and order, waits the settling
+     time (RAT-052, at least `settle_min`; a factor by volume is still an
+     assumption) and only then lets the EC correction close the rest
+     (review). If the EC fails during the mix,
+     the mix stops and says why; it does not go on as a fixed pattern
+     without the user (review). Water at or above the target gets
+     nothing, with a note.
+  2. **A fixed pattern** (no valid EC in the water being mixed: no probe,
+     or no circulation): the user enters the litres and either the
+     recipe's amounts per litre, or a target EC within the catalog's range
+     together with the EC of the water, taken from a meter or entered as
+     0 for reverse-osmosis water. Without the water's EC only the recipe's
+     amounts are offered; it is never taken as 0 (R5, RAT-006, review).
+     The hub works out the amounts from the recipe's ratio and reference,
+     runs the pattern without feedback and says so.
+  3. **Stirring by hand:** after each part the hub stops and asks to stir,
+     and goes on only when the user confirms, in the recipe's order. The
+     wait has a time limit; cancelling or a timeout after one part of a
+     pair ends the mix with the pair's message (RAT-054); after a restart
+     the mix is reported, not resumed (R6) (review).
+- **The grow** takes each phase's target EC and pH from the recipe as a
+  proposal (for a pH band its middle, RAT-066); the fixed 1.4 and 1.8 of today's dialog go. Without a grow the
+  overview shows which default targets apply and offers to set one up.
+- **Safeguards (review):**
+  - The step limit (`max_ec_step`, RAT-055) is converted to ml/L with
+    the largest of the start effect fixed in code (R7), the recipe's
+    reference and the learned effect, so a typo in a recipe can never
+    raise a dose. A reference far from the start effect (below a quarter
+    or above four times) is refused.
+  - The learned effect belongs to a recipe; another recipe starts from
+    its reference.
+  - A part marked as a fixed addition (a cleanser, for example) is dosed
+    per litre of fresh water, also when the water is already at the
+    target, and never scaled by an EC correction; its expected EC counts
+    in the first step's gap.
+  - Water above the charts' 0.4 mS/cm gets a note on a new fill.
+  - The mix plan says when EC runs without temperature compensation
+    (SD-054); cold tap water then reads low and the tank gets too much.
+- **Open:** mixing outside the tank (a bucket for soaking) and whether the
+  pumps then dose into it, given that consumption goes only into the tank
+  (RAT-040, RAT-070) and rounds stay clean (RAT-057); large tanks, where
+  a correction round may need more partial runs than allowed (RAT-054);
+  a low target whose reserve falls below the EC gate for pH (RAT-046,
+  RAT-053).
+- Not chosen: the target as the EC on top of the water (it does not match
+  the charts), and fixed ml/L with the target only as a check (with tap
+  water or a probe that reads differently the tank misses the target).
+- Sources, retrieved 2026-10-12 (search results; athenaag.com could not be
+  loaded): [1] https://www.hydroponics.eu/db_img/pdf/Athena-Pro-Dosage-Guidelines-Metric.pdf ;
+  [2] https://www.rivierahorticulture.co.uk/pages/how-to-use-the-athena-feed-schedules
+
+
+## SD-058: The web app's npm packages are checked against their registry signatures
+
+Decided by the project owner on 2026-10-12 in the software session, for
+#100 (from `security`'s review of the dependency updates #96, #98, #99).
+
+- Wherever the web app's packages are installed, `npm audit signatures`
+  runs right after `npm ci`, before any package runs there: in `tools/ci.sh`
+  (CI's `checks` job), the firmware job, the simulator packages, the
+  release build and the Home Assistant app image. Each place installs the
+  builds for its own platform (Rolldown, lightningcss and the TypeScript
+  binaries run native code in every build), and only installed packages
+  are checked. `tools/workflows.test.mjs` keeps the step after every
+  `npm ci`, with no way around it on that line.
+- A missing or invalid registry signature fails, and so does an invalid
+  provenance attestation, a key npm does not know, or no answer from the
+  registry or from Sigstore.
+- A package without provenance passes; npm counts only the verified
+  attestations. Many packages publish none, TypeScript and lightningcss
+  among them. No list of them is printed; a warning that always comes is
+  soon not read.
+- What it proves: the registry's own record of each installed
+  `name@version` is signed, so a record changed on the registry's side
+  without npm's key fails while it is served. It does not compare that
+  record with the bytes on disk. Those are bound by the sha512 in
+  `web/package-lock.json`, which `npm ci` checks, and
+  `tools/workflows.test.mjs` requires every package there to resolve to
+  that very record (`https://registry.npmjs.org/<name>/-/<file>-<version>.tgz`).
+- What it does not do: it adds nothing against a hijacked maintainer
+  account, since the registry signs those releases too and a hijacked
+  publishing pipeline even produces valid provenance. Against that stand
+  Dependabot's cooldown of 7 days, the lockfile pin and
+  `npm ci --ignore-scripts`. The gain of this check is small; it is cheap
+  and fails closed. Later, if npm offers it: fail when a package that had
+  provenance publishes a version without it (`docs/SECURITY_MODEL.md`).
+- The check needs the npm registry and Sigstore's TUF repository
+  (`tuf-repo-cdn.sigstore.dev`), also for a local `tools/ci.sh`.
+
+
+## SD-059: Access from outside the home network in three levels, chosen at setup
+
+Decided by the project owner on 2026-10-12 in the software session, as a
+question the software solves; the rules for building it come from the
+`security` review of this entry. PD-150 left the way of remote access
+open; if the product session decides otherwise, its decision applies and
+a later SD records it (as with SD-033). Recorded as SD-051 in PR #123 and
+renumbered: PR #122 recorded the lockout per client as SD-051 at the same
+time, and SD-055 to SD-058 were taken by then.
+
+- At setup the user chooses how the ESP's web app may be reached:
+  - **Home network only** (preselected): the ESP answers nothing from
+    outside, not the login and not "Stop" either. Values still go to Home
+    Assistant over the native API once it is connected, but no command
+    from there is accepted.
+  - **View from outside:** values, states, history and messages, from an
+    explicit list; never the diagnostic package or the configuration
+    export.
+  - **View and control from outside:** in addition, operating from an
+    explicit list.
+- **Only in the home network, at every level:** calibration, limits,
+  firmware updates (rollback included), importing a configuration,
+  assignments and the protection settings of sockets, passwords, and
+  acknowledging a latch (a person at the tank has checked, RAT-031).
+  From outside, whatever is not on the explicit list is refused; `domain`
+  sorts out the operations that need a person at the tank.
+- **"Stop"** works from outside at both outside levels. "Resume" counts as
+  control: after a Stop from outside at "View", the setup says, only
+  "View and control" or the home network lifts it, and fans stay off
+  until then (PD-076).
+- **Raising the level** only from the home network, with the password
+  asked again. Lowering it, from wherever, ends outside sessions and their
+  live connections at once; whether it can be lowered from outside is
+  open (the safe direction).
+- **What counts as the home network:** the ESP checks this itself from
+  the connection (the peer address is in its own subnet or link-local),
+  never from a header. Everything else counts as from outside.
+- **The Home Assistant window and Home Assistant's commands over the
+  native API count as from outside** (decided by the project owner): they
+  come from the Home Assistant host, and the ESP cannot tell whether the
+  person is at home. So at "Home network only" the window is closed. This
+  changes SD-050. The ESP recognises the window by the Home Assistant
+  host's address set on it, never by a marker the app sends; how, and
+  what happens when that address changes, is part of SD-050's review.
+- **Ways in:** the outside levels apply only to defined ways, the Home
+  Assistant window (SD-050) and the way of M6, each with its own review of
+  transport, so no password crosses the internet as plain HTTP. A direct
+  request from a public address (a port forward, an open IPv6 address) or
+  from another private network that is no defined way (a VPN with its own
+  subnet, another VLAN) is refused at every level; whether further home
+  subnets can be listed, set from the home network, is open.
+- **Lockout:** failed logins from outside never lock out the home
+  network; they count separately. The lockout per client (SD-051) is the
+  start: a client from outside must never share a count with the home
+  network.
+- **The level** is stored and enforced on the ESP and checked on every
+  request, before `/info`, the login and the first password. Until the
+  first password is set, and after a factory reset, it is "Home network
+  only". An import or a restored backup never raises it. Every change is
+  logged with its origin (home network or outside).
+- **What Home Assistant shows** is outside the level: once Home Assistant
+  is connected (SD-050) and reachable from outside, values and history
+  leave the home network that way. That is the user's choice; the setup
+  says so.
+- **Residual risks, named in the docs:** a proxy or tunnel the user runs
+  in the home network gets the rights of the home network; the way from
+  the internet to Home Assistant is Home Assistant's own transport, which
+  the user sets up; someone on the internet can lock the outside logins
+  while the owner is away, and a "Stop" from outside then works only from
+  a session already open.
+- Open for `regulatorik` in the product repository: EN 18031-1 (access
+  control, authentication, secure communication; whether a password alone
+  is enough from the internet), CRA Annex I, and GDPR for history, events
+  and logged addresses seen from outside.
+- Open for the design (M3, M6): the explicit lists; a shorter session from
+  outside; IPv6 prefixes; what `/info` shows from outside; the downgrade
+  check of M2 also refuses firmware without this gate.
+
+
+## SD-060: EC compensation as a choice, 2 % per °C; pH zero point ±30 mV; Bluetooth climate sensors after three missed reports
+
+Decided by the project owner on 2026-10-12 in the software session. It
+settles the freshness limit SD-053 left open and the rules SD-054 left
+open, so they need nothing from the product repository; the product
+session is told. Recorded as SD-056 in PR #125 and renumbered, as SD-055
+to SD-058 were taken by then.
+
+- **Compensating EC is the user's choice at setup:** "with temperature
+  compensation" (needs a water temperature sensor) or "without". This
+  changes SD-054, where the choice existed only without a sensor. With
+  compensation chosen, a sensor that fails still stops EC and pH
+  correction (SD-054). Changing the choice needs a new EC calibration,
+  since the calibration factor refers to another scale, and like a
+  calibration it is done only in the home network (SD-059). Setting up a
+  water temperature sensor does not change the choice or void the EC
+  calibration; only changing the choice does. This replaces SD-054's
+  sentence on calibrations made under the choice. Until the user has
+  chosen (an existing configuration, after a factory reset), EC is not
+  used for control; the setup asks for the choice.
+- **Coefficient:** 2 % per °C, linear to 25 °C (SD-054, sources 1 and 2).
+  No measured value for nutrient solutions was found; the project owner
+  accepts the figure.
+- **The hint at "without":** about 2 % per °C away from the temperature
+  at calibration; between 18 and 24 °C up to about 12–14 %, about ±6–7 %
+  when calibrated at about 21 °C, the larger figure on the overdosed side
+  (calculated with the linear model). A tank colder than at calibration
+  is overdosed (RAT-012), and as EC control only raises EC, the tank ends
+  at the target as read in its coldest hour. Advice: calibrate when the
+  tank is at its coolest usual temperature (for example at the end of the
+  night); then the error only goes towards too little.
+- **"Without" with a water temperature sensor present:** EC is marked as
+  a chosen setting (a note, not a fault) and stays usable, so pH runs
+  normally (EC gate, RAT-046); a failing water temperature sensor is only
+  its own finding.
+- **With compensation and a failing sensor,** the app names the way out:
+  replace the sensor, or switch to "without" and calibrate EC again.
+- **The calibration value** is the reference solution's value at 25 °C
+  (printed on the bottle), under both choices; the calibration asks for it
+  in these words.
+- **pH zero point:** ±30 mV at pH 7, the tolerance makers name (SD-054,
+  source 3), on the hub's own pH input after the firmware removes the
+  input's known bias. Outside it, the calibration is refused with the
+  message to replace the probe; as a first step it suggests cleaning the
+  probe, soaking it in storage solution and fresh buffers, since a used
+  buffer or a dirty junction shifts the zero point too (RAT-026).
+- **After a refused zero point** (decided by the project owner): pH
+  correction pauses and the app warns that the probe's zero point has
+  moved. Only after the user confirms the warning, in the home network
+  like acknowledging a latch (SD-059), does it dose again with the old
+  calibration; the warning stays visible until a valid calibration is
+  saved. The zero point is stored with each calibration, so its trend
+  shows. The tolerance of the board's bias
+  reference is measured on the board samples; if it takes a noticeable
+  part of the band, the band is looked at again.
+- **Bluetooth climate sensors:** outdated after three missed reports,
+  never sooner than 120 s (the catalog's limit for air temperature and
+  humidity): three times the device's send interval, so 180 s for the
+  Shelly BLU H&T, which sends every 60 s. The project owner first set a
+  fixed 120 s; the `domain` review found that this makes such a sensor
+  outdated after one missed report, against RAT-027, while a false
+  outdated value switches climate devices and latches a running heater
+  (SD-053), which only the home network can acknowledge (SD-059), and
+  the project owner then decided on three missed reports. The send
+  interval is the device's own; it is never learned looser. A
+  repeated report with the same packet counter is no new measurement.
+- The RAT entries for EC compensation and the zero point, and their tests,
+  come with the implementation (M1); they take their IDs then.
+
+
+## SD-061: A new SD or RAT ID is final only when its PR is merged
+
+Decided by the project owner on 2026-10-12 in the software session, after
+parallel sessions took the same numbers twice in one day (SD-051 in #122
+and #123; SD-055 and SD-056 in #125 and #127).
+
+- Right before merging, the session checks the last SD and RAT ID on
+  `main` and renumbers its PR's new entries, and every reference to them
+  in the PR (docs, code comments, test names), to the next free IDs.
+- A number in a PR's text or title can therefore still change until the
+  merge; the squash commit carries the final one.
+- `CLAUDE.md` names the rule.
+- Not chosen: reserving numbers through issues (public issues for
+  bookkeeping, and a race stays possible); fixing clashes by hand.
+
+
 ---
 
 ## Drafts (waiting for "entschieden")

@@ -15,7 +15,9 @@ WORKDIR /src
 COPY web/ web/
 ARG GC_SOURCE_REV
 RUN test -n "$GC_SOURCE_REV" || { echo "GC_SOURCE_REV is needed (AGPL-3.0 §13)"; exit 1; }
-RUN cd web && npm ci --ignore-scripts --no-audit --no-fund && npm run build
+# Registry signatures of the packages installed here (their musl builds
+# among them) before any of them runs (SD-058)
+RUN cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build
 
 # The server, without node. The release (= VERSION and the version in
 # config.yaml) and the architecture Home Assistant knows it by are checked.

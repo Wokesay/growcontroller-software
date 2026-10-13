@@ -2,6 +2,9 @@
 #include "gc/auth.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <vector>
 
 #include "gc/sha256.hpp"
 
@@ -40,9 +43,14 @@ Msg Auth::setInitialPassword(const std::string& pw) {
   return {};
 }
 
-Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw) {
-  if (!hasPassword() || !sameHash(hashOf(oldPw, salt_, iterations_), hash_))
+Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw, Ms now, const std::string& client) {
+  Attempts& a = attemptsOf(client);
+  Msg err;
+  if (locked(a, now, err)) return err;  // before hashing
+  if (!hasPassword() || !sameHash(hashOf(oldPw, salt_, iterations_), hash_)) {
+    failed(a, now);  // a stolen session must not guess the password freely
     return {"auth.wrong", "Altes Passwort stimmt nicht", json::object()};
+  }
   Msg m = checkStrength(newPw);
   if (!m.key.empty()) return m;
   std::uint8_t salt[16];
@@ -50,30 +58,54 @@ Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw) {
   salt_ = toHex(salt, sizeof salt);
   hash_ = hashOf(newPw, salt_, iterations_);
   sessions_.clear();  // alle anderen Sitzungen ungültig
+  known_.clear();     // every other client signs in anew before it has a count of its own;
+  remember(client, now);  // the caller just proved the old password
   return {};
 }
 
-std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err) {
+Auth::Attempts& Auth::attemptsOf(const std::string& client) {
+  auto it = client.empty() ? known_.end() : known_.find(client);
+  return it == known_.end() ? shared_ : it->second.tries;
+}
+
+bool Auth::locked(const Attempts& a, Ms now, Msg& err) {
+  if (now >= a.lockedUntil) return false;
+  err = {"auth.locked", "Zu viele Fehlversuche. Bitte " + std::to_string((a.lockedUntil - now) / 1000 + 1) + " s warten.",
+         {{"waitS", (a.lockedUntil - now) / 1000 + 1}}};
+  return true;
+}
+
+void Auth::failed(Attempts& a, Ms now) {
+  if (a.failures > 0 && now - a.lastFailure > kForgetFailures) a = {};  // a quiet day forgets the count
+  a.failures++;
+  a.lastFailure = now;
+  // 30 s, dann verdoppeln bis 15 min (EN 18031-1 AUM-6)
+  if (a.failures >= 5) a.lockedUntil = now + std::min<Ms>(30 * kSecond << std::min(a.failures - 5, 5), 15 * kMinute);
+}
+
+// A success gives the client a count of its own, fresh; the shared count
+// stays, so a success from a new address does not lift a lockout for others.
+void Auth::remember(const std::string& client, Ms now) {
+  if (client.empty()) return;
+  if (!known_.count(client) && known_.size() >= kKnownClients)
+    known_.erase(std::min_element(known_.begin(), known_.end(),
+                                  [](const auto& x, const auto& y) { return x.second.lastSeen < y.second.lastSeen; }));
+  known_[client] = Known{{}, now};
+}
+
+std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err, const std::string& client) {
   if (!hasPassword()) {
     err = {"auth.no_password", "Noch kein Passwort gesetzt", json::object()};
     return std::nullopt;
   }
-  if (now < lockedUntil_) {
-    err = {"auth.locked", "Zu viele Fehlversuche. Bitte " + std::to_string((lockedUntil_ - now) / 1000 + 1) + " s warten.",
-           {{"waitS", (lockedUntil_ - now) / 1000 + 1}}};
-    return std::nullopt;
-  }
+  Attempts& a = attemptsOf(client);
+  if (locked(a, now, err)) return std::nullopt;  // before hashing
   if (!sameHash(hashOf(pw, salt_, iterations_), hash_)) {
-    failures_++;
-    if (failures_ >= 5) {
-      // 30 s, dann verdoppeln bis 15 min (EN 18031-1 AUM-6)
-      Ms wait = std::min<Ms>(30 * kSecond << std::min(failures_ - 5, 5), 15 * kMinute);
-      lockedUntil_ = now + wait;
-    }
+    failed(a, now);
     err = {"auth.wrong", "Passwort falsch", json::object()};
     return std::nullopt;
   }
-  failures_ = 0;
+  remember(client, now);
   std::uint8_t tok[24];
   rng_(tok, sizeof tok);
   std::string t = toHex(tok, sizeof tok);
@@ -83,6 +115,11 @@ std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err) 
   if (sessions_.size() >= 16) sessions_.erase(sessions_.begin());
   sessions_[t] = now;
   return t;
+}
+
+void Auth::seen(const std::string& client, Ms now) {
+  auto it = client.empty() ? known_.end() : known_.find(client);
+  if (it != known_.end()) it->second.lastSeen = now;
 }
 
 bool Auth::check(const std::string& token, Ms now) {
@@ -103,6 +140,93 @@ void Auth::load(const json& j) {
   hash_ = jstr(j, "hash");
   double it = jnum(j, "iterations", kIterations);
   iterations_ = isNum(it) && it >= 1000 && it <= 1e7 ? static_cast<std::uint32_t>(it) : kIterations;
+}
+
+namespace {
+// a.b.c.d, each 0–255 in 1–3 digits
+bool parseIpv4(const std::string& s, std::uint8_t out[4]) {
+  size_t pos = 0;
+  for (int i = 0; i < 4; ++i) {
+    if (i > 0) {
+      if (pos >= s.size() || s[pos] != '.') return false;
+      ++pos;
+    }
+    size_t start = pos;
+    unsigned v = 0;
+    while (pos < s.size() && pos - start < 3 && s[pos] >= '0' && s[pos] <= '9') v = v * 10 + static_cast<unsigned>(s[pos++] - '0');
+    if (pos == start || v > 255) return false;
+    out[i] = static_cast<std::uint8_t>(v);
+  }
+  return pos == s.size();
+}
+
+// Groups of 1–4 hex digits separated by ':'; the last one may be a.b.c.d
+// only at the end of the whole address
+bool parseGroups(const std::string& s, std::vector<std::uint16_t>& out, bool lastMayBeIpv4) {
+  if (s.empty()) return true;
+  size_t pos = 0;
+  while (true) {
+    size_t end = s.find(':', pos);
+    std::string g = s.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    if (end == std::string::npos && lastMayBeIpv4 && g.find('.') != std::string::npos) {
+      std::uint8_t b[4];
+      if (!parseIpv4(g, b)) return false;
+      out.push_back(static_cast<std::uint16_t>(b[0] << 8 | b[1]));
+      out.push_back(static_cast<std::uint16_t>(b[2] << 8 | b[3]));
+      return true;
+    }
+    if (g.empty() || g.size() > 4) return false;
+    unsigned v = 0;
+    for (char c : g) {
+      const int d = std::isdigit(static_cast<unsigned char>(c)) ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+      if (d < 0) return false;
+      v = v * 16 + static_cast<unsigned>(d);
+    }
+    out.push_back(static_cast<std::uint16_t>(v));
+    if (end == std::string::npos) return true;
+    pos = end + 1;
+  }
+}
+
+bool parseIpv6(const std::string& s, std::uint16_t out[8]) {
+  const size_t gap = s.find("::");
+  std::vector<std::uint16_t> head, tail;
+  if (gap == std::string::npos) {
+    if (!parseGroups(s, head, true) || head.size() != 8) return false;
+  } else {
+    if (s.find("::", gap + 1) != std::string::npos) return false;
+    if (!parseGroups(s.substr(0, gap), head, false) || !parseGroups(s.substr(gap + 2), tail, true)) return false;
+    if (head.size() + tail.size() > 7) return false;
+  }
+  std::fill(out, out + 8, 0);
+  std::copy(head.begin(), head.end(), out);
+  std::copy(tail.begin(), tail.end(), out + 8 - tail.size());
+  return true;
+}
+}  // namespace
+
+std::string clientKey(const std::string& address) {
+  if (address.size() > 64) return "";
+  std::string a = address.substr(0, address.find('%'));  // the zone names the interface, not the client
+  std::uint8_t b[4];
+  auto v4 = [](const std::uint8_t* x) {
+    return std::to_string(x[0]) + "." + std::to_string(x[1]) + "." + std::to_string(x[2]) + "." + std::to_string(x[3]);
+  };
+  if (parseIpv4(a, b)) return v4(b);
+  std::uint16_t g[8];
+  if (!parseIpv6(a, g)) return "";
+  if (g[0] == 0 && g[1] == 0 && g[2] == 0 && g[3] == 0 && g[4] == 0 && g[5] == 0xffff) {
+    const std::uint8_t m[4] = {static_cast<std::uint8_t>(g[6] >> 8), static_cast<std::uint8_t>(g[6] & 0xff), static_cast<std::uint8_t>(g[7] >> 8),
+                               static_cast<std::uint8_t>(g[7] & 0xff)};
+    return v4(m);
+  }
+  std::string out;
+  for (int i = 0; i < 8; ++i) {
+    char hex[5];
+    std::snprintf(hex, sizeof hex, "%x", g[i]);
+    out += (i ? ":" : "") + std::string(hex);
+  }
+  return out;
 }
 
 }  // namespace gc

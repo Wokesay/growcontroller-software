@@ -136,13 +136,18 @@ small, .small { font-size: 0.85rem; }
 .nav .sep { height: 1px; background: var(--border); margin: 8px 10px; }
 .side-foot { margin-top: auto; padding: 10px; display: grid; gap: 8px; color: var(--faint); font-size: 0.8rem; }
 .main { min-width: 0; display: flex; flex-direction: column; }
-.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 12px 28px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+/* The top bar and, on phones, the offline bar below it stay in view */
+.top { position: sticky; top: 0; z-index: 20; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 12px 28px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
 .topbar h1 { font-size: 1.25rem; }
 .topbar .spacer { flex: 1; }
 .content { padding: 22px 28px 90px; max-width: 2000px; width: 100%; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .page-head p { margin-top: 4px; }
 .bottom-nav { display: none; }
+.only-sm { display: none; }
+/* Phones hide the live badge: a lost connection shows as a bar */
+.offline-bar { padding: 8px 16px; background: var(--bad-weak); color: var(--bad); font-size: 0.85rem; font-weight: 600; border-bottom: 1px solid var(--border); }
 
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
@@ -153,6 +158,7 @@ small, .small { font-size: 0.85rem; }
   .bottom-nav a, .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.7rem; color: var(--muted); padding: 4px; background: none; border: 0; font-family: inherit; text-decoration: none; }
   .bottom-nav a.active { color: var(--accent); }
   .hide-sm { display: none !important; }
+  .only-sm { display: block; }
 }
 
 /* ---------- Karten und Raster */
@@ -197,6 +203,8 @@ small, .small { font-size: 0.85rem; }
 .banner.bad { background: var(--bad-weak); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .banner.ok { background: var(--ok-weak); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 .banner svg { flex: none; margin-top: 2px; }
+/* a text with a button: the button goes below the text when both do not fit */
+.banner .row-between { flex-wrap: wrap; }
 
 /* ---------- Messwerte */
 .metric { display: grid; gap: 6px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid transparent; position: relative; min-width: 0; overflow: hidden; align-content: start; }
@@ -272,7 +280,8 @@ small, .small { font-size: 0.85rem; }
 .term { display: inline-grid; gap: 6px; }
 .field .hint { font-size: 0.8rem; color: var(--faint); }
 .field .err { font-size: 0.8rem; color: var(--bad); }
-.input, .select, textarea.input { width: 100%; min-height: 42px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; min-width: 0; }
+/* 16 px: below that iOS Safari zooms in when a field gets the focus and stays zoomed (#33) */
+.input, .select, textarea.input { width: 100%; min-height: 42px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; min-width: 0; }
 .input:focus, .select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
 .input-unit { display: flex; align-items: stretch; }
 .input-unit .input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
@@ -411,9 +420,17 @@ body:has(.wizard-foot) .sim-fab { bottom: 86px; }
 .wizard-steps .ws { border: 0; font: inherit; cursor: default; }
 .wizard-steps .ws.done { cursor: pointer; }
 .wizard-foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--border); padding: 12px 28px calc(12px + env(safe-area-inset-bottom)); }
-.wizard-foot > div { width: min(1280px, 100%); margin: 0 auto; display: flex; align-items: center; gap: 10px; }
+.wizard-foot > div { width: min(1280px, 100%); margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
 .wizard-foot .spacer { flex: 1; }
-@media (max-width: 700px) { .wizard-page { padding: 16px 16px 120px; } .wizard-foot { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); } }
+@media (max-width: 700px) {
+  /* room for a footer that wraps to two lines, above the iPhone's home bar */
+  .wizard-page { padding: 16px 16px calc(160px + env(safe-area-inset-bottom)); }
+  body:has(.wizard-foot) .toasts, body:has(.wizard-foot) .sim-fab { bottom: calc(126px + env(safe-area-inset-bottom)); }
+  .wizard-foot { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  /* Back, Skip and Next side by side on a phone; a longer text wraps instead of running off */
+  .wizard-foot > div { gap: 6px; }
+  .wizard-foot .btn { padding-left: 12px; padding-right: 12px; }
+}
 .tpl-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
 .tpl { text-align: left; font: inherit; color: inherit; border: 1px solid var(--border); background: var(--surface); border-radius: 14px; padding: 14px; display: grid; gap: 8px; cursor: pointer; }
 .tpl:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
@@ -428,8 +445,11 @@ body:has(.wizard-foot) .sim-fab { bottom: 86px; }
   .rtable, .rtable tbody, .rtable tr, .rtable td { display: block; width: auto !important; }
   .rtable tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
   .rtable td { padding: 0; border: 0; min-width: 0; }
-  .rtable td[data-label]::before { content: attr(data-label); display: block; font-size: 0.75rem; font-weight: 600; color: var(--faint); margin-bottom: 4px; }
+  .rtable td[data-label]::before { content: attr(data-label); display: block; font-size: 0.75rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
   .rtable td.full { grid-column: 1 / -1; }
+  /* icon buttons as touch targets, apart from each other */
+  .rtable td.actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .rtable td.actions .btn { min-width: 44px; min-height: 44px; }
 }
 .later { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
 .later a { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-decoration: none; }
@@ -464,11 +484,11 @@ body:has(.wizard-foot) .sim-fab { bottom: 86px; }
 .age-fresh { color: var(--ok); }
 .age-late { color: var(--warn); }
 .age-old { color: var(--bad); font-weight: 600; }
-.ha-life-text { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ha-life-text legend { padding: 0; margin-bottom: 4px; }
-.ha-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ha-life-text { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
+.ha-life-text legend { padding: 0; margin-bottom: 4px; overflow-wrap: anywhere; }
+.ha-actions, .row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 600px) {
-  /* On a phone the buttons sit below the sensor, never squeezing its name */
-  .list > .item.ha-row { flex-wrap: wrap; }
-  .list > .item.ha-row .grow { flex-basis: 100%; }
+  /* On a phone the buttons sit below the sensor or device, never squeezing its name */
+  .list > .item.ha-row, .list > .item.wrap-row { flex-wrap: wrap; }
+  .list > .item.ha-row .grow, .list > .item.wrap-row .grow { flex-basis: 100%; }
 }

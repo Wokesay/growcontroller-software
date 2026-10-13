@@ -58,7 +58,10 @@ std::string sessionCookie(const std::string& token, int maxAge) {
 
 bool Api::authorized(const ApiRequest& req) {
   std::lock_guard<std::recursive_mutex> l(hub_.mutex());
-  return !req.token.empty() && hub_.auth().check(req.token, clock_.nowMs());
+  const Ms now = clock_.nowMs();
+  if (req.token.empty() || !hub_.auth().check(req.token, now)) return false;
+  hub_.auth().seen(req.client, now);  // a phone that stays signed in keeps its own count (SD-051)
+  return true;
 }
 
 bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {
@@ -144,7 +147,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     hub_.markPasswordSet();
     hub_.logEvent("auth", "info", say("ev.auth.password_set"), say("ev.auth.first_setup"));
     Msg err;
-    auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
+    auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err, req.client);
     ApiResponse r = jsonResp(200, {{"ok", true}});
     if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
     return r;
@@ -152,9 +155,11 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("POST", {"auth", "login"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     Msg err;
-    auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err);
+    auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err, req.client);
     if (!tok) {
-      hub_.logEvent("auth", "warn", say("ev.auth.failed"), err);
+      // Only a counted failure is logged; a try refused during a lockout is
+      // not, so guessing cannot wear out the flash or flush the log (SD-051).
+      if (err.key == "auth.wrong") hub_.logEvent("auth", "warn", say("ev.auth.failed"), err);
       return fail(err.key == "auth.locked" ? 429 : 401, err.key, err.text);
     }
     hub_.logEvent("auth", "info", say("ev.auth.signed_in"));
@@ -176,8 +181,11 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("PUT", {"auth", "password"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     const Auth before = hub_.auth();
-    Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"));
-    if (!e.key.empty()) return fail(422, e.key, e.text);
+    Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"), clock_.nowMs(), req.client);
+    if (!e.key.empty()) {
+      if (e.key == "auth.wrong") hub_.logEvent("auth", "warn", say("ev.auth.failed"), e);  // counted like a sign-in
+      return fail(e.key == "auth.locked" ? 429 : 422, e.key, e.text);
+    }
     if (!hub_.saveAuth()) {  // the old password and the sessions stay, in memory as on disk
       hub_.auth() = before;
       return fromResult(Result::fail(500, say("store.failed")));

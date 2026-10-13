@@ -131,11 +131,21 @@ TEST_CASE("Storage: a day and more in one go, with its snapshot, comes back whol
   CHECK(found);
 }
 
-TEST_CASE("Storage: failed logins cannot grow the event journal without limit (#68)") {
+TEST_CASE("Storage: the event journal does not grow without limit; failed logins write only what they count (#68, SD-051)") {
   TempDir dir;
   sim::Simulation s(onCard(dir));
   test::Client c{s};
   for (int i = 0; i < 12000; ++i) c.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});  // locked after five: cheap
+  s.step(16 * 60 * 1000);  // past the longest wait
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const json auth = c.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  int failed = 0;
+  for (const auto& e : auth) failed += e["title"].is_object() && e["title"].value("key", std::string()) == "ev.auth.failed";
+  CHECK(failed == 5);
+  for (int i = 0; i < 2550; ++i) {  // 5100 events, past the journal's 5000
+    c.ok("POST", "/api/v1/stop");
+    c.ok("POST", "/api/v1/resume");
+  }
   size_t lines = 0;
   for (char ch : onDisk(dir.path / "events.log")) lines += ch == '\n';
   CHECK(lines <= 5000);
@@ -177,11 +187,15 @@ TEST_CASE("Storage: a snapshot that cannot be written leaves its journal alone (
   TempDir dir;
   sim::Simulation s(onCard(dir));
   test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   fs::create_directories(dir.path / "events.json.tmp");  // no snapshot of the events can be written
-  for (int i = 0; i < 6000; ++i) c.call("POST", "/api/v1/auth/login", {{"password", "falsch"}});
+  for (int i = 0; i < 3000; ++i) {  // two events each
+    c.ok("POST", "/api/v1/stop");
+    c.ok("POST", "/api/v1/resume");
+  }
   size_t lines = 0;
   for (char ch : onDisk(dir.path / "events.log")) lines += ch == '\n';
-  CHECK(lines >= 6000);  // every failed login is still on disk, in the journal
+  CHECK(lines >= 6000);  // every event is still on disk, in the journal
 }
 
 TEST_CASE("Storage: a new scenario starts without the old journals (#68)") {

@@ -65,3 +65,14 @@ export const day = (epoch: number) => fmt("d").format(new Date(epoch * 1000));
 export function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/** A time zone the browser knows, in its usual spelling ("europe/berlin" → "Europe/Berlin"); null if there is none of that name. */
+export function timeZone(name: string): string | null {
+  const z = name.trim();
+  if (!z) return null;
+  try {
+    return new Intl.DateTimeFormat("en", { timeZone: z }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}

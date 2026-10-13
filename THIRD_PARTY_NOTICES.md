@@ -66,7 +66,7 @@ it.
 | Component | License |
 |---|---|
 | doctest 2.4.11 (C++ tests) | MIT |
-| Vite, TypeScript, @preact/preset-vite, Playwright and their dependencies (npm, dev) | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0; `caniuse-lite` (browser usage data read by the build) CC-BY-4.0; `lightningcss` (processes the CSS in Vite, not shipped) MPL-2.0 (SD-046) |
+| Vite, TypeScript, @preact/preset-vite, Playwright, Node's types (`@types/node`) and their dependencies (npm, dev) | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0; `caniuse-lite` (browser usage data read by the build) CC-BY-4.0; `lightningcss` (processes the CSS in Vite, not shipped) MPL-2.0 (SD-046) |
 
 ## Manufacturer data
 

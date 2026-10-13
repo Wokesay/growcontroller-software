@@ -7,8 +7,9 @@
   "description": "Web app of the growcontroller hub (runs from the flash of the ESP32-S3 or against the simulator)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build && node scripts/size-budget.mjs && node scripts/no-tool-code.mjs",
+    "typecheck": "tsc --noEmit && npm run typecheck:node",
+    "typecheck:node": "tsc -p tsconfig.node.json",
     "e2e": "playwright test",
     "sbom": "npm sbom --sbom-format cyclonedx --omit dev > ../build/sbom-web.cdx.json"
   },
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@preact/preset-vite": "2.10.6",
+    "@types/node": "22.20.5",
     "typescript": "7.0.2",
     "vite": "8.3.2"
   }

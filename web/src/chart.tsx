@@ -47,7 +47,20 @@ export function TimeChart(p: {
       legend: { show: true, live: true },
       scales: { x: { time: true } },
       axes: [
-        { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid } },
+        {
+          stroke: text,
+          grid: { stroke: grid, width: 1 },
+          ticks: { stroke: grid },
+          // In the page's language and 24-hour clock, not uPlot's US default. Ticks a day or
+          // more apart show the date; closer ones the time, and the date at midnight.
+          values: (_u, vals, _axis, _space, incr) =>
+            vals.map((v) => {
+              const d = new Date(v * 1000);
+              return incr >= 86400 || (d.getHours() === 0 && d.getMinutes() === 0)
+                ? d.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" })
+                : d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+            }),
+        },
         {
           stroke: text,
           grid: { stroke: grid, width: 1 },

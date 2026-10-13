@@ -33,6 +33,12 @@ if grep -rnE 'value_or\(0(\.0)?\)' core/; then
   err "fehlender Wert wird zu 0"
 fi
 
+# SD-051: the lockout knows a client by the socket's peer address. A trusted
+# proxy would let cpp-httplib take it from X-Forwarded-For instead.
+if grep -rn 'set_trusted_proxies' sim/ ha/ firmware/; then
+  err "client address from a header (set_trusted_proxies)"
+fi
+
 # SD-039: a value calibrated elsewhere goes into the history, never into
 # control: Reading::forHistory() is read only where the history is sampled.
 if grep -rnE 'forHistory\(' core/ | grep -vE '^core/include/gc/readmodel\.hpp:|^core/src/hub\.cpp:[0-9]+: +samples\.emplace_back'; then
@@ -42,10 +48,11 @@ fi
 # PD-022, PD-043, PD-047 (SD-010, SD-021, SD-024): devices do not lock out
 # third-party firmware; the only eFuse allowed is the HMAC key for encrypted
 # NVS. No sdkconfig option that burns eFuses for Secure Boot, flash
-# encryption, a disabled ROM download mode or anti-rollback, and no direct
-# eFuse writes in the firmware code.
-if grep -rnE --include='sdkconfig*' '^CONFIG_(SECURE_BOOT|SECURE_FLASH_ENC_ENABLED|SECURE_FLASH_ENCRYPTION_MODE_RELEASE|SECURE_DISABLE_ROM_DL_MODE|SECURE_ENABLE_SECURE_ROM_DL_MODE|BOOTLOADER_APP_ANTI_ROLLBACK)=y' firmware/; then
-  err "eFuse-burning security option in firmware sdkconfig (PD-022, SD-021, SD-024)"
+# encryption, a disabled ROM download mode or anti-rollback, also in a
+# board profile (firmware/boards/*.defaults), and no direct eFuse writes in
+# the firmware code.
+if grep -rnE --include='sdkconfig*' --include='*.defaults' '^CONFIG_(SECURE_BOOT|SECURE_FLASH_ENC_ENABLED|SECURE_FLASH_ENCRYPTION_MODE_RELEASE|SECURE_DISABLE_ROM_DL_MODE|SECURE_ENABLE_SECURE_ROM_DL_MODE|BOOTLOADER_APP_ANTI_ROLLBACK)=y' firmware/; then
+  err "eFuse-burning security option in firmware sdkconfig or board profile (PD-022, SD-021, SD-024)"
 fi
 if grep -rnE 'esp_efuse_(write|set_write_protect|set_read_protect|disable_rom_download_mode|enable_rom_secure_download_mode)' firmware/main firmware/components 2>/dev/null; then
   err "direct eFuse write in the firmware (PD-022, SD-024)"

@@ -1,24 +1,57 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: Device or sensor
-description: A device is not detected or should be supported.
+description: A device does not work, should be supported, or you tested one for the compatibility list (docs/COMPATIBILITY.md).
 labels: ["device", "triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Is it listed already? See [docs/COMPATIBILITY.md](https://github.com/Wokesay/growcontroller-software/blob/main/docs/COMPATIBILITY.md).
+        Please do not post passwords, access tokens or keys (also not in ESPHome YAML: the `api` encryption key, the `ota` password, Wi-Fi details), the address of your Home Assistant from outside, or locations – issues are public.
   - type: input
     id: device
     attributes:
       label: Device (manufacturer, model)
+      description: As printed on the device or the box. A link to the maker's page helps.
+      placeholder: e.g. DFRobot Gravity analog pH kit V2 (SEN0161-V2)
     validations:
       required: true
   - type: dropdown
     id: connection
     attributes:
-      label: Connection
-      options: ["Hub port (RJ45, Modbus)", "Dosing block port", "Network (MQTT/Shelly)", "Don't know"]
+      label: How is it connected?
+      options:
+        - "A sensor in Home Assistant, read by the growcontroller app"
+        - "Sensor port of the carrier board (RS485, Modbus)"
+        - "pH or EC input of the carrier board"
+        - "Contact input of the carrier board"
+        - "Pump, valve or light output of the carrier board"
+        - "Bluetooth, straight to the ESP32-S3 (for example Shelly BLU)"
+        - "Smart plug, switched by the ESP32-S3 (for example Shelly)"
+        - "ESP32 board"
+        - "Don't know"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Does it work?
+      options:
+        - "Yes"
+        - "Partly (say what is missing below)"
+        - "No"
+        - "Not tried yet: I am asking"
+    validations:
+      required: true
   - type: textarea
     id: shown
     attributes:
-      label: What does the hub show under Devices › Hub ports?
+      label: What did you try, and what did the app show?
+      description: "Home Assistant: how the sensor gets there (ESPHome, Zigbee, Bluetooth …), the unit next to its value, and its device class (Developer tools › States); then what the app shows under Devices › Assignment. Carrier board: what Devices › Hub ports shows. A screenshot helps; crop the browser's address bar."
   - type: input
     id: version
     attributes:
       label: Software version
+      description: Settings › Display and info; "none" if not installed. Needed for a "Tested" entry.
+    validations:
+      required: true

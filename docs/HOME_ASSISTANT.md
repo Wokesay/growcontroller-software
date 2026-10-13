@@ -277,8 +277,8 @@ app (SD-038, SD-041):
 - **Not taken yet:** a board with gain (for example 1500 mV at pH 7 and
   about 177 mV per pH step at its output, the defaults of a common
   amplified board) fails the check, and the app says so in mV per pH step;
-  such boards, and temperature compensation of the slope, need a rule
-  first (SD-041). Swapped buffers or a reversed probe are refused as
+  such boards need a rule first (SD-041). pH is not temperature
+  compensated (SD-054). Swapped buffers or a reversed probe are refused as
   running the wrong way, a worn probe as too weak.
 - **Calibrating:** Devices › Assignment › "Kalibrieren" (calibrate), pH 7
   then pH 4. Each step takes the sensor's first report clearly after
@@ -354,8 +354,10 @@ steer anything. Each point is open unless it says what is built.
    checked".
 4. **EC temperature compensation:** an EZO-EC circuit assumes 25 °C unless
    it is sent the water temperature; uncompensated EC is off by roughly
-   2 % per degree (a typical value, not measured here). Who compensates,
-   and how, is a product question.
+   2 % per degree (a typical value, not measured here). Who compensates
+   a value from Home Assistant, and how, is a product question; the
+   ESP32-S3 will compensate the EC of its own probes if the user chooses
+   so (SD-054, SD-060).
 5. **Galvanic isolation** of pH and EC probes (the hub's heads have it;
    many DIY builds do not). Interference gives wrong but plausible values;
    an acceptance test compares readings with the circulation pump on and

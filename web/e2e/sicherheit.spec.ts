@@ -1,6 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Zugangsschutz (EN 18031-1 ACM/AUM): ohne Anmeldung keine Daten, keine Aktoren.
+import { request as httpRequest } from "node:http";
 import { expect, login, scenario, test } from "./helpers";
+
+// A sign-in from another local address: Linux has all of 127.0.0.0/8 on its
+// loopback, so 127.0.0.2 is another device to the simulator.
+function signInFrom(baseURL: string, localAddress: string, password: string): Promise<number> {
+  const { hostname, port } = new URL(baseURL);
+  const data = JSON.stringify({ password });
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: hostname, port, path: "/api/v1/auth/login", method: "POST", localAddress, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on("error", reject);
+    req.end(data);
+  });
+}
 
 test("API ohne Sitzung: 401 für Zustand und Aktoren", async ({ request }) => {
   await scenario(request, "demo");
@@ -65,4 +84,17 @@ test("A part that fails to draw shows a notice; the page around it and STOP stay
   await page.getByRole("button", { name: "Seite neu laden" }).click();
   await expect(page.getByTestId("event").first()).toBeVisible();
   await expect(page.getByText("Dieser Teil lässt sich nicht anzeigen")).toHaveCount(0);
+});
+
+test("Someone guessing from another device does not lock out this browser (SD-051)", async ({ page, request, baseURL }) => {
+  test.skip(process.platform !== "linux", "needs 127.0.0.2 on the loopback (Linux)");
+  await scenario(request, "demo");
+  await login(page);  // this browser has signed in now
+  await page.context().clearCookies();  // signed out on this browser
+  const tries: number[] = [];
+  for (let i = 0; i < 6; i++) tries.push(await signInFrom(baseURL!, "127.0.0.2", "falsch"));
+  expect(tries).toEqual([401, 401, 401, 401, 401, 429]);
+  expect(await signInFrom(baseURL!, "127.0.0.3", "demo-passwort")).toBe(429);  // never signed in: shares the lockout
+  await login(page);
+  await scenario(request, "demo");  // no lockout left for the next cases
 });
