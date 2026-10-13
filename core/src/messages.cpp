@@ -199,6 +199,8 @@ constexpr Entry kMessages[] = {
     // Events: start, configuration, system (hub.cpp, api.cpp)
     {"ev.config_unreadable", "Settings unreadable"},
     {"ev.config_unreadable.text", "Started with factory settings. Copy saved as config.broken.json. Restore a backup under Settings › Data. Reason: {reason}"},
+    {"ev.cfg.timezone_reset", "Time zone reset"},
+    {"ev.cfg.timezone_reset.text", "The saved time zone \"{zone}\" is not a time zone name, so {default} applies. Set yours under Settings."},
     {"ev.state_unreadable", "Saved state unreadable"},
     {"ev.state_unreadable.text", "Locks and stock levels were lost – check the tank and bottles. Everything stays off until you tap \"Resume\". Copy saved as state.broken.json. Reason: {reason}"},
     {"reason.not_json", "not valid JSON"},
@@ -284,6 +286,7 @@ constexpr Entry kMessages[] = {
     {"probe.no_move", "The value hardly moved between the buffers: is this really the probe's signal, and was the probe in the buffer? Take the values again."},
     // Refused configuration changes (hub.cpp)
     {"system.control", "Choose automatic or outside the control for each area"},
+    {"system.timezone", "This time zone doesn't exist. Write it like Europe/London."},
 
     // Events: devices, sockets, locks
     {"ev.device.found", "{label} detected"},

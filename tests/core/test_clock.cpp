@@ -394,6 +394,44 @@ TEST_CASE("Restart: settings with wrong types also start with factory settings a
   CHECK(alarm);
 }
 
+TEST_CASE("Restart: a saved time zone that is no zone name falls back to the default and says so; the rest of the settings stays") {
+  for (const json& tz : {json(42), json("Mars Olympus"), json(nullptr)}) {
+    CAPTURE(tz.dump());
+    gc::Catalog cat = gc::Catalog::builtin();
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    store.write("config.json", json{{"system", {{"name", "Gewächshaus"}, {"timezone", tz}}}}.dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    CHECK_FALSE(store.read("config.broken.json"));  // no factory settings
+    CHECK(h.config().system.name == "Gewächshaus");
+    CHECK(h.config().system.timezone == gc::SystemCfg{}.timezone);
+    int notes = 0;
+    const json events = h.events(0, 9999999999, "", 2000)["events"];
+    for (const auto& e : events) {
+      CHECK_FALSE(sameEvent(e, "ev.config_unreadable"));
+      if (sameEvent(e, "ev.cfg.timezone_reset")) {
+        ++notes;
+        CHECK(e["text"]["args"]["zone"] == (tz.is_string() ? tz.get<std::string>() : tz.dump()));
+        CHECK(e["text"]["args"]["default"] == "Europe/Berlin");
+      }
+    }
+    CHECK(notes == 1);
+  }
+  // A zone that is one: no note
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  store.write("config.json", json{{"system", {{"timezone", "Asia/Tokyo"}}}}.dump());
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(h.config().system.timezone == "Asia/Tokyo");
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events) CHECK_FALSE(sameEvent(e, "ev.cfg.timezone_reset"));
+}
+
 TEST_CASE("Clock jump: a jump lock loaded before the time was known never holds longer than 15 min (RAT-044)") {
   gc::Catalog cat = gc::Catalog::builtin();
   gc::MemoryStorage store;
