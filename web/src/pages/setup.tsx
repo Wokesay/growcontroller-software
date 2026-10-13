@@ -121,10 +121,10 @@ function StepStart(p: { step: number; next: () => void }) {
   const [zoneName, setZoneName] = useState(z?.name ?? "");
   const [zoneKind, setZoneKind] = useState<ZoneKind>(z?.kind ?? "room");
   // The first setup proposes the browser's time zone while the hub still has its factory
-  // zone (SystemConfig in config.hpp) and this step was not saved; later runs keep the saved one
+  // zone (SystemCfg in config.hpp) and this step was not saved; later runs keep the saved one
   const first = !state.value!.setupDone;
   const propose = first && !zoneSaved && cfg.system.timezone === FACTORY_ZONE;
-  const [tz, setTz] = useState(propose ? Intl.DateTimeFormat().resolvedOptions().timeZone || cfg.system.timezone : cfg.system.timezone);
+  const [tz, setTz] = useState((propose && timeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)) || cfg.system.timezone);
   const tzField = useRef<HTMLInputElement>(null);
   const [tzTouched, setTzTouched] = useState(false);
   const zone = timeZone(tz);

@@ -136,6 +136,15 @@ struct SystemCfg {
 inline constexpr std::array<std::string_view, 6> kControlAreas{"climate", "light", "irrigation", "refill", "circulation", "dosing"};
 bool isControlArea(std::string_view area);
 bool isControlMode(std::string_view mode);
+// A name in the form of the time zone database ("Europe/Berlin", "Etc/GMT+1", "UTC"): starting
+// with a letter; letters, digits, "_", "+" and "-" in parts separated by "/"; at most 64
+// characters; no part empty. The web app checks the same form (timeZone in web/src/format.ts).
+// No name in the database uses ".", so it is left out on purpose: the firmware may one day
+// look the zone up as a file, and "../" must never reach that. The core has no
+// time zone database, so this checks the form, not that the zone exists; the web app checks
+// that against the browser's. Nothing in the hub uses the zone yet; light and watering
+// times will, so a value that is no zone name is refused rather than stored.
+bool isTimeZoneName(std::string_view tz);
 
 struct Config {
   int schemaVersion = kSchemaVersion;
