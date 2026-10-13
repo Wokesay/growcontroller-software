@@ -28,7 +28,10 @@ listed in every release under "Security".
   channel's last measurement) or a timestamp sensor. The age then counts
   from the last measurement, shown green up to 30 s, yellow from 31 s and
   red from 60 s, and the value is outdated after 60 s without a
-  measurement. Without a sign of life the age now says "unverändert seit"
+  measurement. A text older than 60 s makes all its sensors outdated and
+  shows in the monitoring as one problem titled with the readings it
+  affects, with the sign of life's entity ID at the end (#107). Without a
+  sign of life the age now says "unverändert seit"
   (unchanged for), as the app sees only the last change. A sign of life
   that is unavailable, unreadable, misses the channel, lies in the future
   or dates the measurement before the sensor's own report makes the value

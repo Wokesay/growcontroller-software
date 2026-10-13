@@ -510,7 +510,7 @@ TEST_CASE("Sensor truth: the age says what it counts from; a sign of life sets t
   s.measuredAt = clk.ms - 1000;
   s.lifeText = true;
   s.lifeAt = clk.ms - 61000;
-  CHECK(run().reason.key == "truth.life_silent");
+  CHECK(run().reason.key == kDeviceSilent);  // the key the watchdog looks for
   // Without it again, the learned limit applies and the age counts from the change
   bus.set("HA-T", "measure.water_temp", 21.5, clk.ms - 300000);
   CHECK(run().ageOf == "change");
