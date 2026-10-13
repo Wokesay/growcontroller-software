@@ -52,6 +52,7 @@ Partitions (`boards/<board>.csv`):
 | | N32R16V | N8R8 |
 |---|---|---|
 | `nvs` (Wi-Fi, keys; encrypted later, SD-024) | 64 KB | 64 KB |
+| `fctry` (factory data: serial number, the label's setup key; read-only, SD-063) | 16 KB | 16 KB |
 | App A and B (`ota_0`, `ota_1`) | 4 MB each | 2.5 MB each |
 | `storage` (configuration) | 2 MB | 1 MB |
 | `history` | 21.9 MB | 1.9 MB |

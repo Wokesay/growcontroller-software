@@ -9,7 +9,10 @@ on the Home Assistant app's port and on faulty input were made on
 so are those for SD-041 (raw values calibrated in the app) and SD-042
 (a sign of life per sensor). The lockout per client (SD-051) in the first
 row was added on 2026-10-12 by the software session, also to be confirmed
-by `regulatorik`.
+by `regulatorik`. The changes for SD-063 (pre-flashed devices, the setup
+network, the first password, the board's USB port, Bluetooth, the factory
+reset, the support period) were made on 2026-10-13 by the software
+session after `security`'s review, also to be confirmed by `regulatorik`.
 Two kinds of safety and security:
 
 - **functional:** no overdose, no overflow, no dry run;
@@ -31,13 +34,17 @@ Two kinds of safety and security:
 | A malicious npm package in the web app's build (the build tools run native code in every build) | every package pinned by its sha512 in `web/package-lock.json` and resolving to its own record on the npm registry; Dependabot proposes updates only after 7 days; `npm ci --ignore-scripts`; `npm audit signatures` right after every install (SD-058) proves that the registry's record of each installed version is signed and checks provenance where a package publishes one. It adds nothing against a hijacked maintainer account: the registry signs its releases too, and a hijacked publishing pipeline even produces valid provenance | fail when a package that had provenance publishes a version without it (#128); compare each lockfile hash with the signed one |
 | Load on the web server disturbs control (RLM) | control runs in its own cycle, requests only under a lock | own task priority and own core on the ESP32, load test |
 | Faulty input | every change and every import is validated (limits, phases, calibrations; an imported calibration passes the same check as one measured in the app, RAT-025, and is trusted like a backup, only for a kind the device's class offers; an unknown entry in the choice per area, SD-037, is left out of an import; a sign of life only for a class whose sensors report on their own schedule (set in code), its source of `a–z`, `0–9`, `_` and `.` up to 255 characters, its channel of `a–z`, `0–9` and `_` up to 16, SD-042; a sign-of-life text at most 255 characters, 64 channels and ages up to 9 999 999 s, anything else unreadable), JSON limit 1 MB or 64 KB (exception: the Home Assistant trial reads Home Assistant's state list, at most 16 MB, read by a SAX reader that keeps only sensors (at most 20 000) and a few fields of each (a name cut to 256 bytes, any other longer field dropped) and stops at 32 levels of nesting, docs/HOME_ASSISTANT.md), exceptions caught (400/500 instead of a crash; in the control cycle: everything off, alarm) | fuzzing |
-| Password file lost (power failure while writing) | on the device reading falls back to the complete `.tmp`; `auth.json` is written before the lock marker and is on disk when the call returns (Linux: `fsync` of file and folder; macOS/Windows best effort; #68), otherwise setup answers "Not saved" and sets nothing; files are created for the owner only (0600, a new folder 0700); once a password was set, setup over the network is locked (423); the marker never comes from an import | factory reset by button |
+| Password file lost (power failure while writing) | on the device reading falls back to the complete `.tmp`; `auth.json` is written before the lock marker and is on disk when the call returns (Linux: `fsync` of file and folder; macOS/Windows best effort; #68), otherwise setup answers "Not saved" and sets nothing; files are created for the owner only (0600, a new folder 0700); once a password was set, setup over the network is locked (423); the marker never comes from an import | password hash, lock and "window used" in encrypted NVS and a "set up" marker in `storage`: losing one of the two reports lost credentials (423), never a new device; the firmware will no longer erase NVS or format `storage` by itself (today it does both); residual risk: losing both at once; factory reset by holding BOOT for 10 s (SD-063) |
 | A slow peer blocks the web server | firmware: 2 s timeout, one retry, then 408; headers up to 2 KB | emergency stop on the device without the web, load test |
 | Data leak when reporting a problem | diagnostic package without hash, sessions, Wi-Fi, IP; preview before download; note "GitHub is public" | upload only with consent, deletion period |
 | A firmware bug doses too much | gateway with fixed limits in code, configuration only tightens them (R1, R7); calibration value mandatory; job ID per attempt and start against double dosing; deadline per run (without feedback: off, counted as run) | time limit and "one channel" in hardware in the dosing block, enable in hardware per port [PD-012] |
 | A sensor lies | sensor truth: freshness, frozen readings, band, jump lock, calibration; EC gate. Home Assistant sensors: freshness learned per sensor, up to 30 min (SD-035), for display only until control has its own freshness check; a pH probe's voltage calibrated in the app is a valid reading, but nothing that can switch reads it (the Home Assistant bus refuses every run and switch and reports no pumps; what control needs first is in `docs/HOME_ASSISTANT.md`); a device whose reported class differs from the configured one has no value, so an import cannot turn a pH calibrated in Home Assistant into one the hub checks (SD-041); with a sign of life a sensor is stale 60 s after its last measurement, and an unavailable or unreadable sign of life, a missing channel, a time in the future, the same text dated again or one that dates the measurement before the sensor's own report makes it stale, never the longer learned limit (SD-042); which sign of life belongs to which sensor rests on the user's pick, which the app marks but cannot prove, so a wrong pick could keep a dead sensor fresh: display only, to be checked before control reads it (`docs/HOME_ASSISTANT.md`) | measurement window with the pump off until the galvanic isolation has passed acceptance (RAT-044) |
 | Power failure in the middle of a run | after start-up everything is off, nothing resumes, a message; exception: fan sockets come back on (PD-050), not during an emergency stop (PD-076) | the dosing block stops without a sign of life from the hub |
 | A socket switches on by itself when mains returns | only roles on a fixed allowlist in code (exhaust, circulation fan) may be "on after power loss", only continuous loads without a maximum run time; a socket that loses the role, its device or its binding in an import goes back to "off", read back, failure reported | the setting is stored in the socket; the user can change it there |
+| Someone else in the home network sets the first password | prototype: whoever comes first sets it, as the Home Assistant app's documentation says | self-flashed devices: a one-time token over USB (SD-044); pre-flashed devices: within 15 min from the first join to the home network, reopened only by holding BOOT for 3 s, never by a restart (whether a restart also ends an open window is open); never through the relay (SD-062); the open window shown by the setup network's last page, an LED and a countdown; for 60 min the login page shows when it was set, and after login the web app and the event log show from which address; residual risks: anyone in the home network can be first, and the way back is a factory reset with BOOT; the certificate per device is trusted on first use, so an active attacker in the home network can read the first password (SD-063) |
+| A computer on a USB port of the DevKit flashes other firmware or restarts the ESP | – | on the ESP32-S3 only an eFuse stops a host on the board's port from starting download mode for good, which PD-022 and SD-024 exclude, and the DevKit's UART port starts it through its auto-program circuit (to be confirmed on the schematic): the docs say to unplug USB in operation, the firmware shows a message while a USB host is connected, a restart by the USB host counts as a power loss (everything off except the fans, reported, R6, PD-050); JTAG cut at run time by the bridge bit, serial kept for Improv (to be proven on a sample); residual risk: other firmware can feed the board watchdog and use the HMAC key; open product question: the port inside the enclosure, a switch for its data lines, or USB-OTG in operation (SD-063) |
+| Someone in radio range joins the setup network | – | WPA2 with a random key per device of at least 80 bits (pre-flashed: made at production, on the label; self-flashed: made at the first start, shown after login); on a pre-flashed device open while no Wi-Fi is configured (a time limit is open), otherwise only for 10 min after BOOT is held for 3 s, one client; sets Wi-Fi only, never a password; no fallback access point; residual risks: a photo of the label (the key can be changed in the web app, until a factory reset brings the label's key back), the key passing the production PC and the printer, a seller who knows the key of a used device (SD-063) |
+| Someone in radio range sends forged Bluetooth advertisements | – | passive observer only for sensors the user added, off without one; no advertising, no connections, no pairing; their values pass sensor truth like any sensor, encrypted where the sensor can (`COMPATIBILITY.md`); residual risk: a forged value inside the band from an unencrypted sensor (SD-063) |
 | Wrong or spoofed time | plausibility bounds for the saved clock and events; continued clock without a secured time; clock steps keep the remaining time of locks and pauses and are logged; intervals across restarts use operating time unless both moments were secured | plausibility checks of network time and the app's device time (PD-073) are open |
 
 ## Logging (CRA Annex I 2(l))
@@ -57,33 +64,59 @@ to switch it off (open).
 ## Factory reset and data (CRA 2(m))
 
 Export and import of the settings exist. The factory reset that erases
-securely comes with `firmware/`. There is no telemetry.
+securely comes with `firmware/` (SD-063): holding BOOT for 10 s, or
+the web app from the home network after asking for the password again, switches everything off through `Actuators`, marks the reset,
+erases `history` and `storage`, then the user NVS last, and keeps the
+app and the read-only factory data (`fctry`: serial number, the setup
+network's key from the label). An interrupted reset is finished at the
+next start. A whole-chip erase over USB also loses the factory data; the
+device then behaves like a self-flashed one. There is no telemetry.
 
 ## Before the first device goes to third parties (beta testers included)
 
 According to `regulatorik`, before 2027-12-11 every device that is sold or
-lent must fully meet EN 18031-1. After that date the CRA applies. List:
+lent must fully meet EN 18031-1. After that date the CRA applies. With
+pre-flashed devices (PD-179, SD-063) the project is the manufacturer of a
+radio device: an EN 18031-1 and -2 self-assessment for every firmware
+version shipped to them, and factory provisioning of the label key.
+List:
 
 1. HTTPS locally, certificate per device.
 2. Signed OTA (EN 18031-1 SUM-2) checked by the firmware, without
    hardware Secure Boot; downgrade protection in software; no eFuses
    burned except the HMAC key for encrypted NVS (PD-043, PD-047, SD-021,
    SD-024). Secrets (Wi-Fi credentials, password hash, TLS key) in
-   encrypted NVS, sessions only as hashes, USB-JTAG off at run time
-   without a further eFuse (feasibility open). Over
+   encrypted NVS, sessions only as hashes; JTAG cut at run time by the
+   USB-Serial-JTAG bridge bit, without a further eFuse, the serial port
+   kept for Improv (to be proven on a sample; JTAG is on from each reset
+   until the app starts). Over
    USB the owner can always install their own firmware (PD-022).
    `tools/arch_check.sh` rejects sdkconfig options, also in the board
    profiles, that would burn eFuses
    for Secure Boot, flash encryption, a disabled download mode or
    anti-rollback. Residual risk, documented: someone with the device in
-   hand can load own code and use the HMAC key. Open: whether a test lab
-   accepts the USB path with the BOOT button.
-3. Setup access point only after a button press and for a limited time.
-   Wi-Fi key per device on the label.
-4. Bluetooth off; JTAG and debug off in a way that keeps installing own
-   firmware possible (PD-022). MQTT and Home Assistant only when the user
-   switches them on.
+   hand can load own code and use the HMAC key. On the DevKit's ports
+   no button is needed: any connected computer can do this (SD-063).
+   Open: whether a test lab accepts the USB path without a button.
+3. Setup network (PD-181, PD-186, SD-063): WPA2 with a key per device of
+   at least 80 bits (pre-flashed: made at production and printed on the
+   label; self-flashed: made at the first start, shown after login,
+   SD-044); on a pre-flashed device open without a button press while no
+   Wi-Fi is configured (a time limit is open), otherwise only for 10 min
+   after BOOT is held for 3 s, one client; no fallback access point; it
+   sets Wi-Fi only. The first password is mandatory: self-flashed
+   devices need the one-time token from Improv over USB (SD-044),
+   pre-flashed devices take it within 15 min after joining the home
+   network (PD-191, PD-192). It fails closed when one of its two stores
+   is lost.
+4. Bluetooth only as a passive observer for sensors the user adds
+   (PD-153): no advertising, no connections, no pairing, no setup over
+   Bluetooth (PD-186), off while no such sensor is set; JTAG and debug
+   off in a way that keeps installing own firmware possible (PD-022).
+   MQTT and Home Assistant only when the user switches them on.
 5. Cyber risk assessment, EN 18031 self-assessment, technical
-   documentation, support period, reporting process.
+   documentation, reporting process; support period of 7 years from the
+   delivery of each board, ending in December, shown in the web app
+   (PD-182 to PD-185, `SECURITY.md`).
 
 How to report vulnerabilities: [`../SECURITY.md`](../SECURITY.md).

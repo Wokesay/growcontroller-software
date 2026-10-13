@@ -208,6 +208,8 @@ repository itself are recorded here in full.
 - Exception (SD-024): the HMAC key for encrypted NVS. Open: whether a test
   lab accepts the USB path with the BOOT button for own firmware, and
   whether and when hardware Secure Boot with owner key slots comes.
+- Changed by SD-063: on either of the DevKit's USB ports no BOOT button is
+  needed to install firmware; whether a test lab accepts that is open.
 
 
 ## SD-022: Product requirement (from PD-044): a pure level latch releases itself
@@ -242,6 +244,10 @@ repository itself are recorded here in full.
   separately): USB-JTAG off at run time without a further eFuse
   (feasibility open), a recessed BOOT button, sessions stored only as
   hashes.
+- Changed by SD-063: the recessed BOOT button guards flashing on neither
+  of the DevKit's ports: on the board's USB port and, through its
+  auto-program circuit (to be confirmed on the schematic), on the UART
+  port a connected computer starts download mode without it.
 
 
 ## SD-025: Product requirement (from PD-048 to PD-053): limits after a power loss
@@ -899,6 +905,17 @@ reviewed by `security`.
 - Open: whether the BOOT button can be reached on the carrier board
   (product question); whether the UART counts as a physically protected
   interface under EN 18031 (`regulatorik`).
+- Changed by SD-063: Improv also runs on the board's USB port
+  (USB-Serial-JTAG), where opening the port can restart the ESP, as can
+  opening the DevKit's UART port (DTR and RTS), so "never restarts the
+  device while a job runs" does not hold over USB (the restart counts as
+  a power loss); the
+  BOOT button can be reached (PD-175) and is held 3 s for the setup
+  network; pre-flashed devices get the key at production, on the label
+  (random per device, so not the "fixed key" SD-044 rules out, though a
+  factory reset brings it back),
+  have the setup network open while no Wi-Fi is configured and set the
+  first password in a 15-min window instead of with the token.
 
 
 ## SD-045: Product requirement (from PD-145 to PD-174): control and safety on the ESP32-S3 on carrier board v0.1
@@ -1825,6 +1842,251 @@ then they are the software's working basis.
   users run themselves (too hard for most); a third-party tunnel that
   needs an account per user (PD-013); a subscription for the relay
   (PD-024).
+
+
+## SD-063: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
+
+Decided by the project owner in the product repository on 2026-10-12
+(#133); PD-180 is replaced by PD-186. The firmware facts come from a
+review by `security` (sources in #133); the BOOT button and the factory
+data were decided by the project owner on 2026-10-13 in the software
+session. Changes SD-044 and SD-024 where said below. Firmware protection
+on the DevKit (signed updates, encrypted secrets, eFuse, USB at run time)
+is re-evaluated in the product repository and is not part of this entry.
+
+- **Two kinds of device (PD-179):**
+  - *Self-flashed*, until the series with hardened firmware: the customer
+    flashes the DevKit in the browser over USB, on the DevKit or through
+    the board's USB port (PD-148, PD-175). SD-044's setup over USB with
+    the one-time token stays. After flashing, the flash page shows the
+    link to the web app and starts a short function test of the board,
+    only over the USB connection that just flashed it or after login,
+    never by a request over the network without login; it switches
+    outputs only through `Actuators` as jobs with a fixed end (R1) and
+    doses nothing, as no calibration value exists yet (PD-015); which
+    outputs it tests is set with M1.
+  - *Pre-flashed*, from that series on: the DevKit ships flashed, packed
+    loose with the board. The project is then the manufacturer of a radio
+    device: an EN 18031-1 and -2 self-assessment for every firmware
+    version shipped to these devices. Before the first one ships, the
+    list in `SECURITY_MODEL.md` ("Before the first device goes to third
+    parties") applies, as amended by this entry; PD-179 does not relax it
+    or its timing.
+- **Improv over the board's USB port** (changes SD-044, which named the
+  DevKit's UART port): the board's port is the ESP's own USB
+  (USB-Serial-JTAG). Improv runs there as in ESPHome's ESP32-S3 builds;
+  at run time the firmware cuts JTAG off with the bridge bit
+  (`USB_JTAG_BRIDGE_EN`) and keeps the serial port. Both are still to be
+  proven on a sample with our pinned ESP Web Tools; if Improv fails right
+  after the install, "Connect" and "Configure Wi-Fi" again. The DevKit's
+  UART port keeps working where it can be reached.
+- **Residual risk of USB:** any computer connected to the board's port
+  can reset the ESP into download mode and flash other firmware without a
+  button press; on the ESP32-S3 only an eFuse stops this for good, which
+  PD-022 and SD-024 exclude. The DevKit's UART port has the
+  auto-program circuit of Espressif's development boards (DTR and RTS
+  drive EN and GPIO0; to be confirmed on the DevKitC-1's schematic), so
+  the same holds there. Such firmware can keep the board watchdog fed and
+  use the HMAC key. So:
+  - the docs say to unplug USB, on either port, in operation;
+  - the firmware notices a USB host and shows a message as long as one is
+    connected;
+  - opening the port can restart the ESP; a restart by the USB host
+    (`ESP_RST_USB`) counts as a power loss: everything off except what
+    comes back after a power loss (fans, PD-050), reported (R6).
+    SD-044's "never restarts while a job runs" cannot hold on this port;
+  - SD-024's recessed BOOT button guards flashing on neither DevKit
+    port, only on a serial connection without that circuit;
+  - an alternative for the open product question on the port: switch the
+    USB port to USB-OTG once the app runs. A host can then no longer
+    reset the ESP or reach JTAG in operation, but flashing needs a BOOT
+    press, the window during boot stays, Improv on that port stops once
+    the app runs (the self-flashed setup path), and the DevKit's UART
+    port stays a way to flash without a button where it can be reached
+    (to be proven on a sample).
+- **Setup network** (PD-181, PD-186; changes SD-044):
+  - the only way to set up Wi-Fi without a cable; no setup over
+    Bluetooth;
+  - WPA2 with a random key per device of at least 80 bits. Pre-flashed
+    devices get it at production, in the factory data (below), printed on
+    the label. Self-flashed devices make it at the first start and show
+    it after login, as in SD-044;
+  - on a pre-flashed device, open without a button press while no Wi-Fi
+    is configured (out of the box, after a factory reset). Whether it
+    gets a time limit there is open for the product session; the
+    software proposes 60 min after each power-on. A self-flashed device
+    is set up over USB;
+  - on a configured device only after BOOT is held for 3 s, for at most
+    10 min, one client, closed after setup. No fallback access point:
+    losing Wi-Fi or a restart opens no setup path;
+  - it sets only the Wi-Fi credentials; it never sets or resets a
+    password and never returns a stored secret (SD-044).
+  - New: the user can change the Wi-Fi in the web app, logged in and only
+    from the home network, under SD-044's rules for storing (no actuator
+    switched, stored only when no job runs).
+  - Whether the BOOT press and the setup network apply to self-flashed
+    devices before the series is open for the product session; the
+    software supports it with SD-044's key shown after login.
+- **BOOT button** (decided by the project owner on 2026-10-13):
+  - held at power-on: ROM download mode, in hardware; the firmware never
+    sees it;
+  - held 3 s in operation: opens the setup network. On a pre-flashed
+    device without a password it also starts a new 15-min password
+    window: at once if the device is in the home network, otherwise when
+    it joins it. PD-192 names pre-flashed devices only; a self-flashed
+    one gets a new token from a new Improv session over USB (SD-044). A
+    password that is set is never touched;
+  - held 10 s or longer: factory reset (below);
+  - an LED shows which of these happens (pattern with M1 and `ux`).
+  - Not chosen: separate gestures for the setup network and the password
+    window (harder to remember, more mistakes).
+  - Proposed by the software session from the reviews, to be confirmed
+    by the project owner: the action happens when the button is
+    released, and while it is held the LED shows which one it would be,
+    so holding for 10 s never opens the setup network on the way; held
+    longer than 30 s does nothing and is reported as a stuck button; a
+    restart ends what a press started (the setup network, a window
+    waiting for the home network).
+- **First password on a pre-flashed device** (PD-191, PD-192; changes
+  SD-044 for these devices; self-flashed devices keep the token):
+  - mandatory, cannot be skipped; set in the home network within 15 min
+    from the device's first join to it; no second code on the label;
+  - after the window, setting it is locked until BOOT is held for 3 s.
+    PD-192 also names a restart. The ESP32-S3 cannot tell a press on
+    RESET from a power cut (both report power-on, and nothing documented
+    on the chip survives the one but not the other; to be confirmed on a
+    sample), so a restart would reopen the window after every power cut,
+    with nobody at the device. Open for the product session; until it
+    decides, a restart never reopens the window. The software also
+    proposes that a restart ends a window that is still open
+    (fail-closed), so a power cut in the first 15 min needs a BOOT press;
+    this changes PD-191's first window and is open for the product
+    session too. "Window used" is stored when the window opens, not when
+    the password is set;
+  - fail-closed: the password hash, the lock against a second setup and
+    "window used" are kept in encrypted NVS, and a "set up" marker in
+    `storage` as well. If one of the two is lost and the other is not,
+    the device reports lost credentials (423) and needs a factory reset;
+    it never behaves like a new device. The firmware never erases NVS or
+    formats `storage` by itself but reports it: today `main.cpp` erases
+    NVS when it finds no free pages or a new NVS version, and `storage`
+    is formatted when mounting fails, which deletes `auth.json` and the
+    `passwordSet` marker together. Without NVS there is no Wi-Fi, so the
+    LED reports it and the way out is BOOT held for 10 s; a rollback past
+    an ESP-IDF update that changed the NVS format also ends there.
+    Residual risk: if both are lost, the device is as out of the box
+    (setup network open with the label key, a new window);
+  - the open window is shown on the setup network's last page (the
+    address and the deadline), by a blinking LED and by a countdown on
+    the first-password page; after it the page says "hold BOOT for 3 s";
+  - for 60 min after the password is set, the login page shows when it
+    was set ("Not you? Hold BOOT for 10 s"); after login the web app and
+    the event log also show from which address.
+  - Residual risk, named in the docs: within the window anyone in the
+    home network (guests, another device, a compromised device) can set
+    the password first and lock the owner out; the way back is a factory
+    reset with BOOT, no computer needed. HTTPS (M2) with a certificate per
+    device is trusted on first use, so an active attacker in the home
+    network can still read the first password.
+  - Proposed by `security` for the product session: bind the first
+    password to the label key, so the setup network's form sets password
+    and Wi-Fi together while no password exists, and the window in the
+    home network goes away.
+- **Factory data and factory reset** (decided by the project owner on
+  2026-10-13):
+  - a read-only partition `fctry` (data, NVS, 16 KB) at 0x1C000 on both
+    boards, in the gap before the first app; nothing else moves. It is in
+    the partition tables now, as OTA cannot change a partition table, and
+    the installer never writes it (tested);
+  - content: format version, serial number, board (checked against the
+    flash size), SSID, setup key, production month, and the end of the
+    support period if it is written at packing (below). Plain, not
+    encrypted: the key is on the label anyway, and encrypting it at
+    production would need production to make the HMAC key, against
+    SD-024's "nobody can read it out". The `readonly` flag only stops
+    ESP-IDF's partition functions: own firmware can read it, and esptool
+    over USB or raw flash access can overwrite it (PD-022). Production
+    keeps no copy and no hash of the key;
+  - the factory reset in the firmware switches everything off through
+    `Actuators` first (R1), marks the reset in NVS, erases `history` and
+    `storage`, then the rest of the user NVS last (CRA Annex I(2)(m)),
+    and keeps `fctry` and the app: the device is as delivered, label key
+    included. A device that starts with the mark finishes the reset
+    before anything else and reports it: a named exception to R6's "not
+    resumed", allowed because it switches nothing. It erases in steps and
+    keeps sending the sign of life to the board watchdog (SD-045), and
+    skips what is already erased, so a watchdog reset cannot loop it. Triggers: BOOT held for 10 s, and the web app, logged in,
+    only from the home network, after asking for the password again;
+  - the flash page offers no whole-chip erase, or only with a warning
+    that the label's key is lost: ESP Web Tools' erase (the checkbox when
+    installing, and "Erase User Data" once Improv runs) is a whole-chip
+    erase and no manifest option turns it off, so our pinned copy needs a
+    change. After a whole-chip erase the device behaves like a
+    self-flashed one (Improv with the token, a new key after login); the
+    label no longer applies;
+  - secrets the device makes itself (SD-044's key on a self-flashed
+    device, session keys) come from the hardware RNG with its entropy
+    source on (`bootloader_random_enable()` while the radio is off); the
+    label key comes from the operating system's cryptographic random
+    generator on the provisioning PC;
+  - production needs from this repository, with the series: the
+    partition tables (done); a provisioning tool (pinned
+    `nvs_partition_gen` and esptool) that checks board and table, makes
+    the key, writes only `fctry`, reads it back and tests joining the
+    setup network; firmware that reads `fctry` and handles a blank or
+    broken one; a specification of key and label (proposed: 20 characters
+    from 31 unambiguous lowercase letters and digits, about 99 bits, in
+    groups of 5); a label template (SSID, key, Wi-Fi QR code, the address
+    after setup, serial, board, source link);
+  - residual risks, named in the docs: a photo of the label (the key can
+    be changed in the web app, until a factory reset brings the label's
+    key back); the key passes the production PC and the printer (an
+    offline PC, no key database); after a resale the seller knows the
+    key, so the buyer resets the device and changes it; a whole-chip
+    erase loses `fctry`.
+- **Bluetooth** (PD-153, PD-186): only a passive observer for sensors the
+  user adds; no advertising, no connections, no pairing, no setup; off
+  while no such sensor is set. When Bluetooth comes, NimBLE is built
+  with the observer role only and `tools/arch_check.sh` checks it (NimBLE
+  turns on all roles by default).
+- **Support period** (PD-182 to PD-185): 7 years from the delivery of
+  each board, also for boards delivered before 2027-12-11, ending in
+  December (`SECURITY.md`,
+  `RELEASE.md`); the web app shows the end date and a notice once it has
+  passed (Art. 13(19)). The device does not know its delivery date; the
+  end date is written into `fctry` at packing or the web app says "see
+  the delivery note", never a guessed date (open for the product
+  session). The second reporting channel follows before devices are
+  offered (PD-185, `SECURITY.md`).
+- **ESP-IDF and a successor DevKit over the 7 years:** Espressif supports
+  each minor ESP-IDF release for 30 months (12 months service, 18 months
+  security and severe fixes only); a newer one comes in as a normal
+  release with the full test run on both boards, about once a year and
+  always before the one in use ends (source:
+  https://raw.githubusercontent.com/espressif/esp-idf/master/SUPPORT_POLICY.md,
+  retrieved 2026-10-13). The partition tables are fixed for the life of a
+  device, so each app must fit its `ota_0`. A successor DevKit gets a
+  board profile of its own (PD-162); boards already delivered keep their
+  builds from the same source for their 7 years.
+- **If the project stops** before a support period ends, `RELEASE.md`'s
+  exit plan applies: release the keys or offer an owner unlock, and tell
+  users and market surveillance in advance (Art. 13(23), PD-005). As no
+  device locks out its owner's firmware (PD-022), anyone can keep
+  building it from the published source.
+- Open for `regulatorik`: whether "whoever is first in the home network
+  sets the password" passes EN 18031-1 (AUM); whether a key printed on
+  the device needs protected storage (SSM); whether a test lab accepts
+  flashing over USB without a button and JTAG on during boot; whether a
+  whole-chip erase by the owner conflicts with "reset to the original
+  state" (CRA Annex I(2)); whether pre-releases count for the
+  self-assessment per firmware version.
+- Open for the product session: the time limit before the first setup;
+  whether a restart reopens the password window, and whether it ends one
+  that is still open; the BOOT details proposed above; binding the first
+  password to the label key; a neutral SSID (a name like
+  "growcontroller-xxxx" tells neighbours what is there); placing the USB
+  port, a switch for its data lines, or USB-OTG in operation (above);
+  where the label goes; the packing step that writes the support end.
 
 
 ---

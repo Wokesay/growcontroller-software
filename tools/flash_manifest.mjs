@@ -52,7 +52,8 @@ export function missingSettings(board, sdkconfig) {
 const kPartitionTable = 0x8000; // ESP-IDF's default offset; the partitions follow it
 
 // A board's partitions from firmware/boards/<board>.csv, placed as ESP-IDF
-// places them: one after the other, apps on 64 KB boundaries
+// places them: one after the other, apps on 64 KB boundaries; "readonly" is
+// the only flag a partition may carry (the factory data, SD-063)
 export function layout(board, csv) {
   if (csv === undefined) {
     if (!boards[board]) throw new Error(`unknown board "${board}": ${Object.keys(boards).join(" or ")}`);
@@ -67,10 +68,12 @@ export function layout(board, csv) {
   const parts = [];
   for (const line of csv.split("\n")) {
     if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    const [name, type, subtype, offset, len] = line.split(",").map((x) => x.trim());
+    const [name, type, subtype, offset, len, flags = ""] = line.split(",").map((x) => x.trim());
     if (offset) throw new Error(`${board}: ${name} has an offset; ESP-IDF places the partitions`);
+    const flagList = flags.split(":").filter(Boolean);
+    for (const f of flagList) if (f !== "readonly") throw new Error(`${board}: ${name}: not a flag here: "${f}"`);
     if (type === "app") at = Math.ceil(at / 0x10000) * 0x10000;
-    parts.push({ name, type, subtype, offset: at, size: size(len) });
+    parts.push({ name, type, subtype, offset: at, size: size(len), flags: flagList });
     at += size(len);
   }
   return parts;
@@ -105,6 +108,10 @@ export function manifest(board, version, files) {
   return {
     name: `growcontroller hub for ${boards[board].name}`,
     version,
+    // Ask before erasing: without the prompt, ESP Web Tools erases a new
+    // install unasked. Its erase (this prompt, and "Erase User Data" once
+    // Improv runs) is the whole chip, factory data included; the flash page
+    // for pre-flashed devices needs a patched copy (SD-063)
     new_install_prompt_erase: true,
     // No Wi-Fi setup over Improv yet (SD-044): do not wait for it after flashing
     new_install_improv_wait_time: 0,
