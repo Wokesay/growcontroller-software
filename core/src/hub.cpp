@@ -1216,10 +1216,20 @@ Result Hub::deleteCanister(const std::string& id) {
       if (s.canister == id) return Result::fail(409, "canister.used", "Wird im Rezept „" + r.name + "“ verwendet");
   auto it = std::find_if(cfg_.canisters.begin(), cfg_.canisters.end(), [&](const CanisterCfg& k) { return k.id == id; });
   if (it == cfg_.canisters.end()) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  std::string name = it->name;
+  const std::string name = it->name, pair = it->pair;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
-  saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  // A pair needs two: the one left behind is no longer paired, otherwise every later
+  // check of the whole configuration refuses it (#147)
+  std::vector<CanisterCfg*> rest;
+  for (auto& k : cfg_.canisters)
+    if (!pair.empty() && k.pair == pair) rest.push_back(&k);
+  if (rest.size() == 1) {
+    rest[0]->pair.clear();
+    saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", rest[0]->name}}));
+  } else {
+    saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  }
   return Result::ok();
 }
 

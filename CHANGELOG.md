@@ -192,6 +192,12 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Removing one bottle of a pair no longer blocks every later save**
+  (#147): the other bottle kept its pair label alone, and the hub then
+  refused saving a recipe, the tank, a zone or a function, binding a role,
+  importing a configuration or starting a grow ("Paar AB hat nur einen
+  Kanister") until the label was cleared by hand. Now the bottle left
+  behind is no longer paired; the removal dialog and the event say so.
 - **Home Assistant: only plain numbers are values** (#71): a state such as
   `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
   value instead of a guess, and the device says why ("is no plain

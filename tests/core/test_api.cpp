@@ -607,3 +607,57 @@ TEST_CASE("System: the choice per area goes along with an export and an import, 
   c.ok("POST", "/api/v1/config/import", file);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json::object());
 }
+
+namespace {
+gc::json canisterById(Client& c, const std::string& id) {
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& k : cfg["canisters"])
+    if (k["id"] == id) return k;
+  return nullptr;
+}
+void deleteRecipes(Client& c) {
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& r : cfg["recipes"]) c.ok("DELETE", "/api/v1/recipes/" + r["id"].get<std::string>());
+}
+}  // namespace
+
+TEST_CASE("Bottles: a bottle a recipe uses is refused removal; configuration and stock stay as they were") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const gc::json before = canisterById(c, "calmag");
+  const gc::json stock = c.state()["stock"]["calmag"];
+  auto [code, body] = c.call("DELETE", "/api/v1/canisters/calmag");
+  CHECK(code == 409);
+  CHECK(body["error"]["key"] == "canister.used");
+  CHECK(canisterById(c, "calmag") == before);
+  CHECK(c.state()["stock"]["calmag"] == stock);
+}
+
+TEST_CASE("Bottles: removing one bottle of a pair leaves its partner unpaired, so later saves still work (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  deleteRecipes(c);
+  REQUIRE(canisterById(c, "teil-b")["pair"] == "AB");
+  c.ok("DELETE", "/api/v1/canisters/teil-a");
+  CHECK(canisterById(c, "teil-b")["pair"] == "");
+  // The event names the partner that is no longer paired
+  const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
+  CHECK(ev["title"]["key"] == "ev.cfg.canister_removed_pair");
+  CHECK(ev["title"]["args"]["partner"] == "Teil B");
+  // A save the hub checks as a whole still works
+  c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "teil-b"}, {"mlPerL", 1.0}}}}});
+}
+
+TEST_CASE("Bottles: removing one bottle of a pair of three leaves the other two a pair (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  deleteRecipes(c);
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", "AB"}});
+  c.ok("DELETE", "/api/v1/canisters/teil-a");
+  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
+  CHECK(canisterById(c, "calmag")["pair"] == "AB");
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+}
