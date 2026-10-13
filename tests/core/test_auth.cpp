@@ -63,6 +63,17 @@ TEST_CASE("Anmeldung: Sitzung läuft ab, Passwortwechsel meldet alle ab") {
   CHECK(a.changePassword("falsch", "x-123456789", 0, "").key == "auth.wrong");
 }
 
+TEST_CASE("Sign-in: a session in use stays signed in; one unused for 12 hours ends (SD-064)") {
+  Auth a(rng);
+  a.setInitialPassword("geheim-123");
+  Msg e;
+  auto t = a.login("geheim-123", 0, e, "");
+  REQUIRE(t);
+  CHECK(a.check(*t, Auth::kSessionIdle - 1));
+  CHECK(a.check(*t, 2 * Auth::kSessionIdle - 2));  // renewed by the use before, though past 12 h since signing in
+  CHECK_FALSE(a.check(*t, 3 * Auth::kSessionIdle));  // then 12 hours without a request
+}
+
 // A lockout per client (SD-051): someone guessing in the network locks only
 // the clients that never signed in, never one that did.
 TEST_CASE("Sign-in: a client that signed in before keeps its own lockout; the others share one") {

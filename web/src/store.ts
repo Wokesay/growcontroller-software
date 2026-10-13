@@ -50,9 +50,31 @@ export function toastError(e: unknown) {
 
 let source: EventSource | null = null;
 let pollTimer: number | undefined;
+let renewTimer: number | undefined;
+
+// The browser keeps the session cookie 12 hours from when the hub last sent it. A page left
+// open, such as a phone on the wall, asks now and then, so a Stop still has its session (SD-064);
+// one asleep longer finds out as soon as it is woken.
+const RENEW_MS = 10 * 60_000;
+async function renewSession() {
+  try {
+    const s = await get<{ authenticated: boolean }>("/auth/session");
+    if (!s.authenticated && authed.value) {
+      sessionExpired.value = true;
+      authed.value = false;
+      stopLive();
+    }
+  } catch {
+    /* no answer: the next time, or the polls say so */
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && authed.value) void renewSession();
+});
 
 function startLive() {
   stopLive();
+  renewTimer = window.setInterval(renewSession, RENEW_MS);
   clockTimer = window.setInterval(() => {
     now.value = Date.now();
     // A stream that is open but brings nothing (a proxy holding it back): ask instead
@@ -91,6 +113,8 @@ function stopLive() {
   pollTimer = undefined;
   if (clockTimer) clearInterval(clockTimer);
   clockTimer = undefined;
+  if (renewTimer) clearInterval(renewTimer);
+  renewTimer = undefined;
 }
 
 export async function refreshState() {

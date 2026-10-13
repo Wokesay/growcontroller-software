@@ -1495,7 +1495,8 @@ Decided by the project owner on 2026-10-12 in the software session, for
 - A package without provenance passes; npm counts only the verified
   attestations. Many packages publish none, TypeScript and lightningcss
   among them. No list of them is printed; a warning that always comes is
-  soon not read.
+  soon not read. Changed by SD-063: a package fails without provenance
+  once a lower version of it had provenance.
 - What it proves: the registry's own record of each installed
   `name@version` is signed, so a record changed on the registry's side
   without npm's key fails while it is served. It does not compare that
@@ -1508,8 +1509,8 @@ Decided by the project owner on 2026-10-12 in the software session, for
   publishing pipeline even produces valid provenance. Against that stand
   Dependabot's cooldown of 7 days, the lockfile pin and
   `npm ci --ignore-scripts`. The gain of this check is small; it is cheap
-  and fails closed. Later, if npm offers it: fail when a package that had
-  provenance publishes a version without it (`docs/SECURITY_MODEL.md`).
+  and fails closed. Against a hijacked account SD-063 adds a check of its
+  own: a package must not lose the provenance a lower version had.
 - The check needs the npm registry and Sigstore's TUF repository
   (`tuf-repo-cdn.sigstore.dev`), also for a local `tools/ci.sh`.
 
@@ -1842,6 +1843,91 @@ then they are the software's working basis.
   users run themselves (too hard for most); a third-party tunnel that
   needs an account per user (PD-013); a subscription for the relay
   (PD-024).
+
+
+## SD-063: A web app package must not lose its provenance
+
+Decided by the project owner on 2026-10-13 in the software session
+("128 umsetzen", from `security`'s review of #100); the accepted cases
+below with the merge.
+
+- Before the web app's packages are installed, `tools/ci.sh` runs
+  `tools/check_provenance.mjs`. For every package in
+  `web/package-lock.json`, every platform build included, it finds the
+  highest lower version that was published with provenance. If there is
+  one, the locked version must have provenance too, from the same source
+  repository and, where both provenances give it, the same GitHub
+  repository id (a freed name taken over by someone else changes it).
+  Otherwise the check fails.
+- Why: a hijacked maintainer account typically publishes by hand from a
+  stolen token, and the registry signs that release too (SD-058).
+  Comparing with the highest lower version that has provenance, not with
+  the next lower one, keeps two releases by hand in a row from hiding
+  each other.
+- A case accepted after review goes into `tools/provenance-exceptions.json`
+  with the exact problem it accepts and why. It applies to that problem
+  only, and an entry that no locked package has any more fails. Changes to
+  that file or to the check need a `security` review. Accepted with the
+  start: `@rolldown/pluginutils@1.0.1` (moved between two repositories of
+  the rolldown organisation) and `undici-types@6.21.0` (6.19.3 to 6.21.0
+  published without provenance in 2024 by the same maintainer, with
+  provenance again from 6.23.0; `@types/node` 22 pins `~6.21.0`).
+- No answer from the registry fails. The check runs where `tools/ci.sh`
+  runs, in CI's `checks` job; the release, the packages and the app image
+  install the same lockfile after it passed there on `main`.
+- Not caught: a package that never had provenance; a release by a
+  hijacked CI or trusted publisher of the same repository; a release by
+  hand on a version line that never had provenance.
+
+
+## SD-064: A Stop from the app needs a signed-in session; a session lasts while it is in use
+
+Decided by the project owner on 2026-10-13 in the software session, one
+question at a time: `ux` asked during the polish for 0.1.0-proto.5
+(SD-055, #130) whether a Stop should work without a session, and
+`reviewer` and `security` then found that the browser dropped the cookie
+12 hours after signing in, even on a page in use.
+
+- **A Stop from the app needs a session,** like every other function
+  (EN 18031-1 access control, `docs/SECURITY_MODEL.md`).
+- **A session lasts while it is in use:** the hub ends one after 12 hours
+  without a request (`Auth::kSessionIdle`), on a restart and on a password
+  change. An open page asks every 10 minutes and when it is woken
+  (`GET /auth/session`), and the hub sends the cookie again for another
+  12 hours, so a phone on the wall keeps its session. There is no fixed
+  longest lifetime: a page in use stays signed in. This holds in the home
+  network; a shorter session from outside stays open (SD-059).
+- With 16 sessions, a 17th sign-in ends the one used longest ago (#131),
+  not the page left open.
+- When the session has ended, the sign-in page says that what was just
+  clicked, a Stop included, was not carried out, and names the way in an
+  emergency (#130); a page left open says so as soon as it next asks.
+- **In an emergency:** unplug the hub, and switch off devices on smart
+  plugs at the plug, since unplugging the hub leaves them as they are; on
+  the carrier board (M1) also its Stop button (PD-164), which the sign-in
+  hint will name then. After a restart, every device that has not signed
+  in since shares one lockout count (SD-051), so someone guessing in the
+  network can delay signing in; from outside, SD-059's residual risk
+  applies.
+- **Residual risk of no fixed longest lifetime:** a session once obtained
+  (a lost or shared phone, a browser left signed in, a cookie read off the
+  unencrypted home network until HTTPS) stays valid as long as it is used
+  at least every 12 hours. Changing the password ends every session at
+  once; a "sign out all devices" button can come later (`Auth::logoutAll`
+  exists). OWASP ASVS 4.0.3 V3.3.2 asks for signing in again after 30 days
+  even while in use; whether EN 18031-1 accepts a session without an upper
+  limit while in use is a question for `regulatorik` in the product
+  repository.
+- When the way from outside comes (SD-059, SD-062), its renewal follows
+  the shorter lifetime chosen for outside, not the home network's.
+- Not chosen: a Stop without a session (any device or malware in the home
+  network could keep the system stopped, so plants get no water, and
+  EN 18031-1 would need a documented reason for a function without access
+  control, a question for `regulatorik` in the product repository); a
+  cookie that ends 12 hours after signing in whatever the use (a phone on
+  the wall loses its session while still showing live values); a session
+  kept for a fixed 30 days on a device (signing in again each month, and a
+  lost phone stays signed in that long).
 
 
 ## SD-065: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period

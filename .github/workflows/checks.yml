@@ -46,5 +46,5 @@ jobs:
       - name: Licenses (REUSE, npm dependencies)
         run: |
           "$REUSE" lint
-          node --test tools/check_licenses.test.mjs
+          node --test tools/check_licenses.test.mjs tools/check_provenance.test.mjs
           node tools/check_licenses.mjs

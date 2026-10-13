@@ -96,6 +96,17 @@ entry under `[Unreleased]`.
      that stand the cooldown and the lockfile pin.
      `tools/workflows.test.mjs` keeps the step and the registry addresses
      in place.
+   - In `tools/ci.sh` (CI's `checks` job), before the packages are
+     installed, `tools/check_provenance.mjs` finds for every package in the
+     lockfile, every platform build included, the highest lower version
+     that was published with provenance (SD-063). If the locked version has
+     none, or has it from another source repository or repository id, the
+     check fails, since a hijacked account typically publishes by hand.
+     The release, the packages and the app image install the same lockfile
+     after it passed there on `main`. A case accepted after review goes
+     into `tools/provenance-exceptions.json` with its exact problem and the
+     reason; an entry no locked package has any more fails too. Changes to
+     that file or to the check need a `security` review.
    - Anyone can check a download; the check must name the release
      workflow and the tag, otherwise any workflow of the repository would
      pass:

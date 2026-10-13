@@ -42,6 +42,32 @@ TEST_CASE("API: Fehlversuche führen zur Sperre (429), Abmelden beendet die Sitz
   CHECK(c.call("GET", "/api/v1/state").first == 401);
 }
 
+TEST_CASE("API: a page that asks for its session gets its cookie renewed for another 12 hours; without a session nothing (SD-064)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  REQUIRE_FALSE(c.token.empty());
+  const auto session = [&](const std::string& token) {
+    gc::ApiRequest r;
+    r.method = "GET";
+    r.path = "/api/v1/auth/session";
+    r.token = token;
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    return s.api().handle(r);
+  };
+  const gc::ApiResponse res = session(c.token);
+  CHECK(gc::json::parse(res.body)["authenticated"] == true);
+  std::vector<std::string> cookies;
+  for (const auto& [k, v] : res.headers)
+    if (k == "Set-Cookie") cookies.push_back(v);
+  CHECK(cookies == std::vector<std::string>{"gc_session=" + c.token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200"});
+  for (const std::string& token : {std::string(""), std::string("nonsense")}) {
+    const gc::ApiResponse none = session(token);
+    CHECK(gc::json::parse(none.body)["authenticated"] == false);
+    for (const auto& [k, v] : none.headers) CHECK(k != "Set-Cookie");
+  }
+}
+
 TEST_CASE("API: someone guessing in the network does not lock out a client that signed in before (SD-051)") {
   sim::Simulation s(test::opts("neu"));
   Client owner{s, {}, "192.168.1.20"};
