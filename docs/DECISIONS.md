@@ -1356,6 +1356,9 @@ customer and a grower.
   polish block and then M1; the other software session does not touch
   these topics. SD numbers are
   taken right before the pull request opens, after a look at `main`.
+- Changed by SD-065: the project owner's test comes in two parts, before
+  "mergen" with the release branch's server and after the tag with the
+  published app.
 
 
 ## SD-056: Menu grouped by topic; pages without automation say "manual"
@@ -1911,6 +1914,50 @@ question at a time: `ux` asked during the polish for 0.1.0-proto.5
   the wall loses its session while still showing live values); a session
   kept for a fixed 30 days on a device (signing in again each month, and a
   lost phone stays signed in that long).
+
+
+## SD-065: The owner's acceptance test of a release with the Home Assistant app comes in two parts
+
+Decided by the project owner on 2026-10-13 in the software session.
+`release` found that SD-055's test "before the tag" cannot be done in
+full: the app image is published only for a `v*` tag (`release.yml`),
+and Home Assistant cannot build it itself, since `ha/app/Dockerfile`
+needs the whole repository.
+
+- **Part one, before "mergen" of the release pull request:** the release
+  branch's server runs against the project owner's real Home Assistant
+  with a token, as `docs/HOME_ASSISTANT.md` describes. The owner checks
+  the password, the sensors, a restart with the same data folder, and
+  what the release brings; the release pull request lists these checks.
+  For 0.1.0-proto.5: a sign of life, a raw pH calibration (swapped
+  buffers refused with the reason) and the phone (the app opens at
+  100 %). Automatic updates of the app stay off on the owner's Home
+  Assistant (they are off unless switched on), so part two's update is a
+  deliberate one, with a backup made first.
+- **The risk between the parts:** from the merge on, `config.yaml` on
+  `main` offers the new version to every installed app (SD-034), before
+  part two has passed. The app's documentation, which Home Assistant
+  shows (`ha/app/DOCS.md`), and the release notes therefore ask users to
+  make a backup of the app before updating.
+- **Part two, right after `publish`:** `docker buildx imagetools inspect`
+  lists both architectures; a backup of the previous version first, then
+  the update from the store keeps password, sensors and history; a fresh
+  install on a second host; a restart keeps the data; another device
+  guessing the password does not lock out the phone, which also shows
+  that the app sees each device's own address through Home Assistant's
+  port mapping (SD-051); a new backup holds the new version, and its
+  entry for the app is not empty.
+- **If part two fails:** a fixing release (the next `-proto.N`) follows at
+  once, and the release notes and an issue tell users to keep automatic
+  updates off until then. Users who made a backup before updating restore
+  it and lose what they changed since; a restore pulls the backed-up
+  version's image again, so a published image is never deleted. A
+  reinstall is no way back: `main` already carries the failed version,
+  and removing the app deletes its data.
+- Changes SD-055's "before the tag".
+- Not chosen: a test image published before the tag under its own name (a
+  second way to publish, to be reviewed by `security`); the whole test
+  only after the tag.
 
 ---
 
