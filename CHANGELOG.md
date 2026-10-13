@@ -176,7 +176,9 @@ Severity: low. The first concerns the hub's own probes, which only the
 simulator has so far; the second needed the password for an import, and
 nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
-session and "Stop". No GHSA or CVE is issued.
+session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
+each with the password, and whoever has the password can already stop,
+switch or change it. No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -202,6 +204,11 @@ session and "Stop". No GHSA or CVE is issued.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+- **A new sign-in ends the session used longest ago:** with 16 sessions
+  open, a 17th sign-in ended a random one of them, so the phone someone was
+  using could be signed out and had to sign in again before it could reach
+  "Stop". Now the session used longest ago ends. Found through a test of the
+  lockout (SD-051) that failed in about 1 of 16 runs.
 
 Hardening, without a vulnerability behind it:
 
