@@ -72,3 +72,10 @@ ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
   Chromium (no WebKit, so iOS Safari itself is not run).
 - Load test of the web server on the ESP32: control must not suffer (RLM,
   EN 18031).
+- Access from outside (SD-059, SD-062), API tests once the gate exists:
+  at "View" acknowledging a message from outside works, acknowledging a
+  latch or confirming a pH zero point is refused and leaves them as they
+  are; a peer with a public address and no tunnel is refused at every
+  level, also with headers that claim the relay or the home network; two
+  visitors through the relay keep separate lockouts, and failed logins
+  from outside never lock out the home network.
