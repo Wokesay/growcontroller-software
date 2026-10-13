@@ -36,7 +36,11 @@ UI can do, an integration can do as well.
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
   Exception: an unknown area or mode in `system.control` is left out, as
-  when the file is loaded, not refused.
+  when the file is loaded, not refused. A `system.timezone` that is no zone
+  name is refused with 422 `system.timezone` before anything else is checked
+  (so other errors in the file are not listed with it, and a running job
+  does not turn it into 409); when the saved file is loaded, such a zone
+  falls back to `Europe/Berlin` and an event says so.
 
 ## Read
 
@@ -58,7 +62,7 @@ UI can do, an integration can do as well.
 | Method | Path | |
 |---|---|---|
 | POST | `/setup/complete` | setup completed |
-| PUT | `/system` | name, time zone, language (`de`/`en`), update channel and update check, cap per manual dose; `control` sets what the app is to do per area (`climate`, `light`, `irrigation`, `refill`, `circulation`, `dosing`): `"auto"`, `"outside"` or `null` to take a choice back, adding to the choices so far, anything else 422 `system.control`; recorded only, it feeds no control yet (SD-037) |
+| PUT | `/system` | name, time zone (a name in the form of the time zone database such as `Europe/Berlin`, `Etc/GMT+1` or `UTC`: starting with a letter, letters, digits, `_`, `+`, `-` in parts separated by `/`, none empty, at most 64 characters; else 422 `system.timezone`), language (`de`/`en`), update channel and update check, cap per manual dose; `control` sets what the app is to do per area (`climate`, `light`, `irrigation`, `refill`, `circulation`, `dosing`): `"auto"`, `"outside"` or `null` to take a choice back, adding to the choices so far, anything else 422 `system.control`; recorded only, it feeds no control yet (SD-037) |
 | POST / PATCH / DELETE | `/devices/{id}/accept`, `/devices/{id}` | accept, rename, remove |
 | PUT / DELETE | `/roles/{rolle}` `{device, channel}` | assignment; for mains sockets only after the protection setting is confirmed (otherwise 502) |
 | POST | `/roles/{rolle}/test` | switched output on for 3 s |

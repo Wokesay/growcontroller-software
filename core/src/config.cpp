@@ -81,6 +81,19 @@ bool isControlArea(std::string_view area) {
 
 bool isControlMode(std::string_view mode) { return mode == "auto" || mode == "outside"; }
 
+bool isTimeZoneName(std::string_view tz) {
+  if (tz.empty() || tz.size() > 64) return false;
+  const auto letter = [](char ch) { return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'); };
+  if (!letter(tz.front()) || tz.back() == '/') return false;
+  char prev = 0;
+  for (char ch : tz) {
+    const bool ok = letter(ch) || (ch >= '0' && ch <= '9') || ch == '_' || ch == '+' || ch == '-' || ch == '/';
+    if (!ok || (ch == '/' && prev == '/')) return false;
+    prev = ch;
+  }
+  return true;
+}
+
 void to_json(json& j, const Config& c) {
   j = json::object();
   j["schemaVersion"] = c.schemaVersion;
@@ -196,7 +209,10 @@ Config configFromJson(const json& in) {
     c.system.name = s.value("name", c.system.name);
     c.system.setupDone = s.value("setupDone", false);
     c.system.passwordSet = s.value("passwordSet", false);
-    c.system.timezone = s.value("timezone", c.system.timezone);
+    // One that is no zone name (saved before the hub checked it) falls back to the default
+    // rather than making the file unreadable; an import refuses it (Hub::importConfig).
+    if (s.contains("timezone") && s["timezone"].is_string() && isTimeZoneName(s["timezone"].get<std::string>()))
+      c.system.timezone = s["timezone"];
     c.system.language = s.value("language", c.system.language);
     c.system.updateCheck = s.value("updateCheck", true);
     c.system.updateChannel = s.value("updateChannel", c.system.updateChannel);

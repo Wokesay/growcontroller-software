@@ -161,6 +161,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The hub checks the time zone:** it stored any text sent as the time
+  zone, and only the app checked it. Now saving or importing one that is
+  not a name like `Europe/Berlin` (starting with a letter; letters, digits,
+  `_`, `+`, `-` in parts separated by `/`, none empty; at most 64 characters) is refused
+  with its reason, and nothing else of the change is taken over; the app
+  checks the same form at the field. A zone saved before that is no such
+  name falls back to `Europe/Berlin` when the hub starts, an event says so,
+  and the configuration stays readable: one that was not text at all made
+  the hub start with factory settings. Nothing in the hub uses the zone
+  yet; light and watering times will.
 - **Stop is never silent** (SD-055): a Stop the hub does not confirm
   within 5 seconds, or that gets no connection, says so in its dialog
   ("Stopp nicht bestätigt – keine Antwort vom Hub") with what to do in an

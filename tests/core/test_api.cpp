@@ -508,6 +508,64 @@ TEST_CASE("System: what the app is to do per area is stored, only known areas an
   CHECK(gc::configFromJson(cfg).system.control.empty());
 }
 
+TEST_CASE("System: a time zone that is no zone name is refused when saved and imported; one saved before falls back when the file is read") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  for (const char* tz : {"Europe/Berlin", "America/Argentina/Buenos_Aires", "America/Port-au-Prince", "Etc/GMT+1", "Etc/GMT-14", "UTC", "EST5EDT"}) {
+    CAPTURE(tz);
+    c.ok("PUT", "/api/v1/system", {{"timezone", tz}});
+    CHECK(c.ok("GET", "/api/v1/config")["system"]["timezone"] == tz);
+  }
+  c.ok("PUT", "/api/v1/system", {{"timezone", "Europe/Vienna"}});
+  const std::string tooLong = "Europe/" + std::string(58, 'x');  // 65 characters
+  for (const gc::json& tz : {gc::json(""), gc::json("Mars Olympus"), gc::json("../etc/passwd"), gc::json("Europe//Berlin"), gc::json("/Europe"),
+                             gc::json("Europe/"), gc::json("Europe/Berlin\n"), gc::json("<b>Berlin</b>"), gc::json("1Europe"), gc::json("Europe/Zürich"), gc::json("+01:00"), gc::json(tooLong),
+                             gc::json(42), gc::json(nullptr), gc::json::array({"Europe/Berlin"})}) {
+    CAPTURE(tz.dump());
+    // Refused with its reason, and a refusal changes nothing, not even the name sent along
+    const auto [st, err] = c.call("PUT", "/api/v1/system", {{"name", "Neu"}, {"timezone", tz}});
+    CHECK(st == 422);
+    CHECK(err["error"]["key"] == "system.timezone");
+    const gc::json sys = c.ok("GET", "/api/v1/config")["system"];
+    CHECK(sys["timezone"] == "Europe/Vienna");
+    CHECK(sys["name"] == "growcontroller");
+  }
+  CHECK(gc::isTimeZoneName("America/Argentina/ComodRivadavia"));
+  CHECK(gc::isTimeZoneName("Europe/" + std::string(57, 'x')));  // 64 characters
+  for (const char* tz : {"GMT0", "GMT-0", "W-SU", "Etc/UCT", "America/North_Dakota/New_Salem", "posixrules", "Factory"}) {
+    CAPTURE(tz);
+    CHECK(gc::isTimeZoneName(tz));
+  }
+  for (const std::string& tz : {std::string("Europe/../Berlin"), std::string("Europe/Berlin "), std::string("Europe/Berlin\0x", 15), std::string("Europe\\Berlin")}) {
+    CAPTURE(tz);
+    CHECK_FALSE(gc::isTimeZoneName(tz));
+  }
+
+  // A file chosen to import says so; the configuration stays as it was
+  gc::json file = c.ok("GET", "/api/v1/config/export");
+  file["system"]["name"] = "Aus der Datei";
+  for (const gc::json& tz : {gc::json("Mars Olympus"), gc::json(42)}) {
+    file["system"]["timezone"] = tz;
+    const auto [st, err] = c.call("POST", "/api/v1/config/import", file);
+    CHECK(st == 422);
+    CHECK(err["error"]["key"] == "system.timezone");
+  }
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "growcontroller");
+  file["system"]["timezone"] = "Asia/Tokyo";
+  c.ok("POST", "/api/v1/config/import", file);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["timezone"] == "Asia/Tokyo");
+
+  // Read from a saved file (stored before the hub checked it): the default, and the file stays readable
+  for (const gc::json& tz : {gc::json("Mars Olympus"), gc::json(42), gc::json(nullptr)}) {
+    CAPTURE(tz.dump());
+    file["system"]["timezone"] = tz;
+    const gc::Config back = gc::configFromJson(file);
+    CHECK(back.system.timezone == gc::SystemCfg{}.timezone);
+    CHECK(back.system.name == "Aus der Datei");
+  }
+}
+
 TEST_CASE("System: the choice per area goes along with an export and an import, unknown entries are left out (SD-037)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

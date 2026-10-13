@@ -66,12 +66,18 @@ export function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** A time zone the browser knows, in its usual spelling ("europe/berlin" → "Europe/Berlin"); null if there is none of that name. */
+// The form the hub accepts (isTimeZoneName in core/src/config.cpp): newer browsers also know
+// offsets such as "+01:00", which the hub refuses
+const ZONE_FORM = /^[A-Za-z](?:[A-Za-z0-9_+-]|\/(?=[A-Za-z0-9_+-]))*$/;
+
+/** A time zone the browser knows, in its usual spelling ("europe/berlin" → "Europe/Berlin"), in the
+ *  form the hub accepts; null if there is none of that name. */
 export function timeZone(name: string): string | null {
   const z = name.trim();
   if (!z) return null;
   try {
-    return new Intl.DateTimeFormat("en", { timeZone: z }).resolvedOptions().timeZone;
+    const known = new Intl.DateTimeFormat("en", { timeZone: z }).resolvedOptions().timeZone;
+    return known.length <= 64 && ZONE_FORM.test(known) ? known : null;
   } catch {
     return null;
   }
