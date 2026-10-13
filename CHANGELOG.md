@@ -165,8 +165,7 @@ listed in every release under "Security".
   `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
   value instead of a guess, and the device says why ("is no plain
   number"). The setup now takes "calibrated outside the hub" from the hub
-  instead of guessing it from what a device measures; a temperature from
-  Home Assistant no longer counts as a probe there. Text from Home
+  instead of guessing it from what a device measures. Text from Home
   Assistant in names and faults is checked to be well-formed UTF-8 by the
   adapter itself, too.
 - **The hub checks the time zone:** it stored any text sent as the time

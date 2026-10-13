@@ -2375,8 +2375,8 @@ TEST_CASE("Home Assistant: only a plain decimal number is a value; hex, spaces, 
   CHECK(bus.fault("sensor.ph").empty());
   for (const char* bad : {"0x6", "0x1p3", " 6.2", "6.2 ", "\t6.2", "6,2", "+6.2", ".5", "6.", "6.2e", "6.2e+", "inf", "-inf", "nan",
                           "NaN", "1e999", "6.2.1", "-", "\xd9\xa6"}) {
-    CHECK_MESSAGE(!value(bad).has_value(), "\"", bad, "\"");
-    CHECK_MESSAGE(bus.fault("sensor.ph").find("is no plain number") != std::string::npos, "\"", bad, "\"");  // says why
+    CHECK_MESSAGE(!value(bad).has_value(), ("\"" + std::string(bad) + "\""));
+    CHECK_MESSAGE(bus.fault("sensor.ph").find("is no plain number") != std::string::npos, ("\"" + std::string(bad) + "\""));  // says why
   }
   // Plain again: a value again, and no fault
   CHECK(value("6.3") == 6.3);
@@ -2402,13 +2402,20 @@ TEST_CASE("Home Assistant: only a plain decimal number is a value; hex, spaces, 
 }
 
 TEST_CASE("Home Assistant: one entity with a large answer leaves the other picked sensors online with their values (#71)") {
-  ha::HaBus bus({{"sensor.tank_ph", "ph"}, {"sensor.water", "water_temp"}});
-  json big = described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH");
+  // Through the stand-in Home Assistant: the client's answer limit, the reader and the bus together
+  json big = described(state("sensor.tank_ph", "6.1", "", "2026-10-09T12:00:00+00:00"), "ph", "Tank pH");
   big["attributes"]["entity_picture"] = std::string(70 * 1024, 'x');
-  const json kept = ha::parseStates(json::array({big, state("sensor.water", "21.5", "°C", iso(kNoonMs))}).dump());
-  REQUIRE(kept.is_array());
-  bus.updateAll(kept, kNoonMs, 1000);
-  for (const auto& d : bus.devices()) CHECK_MESSAGE(d.online, d.id);
+  const std::string body = json::array({big, state("sensor.water", "21.5", "°C", "2026-10-09T12:00:00+00:00")}).dump();
+  REQUIRE(body.size() > 70 * 1024);
+  FakeHa ha([&](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+  REQUIRE(ha.port > 0);
+  ha::HaBus bus({{"sensor.tank_ph", "ph"}, {"sensor.water", "water_temp"}});
+  ha::Poller p(bus, ha.url(), "secret", [] { return gc::Ms{0}; });
+  CHECK(p.pollOnce().empty());
+  CHECK(bus.candidatesJson()["connection"] == "ok");
+  const auto devices = bus.devices();
+  REQUIRE(devices.size() == 2);
+  for (const auto& d : devices) CHECK_MESSAGE(d.online, d.id);
   REQUIRE(bus.sample("ha.sensor.tank_ph", "measure.ph"));
   CHECK(bus.sample("ha.sensor.tank_ph", "measure.ph")->raw == 6.1);
   REQUIRE(bus.sample("ha.sensor.water", "measure.water_temp"));

@@ -137,7 +137,8 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
     const res = await route.fetch();
     const cat = await res.json();
-    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"], externalCalibration: true };
+    // Offering a calibration too, it still shows once, as calibrated elsewhere, never as a probe to calibrate here
+    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"], calibrations: ["ph"], externalCalibration: true };
     // Looks the same but the hub does not say so: the setup does not guess (#71)
     cat.deviceClasses.ph_unsaid = { label: "pH ohne Angabe", stage: 0, attach: "ha", provides: ["measure.ph"], externalCalibration: false };
     // Calibrated elsewhere too, but a temperature needs no calibration at all, as in the hub
@@ -160,6 +161,7 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await page.goto("/#/einrichtung?s=4");
   await expect(page.getByTestId("external-probe")).toHaveCount(1);
   await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
+  await expect(page.getByText("pH-Sonde (Puffer 7 und 4)")).toHaveCount(0);
   await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
 });
 
