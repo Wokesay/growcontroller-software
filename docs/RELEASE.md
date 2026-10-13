@@ -207,7 +207,7 @@ entry under `[Unreleased]`.
 
 ## Support and obligations (CRA, from 2027-12-11; reporting obligation since 2026-09-11)
 
-- **Support period (PD-182 to PD-185, SD-063):** security updates for 7
+- **Support period (PD-182 to PD-185, SD-065):** security updates for 7
   years from the delivery of each board with our firmware, also for boards
   delivered before 2027-12-11. Stated per delivery year, ending in
   December ("delivered 2028: security updates until at least 12/2035");

@@ -3,7 +3,7 @@
 # NVS gets 64 KB for the encrypted secrets to come (SD-024): OTA cannot change this table.
 # fctry holds the factory data (serial, setup network key from the label), read-only;
 # it fills the 16 KB before the first app. A factory reset keeps it and the installer
-# writes no image there; only erasing the whole flash wipes it (SD-063).
+# writes no image there; only erasing the whole flash wipes it (SD-065).
 # Name,   Type, SubType, Offset, Size,   Flags
 nvs,      data, nvs,     ,       64K
 otadata,  data, ota,     ,       0x2000

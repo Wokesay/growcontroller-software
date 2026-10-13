@@ -17,6 +17,6 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_HTTPD_MAX_URI_LEN=512
 CONFIG_FREERTOS_HZ=1000
 # No Bluetooth yet: for sensors (PD-153) it comes as a passive observer only,
-# never for setup (SD-063). JTAG over USB stays on until the firmware cuts it
-# at run time (SD-063, EN 18031 GEC)
+# never for setup (SD-065). JTAG over USB stays on until the firmware cuts it
+# at run time (SD-065, EN 18031 GEC)
 CONFIG_BT_ENABLED=n
