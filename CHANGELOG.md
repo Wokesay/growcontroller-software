@@ -179,11 +179,12 @@ listed in every release under "Security".
 - **Removing a bottle asks first** (#120): under Recipes › Bottles the
   remove button took a bottle away at once, with its stock, and on a phone
   it sits next to "Edit". Now "Remove bottle?" ("Kanister entfernen?")
-  names it and what follows (its pump becomes free and keeps its
-  calibration); only "Remove" removes it. A bottle a recipe still uses
-  says "Bottle still in use", names the recipes and how to take it out
-  (both bottles of a pair, since the hub refuses half a pair), and opens
-  the recipe when there is one, instead of offering a removal the hub
+  names it and what follows (its stock goes; its pump, if it has one,
+  becomes free and stays calibrated if it was); only "Remove" removes it.
+  A bottle a recipe still uses says "Bottle still in use", names the
+  recipes and how to take it out (both bottles of a pair, since the hub
+  refuses half a pair) and, when exactly one recipe uses it, offers "Edit
+  recipe" (with several: "Got it"), instead of offering a removal the hub
   refuses.
 - **Dialogs and the keyboard** (#105): a dialog now takes the focus when it
   opens, Tab stays inside it (also a folded list's heading, and back in

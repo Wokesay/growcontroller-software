@@ -136,7 +136,7 @@ nutrient solution". This comes straight from the resolver.
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | event "Cap … is back. Is it still on part A?" |
-| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole), and opens the recipe when there is one (#120) |
+| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 
 ## 6. Notifications (concept, not implemented yet)
 
@@ -178,8 +178,9 @@ Rules:
   and Shift+Tab stay inside, and bring the focus back in when it has
   fallen out; on closing (Escape, the close button or an action) the focus
   returns to what opened it, if it is known and still there, else to a
-  place the dialog names (after removing a bottle: "+ Bottle"); the title
-  is the dialog's accessible name (#105).
+  place the dialog names (after removing a bottle: "+ Bottle"); a dialog
+  opened from one that closed ("Edit recipe" from "Bottle still in use")
+  names none yet (#148); the title is the dialog's accessible name (#105).
 - A step that cannot be undone should ask first, in a confirmation (`Modal`
   with a message, role `alertdialog`): the title asks the question, the
   message names the thing and what follows and is read out with the title,
