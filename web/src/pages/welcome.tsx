@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Compass } from "lucide-preact";
 import { CONTROL_AREAS, post, put, type ControlArea, type ControlMode } from "../api";
+import { timeZone } from "../format";
 import { HaRoles, ROLES, roleLabel } from "../ha";
 import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { binding, config, refreshConfig, refreshState, state, toast } from "../store";
@@ -35,7 +36,8 @@ function StepBasics(p: { step: number; next: () => void }) {
   const [name, setName] = useState(cfg.system.name);
   const [theme, setThemeState] = useState<Theme>(currentTheme());
   // The browser's zone on the first run; opened again later, the one set (it may come from Settings)
-  const tz = state.value!.setupDone ? cfg.system.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
+  // Only a zone in the form the hub accepts; the field cannot be changed here
+  const tz = (!state.value!.setupDone && timeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)) || cfg.system.timezone;
   return (
     <Page
       foot={{
