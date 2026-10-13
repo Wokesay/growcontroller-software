@@ -57,10 +57,11 @@ const base: Record<keyof typeof deBase, string> = {
   "login.source": "Source code (AGPL-3.0-or-later)",
   "common.step": "Step {n} of {total}",
   "common.justNow": "just now",
-  "common.secondsAgo": "{n} s ago",
-  "common.minutesAgo": "{n} min ago",
-  "common.hoursAgo": "{n} h ago",
-  "common.daysAgo": "{n} days ago",
+  // Number and unit joined by a no-break space (#106)
+  "common.secondsAgo": "{n}\u00a0s ago",
+  "common.minutesAgo": "{n}\u00a0min ago",
+  "common.hoursAgo": "{n}\u00a0h ago",
+  "common.daysAgo": "{n}\u00a0days ago",
   "common.language": "Language",
 
   "nav.overview": "Overview",
