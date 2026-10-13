@@ -1796,7 +1796,10 @@ then they are the software's working basis.
     https://github.com/letsencrypt/website/blob/main/content/en/docs/rate-limits.md ;
     https://github.com/publicsuffix/list/wiki/Guidelines ;
     https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
-    and the Google Play and AWS figures only from search summaries.
+    (search summary). Not checked against a primary source: Google
+    Play's fee and test rule
+    (https://support.google.com/googleplay/android-developer/answer/14151465)
+    and AWS's price for outbound traffic.
 - Open for `regulatorik` in the product repository: whether a relay run
   by the project falls under the CRA as part of the product; EN 18031-1
   for access from the internet; GDPR for what the relay sees. A license
@@ -1804,6 +1807,12 @@ then they are the software's working basis.
   App Store's terms may conflict (GNU Go was removed in 2010, VLC, then
   under GPLv2, in 2011); an App Store exception would need the consent of
   every copyright holder.
+- Open for the design: if the Public Suffix List refuses the relay's
+  domain, a fallback that keeps ESPs apart in the browser anyway (CSRF
+  protection that does not rely on SameSite, the `Origin` check and the
+  exact `Host`); what happens to an ESP's name when a factory reset or
+  switching access off finds the relay unreachable (for example, the
+  relay drops names unused for a set time).
 - Open for the design (`domain`): at "View", whether a paused alarm of
   the level "immediately, also at night" (`docs/UX.md` §6) repeats after
   a shorter time (proposed: 60 min) and at once when it gets worse (for
