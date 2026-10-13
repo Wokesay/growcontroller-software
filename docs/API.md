@@ -20,6 +20,13 @@ UI can do, an integration can do as well.
   sessions; a wrong old password counts as a failed attempt and is logged
   (422, then 429). The device that changed the password keeps its count;
   all other devices share the count until they sign in again.
+- `GET /auth/session` says whether the request has a session; with one it
+  sends the cookie again for another 12 hours, so a page left open that
+  asks every 10 minutes keeps its session (SD-064); a client with
+  `Authorization: Bearer` gets the same cookie for its own token, which it
+  may ignore. The hub ends a session
+  after 12 hours without a request, on a restart and on a password change;
+  with 16 sessions, a 17th sign-in ends the one used longest ago.
 - Everything else requires a session (cookie or `Authorization: Bearer`),
   otherwise 401.
 - Security headers on the server: CSP `default-src 'self'`,
