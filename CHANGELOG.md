@@ -64,6 +64,14 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Release acceptance in two parts** (SD-065, `docs/RELEASE.md`): the
+  project owner tests what a release brings with the release branch's
+  server against a real Home Assistant before saying "mergen", and the
+  update with a backup made first, a fresh install, the restart, the
+  lockout per device and the backup with the published app right after
+  it is published. The app's documentation in Home Assistant and the
+  release notes ask you to back up the app before updating; if the
+  published app fails, a fixing release follows at once.
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.

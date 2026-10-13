@@ -77,8 +77,17 @@ Supervisor and gets its access from it. No token is needed.
 - growcontroller keeps its data (configuration, history, events, the hash
   of its password) in the app's own folder. Home Assistant's backups
   include it.
-- Uninstalling the app may delete that folder; keep a backup if you want
-  it later.
+- Uninstalling the app deletes that folder; keep a backup if you want it
+  later.
+- Before you update the app, make a backup of it. Home Assistant offers
+  this in the update dialog; check that it is switched on. The app is
+  experimental, and a new version can have faults.
+- If a new version does not work, restore that backup under **Settings →
+  System → Backups**. What changed since the backup is lost. Installing
+  the app again does not help: it installs the same new version. Keep
+  automatic updates for the app off (they are off unless you switched
+  them on); otherwise Home Assistant can install the faulty version again
+  after the restore.
 
 ## Security
 

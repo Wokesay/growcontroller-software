@@ -48,9 +48,18 @@ entry under `[Unreleased]`.
 
 1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION`,
    `web/package.json` and `ha/app/config.yaml`, PR, review (`reviewer`,
-   `release`, and `security` for security topics), CI green. Tag right
-   after the merge: Home Assistant's app store reads `config.yaml` from
-   `main` and offers the new version before its image exists.
+   `release`, and `security` for security topics), CI green. The app's
+   documentation (`ha/app/DOCS.md`) and the release notes ask users to
+   make a backup of the app before updating. With the
+   app, the project owner runs part one of the acceptance test before
+   "mergen" (SD-065): the release branch's server against a real Home
+   Assistant (`docs/HOME_ASSISTANT.md`) for the password, the sensors, a
+   restart with the same data folder and the checks the pull request
+   lists for what the release brings; automatic updates of the app stay
+   off on that Home Assistant (off unless switched on). Tag right after
+   the merge: Home
+   Assistant's app store reads `config.yaml` from `main` and offers the
+   new version before its image exists.
 2. **Tag:** the project owner tags `vX.Y.Z` on `main` (only the
    repository admin can set `v*` tags, SD-027). The workflow
    `release.yml` (#29):
@@ -132,12 +141,28 @@ entry under `[Unreleased]`.
      Public). Home Assistant downloads it without a login. A public
      package cannot be made private again. Under Package settings →
      Manage Actions access, only this repository should be listed.
-   - **Accepting a release with the app:** `docker buildx imagetools
-     inspect ghcr.io/wokesay/growcontroller-ha:X.Y.Z` lists linux/amd64
-     and linux/arm64; on a real Home Assistant (a Raspberry Pi and, where
-     possible, a PC) the app shows in the store, installs, opens its web
-     UI, sets a password, reads sensors, keeps its data through a restart
-     and an update from the previous version, and is in a backup.
+   - **Accepting a release with the app, part two** (part one is in step
+     1; SD-065), right after `publish`:
+     - `docker buildx imagetools inspect
+       ghcr.io/wokesay/growcontroller-ha:X.Y.Z` lists linux/amd64 and
+       linux/arm64;
+     - on the owner's Home Assistant, with a backup of the previous
+       version made first, the update from the store keeps password,
+       sensors and history, and a restart keeps the data;
+     - on a second host (a Raspberry Pi and, where possible, a PC) the
+       app shows in the store, installs, opens its web UI, sets a
+       password and reads sensors;
+     - another device guessing the password six times does not lock out
+       a phone that signed in (SD-051);
+     - a new backup holds the new version, and its entry for the app is
+       not empty.
+
+     If part two fails, a fixing release follows at once; the release
+     notes and an issue tell users to keep automatic updates off until
+     then, and users who made a backup before updating restore it. A
+     reinstall is no way back: `main` carries the failed version.
+   - **Never delete a published app image** (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`):
+     restoring a backup of the app pulls that version's image again.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
