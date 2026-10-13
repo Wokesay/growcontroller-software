@@ -140,6 +140,8 @@ export const msgDe: Record<string, string> = {
   "ha.life_unknown": "Home Assistant bietet {entity} gerade nicht als Lebenszeichen an.",
   "ha.life_channel": "Das Lebenszeichen {entity} hat keinen Kanal „{channel}“.",
   "watch.reading.failed": "Datenausfall: {reason}",
+  "watch.life.label": "{sensors}",
+  "watch.life.silent": "Datenausfall: Gerät sendet seit {ageS} s nichts – prüfen oder neu starten (Lebenszeichen {source})",
   "watch.band.ph.label": "pH im Zielband",
   "watch.band.ec.label": "EC im Zielband",
   "watch.band.off": "Kein Ziel gesetzt (Regelung aus)",
