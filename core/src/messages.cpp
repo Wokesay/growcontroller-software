@@ -394,6 +394,7 @@ constexpr Entry kMessages[] = {
     {"job.aborted_none", "Cancelled. Nothing went into the tank."},
     {"job.emergency_stop", "Cancelled by the emergency stop"},
     {"mix.done", "Done: {water:1} L \"{recipe}\". {after}"},
+    {"mix.failed_open", "A mix stopped part way is still open: resume it or end it first."},
     {"mix.after_auto", "pH comes last: pH correction takes over after mixing."},
     {"mix.after_manual", "pH comes last: measure pH by hand now and enter it."},
     {"mix.circulate", "Mixing with the circulation pump (1 min)"},

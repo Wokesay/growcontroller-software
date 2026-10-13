@@ -376,6 +376,7 @@ export const msgDe: Record<string, string> = {
   "job.aborted_none": "Abgebrochen. Drin: nichts",
   "job.emergency_stop": "Durch Not-Halt abgebrochen",
   "mix.done": "Fertig: {water:1} L „{recipe}“. {after}",
+  "mix.failed_open": "Eine Mischung ist mittendrin stehen geblieben: erst fortsetzen oder beenden.",
   "mix.after_auto": "pH zuletzt: Die pH-Regelung übernimmt nach dem Mischen.",
   "mix.after_manual": "pH zuletzt: Jetzt pH von Hand messen und eintragen.",
   "mix.circulate": "Durchmischen mit der Umwälzpumpe (1 min)",
