@@ -84,6 +84,20 @@ jobs:
           done
           if [ -z "$ok" ]; then docker logs app; echo "::error::The app did not answer"; exit 1; fi
           jq -e --arg v "$v" '.version == $v and .platform.kind == "home-assistant" and .platform.readOnly == true' info.json
+          # The first password needs the setup code from the app's log (#79).
+          jq -e '.hasPassword == false and .setupCode == true' info.json
+          setup_code=""
+          for _ in $(seq 1 10); do
+            docker logs app > start.log 2>&1
+            setup_code=$(sed -nE 's/^Setup code for the first password: ([2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){3})$/\1/p' start.log)
+            if [ -n "$setup_code" ]; then break; fi
+            sleep 1
+          done
+          if [ -z "$setup_code" ]; then cat start.log; echo "::error::No setup code in the app's log"; exit 1; fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"password":"smoke-test-1"}' http://127.0.0.1:8099/api/v1/auth/setup)
+          if [ "$code" != 403 ]; then echo "::error::The first password without the code got $code, not 403"; exit 1; fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"password\":\"smoke-test-1\",\"code\":\"$setup_code\"}" http://127.0.0.1:8099/api/v1/auth/setup)
+          if [ "$code" != 200 ]; then echo "::error::The first password with the code got $code, not 200"; exit 1; fi
           curl -fsS http://127.0.0.1:8099/ -o index.html
           grep -q '<div id="app"' index.html
           code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: example.com' http://127.0.0.1:8099/api/v1/info)

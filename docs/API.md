@@ -6,9 +6,16 @@ UI can do, an integration can do as well.
 
 ## Access
 
-- `GET /info` is public: version, platform, whether a password is set.
-- `POST /auth/setup {password}` sets the initial password, exactly once
-  (otherwise 409). At least 8 characters.
+- `GET /info` is public: version, platform, whether a password is set and
+  whether the first password needs a setup code (`setupCode`, #79).
+- `POST /auth/setup {password, code}` sets the initial password, exactly
+  once (otherwise 409). Where the platform armed a setup code (the Home
+  Assistant app prints it to its log, SD-067), `code` from the JSON body
+  must match it, in any case and with or without dashes, or the answer is
+  403 `auth.code`, the same for a missing and a wrong code; wrong codes
+  lock nobody out and are logged at most once per 15 min. Then at least 8
+  characters (422). The checks run in this order, so nothing is hashed
+  before the code is right; with lost credentials the answer is 423.
 - `POST /auth/login {password}` sets the cookie `gc_session` (HttpOnly,
   SameSite=Strict). After 5 failed attempts the answer is 429 with a wait
   time (30 s, doubling up to 15 min). The count is per client (SD-051): an

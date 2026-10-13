@@ -155,6 +155,20 @@ test("The setup fits the phone's screen in every step; its footer leaves the sim
   }
 });
 
+test("The Home Assistant app's first-password page with its setup code fits the phone's screen (#79)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  // gc_ha_server asks for a code; here the simulator's answer is changed to look like that
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    await route.fulfill({ response: res, json: { ...info, platform: { kind: "home-assistant", simulated: false, readOnly: true }, setupCode: true } });
+  });
+  await page.goto("/");
+  await expect(page.locator("input[name=code]")).toBeVisible();
+  await page.locator("input[name=code]").fill("K7QF-M2XP-9WTB-H4NC");
+  await fits(page, "first password with the setup code");
+});
+
 test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", async ({ page, request }) => {
   await scenario(request, "demo");
   await page.goto("/");

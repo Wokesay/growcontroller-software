@@ -671,6 +671,11 @@ Epoch Hub::now() const {
   return clock_.epoch();
 }
 
+std::string Hub::armSetupCode(Ms validFor) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  return credentialsLost() ? std::string() : auth_.armSetupCode(clock_.nowMs(), validFor);
+}
+
 json Hub::info() const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   return {{"product", "growcontroller"},
@@ -681,6 +686,7 @@ json Hub::info() const {
           {"platform", platform_},
           {"setupDone", cfg_.system.setupDone},
           {"hasPassword", auth_.hasPassword()},
+          {"setupCode", auth_.setupCodeRequired()},  // the first password needs the code from the log (#79)
           {"name", cfg_.system.name}};
 }
 

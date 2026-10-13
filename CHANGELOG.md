@@ -294,7 +294,12 @@ nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
 session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
 each with the password, and whoever has the password can already stop,
-switch or change it. No GHSA or CVE is issued.
+switch or change it; the fifth needs a device in the home network before
+the owner sets the first password, and the Home Assistant app switches
+nothing; the sixth needs a Linux x86-64 host with an AMD Zen 5 processor
+without AMD's fix, and even there a session token or salt is only partly
+predictable. No GHSA or CVE of our own is issued; the sixth follows from
+AMD's CVE-2025-62626.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -325,6 +330,27 @@ switch or change it. No GHSA or CVE is issued.
   using could be signed out and had to sign in again before it could reach
   "Stop". Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+- **Nobody else can set the Home Assistant app's first password** (#79,
+  SD-067): until the owner set it, any device in the home network could
+  set it first, see the names of Home Assistant's sensors and the values of
+  those it could pick, and lock the owner out until the app was
+  reinstalled. The app now prints a one-time setup code to its log, which
+  only Home Assistant's administrators, and apps they gave that right, can
+  read, and the first password needs it. The code has 80 bits, is kept
+  in memory only and is used up by the password; a restart makes a new
+  one. Wrong codes lock nobody out and are logged at most once per 15
+  minutes.
+- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
+  CVE-2025-62626): the Home Assistant app and the simulator took the
+  random numbers for session tokens and password salts from
+  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
+  instruction first. AMD Zen 5 processors without AMD's fix can return
+  zeros there while reporting success, so on such a host part of a session
+  token could be zero and easier to guess. They now come from the
+  operating system (`getentropy()`), as does the setup code. Not affected:
+  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
+  microcode or BIOS fix. Nothing to do after the update: the restart ends
+  every old session, and salts need not be secret.
 
 Hardening, without a vulnerability behind it:
 

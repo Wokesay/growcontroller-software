@@ -183,6 +183,28 @@ TEST_CASE("Storage: setup writes the password and its lock marker at once, or sa
   CHECK(gc::jbool(json::parse(onDisk(dir.path / "state.json"), nullptr, false), "stopped", false));
 }
 
+TEST_CASE("Storage: a first password that cannot be saved leaves the setup code valid (#79)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  sim::Simulation s(o);
+  std::string code;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    code = s.hub().armSetupCode();
+  }
+  test::Client c{s};
+  fs::create_directories(dir.path / "auth.json.tmp");  // the password file cannot be written
+  CHECK(c.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}, {"code", code}}).first == 500);
+  CHECK(c.ok("GET", "/api/v1/info")["setupCode"] == true);  // nothing set, the code not used up
+  fs::remove_all(dir.path / "auth.json.tmp");
+  CHECK(c.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}, {"code", code}}).first == 200);
+  std::string bare;
+  for (char ch : code) if (ch != '-') bare += ch;
+  for (const auto& f : fs::directory_iterator(dir.path))
+    if (f.is_regular_file()) CHECK_MESSAGE(onDisk(f.path()).find(bare) == std::string::npos, f.path().string());
+}
+
 TEST_CASE("Storage: a snapshot that cannot be written leaves its journal alone (#68)") {
   TempDir dir;
   sim::Simulation s(onCard(dir));
