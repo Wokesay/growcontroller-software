@@ -291,6 +291,16 @@ Hardening, without a vulnerability behind it:
   package; it does not protect against a release from a hijacked
   maintainer account, against which the 7-day wait for updates and the
   lockfile's hashes stay the guards.
+- **Provenance must not drop** (#128, SD-063): before the web app's
+  packages are installed, CI finds for every package in the lockfile the
+  highest lower version that was published with provenance. If the locked
+  version has none, or has it from another source repository, the build
+  fails: that is the typical sign of a release published by hand from a
+  stolen token, which the registry signs too. A case accepted after
+  review is listed with its exact problem and the reason; today two:
+  `@rolldown/pluginutils`, which moved to the `rolldown/plugins`
+  repository, and `undici-types` 6.21.0, from a stretch of 2024 releases
+  by the same maintainer without provenance.
 
 ## [0.1.0-proto.4] – 2026-10-11
 
