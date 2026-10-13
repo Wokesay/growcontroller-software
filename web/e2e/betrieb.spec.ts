@@ -656,7 +656,7 @@ test("Recipes: removing one bottle of a pair says the other is then no longer pa
   await row("Teil A").getByRole("button", { name: "„Teil A“ entfernen" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Kanister entfernen?" });
   await expect(dialog).toHaveAccessibleDescription(
-    "Damit entfernst du „Teil A“ samt Vorrat. Die Pumpe darauf bleibt eingemessen und ist frei für einen anderen Kanister. Das kannst du nicht rückgängig machen. „Teil B“ ist danach kein Paar mehr.",
+    "Damit entfernst du „Teil A“ samt Vorrat. Die Pumpe darauf bleibt eingemessen und ist frei für einen anderen Kanister. „Teil B“ ist danach ohne Paar. Das kannst du nicht rückgängig machen.",
   );
   await dialog.getByRole("button", { name: "Entfernen", exact: true }).click();
   await expect(row("Teil A")).toHaveCount(0);

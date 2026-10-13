@@ -132,11 +132,11 @@ function RemoveCanister(p: { can: Canister; flow: number | null; onClose: () => 
   }
   const text = !p.can.pump ? "recipes.removeTextNoPump" : p.flow ? "recipes.removeText" : "recipes.removeTextUncal";
   // The last partner of a pair is no longer paired afterwards (#147)
-  const alone = partner && canisters.value.filter((k) => k.pair === p.can.pair).length === 2;
+  const unpairsPartner = partner && canisters.value.filter((k) => k.pair === p.can.pair).length === 2;
   return (
     <Modal
       title={t("recipes.removeTitle")}
-      message={alone ? `${t(text, { name })} ${t("recipes.removeUnpairs", { partner: partner.name })}` : t(text, { name })}
+      message={[t(text, { name }), unpairsPartner ? t("recipes.removeUnpairs", { partner: partner.name }) : "", t("recipes.removeUndo")].filter(Boolean).join(" ")}
       onClose={p.onClose}
       // The row is gone afterwards: the focus goes to adding a bottle
       returnFocus={() => document.getElementById("add-bottle")}

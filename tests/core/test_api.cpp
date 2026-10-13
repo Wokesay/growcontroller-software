@@ -639,9 +639,15 @@ TEST_CASE("Bottles: removing one bottle of a pair leaves its partner unpaired, s
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   deleteRecipes(c);
-  REQUIRE(canisterById(c, "teil-b")["pair"] == "AB");
+  const gc::json partner = canisterById(c, "teil-b");
+  const gc::json stockB = c.state()["stock"]["teil-b"];
+  REQUIRE(partner["pair"] == "AB");
   c.ok("DELETE", "/api/v1/canisters/teil-a");
   CHECK(canisterById(c, "teil-b")["pair"] == "");
+  // Only the label goes: the partner keeps its pump and stock; the removed bottle's stock is gone
+  CHECK(canisterById(c, "teil-b")["pump"] == partner["pump"]);
+  CHECK(c.state()["stock"]["teil-b"] == stockB);
+  CHECK_FALSE(c.state()["stock"].contains("teil-a"));
   // The event names the partner that is no longer paired
   const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
   CHECK(ev["title"]["key"] == "ev.cfg.canister_removed_pair");
@@ -660,4 +666,18 @@ TEST_CASE("Bottles: removing one bottle of a pair of three leaves the other two 
   CHECK(canisterById(c, "teil-b")["pair"] == "AB");
   CHECK(canisterById(c, "calmag")["pair"] == "AB");
   CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+}
+
+TEST_CASE("Bottles: removing a bottle without a pair, or one whose label is already alone, unpairs nothing (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("DELETE", "/api/v1/canisters/ph");  // no pair: CalMag, also without one, is not anyone's partner
+  CHECK(canisterById(c, "calmag")["pair"] == "");
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+  const std::string solo = c.ok("POST", "/api/v1/canisters", {{"name", "Solo"}, {"kind", "nutrient"}, {"pair", "XY"}})["id"];
+  c.ok("DELETE", "/api/v1/canisters/" + solo);  // a label with no partner left
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+  CHECK(canisterById(c, "teil-a")["pair"] == "AB");
+  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
 }

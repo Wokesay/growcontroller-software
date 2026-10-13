@@ -1222,8 +1222,9 @@ Result Hub::deleteCanister(const std::string& id) {
   // A pair needs two: the one left behind is no longer paired, otherwise every later
   // check of the whole configuration refuses it (#147)
   std::vector<CanisterCfg*> rest;
-  for (auto& k : cfg_.canisters)
-    if (!pair.empty() && k.pair == pair) rest.push_back(&k);
+  if (!pair.empty())
+    for (auto& k : cfg_.canisters)
+      if (k.pair == pair) rest.push_back(&k);
   if (rest.size() == 1) {
     rest[0]->pair.clear();
     saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", rest[0]->name}}));

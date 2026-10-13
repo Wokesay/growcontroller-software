@@ -136,7 +136,7 @@ nutrient solution". This comes straight from the resolver.
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | event "Cap … is back. Is it still on part A?" |
-| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
+| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 
 ## 6. Notifications (concept, not implemented yet)
 
