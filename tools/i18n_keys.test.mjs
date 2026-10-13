@@ -179,3 +179,24 @@ test("every file has the same keys in German and English", () => {
   const base = parts("de.ts").de, baseEn = parts("en.ts").en;
   assert.deepEqual([...baseEn].sort(), [...base].sort(), "de.ts and en.ts");
 });
+
+// Durations and ages keep the number and its unit on one line (#106): the
+// ages the app writes and the hub's spans join them with a no-break space.
+test("durations and ages join the number and its unit with a no-break space", () => {
+  const value = (text, key) => {
+    const line = text.split("\n").find((l) => l.trimStart().startsWith(`"${key}":`));
+    assert.ok(line, `${key} not found`);
+    return line;
+  };
+  const ages = ["common.secondsAgo", "common.minutesAgo", "common.hoursAgo", "common.daysAgo"];
+  for (const file of ["de.ts", "en.ts"]) {
+    const text = readFileSync(join(dir, file), "utf8");
+    for (const k of ages) assert.match(value(text, k), /\{n\}\\u00a0\S/, `${file}: ${k}`);
+  }
+  const msg = readFileSync(join(dir, "msg.ts"), "utf8");
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  for (const k of ["span.s", "span.min", "span.h"]) {
+    assert.match(value(msg, k), /\}\\u00a0\S/, `msg.ts: ${k}`);
+    assert.match(core.get(k), /\}\\u00a0\S/, `messages.cpp: ${k}`);
+  }
+});

@@ -94,38 +94,68 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
 
 // Removing a bottle erases its stock and cannot be undone, so it asks first
 // (#120). The hub refuses it while a recipe uses the bottle, so the dialog says
-// that up front instead of offering a removal that fails.
-function RemoveCanister(p: { can: Canister; onClose: () => void }) {
+// that up front, and how to take it out, instead of offering a removal that fails.
+// A pair stays whole in a recipe (the hub refuses half of it), so both go.
+function RemoveCanister(p: { can: Canister; flow: number | null; onClose: () => void; onEditRecipe: (r: Recipe) => void }) {
   const name = p.can.name;
   const using = recipes.value.filter((r) => r.steps.some((s) => s.canister === p.can.id));
-  const names = using.map((r) => t("recipes.quoted", { name: r.name })).join(", ");
-  const message = using.length
-    ? t(using.length === 1 ? "recipes.removeUsed" : "recipes.removeUsedMany", { name, recipes: names })
-    : t(p.can.pump ? "recipes.removeText" : "recipes.removeTextNoPump", { name });
+  const partner = p.can.pair ? canisters.value.find((k) => k.id !== p.can.id && k.pair === p.can.pair) : undefined;
+  if (using.length) {
+    const names = using.map((r) => t("recipes.quoted", { name: r.name }));
+    const list = names.length < 2 ? names.join("") : t("recipes.listAnd", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
+    const key = partner ? (using.length === 1 ? "recipes.removeUsedPair" : "recipes.removeUsedPairMany") : using.length === 1 ? "recipes.removeUsed" : "recipes.removeUsedMany";
+    return (
+      <Modal
+        title={t("recipes.removeBlockedTitle")}
+        message={t(key, { name, partner: partner?.name ?? "", recipes: list })}
+        onClose={p.onClose}
+        footer={
+          using.length === 1 ? (
+            <>
+              <Button onClick={p.onClose}>{t("common.cancel")}</Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  p.onClose();
+                  p.onEditRecipe(using[0]);
+                }}
+              >
+                {t("recipes.editRecipe")}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={p.onClose}>{t("common.gotIt")}</Button>
+          )
+        }
+      />
+    );
+  }
+  const text = !p.can.pump ? "recipes.removeTextNoPump" : p.flow ? "recipes.removeText" : "recipes.removeTextUncal";
   return (
     <Modal
       title={t("recipes.removeTitle")}
-      message={message}
+      message={t(text, { name })}
       onClose={p.onClose}
+      // The row is gone afterwards: the focus goes to adding a bottle
+      returnFocus={() => document.getElementById("add-bottle")}
       footer={
-        using.length ? (
-          <Button onClick={p.onClose}>{t("common.close")}</Button>
-        ) : (
-          <>
-            <Button onClick={p.onClose}>{t("common.cancel")}</Button>
-            <Button
-              variant="danger"
-              onClick={async () => {
-                await del(`/canisters/${p.can.id}`);
-                p.onClose();
-                toast(t("recipes.bottleRemoved", { name }));
+        <>
+          <Button onClick={p.onClose}>{t("common.cancel")}</Button>
+          <Button
+            variant="danger"
+            onClick={async () => {
+              await del(`/canisters/${p.can.id}`);
+              toast(t("recipes.bottleRemoved", { name }));
+              try {
                 await refreshConfig();
-              }}
-            >
-              {t("recipes.remove")}
-            </Button>
-          </>
-        )
+              } finally {
+                p.onClose();
+              }
+            }}
+          >
+            {t("recipes.remove")}
+          </Button>
+        </>
       }
     />
   );
@@ -309,7 +339,7 @@ export function RecipesPage() {
         title={t("recipes.bottles")}
         icon={<FlaskConical size={18} />}
         actions={
-          <Button size="sm" variant="primary" onClick={() => setEditCan(null)}>
+          <Button size="sm" variant="primary" id="add-bottle" onClick={() => setEditCan(null)}>
             <Plus size={15} /> {t("term.bottle")}
           </Button>
         }
@@ -332,7 +362,7 @@ export function RecipesPage() {
                 const ml = st.stock[k.id] ?? null;
                 const flow = pumpFlow(k.pump);
                 return (
-                  <tr>
+                  <tr key={k.id}>
                     <td class="full">
                       <span class="row" style="gap:8px">
                         <span class="swatch" style={`background:${k.color}`} />
@@ -456,7 +486,7 @@ export function RecipesPage() {
         </div>
       </Card>
       {editCan !== undefined && <CanisterEditor can={editCan ?? undefined} onClose={() => setEditCan(undefined)} />}
-      {removeCan && <RemoveCanister can={removeCan} onClose={() => setRemoveCan(null)} />}
+      {removeCan && <RemoveCanister can={removeCan} flow={pumpFlow(removeCan.pump)} onClose={() => setRemoveCan(null)} onEditRecipe={setEditRec} />}
       {editRec !== undefined && <RecipeEditor recipe={editRec ?? undefined} onClose={() => setEditRec(undefined)} />}
       {tpl && <TemplateDialog tpl={tpl} onClose={() => setTpl(null)} />}
     </div>

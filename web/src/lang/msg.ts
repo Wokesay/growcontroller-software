@@ -167,9 +167,9 @@ export const msgDe: Record<string, string> = {
   // Building blocks
   "ev.plain": "{text}",
   "amount": "{name} {ml:1} ml",
-  "span.s": "{n} s",
-  "span.min": "{n} min",
-  "span.h": "{h:1} h",
+  "span.s": "{n}\u00a0s",
+  "span.min": "{n}\u00a0min",
+  "span.h": "{h:1}\u00a0h",
   "where.slot": "Pumpe {n} am Dosierblock",
   "where.port": "Anschluss {n}",
   "where.net": "im Netzwerk",

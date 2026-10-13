@@ -185,9 +185,10 @@ constexpr Entry kMessages[] = {
     // Building blocks
     {"ev.plain", "{text}"},
     {"amount", "{name} {ml:1} ml"},
-    {"span.s", "{n} s"},
-    {"span.min", "{n} min"},
-    {"span.h", "{h:1} h"},
+    // Number and unit on one line (#106)
+    {"span.s", "{n}\u00a0s"},
+    {"span.min", "{n}\u00a0min"},
+    {"span.h", "{h:1}\u00a0h"},
     {"where.slot", "Pump {n} on the dosing block"},
     {"where.port", "Port {n}"},
     {"where.net", "On your Wi-Fi"},

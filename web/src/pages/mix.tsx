@@ -193,6 +193,7 @@ export function MixPage() {
       {confirm && (
         <Modal
           title={t("mix.repeatTitle")}
+          message={confirm}
           onClose={() => setConfirm(null)}
           footer={
             <>
@@ -204,9 +205,7 @@ export function MixPage() {
               </Button>
             </>
           }
-        >
-          <p>{confirm}</p>
-        </Modal>
+        />
       )}
     </div>
   );

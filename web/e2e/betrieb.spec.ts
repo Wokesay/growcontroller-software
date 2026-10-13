@@ -526,8 +526,8 @@ for (const lang of ["de", "en"] as const) {
     await expect(row).toHaveCount(1);
     const texts =
       lang === "de"
-        ? { button: `„${name}“ entfernen`, remove: "Entfernen", title: "Kanister entfernen?", text: `Du entfernst „${name}“ samt Vorrat. Das kannst du nicht rückgängig machen.`, cancel: "Abbrechen", done: `„${name}“ entfernt` }
-        : { button: `Remove "${name}"`, remove: "Remove", title: "Remove bottle?", text: `You're removing "${name}" and its stock. You can't undo this.`, cancel: "Cancel", done: `"${name}" removed` };
+        ? { button: `„${name}“ entfernen`, remove: "Entfernen", title: "Kanister entfernen?", text: `Damit entfernst du „${name}“ samt Vorrat. Das kannst du nicht rückgängig machen.`, cancel: "Abbrechen", done: `Kanister „${name}“ entfernt` }
+        : { button: `Remove "${name}"`, remove: "Remove", title: "Remove bottle?", text: `This removes "${name}" and its stock. You can't undo this.`, cancel: "Cancel", done: `Bottle "${name}" removed` };
     await row.getByRole("button", { name: texts.button }).click();
     // A confirmation: a screen reader reads the consequence with the title
     const dialog = page.getByRole("alertdialog", { name: texts.title });
@@ -536,29 +536,58 @@ for (const lang of ["de", "en"] as const) {
     await dialog.getByRole("button", { name: texts.cancel }).click();
     await expect(dialog).toHaveCount(0);
     await expect(row).toHaveCount(1);  // cancelling keeps it
+    await expect(row.getByRole("button", { name: texts.button })).toBeFocused();
     await row.getByRole("button", { name: texts.button }).click();
     await dialog.getByRole("button", { name: texts.remove, exact: true }).click();
     await expect(row).toHaveCount(0);
     await expect(page.getByText(texts.done)).toBeVisible();
+    await expect(page.locator("#add-bottle")).toBeFocused();  // the row is gone: on to adding a bottle
   });
 }
 
-test("Recipes: a bottle a recipe uses says where it is used instead of offering a removal that fails (#120)", async ({ page, request }) => {
+test("Recipes: a bottle a recipe uses says where and how to take it out, a pair as a whole, and the way works (#120)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
   await page.goto("/#/rezepte");
-  const cfg = await (await page.request.get("/api/v1/config")).json();
-  const can = cfg.canisters.find((k: { id: string; pump: string }) => k.pump && cfg.recipes.some((r: { steps: { canister: string }[] }) => r.steps.some((s) => s.canister === k.id)));
-  const using = cfg.recipes.filter((r: { steps: { canister: string }[] }) => r.steps.some((s) => s.canister === can.id)).map((r: { name: string }) => `„${r.name}“`);
-  const row = page.locator(".rtable tbody tr").filter({ hasText: can.name });
-  await row.getByRole("button", { name: `„${can.name}“ entfernen` }).click();
-  const dialog = page.getByRole("alertdialog", { name: "Kanister entfernen?" });
-  const where = using.length === 1 ? `steckt im Rezept ${using[0]}` : `steckt in den Rezepten ${using.join(", ")}`;
-  await expect(dialog).toHaveAccessibleDescription(`„${can.name}“ ${where}. Leere dort seine Menge und speichere, dann kannst du ihn entfernen.`);
-  await expect(dialog.getByRole("button", { name: "Entfernen", exact: true })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Schließen" }).last().click();
-  await expect(dialog).toHaveCount(0);
-  await expect(row).toHaveCount(1);
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  const blocked = page.getByRole("alertdialog", { name: "Kanister wird noch gebraucht" });
+  // Part A of a pair in two recipes: both parts, both recipes, no removal on offer
+  await row("Teil A").getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  await expect(blocked).toHaveAccessibleDescription(
+    "„Teil A“ bildet mit „Teil B“ ein Paar und steckt in den Rezepten „Wachstum“ und „Blüte“. Nimm dort beide heraus (Mengen leeren, speichern) oder lösch die Rezepte. Danach kannst du den Kanister entfernen.",
+  );
+  await expect(blocked.getByRole("button", { name: "Entfernen", exact: true })).toHaveCount(0);
+  await blocked.getByRole("button", { name: "Verstanden" }).click();
+  await expect(blocked).toHaveCount(0);
+  // With one recipe left, the dialog opens it
+  const gone = await page.evaluate(async () => {
+    const cfg = await (await fetch("/api/v1/config")).json();
+    const bloom = cfg.recipes.find((r: { name: string }) => r.name === "Blüte");
+    return (await fetch(`/api/v1/recipes/${bloom.id}`, { method: "DELETE" })).ok;
+  });
+  expect(gone).toBe(true);
+  await page.reload();
+  await row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" }).click();
+  await expect(blocked).toHaveAccessibleDescription(
+    "„CalMag“ steckt im Rezept „Wachstum“. Nimm den Kanister dort heraus (Menge leeren, speichern) oder lösch das Rezept. Danach kannst du ihn entfernen.",
+  );
+  await blocked.getByRole("button", { name: "Rezept bearbeiten" }).click();
+  const editor = page.getByRole("dialog", { name: "Rezept „Wachstum“" });
+  await expect(editor).toBeVisible();
+  // Following the advice works: the amount cleared and saved, the bottle can go
+  await editor.locator(".step").filter({ hasText: "CalMag" }).locator("input").fill("");
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  await row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" }).click();
+  await page.getByRole("alertdialog", { name: "Kanister entfernen?" }).getByRole("button", { name: "Entfernen", exact: true }).click();
+  await expect(row("CalMag")).toHaveCount(0);
+  // A pair in one recipe: both parts out, and the recipe still has a step
+  await row("Teil A").getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  await expect(blocked).toHaveAccessibleDescription(
+    "„Teil A“ bildet mit „Teil B“ ein Paar und steckt im Rezept „Wachstum“. Nimm dort beide heraus (Mengen leeren, speichern) oder lösch das Rezept. Danach kannst du den Kanister entfernen.",
+  );
+  await blocked.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(blocked).toHaveCount(0);
 });
 
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
@@ -610,4 +639,24 @@ test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(link).not.toBeFocused();
+  // A button that disables itself while it waits for the hub (Settings › Changelog) still
+  // gets the focus back, though the page had moved it to <body> meanwhile
+  let answer!: () => void;
+  const held = new Promise<void>((r) => (answer = r));
+  await page.route(/\/api\/v1\/changelog$/, async (route) => {
+    await held;
+    await route.fulfill({ contentType: "text/plain", body: "# Changelog" });
+  });
+  await page.goto("/#/einstellungen");
+  const changelog = page.getByRole("button", { name: "Changelog" });
+  await changelog.click();
+  await expect(changelog).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  answer();
+  const log = page.getByRole("dialog", { name: "Changelog" });
+  await expect(log).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(log).toHaveCount(0);
+  await expect(changelog).toBeFocused();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });

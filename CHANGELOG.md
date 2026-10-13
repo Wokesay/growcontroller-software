@@ -178,17 +178,22 @@ listed in every release under "Security".
   adapter itself, too.
 - **Removing a bottle asks first** (#120): under Recipes › Bottles the
   remove button took a bottle away at once, with its stock, and on a phone
-  it sits next to "Edit". Now "Kanister entfernen?" (Remove bottle?) names
-  it and what follows (its pump becomes free and keeps its calibration);
-  only "Entfernen" removes it. A bottle a recipe still uses says which
-  recipe instead of offering a removal the hub refuses.
+  it sits next to "Edit". Now "Remove bottle?" ("Kanister entfernen?")
+  names it and what follows (its pump becomes free and keeps its
+  calibration); only "Remove" removes it. A bottle a recipe still uses
+  says "Bottle still in use", names the recipes and how to take it out
+  (both bottles of a pair, since the hub refuses half a pair), and opens
+  the recipe when there is one, instead of offering a removal the hub
+  refuses.
 - **Dialogs and the keyboard** (#105): a dialog now takes the focus when it
   opens, Tab stays inside it (also a folded list's heading, and back in
   when the focus has fallen out), the focus returns to the button that
-  opened it, and a screen reader names it by its title; a confirmation
-  reads out its consequence.
-- **A number and its unit stay on one line** (#106): durations and ages
-  such as "vor 45 s" no longer break between the number and the unit.
+  opened it when that is known (after removing a bottle: to "+ Bottle"),
+  and a screen reader names it by its title; a confirmation (removing a
+  bottle, mixing a tank again) reads out its consequence.
+- **Durations and ages stay on one line** (#106): "vor 45 s" / "45 s ago"
+  and the hub's waiting times no longer break between the number and the
+  unit; other numbers with units (ml, ml/L) follow (#148).
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so
