@@ -10,7 +10,10 @@ Our own software on the hub, not built on a home-automation platform
 [PD-013]:
 
 - **Web app on the device**, without cloud and without account. It is
-  reachable in the home network. A phone app comes later.
+  reachable in the home network and, if the user switches it on, from
+  outside through a relay that is built not to read the traffic and
+  stores no values (SD-059, SD-062). Whether a store app comes is
+  decided later (SD-062).
 - **Setup instead of configuration.** Devices are detected, not
   selected. The hub says what works with the hardware at hand and what is
   missing.

@@ -148,7 +148,10 @@ Rules:
 - Title ≤ 40 characters, body ≤ 200. Rationale: RAT-045.
 - Acknowledging only pauses the repetition. Rationale: RAT-022.
 - Channels the user chooses, without a manufacturer cloud: ntfy, e-mail,
-  webhook, MQTT (PD-024). App push only once there is an app.
+  webhook, MQTT (PD-024). Once the ESP is reached through the relay
+  with its own certificate, the web app on the home screen could send
+  Web Push; whether it does is decided with M5, whether a store app
+  comes later (SD-062).
 - All notifications are free, safety alarms included; there is no
   subscription [PD-008, PD-024].
 - Say it honestly: "No notifications without internet."
