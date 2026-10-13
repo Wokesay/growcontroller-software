@@ -10,7 +10,7 @@ import { Droplets, Fan, Sun, Thermometer, Zap } from "lucide-preact";
 import { post, put, type ControlArea, type ControlMode } from "../api";
 import { num } from "../format";
 import { t, type TextKey } from "../i18n";
-import { binding, catalog, config, readOnly, refreshConfig, refreshState, state, toast } from "../store";
+import { binding, catalog, config, readOnly, refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { Banner, Button, Card, Empty, Pill, Term } from "../ui";
 import { MetricTile, useSparks } from "../widgets";
 
@@ -102,7 +102,7 @@ function ControlNote(p: { area: ControlArea; title: TextKey; icon: ComponentChil
       await put("/system", { control: { [p.area]: m } });
       toast(t("settings.saved"));
     } catch (x: any) {
-      toast(x.message ?? String(x), "error");
+      toastError(x);
     } finally {
       await refreshConfig().catch(() => undefined);  // also puts the radios back if saving failed; offline, the toast has said so
     }

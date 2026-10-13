@@ -6,7 +6,7 @@ import { FlaskConical, Zap } from "lucide-preact";
 import { get, sim } from "../api";
 import { num } from "../format";
 import { t, type TextKey } from "../i18n";
-import { refreshConfig, refreshState, state, toast } from "../store";
+import { refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { Button, Field, NumberInput, Seg } from "../ui";
 
 export function SimPanel() {
@@ -32,7 +32,7 @@ export function SimPanel() {
       await refreshState();
       if (msg) toast(msg, "info");
     } catch (e: any) {
-      toast(e.message, "error");
+      toastError(e);
     }
   };
 
@@ -55,7 +55,7 @@ export function SimPanel() {
       await refreshState();
       toast(msg, "info");
     } catch (e: any) {
-      toast(e.message, "error");
+      toastError(e);
     }
   };
   const lvl = w?.ports?.find((p: any) => p.class === "head_level");

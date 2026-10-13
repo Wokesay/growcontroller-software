@@ -99,13 +99,54 @@ for (const lang of ["de", "en"]) {
   });
 }
 
+test("A device row keeps its name readable: the buttons go below it", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/geraete");
+  const rows = page.locator('[data-testid^="device-"]');
+  await expect(rows.first()).toBeVisible();
+  for (const row of await rows.all()) {
+    // Never squeezed to a letter per line: the name takes at most two lines
+    const lines = await row.locator("strong").first().evaluate((el) => {
+      const lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.3;
+      return Math.round(el.getBoundingClientRect().height / lh);
+    });
+    expect(lines, await row.getAttribute("data-testid") ?? "").toBeLessThanOrEqual(2);
+  }
+});
+
+test("Values that stop coming show as a bar on the phone, where the live badge is hidden", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  // Without the live stream the polls stand in for it: the values stay current, no bar
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.reload();
+  await expect(page.getByTestId("event").first()).toBeVisible();
+  await page.waitForTimeout(12_000);  // longer than the 10 s after which values count as not current
+  await expect(page.getByTestId("offline-bar")).toHaveCount(0);
+  // Then the polls get no answer either
+  await page.route(/\/api\/v1\/state(\?|$)/, (route) => route.abort());
+  const bar = page.getByTestId("offline-bar");
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  await expect(bar).toContainText("Keine Verbindung zum Hub – die Werte sind nicht aktuell.");
+  await fits(page, "offline bar");
+  // It stays in view below the top bar when the page scrolls
+  await page.evaluate(() => window.scrollBy(0, 2000));
+  const top = await page.locator(".topbar").boundingBox();
+  const box = await bar.boundingBox();
+  expect(top && box && Math.abs(box.y - (top.y + top.height)) < 2, "bar right below the top bar").toBe(true);
+  // Values again: the bar goes
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await expect(bar).toHaveCount(0, { timeout: 20_000 });
+});
+
 test("The setup fits the phone's screen in every step; its footer leaves the simulator's button free", async ({ page, request }) => {
   await scenario(request, "neu");
   await newPassword(page);
   await expect(page).toHaveURL(/#\/einrichtung/);
   for (let s = 0; s < 6; s++) {
     await page.goto(`/#/einrichtung?s=${s}`);
-    await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText(String(s + 1));
+    await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText(s < 5 ? String(s + 1) : "Fertig");
     await fits(page, `setup step ${s + 1}`);
     const fab = await page.locator(".sim-fab").boundingBox();
     const foot = await page.locator(".wizard-foot").boundingBox();
@@ -186,7 +227,7 @@ test("Home Assistant: the introduction, devices, assignment and sign of life fit
   await expect(page).toHaveURL(/#\/willkommen/);
   for (let s = 0; s < 4; s++) {
     await page.goto(`/#/willkommen?s=${s}`);
-    await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText(String(s + 1));
+    await expect(page.locator('.wizard-steps [aria-current="step"]')).toContainText(s < 3 ? String(s + 1) : "Fertig");
     await fits(page, `introduction step ${s + 1}`);
   }
   await page.goto("/#/willkommen?s=0");

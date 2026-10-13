@@ -19,6 +19,15 @@ export const de = {
   "shell.fixNow": "Jetzt erledigen",
   "shell.noAnswer": "Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?",
   "shell.httpError": "Fehler {status}",
+  "shell.failed": "Das hat nicht geklappt. Lade die Seite neu und versuch es noch einmal.",
+  // A Stop the hub did not confirm is never silent; unplugging the hub does not switch off smart plugs
+  "shell.stopSending": "Stopp wird gesendet …",
+  "shell.stopRetry": "Noch einmal versuchen",
+  "shell.stopFailed": "Stopp nicht bestätigt – keine Antwort vom Hub.",
+  "shell.stopRefused": "Stopp nicht bestätigt – {reason}",
+  "shell.stopHint": "Zieh im Notfall den Netzstecker des Hubs.",
+  "shell.stopHintPlugs": "Zieh im Notfall den Netzstecker des Hubs und schalte Geräte an Steckdosen direkt aus.",
+  "shell.offlineBar": "Keine Verbindung zum Hub – die Werte sind nicht aktuell. Ist der Hub an, steuert er ohne die App weiter.",
 } as const;
 
 export const en: Record<keyof typeof de, string> = {
@@ -37,4 +46,12 @@ export const en: Record<keyof typeof de, string> = {
   "shell.fixNow": "Fix now",
   "shell.noAnswer": "The hub isn't responding. Is it switched on and on the same network as this device?",
   "shell.httpError": "Error {status}",
+  "shell.failed": "That didn't work. Reload the page and try again.",
+  "shell.stopSending": "Sending Stop …",
+  "shell.stopRetry": "Try again",
+  "shell.stopFailed": "Stop not confirmed – no answer from the hub.",
+  "shell.stopRefused": "Stop not confirmed – {reason}",
+  "shell.stopHint": "In an emergency, unplug the hub.",
+  "shell.stopHintPlugs": "In an emergency, unplug the hub and switch off devices on smart plugs directly.",
+  "shell.offlineBar": "No connection to the hub – the values are not current. If the hub is on, it keeps controlling without the app.",
 };

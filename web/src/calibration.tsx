@@ -6,7 +6,7 @@ import { Beaker, Check, Timer } from "lucide-preact";
 import { get, isSignalClass, post, sim, type Msg } from "./api";
 import { ago, num } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { catalog, config, refreshConfig, refreshState, simulated, state, toast, toastError } from "./store";
+import { catalog, config, refreshConfig, refreshState, simulated, state, toast, toastError, errorText } from "./store";
 import { millivoltsText } from "./widgets";
 import { Banner, Button, Field, Modal, NumberInput } from "./ui";
 
@@ -237,7 +237,7 @@ export function ProbeCalibration(p: { device: string; kind: "ph" | "ec" | "tank_
       await post("/probe", { device: p.device, kind: p.kind, action: "commit" });
     } catch (e: any) {
       committing.current = false;
-      setRefused(e?.message ?? String(e)); // the reason stays in view, not only in a toast
+      setRefused(errorText(e)); // the reason stays in view, not only in a toast
       window.setTimeout(() => restartBtn.current?.focus());
       return;
     }

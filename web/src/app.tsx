@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Gerüst: Navigation, Kopfzeile mit Not-Halt, Seitenwahl, Anmeldung, Einrichtung.
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Beaker, Compass, Cpu, Droplets, Eye, FlaskConical, Gauge, History, LayoutDashboard, MoreHorizontal, OctagonX, Settings, SlidersHorizontal, Sprout, Sun, Thermometer, Waves, Wrench,
 } from "lucide-preact";
-import { post } from "./api";
+import { ApiError, post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
-import { authed, config, info, live, readOnly, refreshState, simulated, state, toast } from "./store";
-import { ErrorBoundary, Modal, Pill, Toasts, navigate, route } from "./ui";
+import { authed, config, hasPlugs, info, lastUpdate, readOnly, refreshState, simulated, stale, state, toast, toastError } from "./store";
+import { Banner, ErrorBoundary, Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
 import { Overview } from "./pages/overview";
 import { MixPage } from "./pages/mix";
@@ -87,23 +87,45 @@ function ReadOnlyTag(p: { compact?: boolean }) {
   );
 }
 
+// No answer within this time counts as not confirmed: the dialog says so and offers
+// to try again, instead of waiting without a word (fetch has no time limit of its own)
+const STOP_TIMEOUT_MS = 5000;
+
 function StopButton() {
   const [ask, setAsk] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const retry = useRef<HTMLButtonElement>(null);
+  const open = useRef(false);  // the dialog, for a Stop that fails after it was closed
   const st = state.value;
+  // A Stop that arrived after all ends the dialog, so it does not come back after Resume
+  useEffect(() => {
+    if (st?.stopped) {
+      open.current = false;
+      setAsk(false);
+      setFailed(null);
+    }
+  }, [st?.stopped]);
+  // The confirm button was disabled while sending: give it the focus back to try again
+  useEffect(() => {
+    if (failed && !sending) retry.current?.focus();
+  }, [failed, sending]);
+  const resume = async (done: TextKey) => {
+    try {
+      await post("/resume");
+      await refreshState();
+      toast(t(done));
+    } catch (e) {
+      toastError(e);
+    }
+  };
   if (readOnly.value) {
     if (!st?.stopped) return <ReadOnlyTag />;
     // A stop from an earlier version stays clearable; nothing starts running
     return (
       <>
         <ReadOnlyTag compact />
-        <button
-          class="btn sm"
-          onClick={async () => {
-            await post("/resume");
-            await refreshState();
-            toast(t("shell.stopCleared"));
-          }}
-        >
+        <button class="btn sm" onClick={() => resume("shell.stopCleared")}>
           {t("shell.clearStop")}
         </button>
       </>
@@ -111,47 +133,74 @@ function StopButton() {
   }
   if (st?.stopped)
     return (
-      <button
-        class="btn sm"
-        onClick={async () => {
-          await post("/resume");
-          await refreshState();
-          toast(t("shell.resumed"));
-        }}
-      >
+      <button class="btn sm" onClick={() => resume("shell.resumed")}>
         {t("shell.resume")}
       </button>
     );
+  const close = () => {
+    open.current = false;
+    setAsk(false);
+    setFailed(null);
+  };
+  const hint = () => t(hasPlugs.value ? "shell.stopHintPlugs" : "shell.stopHint");
+  const stop = async () => {
+    setSending(true);
+    setFailed(null);
+    try {
+      await post("/stop", {}, STOP_TIMEOUT_MS);
+    } catch (e) {
+      // Never silent: the dialog stays open to try again, or, closed while sending, a
+      // message says so. It may have arrived late: a new state with the Stop closes the dialog.
+      const said = e instanceof ApiError ? t("shell.stopRefused", { reason: e.message }) : t("shell.stopFailed");
+      const text = /[.!?…]$/.test(said) ? said : `${said}.`;  // the emergency hint follows as its own sentence
+      if (open.current) setFailed(text);
+      else toast(`${text} ${hint()}`, "error");
+      void refreshState();
+      return;
+    } finally {
+      setSending(false);
+    }
+    close();
+    toast(t("shell.stopped"), "info");
+    await refreshState();
+  };
   return (
     <>
-      <button class="stop-btn" onClick={() => setAsk(true)} title={t("shell.stopTitle")}>
+      <button
+        class="stop-btn"
+        onClick={() => {
+          setFailed(null);  // a failure from a Stop cancelled while sending is not this one's
+          open.current = true;
+          setAsk(true);
+        }}
+        title={t("shell.stopTitle")}
+      >
         <OctagonX size={18} /> <span class="hide-sm">{t("common.stop")}</span>
       </button>
       {ask && (
         <Modal
           title={t("shell.stopAsk")}
-          onClose={() => setAsk(false)}
+          onClose={close}
           footer={
             <>
-              <button class="btn" onClick={() => setAsk(false)}>
+              <button class="btn" onClick={close}>
                 {t("common.cancel")}
               </button>
-              <button
-                class="btn danger"
-                onClick={async () => {
-                  await post("/stop");
-                  setAsk(false);
-                  await refreshState();
-                  toast(t("shell.stopped"), "info");
-                }}
-              >
-                {t("shell.stopAll")}
+              <button ref={retry} class="btn danger" disabled={sending} onClick={stop} data-testid="stop-confirm">
+                {sending ? t("shell.stopSending") : failed ? t("shell.stopRetry") : t("shell.stopAll")}
               </button>
             </>
           }
         >
           <p>{t("shell.stopText")}</p>
           <p class="muted small">{t("shell.stopNote")}</p>
+          <div role="alert" data-testid="stop-failed">
+            {failed && (
+              <Banner tone="bad">
+                {failed} {hint()}
+              </Banner>
+            )}
+          </div>
         </Modal>
       )}
     </>
@@ -159,7 +208,9 @@ function StopButton() {
 }
 
 function LiveBadge() {
-  const l = live.value;
+  // By the age of the values, as the phone's bar: polls standing in for the stream are
+  // current, an open stream that brings nothing is not
+  const l = stale.value ? "offline" : lastUpdate.value > 0 ? "live" : "connecting";
   const wd = state.value?.watchdog;
   return (
     <div class="row hide-sm">
@@ -276,12 +327,22 @@ export function App() {
         </div>
       </aside>
       <div class="main">
-        <header class="topbar">
-          <h1>{t(page.title)}</h1>
-          <div class="spacer" />
-          <LiveBadge />
-          <StopButton />
-        </header>
+        <div class="top">
+          <header class="topbar">
+            <h1>{t(page.title)}</h1>
+            <div class="spacer" />
+            <LiveBadge />
+            <StopButton />
+          </header>
+          {/* Phones hide the live badge; the live region is always there, so a reader announces the text */}
+          <div class="only-sm" role="status">
+            {stale.value && (
+              <div class="offline-bar" data-testid="offline-bar">
+                {t("shell.offlineBar")}
+              </div>
+            )}
+          </div>
+        </div>
         <main class="content">
           <ErrorBoundary key={r.path}>{page.el()}</ErrorBoundary>
         </main>
