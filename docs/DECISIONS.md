@@ -1688,7 +1688,7 @@ then they are the software's working basis.
 - **The way is a relay:** the ESP opens an outbound, encrypted connection
   over its Wi-Fi to a relay. No port is opened on the router, so it works
   without router settings and behind a shared public address (CGNAT,
-  DS-Lite). The relay is built so it cannot read: TLS ends on the ESP,
+  DS-Lite). The relay is built not to read the traffic: TLS ends on the ESP,
   with a key made on the ESP that never leaves it and a certificate for
   the ESP's own name, and the web app always comes from the ESP, never
   from the relay. For the design:
@@ -1714,7 +1714,8 @@ then they are the software's working basis.
   - residual risk, named in the docs: whoever controls the relay's domain
     or its DNS could obtain a certificate for an ESP's name and read or
     change its traffic, the password included; Certificate Transparency
-    shows this but does not prevent it.
+    shows this but does not prevent it. Names are public in those logs,
+    so security never rests on a name staying secret.
 - **No port forwarding:** a direct way from the internet (a port forward,
   UPnP, an open IPv6 address) is not offered, and the docs advise
   against it. SD-059 already refuses such requests at every level.
@@ -1783,7 +1784,9 @@ then they are the software's working basis.
     rules, review rounds); Apple may refuse an app that is only a
     repackaged website. Push through Apple and Google needs a server with
     their keys; whether the relay is that server is open, as it is more
-    than forwarding bytes.
+    than forwarding bytes. To weigh then: a store app could pin the ESP's
+    key from the QR code, the only measure against the residual risk
+    above.
   - Web Push needs no store and no developer account; the ESP can send it
     itself. That an ESP is offline only something outside the home can
     tell; whether the relay reports it is open, for the same reason.
