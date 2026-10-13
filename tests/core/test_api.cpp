@@ -42,7 +42,7 @@ TEST_CASE("API: Fehlversuche führen zur Sperre (429), Abmelden beendet die Sitz
   CHECK(c.call("GET", "/api/v1/state").first == 401);
 }
 
-TEST_CASE("API: a page that asks for its session gets its cookie renewed for another 12 hours; without a session nothing (SD-063)") {
+TEST_CASE("API: a page that asks for its session gets its cookie renewed for another 12 hours; without a session nothing (SD-064)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});

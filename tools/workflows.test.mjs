@@ -219,3 +219,11 @@ test("the web app's packages are checked against their registry signatures (#100
     assert.match(pkg.integrity ?? "", /^sha512-/, `${path} is pinned by its sha512`);
   }
 });
+
+test("the lockfile's packages are checked for a lost provenance before they are installed (#128)", () => {
+  const ci = readFileSync(join(dir, "..", "..", "tools", "ci.sh"), "utf8").split("\n");
+  const check = ci.findIndex((l) => l === "node tools/check_provenance.mjs");
+  const install = ci.findIndex((l) => /\bnpm ci\b/.test(l) && !/^\s*#/.test(l));
+  assert.ok(check >= 0, "tools/ci.sh runs tools/check_provenance.mjs on a line of its own");
+  assert.ok(install > check, "before npm ci");
+});

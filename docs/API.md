@@ -22,7 +22,7 @@ UI can do, an integration can do as well.
   all other devices share the count until they sign in again.
 - `GET /auth/session` says whether the request has a session; with one it
   sends the cookie again for another 12 hours, so a page left open that
-  asks every 10 minutes keeps its session (SD-063); a client with
+  asks every 10 minutes keeps its session (SD-064); a client with
   `Authorization: Bearer` gets the same cookie for its own token, which it
   may ignore. The hub ends a session
   after 12 hours without a request, on a restart and on a password change;

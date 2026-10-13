@@ -53,7 +53,7 @@ let pollTimer: number | undefined;
 let renewTimer: number | undefined;
 
 // The browser keeps the session cookie 12 hours from when the hub last sent it. A page left
-// open, such as a phone on the wall, asks now and then, so a Stop still has its session (SD-063);
+// open, such as a phone on the wall, asks now and then, so a Stop still has its session (SD-064);
 // one asleep longer finds out as soon as it is woken.
 const RENEW_MS = 10 * 60_000;
 async function renewSession() {

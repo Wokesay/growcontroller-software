@@ -53,7 +53,7 @@ Epoch qnum(const ApiRequest& r, const char* k, Epoch def) {
 std::string sessionCookie(const std::string& token, int maxAge) {
   return "gc_session=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" + std::to_string(maxAge);
 }
-// The browser keeps the cookie as long as the hub keeps an unused session (SD-063)
+// The browser keeps the cookie as long as the hub keeps an unused session (SD-064)
 constexpr int kCookieMaxAgeS = static_cast<int>(Auth::kSessionIdle / kSecond);
 
 }  // namespace
@@ -131,7 +131,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     bool ok = authorized(req);
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     ApiResponse r = jsonResp(200, {{"authenticated", ok}, {"hasPassword", hub_.auth().hasPassword()}});
-    // A page left open asks now and then: its cookie lasts as long as the session is in use (SD-063)
+    // A page left open asks now and then: its cookie lasts as long as the session is in use (SD-064)
     if (ok) r.headers.emplace_back("Set-Cookie", sessionCookie(req.token, kCookieMaxAgeS));
     return r;
   }

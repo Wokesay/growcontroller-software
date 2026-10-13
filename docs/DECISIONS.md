@@ -1478,7 +1478,8 @@ Decided by the project owner on 2026-10-12 in the software session, for
 - A package without provenance passes; npm counts only the verified
   attestations. Many packages publish none, TypeScript and lightningcss
   among them. No list of them is printed; a warning that always comes is
-  soon not read.
+  soon not read. Changed by SD-063: a package fails without provenance
+  once a lower version of it had provenance.
 - What it proves: the registry's own record of each installed
   `name@version` is signed, so a record changed on the registry's side
   without npm's key fails while it is served. It does not compare that
@@ -1491,8 +1492,8 @@ Decided by the project owner on 2026-10-12 in the software session, for
   publishing pipeline even produces valid provenance. Against that stand
   Dependabot's cooldown of 7 days, the lockfile pin and
   `npm ci --ignore-scripts`. The gain of this check is small; it is cheap
-  and fails closed. Later, if npm offers it: fail when a package that had
-  provenance publishes a version without it (`docs/SECURITY_MODEL.md`).
+  and fails closed. Against a hijacked account SD-063 adds a check of its
+  own: a package must not lose the provenance a lower version had.
 - The check needs the npm registry and Sigstore's TUF repository
   (`tuf-repo-cdn.sigstore.dev`), also for a local `tools/ci.sh`.
 
@@ -1827,7 +1828,42 @@ then they are the software's working basis.
   (PD-024).
 
 
-## SD-063: A Stop from the app needs a signed-in session; a session lasts while it is in use
+## SD-063: A web app package must not lose its provenance
+
+Decided by the project owner on 2026-10-13 in the software session
+("128 umsetzen", from `security`'s review of #100); the accepted cases
+below with the merge.
+
+- Before the web app's packages are installed, `tools/ci.sh` runs
+  `tools/check_provenance.mjs`. For every package in
+  `web/package-lock.json`, every platform build included, it finds the
+  highest lower version that was published with provenance. If there is
+  one, the locked version must have provenance too, from the same source
+  repository and, where both provenances give it, the same GitHub
+  repository id (a freed name taken over by someone else changes it).
+  Otherwise the check fails.
+- Why: a hijacked maintainer account typically publishes by hand from a
+  stolen token, and the registry signs that release too (SD-058).
+  Comparing with the highest lower version that has provenance, not with
+  the next lower one, keeps two releases by hand in a row from hiding
+  each other.
+- A case accepted after review goes into `tools/provenance-exceptions.json`
+  with the exact problem it accepts and why. It applies to that problem
+  only, and an entry that no locked package has any more fails. Changes to
+  that file or to the check need a `security` review. Accepted with the
+  start: `@rolldown/pluginutils@1.0.1` (moved between two repositories of
+  the rolldown organisation) and `undici-types@6.21.0` (6.19.3 to 6.21.0
+  published without provenance in 2024 by the same maintainer, with
+  provenance again from 6.23.0; `@types/node` 22 pins `~6.21.0`).
+- No answer from the registry fails. The check runs where `tools/ci.sh`
+  runs, in CI's `checks` job; the release, the packages and the app image
+  install the same lockfile after it passed there on `main`.
+- Not caught: a package that never had provenance; a release by a
+  hijacked CI or trusted publisher of the same repository; a release by
+  hand on a version line that never had provenance.
+
+
+## SD-064: A Stop from the app needs a signed-in session; a session lasts while it is in use
 
 Decided by the project owner on 2026-10-13 in the software session, one
 question at a time: `ux` asked during the polish for 0.1.0-proto.5
@@ -1844,8 +1880,8 @@ question at a time: `ux` asked during the polish for 0.1.0-proto.5
   12 hours, so a phone on the wall keeps its session. There is no fixed
   longest lifetime: a page in use stays signed in. This holds in the home
   network; a shorter session from outside stays open (SD-059).
-- With 16 sessions, a 17th sign-in ends the one used longest ago, not one
-  by the order of the tokens, which could be the page left open.
+- With 16 sessions, a 17th sign-in ends the one used longest ago (#131),
+  not the page left open.
 - When the session has ended, the sign-in page says that what was just
   clicked, a Stop included, was not carried out, and names the way in an
   emergency (#130); a page left open says so as soon as it next asks.

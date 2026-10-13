@@ -96,7 +96,7 @@ listed in every release under "Security".
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
   or replace it; pH correction then waits for your confirmation.
-- **You stay signed in while you use the app** (SD-063): a page left
+- **You stay signed in while you use the app** (SD-064): a page left
   open, such as a phone on the wall, renews its sign-in every 10 minutes
   and when it wakes up, so a Stop from it still works the next day.
   Before, the browser dropped the sign-in 12 hours after signing in, even
@@ -252,7 +252,9 @@ Severity: low. The first concerns the hub's own probes, which only the
 simulator has so far; the second needed the password for an import, and
 nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
-session and "Stop". No GHSA or CVE is issued.
+session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
+each with the password, and whoever has the password can already stop,
+switch or change it. No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -278,10 +280,15 @@ session and "Stop". No GHSA or CVE is issued.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+- **A new sign-in ends the session used longest ago:** with 16 sessions
+  open, a 17th sign-in ended a random one of them, so the phone someone was
+  using could be signed out and had to sign in again before it could reach
+  "Stop". Now the session used longest ago ends. Found through a test of the
+  lockout (SD-051) that failed in about 1 of 16 runs.
 
 Hardening, without a vulnerability behind it:
 
-- **Sessions last while they are in use** (SD-063): the browser kept the
+- **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
   page in use; now a page in use renews it (`GET /auth/session` sends it
   again) and there is no fixed longest lifetime. A session still ends
@@ -290,9 +297,6 @@ Hardening, without a vulnerability behind it:
   browser left signed in, a cookie read off the unencrypted home network
   until HTTPS) stays valid as long as it is used at least every 12 hours;
   changing the password ends every session at once.
-- **A 17th sign-in no longer signs out a device by chance:** with 16
-  sessions, it ended one by the order of the keys, possibly the phone on
-  the wall; now it ends the one used longest ago (SD-063).
 
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator
@@ -305,6 +309,16 @@ Hardening, without a vulnerability behind it:
   package; it does not protect against a release from a hijacked
   maintainer account, against which the 7-day wait for updates and the
   lockfile's hashes stay the guards.
+- **Provenance must not drop** (#128, SD-063): before the web app's
+  packages are installed, CI finds for every package in the lockfile the
+  highest lower version that was published with provenance. If the locked
+  version has none, or has it from another source repository, the build
+  fails: that is the typical sign of a release published by hand from a
+  stolen token, which the registry signs too. A case accepted after
+  review is listed with its exact problem and the reason; today two:
+  `@rolldown/pluginutils`, which moved to the `rolldown/plugins`
+  repository, and `undici-types` 6.21.0, from a stretch of 2024 releases
+  by the same maintainer without provenance.
 
 ## [0.1.0-proto.4] – 2026-10-11
 

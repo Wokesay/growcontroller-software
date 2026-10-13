@@ -99,7 +99,7 @@ test("Someone guessing from another device does not lock out this browser (SD-05
   await scenario(request, "demo");  // no lockout left for the next cases
 });
 
-test("A page left open renews its session, so a Stop still has one; a session the hub no longer knows is named on the sign-in page (SD-063)", async ({ page, request }) => {
+test("A page left open renews its session, so a Stop still has one; a session the hub no longer knows is named on the sign-in page (SD-064)", async ({ page, request }) => {
   await scenario(request, "demo");
   await page.clock.install();
   await login(page);

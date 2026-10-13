@@ -386,7 +386,7 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   CHECK(c.state()["dosing"].is_null());
 }
 
-TEST_CASE("Scenario: a page left open still stops more than 12 hours after signing in; one unused for 12 hours cannot; none after a restart (SD-063)") {
+TEST_CASE("Scenario: a page left open still stops more than 12 hours after signing in; one unused for 12 hours cannot; none after a restart (SD-064)") {
   sim::Simulation s(test::opts("demo"));
   Client wall{s, "", "192.168.1.20"};
   Client idle{s, "", "192.168.1.21"};
