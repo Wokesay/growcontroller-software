@@ -11,6 +11,7 @@ export const de = {
   "login.password": "Passwort",
   "login.setPassword": "Passwort festlegen",
   "login.signIn": "Anmelden",
+  "login.expired": "Deine Anmeldung ist abgelaufen. Hast du gerade etwas angeklickt, hat der Hub es nicht ausgeführt – melde dich an und wiederhole es.",
   "login.localNote": "Die Web-App läuft auf dem Hub in deinem Heimnetz – ohne Cloud und ohne Konto. Die Steuerung läuft weiter, auch wenn diese Seite zu ist.",
 } as const;
 
@@ -24,5 +25,6 @@ export const en: Record<keyof typeof de, string> = {
   "login.password": "Password",
   "login.setPassword": "Set password",
   "login.signIn": "Sign in",
+  "login.expired": "Your session has expired. If you just clicked something, the hub did not carry it out – sign in and do it again.",
   "login.localNote": "The web app runs on the hub on your home network – no cloud, no account. Control keeps running even when this page is closed.",
 };

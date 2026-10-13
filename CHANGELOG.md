@@ -75,29 +75,32 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
-- **Plan: access from outside, Home Assistant, fans and EC** (SD-059, SD-052
-  to SD-054): at setup you will choose whether the ESP32-S3's web app can be
-  reached only in the home network (preselected), viewed from outside, or
-  viewed and controlled from outside. The Home Assistant window counts as
-  outside. "Stop" works from outside at both outside levels; calibration,
-  limits, updates and acknowledging a latch stay in the home network. The
-  ESP32-S3 reads only its own sensors and sends their values to Home
-  Assistant. Fans are only switched on and off, must start again in their
-  last setting, and are switched on when a climate value is outdated or
-  invalid; a dehumidifier with its own hygrostat keeps power, other climate
-  devices switch off. The ESP32-S3 will compensate EC for the water
-  temperature; if that sensor fails, EC and pH wait. Without a water
-  temperature sensor you can choose to control EC without compensation. The
-  pH calibration on the board's input will also check the probe's zero point
-  once its limit is set.
+- **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
+  SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
+  web app can be reached only in the home network (preselected), viewed
+  from outside, or viewed and controlled from outside. The Home Assistant
+  window counts as outside. "Stop" works from outside at both outside
+  levels; calibration, limits, updates and acknowledging a latch stay in
+  the home network. The ESP32-S3 reads only its own sensors and sends
+  their values to Home Assistant. Fans are only switched on and off, must
+  start again in their last setting, and are switched on when a climate
+  value is outdated or invalid; a dehumidifier with its own hygrostat
+  keeps power, other climate devices switch off; a Bluetooth climate
+  sensor is outdated after three missed reports, never sooner than 120 s.
+  You will choose whether the ESP32-S3 compensates EC for the water
+  temperature (2 % per °C) or not, with a hint how far off EC can be
+  without it; with compensation, EC and pH wait while the water
+  temperature sensor fails. The pH calibration on the board's input will
+  refuse a probe whose zero point is more than 30 mV off and ask to clean
+  or replace it; pH correction then waits for your confirmation.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
   on, Home Assistant shows all values and states of the ESP32-S3, and the
   Home Assistant app opens the ESP's web app in Home Assistant, after a
   security review of the design; access from outside is chosen at setup
-  (SD-059); control stays on the ESP. A step-by-step
-  guide for flashing follows with the first firmware release (SD-049).
+  (SD-059); control stays on the ESP. A step-by-step guide for flashing
+  follows with the first firmware release (SD-049).
 - **Plan: freshness, then the ESP32-S3** (SD-042 to SD-045,
   `docs/ROADMAP.md`): next comes freshness by a sign of life per sensor
   (SD-042): a sensor is stale after 60 s without a measurement, not
@@ -143,6 +146,46 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Stop is never silent** (SD-055): a Stop the hub does not confirm
+  within 5 seconds, or that gets no connection, says so in its dialog
+  ("Stopp nicht bestätigt – keine Antwort vom Hub") with what to do in an
+  emergency (unplug the hub; with smart plugs, also switch off the devices
+  on them directly), and offers to try again; while sending, the button
+  says so. A refusal from the hub starts with the same words and gives its
+  reason. A Stop that arrives after all closes the dialog; one that fails
+  after the dialog was closed shows a message. The time limit also works in
+  browsers before iOS 16. A failed Resume says why instead of nothing.
+  When the session has run out, the sign-in page says that what was just
+  clicked was not carried out.
+- **No raw error texts:** an action without an answer says "Der Hub
+  antwortet nicht …" instead of "TypeError: Failed to fetch", any other
+  unexpected failure says it did not work, everywhere in the app (switching
+  functions and outputs, devices, Home Assistant, the simulator panel,
+  calibration, sign-in); a switch or choice that fails says so too (in
+  Settings the update channel, the update check and the language failed
+  without a word); a file that is no saved configuration says so.
+- **Values that stop coming show:** after 10 seconds without new values
+  from the live stream or the polls, a phone shows a bar under the top bar
+  that stays in view while scrolling, and the badge on a wider screen says
+  offline; while the polls stand in for the stream, neither does. A stream
+  that is open but brings nothing is polled, until it brings values again. A device row with calibrate
+  buttons puts them below the name on a phone, which no longer breaks
+  letter by letter.
+- **German mix page:** the hub's closing note on the plan ("pH zuletzt …")
+  shows in German, not in English; the plan's errors and warnings go
+  through the same translation, though some are still German on the
+  English page (#18). The top-up note says plainly that the amounts are only
+  for the fresh water.
+- **History chart:** the time axis follows the page's language and the
+  24-hour clock (it showed "3pm" and "10/11/26"); ticks a day apart show the
+  date, and closer ones show it at midnight.
+- **Time zone:** the setup proposes the browser's time zone on the first
+  run and keeps the chosen one when you go back or open it again later,
+  instead of overwriting it. Setup and Settings refuse a time zone that does
+  not exist at the field and save it in its usual spelling
+  ("europe/berlin" becomes "Europe/Berlin"). The setup's first step is
+  called "Grundlagen", its text names its five steps, and Done has no
+  number, also in the Home Assistant introduction.
 - **Phone: the app opens at 100 % and needs no zooming out** (#33): on an
   iPhone, Safari zoomed in when the password field got the focus, because
   the fields were smaller than 16 px, and stayed zoomed after signing in.

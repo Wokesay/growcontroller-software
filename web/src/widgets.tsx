@@ -7,7 +7,7 @@ import { Sparkline } from "./chart";
 import { del, get, isSignalClass, millivoltsOf, post, put, type CtlStatus, type Device, type HubEvent, type Job, type Reading, type SeriesData } from "./api";
 import { ago, day, duration, num, numUpTo, time } from "./format";
 import { msg, t, type TextKey } from "./i18n";
-import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast } from "./store";
+import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast, toastError } from "./store";
 import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
 
 export const qualityText: Record<string, TextKey> = {
@@ -384,7 +384,7 @@ export function OutletRoles(p: { d: Device }) {
                   await refreshState();
                   if (v) toast(t("net.assigned"));
                 } catch (err: any) {
-                  toast(err.message, "error");
+                  toastError(err);
                   await refreshConfig();
                 }
               }}

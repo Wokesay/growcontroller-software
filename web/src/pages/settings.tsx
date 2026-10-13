@@ -5,8 +5,8 @@ import { useEffect, useState } from "preact/hooks";
 import { Bug, Compass, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
 import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
 import { get, post, put } from "../api";
-import { dateTime, num } from "../format";
-import { config, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
+import { dateTime, num, timeZone } from "../format";
+import { config, errorText, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
@@ -186,6 +186,9 @@ export function SettingsPage() {
   const cfg = config.value!;
   const [name, setName] = useState(cfg.system.name);
   const [tz, setTz] = useState(cfg.system.timezone);
+  const [tzTouched, setTzTouched] = useState(false);
+  const zone = tz === cfg.system.timezone ? tz : timeZone(tz);  // a saved zone this browser does not know does not block saving
+  const tzWrong = tzTouched && !zone;
   const [hand, setHand] = useState<number | null>(cfg.limits.handDoseMaxMl);
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -203,8 +206,8 @@ export function SettingsPage() {
               <Field label={t("setup.start.name")}>
                 <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
               </Field>
-              <Field label={t("setup.start.tz")}>
-                <input class="input" value={tz} onInput={(e) => setTz((e.target as HTMLInputElement).value)} />
+              <Field label={t("setup.start.tz")} hint={t("setup.start.tzFormat")} error={tzWrong ? t("setup.start.tzInvalid") : null}>
+                <input class="input" name="timezone" value={tz} onInput={(e) => setTz((e.target as HTMLInputElement).value)} onBlur={() => setTzTouched(true)} aria-invalid={tzWrong} />
               </Field>
               <Field label={t("settings.handLimit")} hint={t("settings.handLimitHint")}>
                 <NumberInput value={hand} onValue={setHand} unit="ml" />
@@ -214,7 +217,9 @@ export function SettingsPage() {
               <Button
                 variant="primary"
                 onClick={async () => {
-                  await put("/system", { name, timezone: tz, handDoseMaxMl: hand });
+                  if (!zone) return setTzTouched(true);
+                  await put("/system", { name, timezone: zone, handDoseMaxMl: hand });
+                  setTz(zone);
                   await refreshConfig();
                   toast(t("settings.saved"));
                 }}
@@ -299,7 +304,7 @@ export function SettingsPage() {
                       await refreshConfig();
                       toast(t("settings.restored"));
                     } catch (x: any) {
-                      toast(x.message ?? String(x), "error");
+                      toast(x instanceof SyntaxError ? t("settings.importNotJson") : errorText(x), "error");
                     }
                   }}
                 />

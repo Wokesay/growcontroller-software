@@ -4,11 +4,11 @@
 // before a pump doses (SD-003, RAT-015). The bar at the bottom (Back / Skip /
 // Next) is always visible; "Next" saves the step.
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { ArrowLeft, ArrowRight, Check, PackagePlus, Sprout } from "lucide-preact";
 import { del, post, probeKinds, put, type Canister, type ProbeKind, type RecipeTemplate } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
-import { num } from "../format";
+import { num, timeZone } from "../format";
 import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { canisters, catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, CheckRow, Field, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
@@ -20,7 +20,8 @@ const DONE = STEPS.length - 1;
 
 // ---------- Rahmen: Leiste unten
 
-// base and total: the onboarding of the Home Assistant app uses the same frame (SD-037)
+// base and total: the onboarding of the Home Assistant app uses the same frame (SD-037).
+// total counts the steps with work; the last one, Done, has no number.
 export type FootProps = { step: number; onNext?: () => unknown; nextDisabled?: boolean; nextLabel?: ComponentChildren; onSkip?: () => void; base?: string; total?: number };
 
 function Foot(p: FootProps) {
@@ -36,7 +37,7 @@ function Foot(p: FootProps) {
           <span />
         )}
         <span class="spacer" />
-        <span class="faint small hide-sm">{t("common.step", { n: p.step + 1, total: p.total ?? STEPS.length })}</span>
+        {p.step < (p.total ?? DONE) && <span class="faint small hide-sm">{t("common.step", { n: p.step + 1, total: p.total ?? DONE })}</span>}
         {p.onSkip && (
           <Button variant="ghost" onClick={p.onSkip} data-testid="wizard-skip">
             {t("common.skip")}
@@ -93,13 +94,14 @@ export function Page(p: { aside?: ComponentChildren; children: ComponentChildren
   );
 }
 
-/** The steps at the top: done ones can be opened again, later ones not yet. */
+/** The steps at the top: done ones can be opened again, later ones not yet. The last one, Done, has no number. */
 export function StepNav(p: { label: string; steps: TextKey[]; step: number; go: (s: number) => void }) {
   return (
     <nav class="wizard-steps" aria-label={p.label}>
       {p.steps.map((s, i) => (
         <button type="button" class={`ws ${i === p.step ? "cur" : i < p.step ? "done" : ""}`} disabled={i > p.step} aria-current={i === p.step ? "step" : undefined} onClick={() => i < p.step && p.go(i)}>
-          {i < p.step ? "✓" : i + 1} {t(s)}
+          {i < p.step ? "✓ " : i < p.steps.length - 1 ? `${i + 1} ` : ""}
+          {t(s)}
         </button>
       ))}
     </nav>
@@ -109,6 +111,8 @@ export function StepNav(p: { label: string; steps: TextKey[]; step: number; go: 
 // ---------- 1 Start
 
 type ZoneKind = "room" | "tent" | "greenhouse";
+let zoneSaved = false;  // the first step was saved in this visit: going back shows what was saved
+const FACTORY_ZONE = "Europe/Berlin";
 
 function StepStart(p: { step: number; next: () => void }) {
   const cfg = config.value!;
@@ -116,14 +120,28 @@ function StepStart(p: { step: number; next: () => void }) {
   const z = cfg.zones?.[0];
   const [zoneName, setZoneName] = useState(z?.name ?? "");
   const [zoneKind, setZoneKind] = useState<ZoneKind>(z?.kind ?? "room");
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
+  // The first setup proposes the browser's time zone while the hub still has its factory
+  // zone (SystemConfig in config.hpp) and this step was not saved; later runs keep the saved one
+  const first = !state.value!.setupDone;
+  const propose = first && !zoneSaved && cfg.system.timezone === FACTORY_ZONE;
+  const [tz, setTz] = useState(propose ? Intl.DateTimeFormat().resolvedOptions().timeZone || cfg.system.timezone : cfg.system.timezone);
+  const tzField = useRef<HTMLInputElement>(null);
+  const [tzTouched, setTzTouched] = useState(false);
+  const zone = timeZone(tz);
+  const tzWrong = tzTouched && !zone;
   const pick = (l: Lang) => setLang(l);
   return (
     <Page
       foot={{
         step: p.step,
         onNext: async () => {
-          await put("/system", { name, timezone: tz, language: lang.value });
+          if (!zone) {
+            setTzTouched(true);
+            tzField.current?.focus();  // a screen reader reads the field's error
+            return;
+          }
+          await put("/system", { name, timezone: zone, language: lang.value });
+          zoneSaved = true;
           await put("/zone", { name: zoneName.trim() || t(`zone.${zoneKind}`), kind: zoneKind });
           await refreshConfig();
           p.next();
@@ -156,8 +174,8 @@ function StepStart(p: { step: number; next: () => void }) {
         <Field label={t("setup.start.zoneName")} hint={t("setup.start.zoneHint")}>
           <input class="input" name="zonename" value={zoneName} placeholder={t(`zone.${zoneKind}`)} onInput={(e) => setZoneName((e.target as HTMLInputElement).value)} />
         </Field>
-        <Field label={t("setup.start.tz")} hint={t("setup.start.tzHint")}>
-          <input class="input" value={tz} disabled />
+        <Field label={t("setup.start.tz")} hint={t(propose ? "setup.start.tzProposed" : "setup.start.tzFormat")} error={tzWrong ? t("setup.start.tzInvalid") : null}>
+          <input ref={tzField} class="input" name="timezone" value={tz} onInput={(e) => setTz((e.target as HTMLInputElement).value)} onBlur={() => setTzTouched(true)} aria-invalid={tzWrong} />
         </Field>
       </div>
     </Page>

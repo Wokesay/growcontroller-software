@@ -57,6 +57,10 @@ Product, hardware and business live in the private product repository
   decided and recorded.
 - Claude assigns SD and RAT IDs in this repository. The private mapping of RAT IDs
   to their sources is kept in the product repository.
+- Several sessions work in parallel, so a new SD or RAT ID is final only on
+  `main` (SD-061): right before merging, check the last ID on `main` and
+  renumber the PR's new entries and every reference to them in the PR
+  (docs, code, tests) to the next free IDs.
 
 ## At session start
 
