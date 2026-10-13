@@ -245,7 +245,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   );
 }
 
-function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
+function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: () => HTMLElement | null }) {
   const cans = canisters.value.filter((k) => k.kind === "nutrient");
   const [name, setName] = useState(p.recipe?.name ?? "");
   const [note, setNote] = useState(p.recipe?.note ?? "");
@@ -261,6 +261,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
       wide
       title={p.recipe ? t("recipes.recipeTitle", { name: p.recipe.name }) : t("recipes.newRecipe")}
       onClose={p.onClose}
+      returnFocus={p.returnFocus}
       footer={
         <>
           <button class="btn" onClick={p.onClose}>
@@ -328,6 +329,8 @@ export function RecipesPage() {
   const [editCan, setEditCan] = useState<Canister | null | undefined>(undefined);
   const [removeCan, setRemoveCan] = useState<Canister | null>(null);
   const [editRec, setEditRec] = useState<Recipe | null | undefined>(undefined);
+  // A recipe opened from "Bottle still in use" hands the focus back to that bottle's remove button
+  const [editFrom, setEditFrom] = useState<string | null>(null);
   const cans = canisters.value;
   const rs = recipes.value;
   const templates = catalog.value?.templates?.recipes ?? [];
@@ -399,7 +402,7 @@ export function RecipesPage() {
                       <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title={t("common.edit")}>
                         <Pencil size={15} />
                       </Button>
-                      <Button size="sm" variant="ghost" title={t("recipes.remove")} aria-label={t("recipes.removeNamed", { name: k.name })} onClick={() => setRemoveCan(k)}>
+                      <Button size="sm" variant="ghost" title={t("recipes.remove")} aria-label={t("recipes.removeNamed", { name: k.name })} data-remove={k.id} onClick={() => setRemoveCan(k)}>
                         <Trash2 size={15} />
                       </Button>
                     </td>
@@ -423,7 +426,7 @@ export function RecipesPage() {
           {rs.length === 0 && <p class="muted">{t("setup.nut.none")}</p>}
           <div class="grid">
             {rs.map((r) => (
-              <div class="card flat">
+              <div class="card flat" key={r.id}>
                 <div class="row-between">
                   <h3>{r.name}</h3>
                   <div class="row" style="gap:2px">
@@ -486,8 +489,27 @@ export function RecipesPage() {
         </div>
       </Card>
       {editCan !== undefined && <CanisterEditor can={editCan ?? undefined} onClose={() => setEditCan(undefined)} />}
-      {removeCan && <RemoveCanister can={removeCan} flow={pumpFlow(removeCan.pump)} onClose={() => setRemoveCan(null)} onEditRecipe={setEditRec} />}
-      {editRec !== undefined && <RecipeEditor recipe={editRec ?? undefined} onClose={() => setEditRec(undefined)} />}
+      {removeCan && (
+        <RemoveCanister
+          can={removeCan}
+          flow={pumpFlow(removeCan.pump)}
+          onClose={() => setRemoveCan(null)}
+          onEditRecipe={(r) => {
+            setEditFrom(removeCan.id);
+            setEditRec(r);
+          }}
+        />
+      )}
+      {editRec !== undefined && (
+        <RecipeEditor
+          recipe={editRec ?? undefined}
+          onClose={() => {
+            setEditRec(undefined);
+            setEditFrom(null);
+          }}
+          returnFocus={editFrom ? () => document.querySelector<HTMLElement>(`[data-remove="${CSS.escape(editFrom)}"]`) : undefined}
+        />
+      )}
       {tpl && <TemplateDialog tpl={tpl} onClose={() => setTpl(null)} />}
     </div>
   );

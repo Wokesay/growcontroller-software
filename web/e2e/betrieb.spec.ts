@@ -578,9 +578,11 @@ test("Recipes: a bottle a recipe uses says where and how to take it out, a pair 
   await editor.locator(".step").filter({ hasText: "CalMag" }).locator("input").fill("");
   await editor.getByRole("button", { name: "Speichern" }).click();
   await expect(editor).toHaveCount(0);
-  await row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" }).click();
+  await expect(row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" })).toBeFocused();  // the next step of the advice
+  await page.keyboard.press("Enter");
   await page.getByRole("alertdialog", { name: "Kanister entfernen?" }).getByRole("button", { name: "Entfernen", exact: true }).click();
   await expect(row("CalMag")).toHaveCount(0);
+  await expect(page.locator("#add-bottle")).toBeFocused();  // not the next row's button, which took the removed row's place
   // A pair in one recipe: both parts out, and the recipe still has a step
   await row("Teil A").getByRole("button", { name: "„Teil A“ entfernen" }).click();
   await expect(blocked).toHaveAccessibleDescription(

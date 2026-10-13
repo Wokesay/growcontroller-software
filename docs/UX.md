@@ -171,8 +171,9 @@ Rules:
   chosen language (decimal point in English, comma in German; PD-035).
   Durations and ages join the number and its unit with a no-break space
   ("45 s", "vor 3 min"; #106), so they never break apart: the ages the app
-  writes and the hub's spans (checked by `tools/i18n_keys.test.mjs`). Other
-  numbers with units (ml, ml/L) do not yet (#148).
+  writes and every text of the app and the hub with seconds, minutes, hours
+  or days (checked by `tools/i18n_keys.test.mjs`). Other numbers with units
+  (ml, ml/L) do not yet (#148).
 - Dialogs (`Modal`) take the focus when they open: the dialog itself, so a
   screen reader names it by its title and a phone opens no keyboard; Tab
   and Shift+Tab stay inside, and bring the focus back in when it has

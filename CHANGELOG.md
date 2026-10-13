@@ -193,8 +193,9 @@ listed in every release under "Security".
   and a screen reader names it by its title; a confirmation (removing a
   bottle, mixing a tank again) reads out its consequence.
 - **Durations and ages stay on one line** (#106): "vor 45 s" / "45 s ago"
-  and the hub's waiting times no longer break between the number and the
-  unit; other numbers with units (ml, ml/L) follow (#148).
+  and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
+  no longer break between the number and the unit; other numbers with
+  units (ml, ml/L) follow (#148).
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so

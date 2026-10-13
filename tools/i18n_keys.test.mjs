@@ -199,4 +199,9 @@ test("durations and ages join the number and its unit with a no-break space", ()
     assert.match(value(msg, k), /\}\\u00a0\S/, `msg.ts: ${k}`);
     assert.match(core.get(k), /\}\\u00a0\S/, `messages.cpp: ${k}`);
   }
+  // No other text joins a placeholder and a unit of time with a plain space
+  const plain = /\}[ \t]+(s|min|h|Tage|Tagen|days)\b/;
+  for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, plain, `messages.cpp: ${k}`);
+  for (const file of [...files, "msg.ts"])
+    for (const line of readFileSync(join(dir, file), "utf8").split("\n")) assert.doesNotMatch(line, plain, `${file}: ${line.trim()}`);
 });
