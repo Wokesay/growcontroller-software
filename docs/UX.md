@@ -136,6 +136,7 @@ nutrient solution". This comes straight from the resolver.
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | event "Cap … is back. Is it still on part A?" |
+| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated); only "Remove" removes it, "Cancel" keeps it; a bottle a recipe uses names the recipe instead (#120) |
 
 ## 6. Notifications (concept, not implemented yet)
 
@@ -168,3 +169,17 @@ Rules:
   grey.
 - Mobile first: bottom bar, large buttons, numbers in the format of the
   chosen language (decimal point in English, comma in German; PD-035).
+  Durations and ages join the number and its unit with a no-break space
+  ("45 s", "vor 3 min"; #106), so they never break apart; other texts
+  follow.
+- Dialogs (`Modal`) take the focus when they open: the dialog itself, so a
+  screen reader names it by its title and a phone opens no keyboard; Tab
+  and Shift+Tab stay inside, and bring the focus back in when it has
+  fallen out; on closing (Escape, the close button or an action) the focus
+  returns to what opened it, if it is known and still there; the title is
+  the dialog's accessible name (#105).
+- A step that cannot be undone asks first, in a confirmation (`Modal` with
+  a message, role `alertdialog`): the title asks the question, the message
+  names the thing and what follows and is read out with the title, and the
+  button that does it says the verb ("Remove"), next to "Cancel". What the
+  hub would refuse is said up front instead of offered (#120).

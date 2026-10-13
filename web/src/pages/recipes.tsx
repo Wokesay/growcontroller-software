@@ -92,6 +92,45 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
   );
 }
 
+// Removing a bottle erases its stock and cannot be undone, so it asks first
+// (#120). The hub refuses it while a recipe uses the bottle, so the dialog says
+// that up front instead of offering a removal that fails.
+function RemoveCanister(p: { can: Canister; onClose: () => void }) {
+  const name = p.can.name;
+  const using = recipes.value.filter((r) => r.steps.some((s) => s.canister === p.can.id));
+  const names = using.map((r) => t("recipes.quoted", { name: r.name })).join(", ");
+  const message = using.length
+    ? t(using.length === 1 ? "recipes.removeUsed" : "recipes.removeUsedMany", { name, recipes: names })
+    : t(p.can.pump ? "recipes.removeText" : "recipes.removeTextNoPump", { name });
+  return (
+    <Modal
+      title={t("recipes.removeTitle")}
+      message={message}
+      onClose={p.onClose}
+      footer={
+        using.length ? (
+          <Button onClick={p.onClose}>{t("common.close")}</Button>
+        ) : (
+          <>
+            <Button onClick={p.onClose}>{t("common.cancel")}</Button>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                await del(`/canisters/${p.can.id}`);
+                p.onClose();
+                toast(t("recipes.bottleRemoved", { name }));
+                await refreshConfig();
+              }}
+            >
+              {t("recipes.remove")}
+            </Button>
+          </>
+        )
+      }
+    />
+  );
+}
+
 function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   const st = state.value!;
   const caps = st.devices.filter((d) => d.class === "pump_cap" && d.configured);
@@ -257,6 +296,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void }) {
 export function RecipesPage() {
   const st = state.value!;
   const [editCan, setEditCan] = useState<Canister | null | undefined>(undefined);
+  const [removeCan, setRemoveCan] = useState<Canister | null>(null);
   const [editRec, setEditRec] = useState<Recipe | null | undefined>(undefined);
   const cans = canisters.value;
   const rs = recipes.value;
@@ -329,16 +369,7 @@ export function RecipesPage() {
                       <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title={t("common.edit")}>
                         <Pencil size={15} />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={t("recipes.remove")}
-                        onClick={async () => {
-                          await del(`/canisters/${k.id}`);
-                          await refreshConfig();
-                          toast(t("recipes.bottleRemoved"));
-                        }}
-                      >
+                      <Button size="sm" variant="ghost" title={t("recipes.remove")} aria-label={t("recipes.removeNamed", { name: k.name })} onClick={() => setRemoveCan(k)}>
                         <Trash2 size={15} />
                       </Button>
                     </td>
@@ -425,6 +456,7 @@ export function RecipesPage() {
         </div>
       </Card>
       {editCan !== undefined && <CanisterEditor can={editCan ?? undefined} onClose={() => setEditCan(undefined)} />}
+      {removeCan && <RemoveCanister can={removeCan} onClose={() => setRemoveCan(null)} />}
       {editRec !== undefined && <RecipeEditor recipe={editRec ?? undefined} onClose={() => setEditRec(undefined)} />}
       {tpl && <TemplateDialog tpl={tpl} onClose={() => setTpl(null)} />}
     </div>

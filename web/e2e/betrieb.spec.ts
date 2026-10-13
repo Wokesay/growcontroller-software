@@ -474,6 +474,7 @@ test("A value calibrated outside the hub shows for display only, with its age, n
   await expect(tile.getByText("nicht kalibriert")).toHaveCount(0);
   await expect(tile).not.toHaveClass(/\bbad\b/);
   await expect(tile.locator(".metric-foot")).toContainText("vor 20 s");
+  expect(await tile.locator(".metric-foot").textContent()).toContain("20\u00a0s");  // number and unit stay on one line (#106)
   await expect(page.getByTestId("metric-EC").locator(".spark")).toHaveCount(1);  // the history has arrived
   await expect(tile.locator(".spark")).toHaveCount(1);  // its trend too: the history records it (SD-039)
   await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
@@ -506,4 +507,107 @@ test("Calibration: a window closed half way ends the calibration on the hub, and
   await dialog.getByRole("button", { name: "Kalibrierung speichern" }).click();
   await expect(page.getByText("Kalibrierung gespeichert")).toBeVisible();
   expect(cancels.length).toBe(1);  // a saved one is not cancelled
+});
+
+for (const lang of ["de", "en"] as const) {
+  test(`Recipes: removing a bottle asks first and names the consequence; cancelling keeps it (${lang}, #120)`, async ({ page, request }) => {
+    await scenario(request, "demo");
+    await login(page);
+    await page.evaluate((l) => localStorage.setItem("gc.lang", l), lang);
+    const name = lang === "de" ? "Reiniger" : "Cleaner";
+    const made = await page.evaluate(async (n) => {
+      const r = await fetch("/api/v1/canisters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, capacityMl: 500 }) });
+      return r.ok;
+    }, name);
+    expect(made).toBe(true);
+    await page.goto("/#/rezepte");
+    await page.reload();
+    const row = page.locator(".rtable tbody tr").filter({ hasText: name });
+    await expect(row).toHaveCount(1);
+    const texts =
+      lang === "de"
+        ? { button: `„${name}“ entfernen`, remove: "Entfernen", title: "Kanister entfernen?", text: `Du entfernst „${name}“ samt Vorrat. Das kannst du nicht rückgängig machen.`, cancel: "Abbrechen", done: `„${name}“ entfernt` }
+        : { button: `Remove "${name}"`, remove: "Remove", title: "Remove bottle?", text: `You're removing "${name}" and its stock. You can't undo this.`, cancel: "Cancel", done: `"${name}" removed` };
+    await row.getByRole("button", { name: texts.button }).click();
+    // A confirmation: a screen reader reads the consequence with the title
+    const dialog = page.getByRole("alertdialog", { name: texts.title });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleDescription(texts.text);
+    await dialog.getByRole("button", { name: texts.cancel }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row).toHaveCount(1);  // cancelling keeps it
+    await row.getByRole("button", { name: texts.button }).click();
+    await dialog.getByRole("button", { name: texts.remove, exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await expect(page.getByText(texts.done)).toBeVisible();
+  });
+}
+
+test("Recipes: a bottle a recipe uses says where it is used instead of offering a removal that fails (#120)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/rezepte");
+  const cfg = await (await page.request.get("/api/v1/config")).json();
+  const can = cfg.canisters.find((k: { id: string; pump: string }) => k.pump && cfg.recipes.some((r: { steps: { canister: string }[] }) => r.steps.some((s) => s.canister === k.id)));
+  const using = cfg.recipes.filter((r: { steps: { canister: string }[] }) => r.steps.some((s) => s.canister === can.id)).map((r: { name: string }) => `„${r.name}“`);
+  const row = page.locator(".rtable tbody tr").filter({ hasText: can.name });
+  await row.getByRole("button", { name: `„${can.name}“ entfernen` }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Kanister entfernen?" });
+  const where = using.length === 1 ? `steckt im Rezept ${using[0]}` : `steckt in den Rezepten ${using.join(", ")}`;
+  await expect(dialog).toHaveAccessibleDescription(`„${can.name}“ ${where}. Leere dort seine Menge und speichere, dann kannst du ihn entfernen.`);
+  await expect(dialog.getByRole("button", { name: "Entfernen", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Schließen" }).last().click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row).toHaveCount(1);
+});
+
+test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/rezepte");
+  const opener = page.locator(".rtable tbody tr").first().getByTitle("Bearbeiten");
+  const name = (await page.locator(".rtable tbody tr").first().locator("strong").textContent()) ?? "";
+  const inside = (d: import("@playwright/test").Locator) => d.evaluate((el) => el.contains(document.activeElement));
+  for (const close of ["Escape", "button"] as const) {
+    await opener.click();
+    const dialog = page.getByRole("dialog", { name: `Kanister „${name}“` });
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => inside(dialog)).toBe(true);  // focus on open
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press("Tab");
+      expect(await inside(dialog), `Tab ${i + 1}`).toBe(true);
+    }
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press("Shift+Tab");
+      expect(await inside(dialog), `Shift+Tab ${i + 1}`).toBe(true);
+    }
+    // At the ends Tab wraps: from the dialog back to the last control, from there to the first
+    await dialog.focus();
+    await page.keyboard.press("Shift+Tab");
+    const last = await page.evaluate(() => document.activeElement?.outerHTML ?? "");
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: "Schließen" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => document.activeElement?.outerHTML ?? "")).toBe(last);
+    // Focus that has left the dialog (a control that disabled itself drops it to the page) comes back with Tab
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    expect(await inside(dialog)).toBe(false);
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: "Schließen" })).toBeFocused();
+    if (close === "Escape") await page.keyboard.press("Escape");
+    else await dialog.getByRole("button", { name: "Schließen" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(opener, close).toBeFocused();  // focus returns
+  }
+  // Safari and Firefox on a Mac do not focus a clicked button: the dialog does not
+  // then send the focus to whatever had it last
+  const link = page.locator("a[href]:visible").first();
+  await link.focus();
+  await expect(link).toBeFocused();
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await opener.dispatchEvent("click");
+  await expect(page.getByRole("dialog", { name: `Kanister „${name}“` })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(link).not.toBeFocused();
 });

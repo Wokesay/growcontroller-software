@@ -176,6 +176,19 @@ listed in every release under "Security".
   instead of guessing it from what a device measures. Text from Home
   Assistant in names and faults is checked to be well-formed UTF-8 by the
   adapter itself, too.
+- **Removing a bottle asks first** (#120): under Recipes › Bottles the
+  remove button took a bottle away at once, with its stock, and on a phone
+  it sits next to "Edit". Now "Kanister entfernen?" (Remove bottle?) names
+  it and what follows (its pump becomes free and keeps its calibration);
+  only "Entfernen" removes it. A bottle a recipe still uses says which
+  recipe instead of offering a removal the hub refuses.
+- **Dialogs and the keyboard** (#105): a dialog now takes the focus when it
+  opens, Tab stays inside it (also a folded list's heading, and back in
+  when the focus has fallen out), the focus returns to the button that
+  opened it, and a screen reader names it by its title; a confirmation
+  reads out its consequence.
+- **A number and its unit stay on one line** (#106): durations and ages
+  such as "vor 45 s" no longer break between the number and the unit.
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so
