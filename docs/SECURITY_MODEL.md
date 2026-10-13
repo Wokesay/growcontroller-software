@@ -64,8 +64,8 @@ to switch it off (open).
 ## Factory reset and data (CRA 2(m))
 
 Export and import of the settings exist. The factory reset that erases
-securely comes with `firmware/` (SD-063): holding BOOT for 10 s, or
-the web app from the home network after asking for the password again, switches everything off through `Actuators`, marks the reset,
+securely comes with `firmware/` (SD-063): holding BOOT for 10 s to
+30 s, or the web app from the home network after asking for the password again, switches everything off through `Actuators`, marks the reset,
 erases `history` and `storage`, then the user NVS last, and keeps the
 app and the read-only factory data (`fctry`: serial number, the setup
 network's key from the label). An interrupted reset is finished at the

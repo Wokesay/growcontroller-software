@@ -1936,17 +1936,21 @@ is re-evaluated in the product repository and is not part of this entry.
     it joins it. PD-192 names pre-flashed devices only; a self-flashed
     one gets a new token from a new Improv session over USB (SD-044). A
     password that is set is never touched;
-  - held 10 s or longer: factory reset (below);
-  - an LED shows which of these happens (pattern with M1 and `ux`).
+  - held 10 s to 30 s: factory reset (below); held longer than 30 s:
+    nothing, reported as a stuck button, so a button that sticks never
+    erases the device;
+  - the action happens when the button is released; while it is held,
+    an LED shows which one it would be (pattern with M1 and `ux`), so
+    holding for 10 s never opens the setup network on the way;
+  - a restart ends what a press started (the setup network, a window
+    waiting for the home network), so nothing is open after a power cut.
+  - The 30 s limit, the action on release and the end at a restart came
+    from the reviews and were confirmed by the project owner on
+    2026-10-13.
   - Not chosen: separate gestures for the setup network and the password
-    window (harder to remember, more mistakes).
-  - Proposed by the software session from the reviews, to be confirmed
-    by the project owner: the action happens when the button is
-    released, and while it is held the LED shows which one it would be,
-    so holding for 10 s never opens the setup network on the way; held
-    longer than 30 s does nothing and is reported as a stuck button; a
-    restart ends what a press started (the setup network, a window
-    waiting for the home network).
+    window (harder to remember, more mistakes); no upper limit for the
+    factory reset (a stuck button would reset the device when it comes
+    free).
 - **First password on a pre-flashed device** (PD-191, PD-192; changes
   SD-044 for these devices; self-flashed devices keep the token):
   - mandatory, cannot be skipped; set in the home network within 15 min
@@ -2015,7 +2019,8 @@ is re-evaluated in the product repository and is not part of this entry.
     before anything else and reports it: a named exception to R6's "not
     resumed", allowed because it switches nothing. It erases in steps and
     keeps sending the sign of life to the board watchdog (SD-045), and
-    skips what is already erased, so a watchdog reset cannot loop it. Triggers: BOOT held for 10 s, and the web app, logged in,
+    skips what is already erased, so a watchdog reset cannot loop it.
+    Triggers: BOOT held for 10 s to 30 s, and the web app, logged in,
     only from the home network, after asking for the password again;
   - the flash page offers no whole-chip erase, or only with a warning
     that the label's key is lost: ESP Web Tools' erase (the checkbox when
@@ -2082,7 +2087,7 @@ is re-evaluated in the product repository and is not part of this entry.
   self-assessment per firmware version.
 - Open for the product session: the time limit before the first setup;
   whether a restart reopens the password window, and whether it ends one
-  that is still open; the BOOT details proposed above; binding the first
+  that is still open; binding the first
   password to the label key; a neutral SSID (a name like
   "growcontroller-xxxx" tells neighbours what is there); placing the USB
   port, a switch for its data lines, or USB-OTG in operation (above);

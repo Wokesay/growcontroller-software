@@ -68,9 +68,10 @@ ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
   according to `docs/prototyp/README.md` in the product repository.
 - First boot on both boards (N32R16V, N8R8): flash chip recognised, PSRAM
   size, history read above 16 MB on the N32R16V.
-- Firmware tests for SD-063: the BOOT gestures (3 s, 10 s; once
-  confirmed, acting on release, so holding to 10 s never opens the setup
-  network, and held over 30 s does nothing and is reported); the factory
+- Firmware tests for SD-063: the BOOT gestures (3 s, 10 s to 30 s,
+  acting on release, so holding to 10 s never opens the setup network;
+  held over 30 s does nothing and is reported; a restart ends what a
+  press started); the factory
   reset switches everything off first, erases `history`, `storage` and
   NVS and leaves `fctry` and the apps unchanged, also after a power cut
   or a watchdog reset halfway; a blank or broken `fctry` means a
