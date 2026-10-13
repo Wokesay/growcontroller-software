@@ -220,8 +220,11 @@ void Hub::boot() {
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
-    if (state == "running" || state == "waiting_user" || state == "mixing") {
-      const bool mix = jstr(j, "type") == "mix";
+    const bool mix = jstr(j, "type") == "mix";
+    // A mix cut off by the restart, or left failed, ends now: reported with what is in the tank, and
+    // the window against mixing twice counts from here, not from its start (RAT-003)
+    if (state == "running" || state == "waiting_user" || state == "mixing" || (mix && state == "failed")) {
+      if (mix) rt_.lastMixAt = std::max(rt_.lastMixAt, bootEpoch_);
       double idxNum = jnum(j, "index", 0);
       size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
       const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
@@ -1454,6 +1457,8 @@ Result Hub::mixPlan(const json& req) {
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
+  // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
+  if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
   if (stopped_) return Result::fail(409, "job.stopped", "Not-Halt aktiv – erst fortsetzen");
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
@@ -1541,9 +1546,21 @@ void Hub::finishJob(const std::string& state, Msg m) {
   j.state = state;
   j.message = std::move(m);
   j.finishedAt = clock_.epoch();
+  // The window against mixing twice counts from when the nutrients went in, not from the start:
+  // a guided mix stirred by hand can take longer than the window (RAT-003)
+  if (j.type == "mix") {
+    rt_.lastMixAt = std::max(rt_.lastMixAt, j.finishedAt);  // never earlier, even after a clock step
+    stateDirty_ = true;
+  }
   saveJob();
   lastJob_ = j;
   if (state == "done" || state == "aborted") job_.reset();
+}
+
+// A new job replaces a failed mix only after ending it as an abort, which reports what is in the
+// tank and starts the window against mixing twice (RAT-003); before, it was dropped without a trace.
+void Hub::endFailedMix() {
+  if (job_ && job_->type == "mix" && job_->state == "failed") jobAbort(job_->id);
 }
 
 void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
@@ -1687,6 +1704,7 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   j.type = "manual";
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {
@@ -1718,6 +1736,7 @@ Result Hub::startCalibration(const std::string& pump, double seconds) {
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
   j.info = {{"pump", pump}, {"seconds", seconds}, {"previous", numOrNull(pit->second.flowMlPerMin)}};
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {
@@ -1774,6 +1793,7 @@ Result Hub::prime(const std::string& pump, double seconds) {
   j.type = "prime";
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {

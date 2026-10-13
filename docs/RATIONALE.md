@@ -39,11 +39,11 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 
 ### RAT-003 – One job at a time; a repeated mix needs confirmation; bad calibration results are rejected
 
-- **Rule:** Only one user job, such as a mix or a pump calibration, runs at a time, and a second start is refused. Another mix within 30 minutes of the last one needs explicit confirmation, because dosing again doubles the nutrients. A pump calibration result that is missing, zero, negative or above 1000 ml is rejected, and the previous value stays.
+- **Rule:** Only one user job, such as a mix or a pump calibration, runs at a time, and a second start is refused. Another mix within 30 minutes after the last one ended or was interrupted (stopped, failed, a restart) needs explicit confirmation, because dosing again doubles the nutrients; a mix stirred by hand can take longer than 30 minutes, so the time counts from its end. A mix stopped part way is resumed or ended before another one starts. A pump calibration result that is missing, zero, negative or above 1000 ml is rejected, and the previous value stays.
 - **Why:** A dosing sequence that can start twice overdoses. One that runs on a missing or zero rate either has no exit or underdoses, and either way it looks like success.
 - **Evidence:** Observed on the reference installation (2026): a mixing sequence that started without valid inputs could neither finish nor stop, and a flow rate of zero would have passed as valid. Limits on attempts and run time, a refusal of zero rates and a lock against a second start fixed it.
-- **Implemented in:** core/src/hub.cpp (`Hub::mixStart`, `Hub::calibrationResult`), core/src/mix.cpp (`planMix`, repeat check), docs/INVARIANTS.md
-- **Tests:** tests/core/test_scenarios.cpp "Szenario Stufe 0: Einmessen und geführtes Mischen treffen die Mengen, A:B bleibt gekoppelt" (second start needs confirmation); tests/core/test_mix.cpp "Mischen: Nutzvolumen, Doppelstart, Vorrat". The calibration rejection has no dedicated test.
+- **Implemented in:** core/src/hub.cpp (`Hub::mixStart`, `Hub::finishJob`, `Hub::endFailedMix`, the restart in `Hub::boot`, `Hub::calibrationResult`), core/src/mix.cpp (`planMix`, repeat check), docs/INVARIANTS.md
+- **Tests:** tests/core/test_scenarios.cpp "Szenario Stufe 0: Einmessen und geführtes Mischen treffen die Mengen, A:B bleibt gekoppelt" (second start needs confirmation), "Scenario: right after a mix that took longer than 30 minutes, another mix still needs confirmation, however it ended (RAT-003)" (finished, also after a restart; interrupted by a restart; stopped; failed and not mixed over; failed, then a restart; failed and ended by a prime); tests/core/test_mix.cpp "Mischen: Nutzvolumen, Doppelstart, Vorrat". The calibration rejection has no dedicated test.
 
 
 ### RAT-004 – pH correction always comes last and is never part of a recipe

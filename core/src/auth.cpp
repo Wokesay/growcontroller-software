@@ -109,10 +109,13 @@ std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err, 
   std::uint8_t tok[24];
   rng_(tok, sizeof tok);
   std::string t = toHex(tok, sizeof tok);
-  // abgelaufene Sitzungen aufräumen, höchstens 16 gleichzeitig
+  // Drop expired sessions; at most 16 at a time: a 17th ends the one used
+  // longest ago (map order is the random token's, not age).
   for (auto it = sessions_.begin(); it != sessions_.end();)
     it = (now - it->second > kSessionIdle) ? sessions_.erase(it) : std::next(it);
-  if (sessions_.size() >= 16) sessions_.erase(sessions_.begin());
+  if (sessions_.size() >= kMaxSessions)
+    sessions_.erase(std::min_element(sessions_.begin(), sessions_.end(),
+                                     [](const auto& x, const auto& y) { return x.second < y.second; }));
   sessions_[t] = now;
   return t;
 }

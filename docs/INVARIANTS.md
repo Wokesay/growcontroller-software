@@ -19,7 +19,7 @@ dedicated test or with a deviation · **○** open.
 | Compute amounts on the fresh water ("Top up") | RAT-011 | ◐ | `planMix` with `mode=topup` · no dedicated test |
 | Split a large dose into equal partial runs instead of shortening it | RAT-055 | ✓ | `splitRuns` · test_mix "Teilläufe". Deviation: mixing has no upper limit on the number of runs, control at most 6 |
 | Missing quantity → abort, no substitute value | RAT-006, RAT-015 | ✓ | test_mix M1-4 |
-| No double start | RAT-003, RAT-018 | ✓ | confirmation if the last mix was < 30 min ago, one job at a time · test_scenarios |
+| No double start | RAT-003, RAT-018 | ✓ | confirmation if the last mix ended < 30 min ago (counted from its end, a stop, a failure or a restart, not its start), one job at a time, a mix stopped part way is resumed or ended first (a prime, calibration or hand dose ends it with a report) · test_scenarios, "right after a mix that took longer than 30 minutes, another mix still needs confirmation, however it ended" |
 | Order is recipe data (Athena: Balance → B → A → CaMg → Cleanse) | RAT-080 | ◐ | recipe steps can be reordered |
 
 ## M2 Dosing execution

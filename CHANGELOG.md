@@ -96,6 +96,14 @@ listed in every release under "Security".
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
   or replace it; pH correction then waits for your confirmation.
+- **You stay signed in while you use the app** (SD-064): a page left
+  open, such as a phone on the wall, renews its sign-in every 10 minutes
+  and when it wakes up, so a Stop from it still works the next day.
+  Before, the browser dropped the sign-in 12 hours after signing in, even
+  while you used the app. A sign-in still ends after 12 hours without
+  use, when the hub restarts and when the password changes; a page left
+  open says so as soon as it next asks. A Stop from the app still needs a
+  signed-in session. More under Security.
 - **Plan: access from outside through a relay** (SD-062,
   `docs/ROADMAP.md` M6): if you switch on access from outside at setup or
   later, your ESP32-S3 connects out over its Wi-Fi to a relay. You scan a
@@ -168,6 +176,16 @@ listed in every release under "Security".
   instead of guessing it from what a device measures. Text from Home
   Assistant in names and faults is checked to be well-formed UTF-8 by the
   adapter itself, too.
+- **Mixing twice is caught after a long mix too** (RAT-003): another mix
+  within 30 minutes needs your confirmation, because dosing again doubles
+  the nutrients. The 30 minutes counted from the start of the last mix, so
+  after a mix that took longer, for example a guided one stirred by hand or
+  a large tank, a second mix right after it started without asking. They
+  now count from when the last mix ended: finished, stopped, failed or cut
+  off by a restart. A mix that stopped part way can no longer be replaced
+  by a new one through the API; resume or end it first. A prime, a pump
+  calibration or a hand dose started meanwhile ends it and reports what is
+  in the tank, where before it dropped the mix without a trace.
 - **The hub checks the time zone:** it stored any text sent as the time
   zone, and only the app checked it. Now saving or importing one that is
   not a name like `Europe/Berlin` (starting with a letter; letters, digits,
@@ -251,7 +269,9 @@ Severity: low. The first concerns the hub's own probes, which only the
 simulator has so far; the second needed the password for an import, and
 nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
-session and "Stop". No GHSA or CVE is issued.
+session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
+each with the password, and whoever has the password can already stop,
+switch or change it. No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -277,8 +297,23 @@ session and "Stop". No GHSA or CVE is issued.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+- **A new sign-in ends the session used longest ago:** with 16 sessions
+  open, a 17th sign-in ended a random one of them, so the phone someone was
+  using could be signed out and had to sign in again before it could reach
+  "Stop". Now the session used longest ago ends. Found through a test of the
+  lockout (SD-051) that failed in about 1 of 16 runs.
 
 Hardening, without a vulnerability behind it:
+
+- **Sessions last while they are in use** (SD-064): the browser kept the
+  sign-in cookie 12 hours from signing in, a fixed upper limit even for a
+  page in use; now a page in use renews it (`GET /auth/session` sends it
+  again) and there is no fixed longest lifetime. A session still ends
+  after 12 hours without a request, on a restart and on a password change.
+  Residual risk: a session once obtained (a lost or shared phone, a
+  browser left signed in, a cookie read off the unencrypted home network
+  until HTTPS) stays valid as long as it is used at least every 12 hours;
+  changing the password ends every session at once.
 
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator
@@ -291,6 +326,16 @@ Hardening, without a vulnerability behind it:
   package; it does not protect against a release from a hijacked
   maintainer account, against which the 7-day wait for updates and the
   lockfile's hashes stay the guards.
+- **Provenance must not drop** (#128, SD-063): before the web app's
+  packages are installed, CI finds for every package in the lockfile the
+  highest lower version that was published with provenance. If the locked
+  version has none, or has it from another source repository, the build
+  fails: that is the typical sign of a release published by hand from a
+  stolen token, which the registry signs too. A case accepted after
+  review is listed with its exact problem and the reason; today two:
+  `@rolldown/pluginutils`, which moved to the `rolldown/plugins`
+  repository, and `undici-types` 6.21.0, from a stretch of 2024 releases
+  by the same maintainer without provenance.
 
 ## [0.1.0-proto.4] – 2026-10-11
 

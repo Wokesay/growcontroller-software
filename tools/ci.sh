@@ -25,7 +25,7 @@ end
 
 group "Licenses (REUSE, npm dependencies)"
 "${REUSE:-reuse}" lint
-node --test tools/check_licenses.test.mjs
+node --test tools/check_licenses.test.mjs tools/check_provenance.test.mjs
 node tools/check_licenses.mjs
 end
 
@@ -36,9 +36,13 @@ cmake --build build
 node --test tools/ha_server.test.mjs
 end
 
-# The packages' registry signatures and provenance attestations are checked
-# right after they are installed, before any of them runs (SD-058).
-group "Web app (registry signatures, type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
+# No package in the lockfile may have lost the provenance a lower version
+# had, or have it from another source repository (#128); the installed
+# packages' registry signatures and
+# provenance attestations are checked right after they are installed,
+# before any of them runs (SD-058).
+group "Web app (provenance, registry signatures, type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
+node tools/check_provenance.mjs
 (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build && npm run typecheck:node)
 end
 

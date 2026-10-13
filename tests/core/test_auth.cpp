@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include "gc/auth.hpp"
 #include "gc/sha256.hpp"
 
@@ -57,6 +61,17 @@ TEST_CASE("Anmeldung: Sitzung läuft ab, Passwortwechsel meldet alle ab") {
   CHECK(a.changePassword("geheim-123", "neu-geheim-456", 0, "").key.empty());
   CHECK_FALSE(a.check(*t2, 1));
   CHECK(a.changePassword("falsch", "x-123456789", 0, "").key == "auth.wrong");
+}
+
+TEST_CASE("Sign-in: a session in use stays signed in; one unused for 12 hours ends (SD-064)") {
+  Auth a(rng);
+  a.setInitialPassword("geheim-123");
+  Msg e;
+  auto t = a.login("geheim-123", 0, e, "");
+  REQUIRE(t);
+  CHECK(a.check(*t, Auth::kSessionIdle - 1));
+  CHECK(a.check(*t, 2 * Auth::kSessionIdle - 2));  // renewed by the use before, though past 12 h since signing in
+  CHECK_FALSE(a.check(*t, 3 * Auth::kSessionIdle));  // then 12 hours without a request
 }
 
 // A lockout per client (SD-051): someone guessing in the network locks only
@@ -125,6 +140,28 @@ TEST_CASE("Sign-in: a known client that keeps using its session is not the first
   CHECK_FALSE(a.login("geheim-123", kMinute, e, "10.0.0.2"));
   CHECK(e.key == "auth.locked");
   CHECK_FALSE(a.login("geheim-123", kMinute, e, "192.168.1.99"));
+}
+
+TEST_CASE("Sign-in: with 16 sessions a new one ends the session used longest ago, not the phone in use") {
+  // Every call fills its buffer with one byte: the phone's token is all
+  // zeros, so it sorts before every other token.
+  std::uint8_t fill = 0x80;
+  Auth a([&](std::uint8_t* p, size_t n) { std::fill(p, p + n, fill); });
+  a.setInitialPassword("geheim-123");
+  Msg e;
+  fill = 0x00;
+  const auto phone = a.login("geheim-123", 0, e, "192.168.1.20");
+  REQUIRE(phone);
+  std::vector<std::string> others;
+  for (int i = 1; i <= 16; ++i) {  // 16 other devices sign in, one a second; the phone keeps using the app
+    fill = static_cast<std::uint8_t>(0x10 + i);
+    const auto t = a.login("geheim-123", i * kSecond, e, "192.168.1." + std::to_string(100 + i));
+    REQUIRE(t);
+    others.push_back(*t);
+    CHECK(a.check(*phone, i * kSecond));
+  }
+  CHECK_FALSE(a.check(others.front(), 17 * kSecond));  // the first other device, idle since it signed in
+  for (size_t i = 1; i < others.size(); ++i) CHECK(a.check(others[i], 17 * kSecond));
 }
 
 TEST_CASE("Sign-in: the shared count forgets failures after a quiet day") {

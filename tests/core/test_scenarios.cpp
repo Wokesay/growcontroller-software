@@ -112,6 +112,91 @@ TEST_CASE("Szenario Stufe 0: Einmessen und geführtes Mischen treffen die Mengen
   CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(1000.0 - a).epsilon(0.001));
 }
 
+TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another mix still needs confirmation, however it ended (RAT-003)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  const json mix{{"recipe", "wachstum"}, {"waterL", 20}};
+  const auto refusedAsRecent = [&] {
+    const auto again = c.call("POST", "/api/v1/mix/start", mix);
+    CHECK(again.first == 422);
+    CHECK(again.second["error"]["key"] == "mix.recent");
+  };
+  const auto signInAgain = [&] {
+    c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+    s.step(5000);  // the devices are found again
+  };
+  std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", true}})["job"]["id"];
+  // Stirring by hand takes its time: 40 minutes at the first prompt, Part A is in
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
+  s.step(40 * 60 * 1000);
+
+  SUBCASE("finished: counted from its end, also after a restart") {
+    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
+    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 120000));
+    REQUIRE(c.state()["lastJob"]["state"] == "done");
+    refusedAsRecent();
+    s.reboot();
+    signInAgain();
+    refusedAsRecent();
+  }
+  SUBCASE("interrupted by a restart: counted from the restart") {
+    s.reboot();
+    signInAgain();
+    refusedAsRecent();
+  }
+  SUBCASE("stopped") {
+    c.ok("POST", "/api/v1/stop");
+    c.ok("POST", "/api/v1/resume");
+    refusedAsRecent();
+  }
+  SUBCASE("failed part way: no new mix over it, and counted from when it is ended") {
+    s.world().cap(kB)->blocked = true;
+    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
+    const auto over = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}});
+    CHECK(over.first == 409);
+    CHECK(over.second["error"]["key"] == "mix.failed_open");
+    CHECK(c.state()["job"]["id"] == id);  // the failed mix stays, with what is in the tank
+    s.step(10 * 60 * 1000);
+    c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+    refusedAsRecent();
+  }
+  SUBCASE("failed part way, then a restart: reported as cut off, counted from the restart, and only once") {
+    s.world().cap(kB)->blocked = true;
+    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
+    s.reboot();
+    signInAgain();
+    refusedAsRecent();
+    bool reported = false;
+    for (const auto& e : findEvents(c, "mix")) reported = reported || e["title"]["key"] == "ev.mix_reboot";
+    CHECK(reported);
+    // A later restart no longer moves the window: the mix was written as ended
+    s.step(31 * 60 * 1000);
+    s.reboot();
+    signInAgain();
+    s.world().cap(kB)->blocked = false;
+    CHECK(c.call("POST", "/api/v1/mix/start", mix).first == 200);
+  }
+  SUBCASE("failed part way, then a pump is primed: the failed mix ends with what is in the tank, and the window counts") {
+    s.world().cap(kB)->blocked = true;
+    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
+    s.world().cap(kB)->blocked = false;
+    c.ok("POST", std::string("/api/v1/pumps/") + kB + "/prime", {{"seconds", 3}});
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60000));
+    bool reported = false;
+    for (const auto& e : findEvents(c, "mix")) reported = reported || e["title"]["key"] == "ev.mix.aborted";
+    CHECK(reported);
+    refusedAsRecent();
+  }
+}
+
 TEST_CASE("Szenario: Pumpe blockiert im Mischlauf → Paar-Fehler, nachholen nach Behebung") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -384,6 +469,27 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   CHECK(r["job"].is_null());
   CHECK(r["lastJob"]["state"] == "done");
   CHECK(c.state()["dosing"].is_null());
+}
+
+TEST_CASE("Scenario: a page left open still stops more than 12 hours after signing in; one unused for 12 hours cannot; none after a restart (SD-064)") {
+  sim::Simulation s(test::opts("demo"));
+  Client wall{s, "", "192.168.1.20"};
+  Client idle{s, "", "192.168.1.21"};
+  wall.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  idle.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 13 * 6; ++i) {  // 13 hours; the page asks every 10 minutes
+    s.fastForward(1.0 / 6);
+    REQUIRE(wall.ok("GET", "/api/v1/auth/session")["authenticated"] == true);
+  }
+  CHECK(idle.call("POST", "/api/v1/stop").first == 401);
+  CHECK(wall.state()["stopped"] == false);
+  wall.ok("POST", "/api/v1/stop");
+  CHECK(wall.state()["stopped"] == true);
+  wall.ok("POST", "/api/v1/resume");
+  // Sessions live in memory only: after a restart, sign in again
+  s.reboot();
+  CHECK(wall.ok("GET", "/api/v1/auth/session")["authenticated"] == false);
+  CHECK(wall.call("POST", "/api/v1/stop").first == 401);
 }
 
 TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (Vorschlag firmware)") {
