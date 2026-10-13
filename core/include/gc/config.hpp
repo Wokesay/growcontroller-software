@@ -213,7 +213,7 @@ ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string
 struct RuntimeState {
   std::map<std::string, double> stockMl;  // Kanister → Vorrat; fehlt = unbekannt
   double tankVolumeL = kNaN;               // ohne Füllstandskopf: aus Mischläufen
-  Epoch lastMixAt = 0;
+  Epoch lastMixAt = 0;  // start of the running mix, then the end of the last one (RAT-003)
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
   double ecEffect = kNaN;  // gelernte Wirkung Rezept (mS/cm je ml/L Summe)
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund

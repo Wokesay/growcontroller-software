@@ -169,6 +169,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Mixing twice is caught after a long mix too** (RAT-003): another mix
+  within 30 minutes needs your confirmation, because dosing again doubles
+  the nutrients. The 30 minutes counted from the start of the last mix, so
+  after a mix that took longer, for example a guided one stirred by hand or
+  a large tank, a second mix right after it started without asking. They
+  now count from when the last mix ended: finished, stopped, failed or cut
+  off by a restart. A mix that stopped part way can no longer be replaced
+  by a new one through the API; resume or end it first. A prime, a pump
+  calibration or a hand dose started meanwhile ends it and reports what is
+  in the tank, where before it dropped the mix without a trace.
 - **The hub checks the time zone:** it stored any text sent as the time
   zone, and only the app checked it. Now saving or importing one that is
   not a name like `Europe/Berlin` (starting with a letter; letters, digits,

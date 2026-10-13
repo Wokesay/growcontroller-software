@@ -157,6 +157,7 @@ class Hub {
   void finishJob(const std::string& state, Msg m);
   json jobJson() const;  // {job, lastJob}: job ist leer, wenn der Auftrag gerade fertig wurde
   double tankVolume() const;
+  void endFailedMix();
   bool userJobActive() const { return job_ && (job_->state == "running" || job_->state == "waiting_user" || job_->state == "mixing"); }
   std::string newId(const std::string& prefix);
   void detectDevices();
