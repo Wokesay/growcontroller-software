@@ -158,6 +158,8 @@ constexpr Entry kMessages[] = {
     {"ha.life_unknown", "Home Assistant doesn't offer {entity} as a sign of life right now."},
     {"ha.life_channel", "The sign of life {entity} has no channel \"{channel}\"."},
     {"watch.reading.failed", "No valid reading: {reason}"},
+    {"watch.life.label", "{sensors}"},
+    {"watch.life.silent", "No valid reading: the device has sent nothing for {ageS} s – check or restart it (sign of life {source})"},
     {"watch.band.ph.label", "pH limits"},
     {"watch.band.ec.label", "EC limits"},
     {"watch.band.off", "Not checked – control is off"},

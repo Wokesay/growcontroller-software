@@ -195,6 +195,7 @@ small, .small { font-size: 0.85rem; }
 .statusbar.ok .icon-wrap { background: var(--ok-weak); color: var(--ok); }
 .statusbar.problem .icon-wrap { background: var(--bad-weak); color: var(--bad); }
 .statusbar.neutral .icon-wrap { background: var(--neutral-weak); color: var(--neutral); }
+.statusbar .grow { overflow-wrap: anywhere; }  /* a Home Assistant entity ID has no break opportunity */
 .statusbar .title { font-weight: 650; }
 
 .banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--info-weak); color: var(--text); border: 1px solid color-mix(in srgb, var(--info) 25%, transparent); }
