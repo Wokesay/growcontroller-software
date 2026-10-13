@@ -161,6 +161,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Home Assistant: only plain numbers are values** (#71): a state such as
+  `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
+  value instead of a guess, and the device says why ("is no plain
+  number"). The setup now takes "calibrated outside the hub" from the hub
+  instead of guessing it from what a device measures; a temperature from
+  Home Assistant no longer counts as a probe there. Text from Home
+  Assistant in names and faults is checked to be well-formed UTF-8 by the
+  adapter itself, too.
 - **Stop is never silent** (SD-055): a Stop the hub does not confirm
   within 5 seconds, or that gets no connection, says so in its dialog
   ("Stopp nicht bestätigt – keine Antwort vom Hub") with what to do in an

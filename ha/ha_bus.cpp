@@ -39,16 +39,18 @@ const char* labelOf(const std::string& m) {
   return "CO2 aus Home Assistant";
 }
 
+}  // namespace
+
 // Text from Home Assistant as it may appear in a fault or a name: printable
 // and short, because it reaches the terminal, the state and diagnostics.
 // Keeps printable ASCII and UTF-8 sequences from U+00A0 on (µ, °); drops
 // control characters, C1 controls (U+0080–U+009F), invisible format
 // characters that can reorder or hide text (U+00AD, U+061C, U+180E,
 // U+200B–U+200F, U+2028–U+202E, U+2060–U+2069, U+FEFF, U+FFF9–U+FFFB, tag
-// characters) and stray bytes. The input comes from the JSON
-// parser, which has already rejected ill-formed UTF-8, so the sequences are
-// not checked further.
-std::string printable(const std::string& s, size_t maxBytes = 32) {
+// characters) and stray bytes. Only well-formed UTF-8 is kept: no overlong
+// form, no surrogate and nothing above U+10FFFF, even if the input ever comes
+// from somewhere other than the JSON parser, which already rejects them.
+std::string printable(const std::string& s, size_t maxBytes) {
   std::string out;
   for (size_t i = 0; i < s.size();) {
     const auto c = static_cast<unsigned char>(s[i]);
@@ -60,6 +62,12 @@ std::string printable(const std::string& s, size_t maxBytes = 32) {
     const size_t n = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
     bool ok = n > 0 && i + n <= s.size();
     for (size_t k = 1; ok && k < n; ++k) ok = (static_cast<unsigned char>(s[i + k]) & 0xc0) == 0x80;
+    if (ok && n > 2) {  // the second byte's range after these lead bytes (Unicode table 3-7)
+      const auto b1 = static_cast<unsigned char>(s[i + 1]);
+      if ((c == 0xe0 && b1 < 0xa0) || (c == 0xf0 && b1 < 0x90)) ok = false;  // overlong
+      if (c == 0xed && b1 >= 0xa0) ok = false;                                // a surrogate, U+D800–DFFF
+      if (c == 0xf4 && b1 >= 0x90) ok = false;                                // above U+10FFFF
+    }
     if (ok && n == 2 && c == 0xc2 && static_cast<unsigned char>(s[i + 1]) < 0xa0) ok = false;  // C1 control
     if (ok && n == 3) {
       const auto b1 = static_cast<unsigned char>(s[i + 1]), b2 = static_cast<unsigned char>(s[i + 2]);
@@ -77,6 +85,8 @@ std::string printable(const std::string& s, size_t maxBytes = 32) {
   }
   return gc::utf8Prefix(out, maxBytes);
 }
+
+namespace {
 
 const gc::json& attributesOf(const gc::json& state) {
   static const gc::json kNone = gc::json::object();
@@ -110,13 +120,42 @@ std::optional<LifeCandidate> lifeOf(const std::string& id, const gc::json& state
   return c;
 }
 
+// A plain decimal number as Home Assistant writes one: an optional minus,
+// digits, an optional fraction and exponent (Python writes 1e-05). No space,
+// plus, hex, comma or leading point: such a state is no value rather than a
+// guess (RAT-006).
+bool plainNumber(const std::string& s) {
+  size_t i = 0;
+  auto digits = [&] {
+    const size_t from = i;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') ++i;
+    return i > from;
+  };
+  if (i < s.size() && s[i] == '-') ++i;
+  if (!digits()) return false;
+  if (i < s.size() && s[i] == '.') {
+    ++i;
+    if (!digits()) return false;
+  }
+  if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+    ++i;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
+    if (!digits()) return false;
+  }
+  return i == s.size();
+}
+
 // The numeric value of a state; NaN for "unknown", "unavailable", empty or
 // anything else that is not a plain number, never 0 (R5).
 double numericState(const gc::json& state) {
   const std::string raw = gc::jstr(state, "state");
+  if (!plainNumber(raw)) return gc::kNaN;
+  // strtod must read all of it: under a locale with a decimal comma it would
+  // stop at the point and read 6.8 as 6, so that gives no value either
   char* end = nullptr;
-  const double v = raw.empty() ? gc::kNaN : std::strtod(raw.c_str(), &end);
-  return end && *end == '\0' && std::isfinite(v) ? v : gc::kNaN;
+  const double v = std::strtod(raw.c_str(), &end);
+  if (end != raw.c_str() + raw.size() || !std::isfinite(v)) return gc::kNaN;
+  return v == 0 ? 0.0 : v;  // -0 shows as 0
 }
 
 // The value in the hub's unit, or NaN with a fault when the unit is missing
@@ -1103,6 +1142,8 @@ void HaBus::updateLocked(const Entity& entity, const gc::json& state, std::int64
   const std::string unit = gc::jstr(attributesOf(state), "unit_of_measurement");
   if (st.available && std::isfinite(v))
     st.value = entity.signal ? signalValue(entity.measures, v, unit, st.fault) : convert(entity.measures, v, unit, st.fault);
+  if (st.available && !std::isfinite(v) && !raw.empty() && raw != "unknown")
+    st.fault = "state \"" + printable(raw, 16) + "\" is no plain number";  // so " 6.2" does not look like "unknown"
   st.name = printable(gc::jstr(attributesOf(state), "friendly_name"), 60);
 }
 

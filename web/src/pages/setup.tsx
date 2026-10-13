@@ -484,12 +484,16 @@ function StepCalibrate(p: { step: number; next: () => void }) {
   const assigned = canisters.value.filter((k) => k.pump);
   const allCal = assigned.length > 0 && assigned.every((k) => st.devices.find((d) => d.id === k.pump)?.info?.flowMlPerMin);
   // Alle Sondenköpfe mit Kalibrierung: ein pH/EC-Kopf oder zwei einzelne, Füllstand
-  const probes = cfg.devices.flatMap((d) => probeKinds(catalog.value, d.class).map((k) => ({ dev: d.id, kind: k })));
-  // pH, EC or level that the hub cannot calibrate: calibrated elsewhere (Home Assistant trial)
+  // A class calibrated outside the hub shows once, below, never as a probe to calibrate here
+  const probes = cfg.devices
+    .filter((d) => catalog.value?.deviceClasses[d.class]?.externalCalibration !== true)
+    .flatMap((d) => probeKinds(catalog.value, d.class).map((k) => ({ dev: d.id, kind: k })));
+  // pH, EC or level calibrated outside the hub (Home Assistant trial), as the
+  // hub says (RAT-025); like the hub, only these need a calibration at all
   const measured = ["measure.ph", "measure.ec", "measure.level"];
   const external = cfg.devices.filter((d) => {
     const dc = catalog.value?.deviceClasses[d.class];
-    return Array.isArray(dc?.provides) && !dc.calibrations?.length && dc.provides.some((c) => measured.includes(c));
+    return dc?.externalCalibration === true && Array.isArray(dc.provides) && dc.provides.some((c) => measured.includes(c));
   });
   const probeLabel = (k: ProbeKind) => (k === "ph" ? t("setup.cal.ph") : k === "ec" ? t("setup.cal.ecProbe") : t("setup.cal.level"));
   const cals = cfg.calibrations;

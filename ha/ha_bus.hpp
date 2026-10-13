@@ -53,6 +53,11 @@ std::optional<LifeChannels> parseLifeText(const std::string& text, std::string* 
 // A channel code: 1–16 of a–z, 0–9 and _.
 bool validLifeChannel(const std::string& code);
 
+// Text from Home Assistant as it may appear in a fault or a name: well-formed
+// UTF-8 without control, bidi or other invisible format characters, cut to
+// maxBytes. It is no escape for HTML, CSV, a shell or JSON.
+std::string printable(const std::string& s, size_t maxBytes = 32);
+
 // What can serve as a sign of life: a sign-of-life text (with its channels
 // and their ages now) or a timestamp sensor (Home Assistant's device class
 // timestamp; ageS how old the time it states is).

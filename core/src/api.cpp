@@ -201,7 +201,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     return r;
   }
   if (is("POST", {"config", "import"})) return fromResult(hub_.importConfig(body));
-  if (is("GET", {"catalog"})) return jsonResp(200, hub_.catalog().raw);
+  if (is("GET", {"catalog"})) return jsonResp(200, hub_.catalog().forApi());
   if (is("GET", {"changelog"})) {
     ApiResponse r;
     r.contentType = "text/markdown; charset=utf-8";

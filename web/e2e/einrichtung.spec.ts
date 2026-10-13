@@ -137,20 +137,54 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
     const res = await route.fetch();
     const cat = await res.json();
-    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"] };
+    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"], externalCalibration: true };
+    // Looks the same but the hub does not say so: the setup does not guess (#71)
+    cat.deviceClasses.ph_unsaid = { label: "pH ohne Angabe", stage: 0, attach: "ha", provides: ["measure.ph"], externalCalibration: false };
+    // Calibrated elsewhere too, but a temperature needs no calibration at all, as in the hub
+    cat.deviceClasses.ha_water_temp = { label: "Wassertemperatur aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.water_temp"], externalCalibration: true };
     await route.fulfill({ response: res, json: cat });
   });
   await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") return route.continue();
     const res = await route.fetch();
     const cfg = await res.json();
-    cfg.devices = [...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")), { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" }];
+    cfg.devices = [
+      ...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")),
+      { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" },
+      { id: "ha.sensor.other_ph", class: "ph_unsaid", name: "pH ohne Angabe" },
+      { id: "ha.sensor.water", class: "ha_water_temp", name: "Wassertemperatur aus Home Assistant" },
+    ];
     await route.fulfill({ response: res, json: cfg });
   });
   await login(page);
   await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByTestId("external-probe")).toHaveCount(1);
   await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
   await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
+});
+
+test("Setup: a temperature from Home Assistant is no probe; without pH, EC or level the hint to measure pH by hand shows (#71)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const cat = await res.json();
+    cat.deviceClasses.ha_water_temp = { label: "Wassertemperatur aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.water_temp"], externalCalibration: true };
+    await route.fulfill({ response: res, json: cat });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [
+      ...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")),
+      { id: "ha.sensor.water", class: "ha_water_temp", name: "Wassertemperatur aus Home Assistant" },
+    ];
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await login(page);
+  await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByText("Keine pH/EC-Sonde und kein Füllstandssensor erkannt – pH misst du dann von Hand.")).toBeVisible();
+  await expect(page.getByTestId("external-probe")).toHaveCount(0);
 });
 
 test("Read-only trial (Home Assistant): after the password a short introduction opens, not the setup for dosing hardware (SD-037)", async ({ page, request }) => {

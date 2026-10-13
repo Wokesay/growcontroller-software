@@ -110,7 +110,7 @@ export const millivoltsOf = (rawPh: number) => (7 - rawPh) * NERNST_MV_PER_PH;
 export type Catalog = {
   catalogVersion: number;
   capabilities: Record<string, { label: string; unit?: string; kind: string; decimals?: number }>;
-  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
+  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; externalCalibration?: boolean; shop?: string; text?: string; channels?: number; slots?: number }>;
   roles: Record<string, { label: string; capability: string; accepts?: string[]; profile?: string; maxOnS?: number; series?: boolean }>;
   functions: { id: string; label: string; stage: number; group: string; text: string; params?: ParamDef[] }[];
   templates: { recipes: RecipeTemplate[] };
