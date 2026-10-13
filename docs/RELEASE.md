@@ -207,9 +207,13 @@ entry under `[Unreleased]`.
 
 ## Support and obligations (CRA, from 2027-12-11; reporting obligation since 2026-09-11)
 
-- **Support period:** at least 5 years (lower bound). It is stated at
-  purchase as month and year. Every security update stays available for at
-  least 10 years (Art. 13).
+- **Support period (PD-182 to PD-185, SD-062):** security updates for 7
+  years from the delivery of each board with our firmware, also for boards
+  delivered before 2027-12-11. Stated per delivery year, ending in
+  December ("delivered 2028: security updates until at least 12/2035");
+  the web app shows the end date and a notice once it has passed (Art.
+  13(19)). Every security update stays available for at least 10 years
+  (Art. 13).
 - **Reporting actively exploited vulnerabilities:** 24 h / 72 h / 14 days
   via the ENISA platform (Art. 14). This needs a deputy who can meet the
   24-hour deadline.
