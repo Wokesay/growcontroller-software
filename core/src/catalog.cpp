@@ -234,4 +234,17 @@ std::vector<const DeviceClassDef*> Catalog::classesProviding(const std::string& 
   return out;
 }
 
+// The catalog data as loaded, plus what the hub sets in code and the web
+// app needs to know: a class calibrated outside the hub (RAT-025), so the
+// setup need not guess it. Data that claims it is not read (R7).
+json Catalog::forApi() const {
+  json out = raw;
+  if (out.contains("deviceClasses") && out["deviceClasses"].is_object())
+    for (auto& [id, cls] : out["deviceClasses"].items()) {
+      const DeviceClassDef* dc = deviceClass(id);
+      if (cls.is_object()) cls["externalCalibration"] = dc && dc->externalCalibration;
+    }
+  return out;
+}
+
 }  // namespace gc

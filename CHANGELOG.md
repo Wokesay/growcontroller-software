@@ -177,6 +177,13 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Home Assistant: only plain numbers are values** (#71): a state such as
+  `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
+  value instead of a guess, and the device says why ("is no plain
+  number"). The setup now takes "calibrated outside the hub" from the hub
+  instead of guessing it from what a device measures. Text from Home
+  Assistant in names and faults is checked to be well-formed UTF-8 by the
+  adapter itself, too.
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so

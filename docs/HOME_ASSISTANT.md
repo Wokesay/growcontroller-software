@@ -429,7 +429,13 @@ time is no value.
   catalog data, so the catalog cannot loosen a check (R7). The sensor truth
   shows such pH, EC and level values but keeps them unusable for control;
   the resolver says so instead of asking for a calibration, and the hub
-  refuses its own calibration for such devices.
+  refuses its own calibration for such devices. `GET /api/v1/catalog`
+  states the mark for every class, so the setup shows such a device as
+  calibrated elsewhere without guessing it (#71).
+- A state is a value only as a plain decimal number (`6.2`, `-0.5`,
+  `1e-05`); a space, a leading plus, a comma, hex or `inf` gives no value
+  and the fault "is no plain number", never a guess (RAT-006, #71). Text from Home Assistant in a name or a fault keeps
+  only printable, well-formed UTF-8.
 - A raw signal has a class of its own, `ha_ph_raw` (SD-041): it offers the
   pH calibration and is not marked `externalCalibration`, also set in code.
   The bus turns the voltage into the hub's raw pH scale (`kNernstMvPerPh`);

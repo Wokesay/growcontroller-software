@@ -17,6 +17,7 @@
 #include "fakes.hpp"
 #include "gc/hub.hpp"
 #include "gc/api.hpp"
+#include "gc/embedded.hpp"
 #include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
@@ -2352,4 +2353,140 @@ TEST_CASE("Home Assistant: a device that sends nothing is one problem in the wat
     }
   }
   CHECK(phItem);
+}
+
+TEST_CASE("Home Assistant: only a plain decimal number is a value; hex, spaces, a comma or a plus give none (R5, RAT-006)") {
+  ha::HaBus bus({{"sensor.ph", "ph"}});
+  auto value = [&](const std::string& s) {
+    bus.update("sensor.ph", state("sensor.ph", s, "", "2026-10-09T12:00:00+00:00"), kNoonMs, 600000);
+    const auto smp = bus.sample("ha.sensor.ph", "measure.ph");
+    return smp ? std::optional<double>(smp->raw) : std::nullopt;
+  };
+  CHECK(value("6.2") == 6.2);
+  CHECK(value("6") == 6.0);
+  CHECK(value("-0.5") == -0.5);
+  CHECK(value("6.20") == 6.2);
+  CHECK(value("1e-05") == 1e-05);  // how Python writes a small float
+  CHECK(value("1e+16") == 1e16);
+  CHECK(value("1E5") == 1e5);  // as a Decimal writes it
+  const auto zero = value("-0.0");
+  REQUIRE(zero);
+  CHECK_FALSE(std::signbit(*zero));  // shows as 0, not -0
+  CHECK(bus.fault("sensor.ph").empty());
+  for (const char* bad : {"0x6", "0x1p3", " 6.2", "6.2 ", "\t6.2", "6,2", "+6.2", ".5", "6.", "6.2e", "6.2e+", "inf", "-inf", "nan",
+                          "NaN", "1e999", "6.2.1", "-", "\xd9\xa6"}) {
+    CHECK_MESSAGE(!value(bad).has_value(), ("\"" + std::string(bad) + "\""));
+    CHECK_MESSAGE(bus.fault("sensor.ph").find("is no plain number") != std::string::npos, ("\"" + std::string(bad) + "\""));  // says why
+  }
+  // Plain again: a value again, and no fault
+  CHECK(value("6.3") == 6.3);
+  CHECK(bus.fault("sensor.ph").empty());
+  // "unknown" and an empty state are no value without a fault, as before
+  CHECK_FALSE(value("unknown"));
+  CHECK(bus.fault("sensor.ph").empty());
+  CHECK_FALSE(value(""));
+  CHECK(bus.fault("sensor.ph").empty());
+  // The sensors in the picker read the same way: "+6.2" has no value there
+  ha::HaBus picker;
+  picker.updateAll(json::array({state("sensor.other_temp", "+6.2", "°C", iso(kNoonMs)), state("sensor.other_rh", "+55", "%", iso(kNoonMs))}),
+                   kNoonMs, 1000);
+  const json listed = picker.candidatesJson(true);
+  int seen = 0;
+  for (const char* list : {"candidates", "others"})
+    for (const auto& c : listed[list]) {
+      ++seen;
+      CHECK_MESSAGE(c["raw"].is_null(), c.dump());
+      CHECK_MESSAGE(c["value"].is_null(), c.dump());
+    }
+  CHECK(seen == 2);
+}
+
+TEST_CASE("Home Assistant: one entity with a large answer leaves the other picked sensors online with their values (#71)") {
+  // Through the stand-in Home Assistant: the client's answer limit, the reader and the bus together
+  json big = described(state("sensor.tank_ph", "6.1", "", "2026-10-09T12:00:00+00:00"), "ph", "Tank pH");
+  big["attributes"]["entity_picture"] = std::string(70 * 1024, 'x');
+  const std::string body = json::array({big, state("sensor.water", "21.5", "°C", "2026-10-09T12:00:00+00:00")}).dump();
+  REQUIRE(body.size() > 70 * 1024);
+  FakeHa ha([&](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+  REQUIRE(ha.port > 0);
+  ha::HaBus bus({{"sensor.tank_ph", "ph"}, {"sensor.water", "water_temp"}});
+  ha::Poller p(bus, ha.url(), "secret", [] { return gc::Ms{0}; });
+  CHECK(p.pollOnce().empty());
+  CHECK(bus.candidatesJson()["connection"] == "ok");
+  const auto devices = bus.devices();
+  REQUIRE(devices.size() == 2);
+  for (const auto& d : devices) CHECK_MESSAGE(d.online, d.id);
+  REQUIRE(bus.sample("ha.sensor.tank_ph", "measure.ph"));
+  CHECK(bus.sample("ha.sensor.tank_ph", "measure.ph")->raw == 6.1);
+  REQUIRE(bus.sample("ha.sensor.water", "measure.water_temp"));
+  CHECK(bus.sample("ha.sensor.water", "measure.water_temp")->raw == 21.5);
+}
+
+TEST_CASE("Home Assistant: text from Home Assistant keeps only well-formed UTF-8; overlong forms, surrogates and code points above U+10FFFF are dropped") {
+  CHECK(ha::printable("pH \xc2\xb5S \xc2\xb0" "C") == "pH \xc2\xb5S \xc2\xb0" "C");  // µ and ° kept
+  CHECK(ha::printable("a\xe0\x80\xafz") == "az");           // "/" written in 3 bytes
+  CHECK(ha::printable("a\xf0\x80\x80\xafz") == "az");       // and in 4
+  CHECK(ha::printable("a\xed\xa0\x80z") == "az");           // the surrogate U+D800
+  CHECK(ha::printable("a\xed\xbf\xbfz") == "az");           // and U+DFFF
+  CHECK(ha::printable("a\xf4\x90\x80\x80z") == "az");       // above U+10FFFF
+  CHECK(ha::printable("a\xe0\xa0\x80z") == "a\xe0\xa0\x80z");      // U+0800, the first 3-byte form
+  CHECK(ha::printable("a\xed\x9f\xbfz") == "a\xed\x9f\xbfz");      // U+D7FF, right before the surrogates
+  CHECK(ha::printable("a\xee\x80\x80z") == "a\xee\x80\x80z");      // U+E000, right after them
+  CHECK(ha::printable("a\xf0\x90\x80\x80z") == "a\xf0\x90\x80\x80z");  // U+10000, the first 4-byte form
+  CHECK(ha::printable("a\xf4\x8f\xbf\xbfz") == "a\xf4\x8f\xbf\xbfz");  // U+10FFFF, the last one
+  CHECK(ha::printable("a\xe0\x9f\xbfz") == "az");       // the last overlong 3-byte form
+  CHECK(ha::printable("a\xf0\x8f\xbf\xbfz") == "az");   // and 4-byte form
+  CHECK(ha::printable("a\xc0\xafz") == "az");           // never a lead byte: C0, C1, F5–FF
+  CHECK(ha::printable("a\xf5\x80\x80\x80z") == "az");
+  CHECK(ha::printable("a\xe2\x82") == "a");            // cut off at the end
+  // Whatever the bytes, the result is something JSON can carry
+  std::uint32_t x = 12345;
+  for (int round = 0; round < 2000; ++round) {
+    std::string bytes;
+    for (int i = 0; i < 24; ++i) {
+      x = x * 1664525u + 1013904223u;
+      bytes += static_cast<char>(x >> 24);
+    }
+    const std::string out = ha::printable(bytes, 64);
+    CHECK_NOTHROW((void)json(out).dump());
+  }
+}
+
+TEST_CASE("Home Assistant: the catalog tells the web app which classes are calibrated outside the hub; the data cannot claim it (RAT-025, R7)") {
+  const gc::Catalog cat = ha::catalog();
+  const json served = cat.forApi();
+  CHECK(served.at("deviceClasses").at("ha_ph").value("externalCalibration", false));
+  CHECK(served.at("deviceClasses").at("ha_ec").value("externalCalibration", false));
+  CHECK(served.at("deviceClasses").at("ha_ph_raw").value("externalCalibration", true) == false);  // a raw signal: calibrated here
+  CHECK(served.at("deviceClasses").at("head_ph_ec").value("externalCalibration", true) == false);  // said for every class
+  CHECK_FALSE(cat.raw["deviceClasses"]["ha_ph"].contains("externalCalibration"));  // the data stays as loaded
+  // Catalog data that claims it is not taken: it is set only in code
+  json data = gc::json::parse(gc::embedded::kCatalogJson);
+  data["deviceClasses"]["head_ph_ec"]["externalCalibration"] = true;
+  const gc::Catalog loaded = gc::Catalog::fromJson(data);
+  CHECK_FALSE(loaded.deviceClass("head_ph_ec")->externalCalibration);
+  CHECK(loaded.forApi().at("deviceClasses").at("head_ph_ec").value("externalCalibration", true) == false);  // nor passed on
+  // The route serves it so
+  gc::MemoryStorage store;
+  test::FakeBus fake;
+  test::Clock clk;
+  gc::Hub hub(cat, fake, store, clk, pseudoRandom);
+  hub.boot();
+  gc::Api api(hub, clk);
+  gc::ApiRequest setup;
+  setup.method = "POST";
+  setup.path = "/api/v1/auth/setup";
+  setup.body = json{{"password", "ein-gutes-passwort"}}.dump();
+  const gc::ApiResponse signedUp = api.handle(setup);
+  REQUIRE(signedUp.status == 200);
+  gc::ApiRequest get;
+  get.method = "GET";
+  get.path = "/api/v1/catalog";
+  for (const auto& [k, v] : signedUp.headers)
+    if (k == "Set-Cookie" && v.rfind("gc_session=", 0) == 0) get.token = v.substr(11, v.find(';') - 11);
+  const gc::ApiResponse res = api.handle(get);
+  REQUIRE(res.status == 200);
+  const json body = json::parse(res.body);
+  CHECK(body.at("deviceClasses").at("ha_ph").value("externalCalibration", false));
+  CHECK(body.at("deviceClasses").at("ha_ph_raw").value("externalCalibration", true) == false);
 }
