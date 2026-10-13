@@ -261,7 +261,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         readings_[roleId] = r;
       };
       if (s->lifeText && now - s->lifeAt > kLifeLimit) {  // the device sends nothing at all: one cause for all its sensors
-        lifeStale(say("truth.life_silent", {{"ageS", (now - s->lifeAt + kSecond - 1) / kSecond}}));
+        lifeStale(say("truth.life_silent", {{"ageS", (now - s->lifeAt + kSecond - 1) / kSecond}}));  // kDeviceSilent (tested)
         continue;
       }
       if (s->life == Sample::Life::Fault) {

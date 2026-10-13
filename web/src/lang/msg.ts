@@ -140,6 +140,8 @@ export const msgDe: Record<string, string> = {
   "ha.life_unknown": "Home Assistant bietet {entity} gerade nicht als Lebenszeichen an.",
   "ha.life_channel": "Das Lebenszeichen {entity} hat keinen Kanal „{channel}“.",
   "watch.reading.failed": "Datenausfall: {reason}",
+  "watch.life.label": "{sensors}",
+  "watch.life.silent": "Datenausfall: Gerät sendet seit {ageS} s nichts – prüfen oder neu starten (Lebenszeichen {source})",
   "watch.band.ph.label": "pH im Zielband",
   "watch.band.ec.label": "EC im Zielband",
   "watch.band.off": "Kein Ziel gesetzt (Regelung aus)",
@@ -181,6 +183,8 @@ export const msgDe: Record<string, string> = {
   // Events: start, configuration, system (hub.cpp, api.cpp)
   "ev.config_unreadable": "Konfiguration unlesbar",
   "ev.config_unreadable.text": "Start mit Werkseinstellung. Kopie in config.broken.json. Grund: {reason}",
+  "ev.cfg.timezone_reset": "Zeitzone zurückgesetzt",
+  "ev.cfg.timezone_reset.text": "Die gespeicherte Zeitzone „{zone}“ ist keine gültige Zeitzone, deshalb gilt {default}. Stell deine unter Einstellungen ein.",
   "ev.state_unreadable": "Laufzeitzustand unlesbar",
   "ev.state_unreadable.text": "Rastungen, Sprungsperren und Vorrat sind verloren – bitte Tank und Kanister prüfen. Alles bleibt aus, bis jemand fortsetzt. Kopie in state.broken.json. Grund: {reason}",
   "reason.not_json": "kein gültiges JSON",
@@ -266,6 +270,7 @@ export const msgDe: Record<string, string> = {
   "probe.no_move": "Der Wert hat sich zwischen den Puffern kaum bewegt: Ist das wirklich das Signal der Sonde, und stand sie im Puffer? Nimm die Werte noch einmal auf.",
   // Refused configuration changes (hub.cpp)
   "system.control": "Je Bereich „Automatisch“ oder „Außerhalb der Steuerung“ wählen",
+  "system.timezone": "Diese Zeitzone gibt es nicht. Schreib sie wie Europe/Berlin.",
 
   // Events: devices, sockets, locks
   "ev.device.found": "{label} erkannt",

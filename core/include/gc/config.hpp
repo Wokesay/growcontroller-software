@@ -50,7 +50,8 @@ struct DeviceCfg {
   // A sign of life for a sensor on its own schedule (SD-042): the source
   // that gives the time of its last measurement (a Home Assistant entity)
   // and, for a sign-of-life text, its channel ("" for a timestamp sensor).
-  // Only the platform's bus reads it; empty without a sign of life.
+  // The platform's bus reads it for freshness; the watchdog groups a silent
+  // device's sensors by it (SD-047, #107). Empty without a sign of life.
   std::string life, lifeChannel;
   DeviceCfg() = default;
   DeviceCfg(std::string id_, std::string cls_, std::string name_, std::string life_ = "", std::string lifeChannel_ = "")
@@ -135,6 +136,15 @@ struct SystemCfg {
 inline constexpr std::array<std::string_view, 6> kControlAreas{"climate", "light", "irrigation", "refill", "circulation", "dosing"};
 bool isControlArea(std::string_view area);
 bool isControlMode(std::string_view mode);
+// A name in the form of the time zone database ("Europe/Berlin", "Etc/GMT+1", "UTC"): starting
+// with a letter; letters, digits, "_", "+" and "-" in parts separated by "/"; at most 64
+// characters; no part empty. The web app checks the same form (timeZone in web/src/format.ts).
+// No name in the database uses ".", so it is left out on purpose: the firmware may one day
+// look the zone up as a file, and "../" must never reach that. The core has no
+// time zone database, so this checks the form, not that the zone exists; the web app checks
+// that against the browser's. Nothing in the hub uses the zone yet; light and watering
+// times will, so a value that is no zone name is refused rather than stored.
+bool isTimeZoneName(std::string_view tz);
 
 struct Config {
   int schemaVersion = kSchemaVersion;

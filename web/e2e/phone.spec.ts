@@ -179,6 +179,51 @@ test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", as
   expect(await offScreen(page), "bottle dialog").toEqual([]);
 });
 
+// A device that sends nothing is one problem (#107); it names its sign of
+// life by the entity ID, a long word without a break.
+test("Monitoring: a device that sends nothing is one problem titled with its readings; its long sign of life fits the phone's screen (#107)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  // The Home Assistant trial's state, made from the simulator's: one device's sign of life is silent
+  const source = "sensor.growbox_tank_esp32_lebenszeichen_und_zeitstempel_text";
+  const sensor = (text: string) => ({ key: "", text, args: {} });
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.watchdog = {
+      ...st.watchdog,
+      overall: "problem",
+      ok: 0,
+      problems: 1,
+      neutral: 0,
+      headline: { key: "watch.headline.problem", text: "1 problem", args: {} },
+      items: [
+        {
+          id: `life.${source}`,
+          status: "problem",
+          label: { key: "watch.life.label", text: "pH im Tank, Wassertemperatur", args: { sensors: [sensor("pH im Tank"), sensor("Wassertemperatur")] } },
+          text: {
+            key: "watch.life.silent",
+            text: `No valid reading: the device has sent nothing for 75 s – check or restart it (sign of life ${source})`,
+            args: { ageS: 75, source },
+          },
+        },
+      ],
+    };
+    await route.fulfill({ response: res, json: st });
+  });
+  await login(page);
+  const bar = page.getByTestId("watchdog");
+  await expect(bar).toContainText("1 Problem");
+  await expect(bar).toContainText(`pH im Tank, Wassertemperatur: Datenausfall: Gerät sendet seit 75 s nichts – prüfen oder neu starten (Lebenszeichen ${source})`);
+  await fits(page, "overview");
+  await page.goto("/#/tank");
+  const item = page.locator(".list .item").filter({ hasText: source });
+  await expect(item.locator(".title")).toHaveText("pH im Tank, Wassertemperatur");
+  await fits(page, "tank");
+  await page.unrouteAll({ behavior: "ignoreErrors" });  // a poll may still be in flight
+});
+
 // The Home Assistant app (docs/HOME_ASSISTANT.md) names sensors by their
 // entity IDs, which can be long words without a break.
 test("Home Assistant: the introduction, devices, assignment and sign of life fit the phone's screen with long sensor IDs", async ({ page, request }) => {

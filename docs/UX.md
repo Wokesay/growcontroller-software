@@ -12,7 +12,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
   itself when the block ends. Rationale: RAT-037, RAT-039.
 - **Plain language instead of codes.** The colour shows the worst entry.
   Normal case: "Everything OK (13 checks)"; only what deviates is listed
-  individually. Rationale: RAT-042, RAT-072.
+  individually. Rationale: RAT-042, RAT-072. One cause is one entry: a
+  device that sends nothing is one problem titled with the readings it
+  affects (SD-047, #107).
 - **Keep three states apart:** "Sensor not responding", "not calibrated",
   "not applicable" (for example water temperature with an empty tank).
   Rationale: RAT-021, RAT-048. **Calibrated outside the hub** (Home
@@ -148,7 +150,10 @@ Rules:
 - Title ≤ 40 characters, body ≤ 200. Rationale: RAT-045.
 - Acknowledging only pauses the repetition. Rationale: RAT-022.
 - Channels the user chooses, without a manufacturer cloud: ntfy, e-mail,
-  webhook, MQTT (PD-024). App push only once there is an app.
+  webhook, MQTT (PD-024). Once the ESP is reached through the relay
+  with its own certificate, the web app on the home screen could send
+  Web Push; whether it does is decided with M5, whether a store app
+  comes later (SD-062).
 - All notifications are free, safety alarms included; there is no
   subscription [PD-008, PD-024].
 - Say it honestly: "No notifications without internet."

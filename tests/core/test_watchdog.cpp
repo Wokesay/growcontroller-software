@@ -91,3 +91,85 @@ TEST_CASE("Watchdog: gesperrter Regler und fehlender Einmesswert sind Probleme")
   CHECK(f.item(w, "ctl.ph")->status == "problem");
   CHECK(f.item(w, "calib.a")->status == "problem");
 }
+
+TEST_CASE("Watchdog: a silent device is one problem titled with its readings; a sensor stale for its own reason keeps its item (SD-042, SD-047)") {
+  Fix f;
+  // Two sensors from Home Assistant share one device's sign-of-life text; EC has another device's
+  f.cfg.devices = {{"ha.sensor.ph_mv", "ha_ph_mv", "pH", "sensor.hub_life", "ph"},
+                   {"ha.sensor.water", "ha_water_temp", "Water", "sensor.hub_life", "wt"},
+                   {"ha.sensor.ec", "ha_ec", "EC", "sensor.doser_life", "ec"}};
+  f.cfg.tank().roles["tank.ph"] = {"ha.sensor.ph_mv", 0};
+  f.cfg.tank().roles["tank.water_temp"] = {"ha.sensor.water", 0};
+  f.cfg.tank().roles["tank.ec"] = {"ha.sensor.ec", 0};
+  auto stale = [&](const std::string& role, Msg why) {
+    Reading& r = f.readings[role];
+    r.role = role;
+    r.quality = Quality::Stale;
+    r.value.reset();
+    r.reason = std::move(why);
+  };
+  stale("tank.ph", say(kDeviceSilent, {{"ageS", 70}}));
+  stale("tank.water_temp", say(kDeviceSilent, {{"ageS", 75}}));
+  stale("tank.ec", say("truth.life_stale", {{"limitS", 60}}));
+  auto eval = [&](Epoch epoch = 1790010000, Epoch boot = 1790000000, Epoch maint = 0) {
+    WatchInput in{f.cat, f.cfg, f.rt, f.readings, {}, {}, {}, epoch, boot, maint, false};
+    for (const auto& d : f.cfg.devices) in.devices.push_back({d.id, d.name, true});  // Home Assistant has them
+    return evaluate(in);
+  };
+  WatchResult w = eval();
+  const Assessment* dev = f.item(w, "life.sensor.hub_life");
+  REQUIRE(dev != nullptr);
+  CHECK(dev->status == "problem");
+  // Titled with the readings it affects, as the items it replaces were
+  CHECK(dev->label.key == "watch.life.label");
+  const json sensors = dev->label.args["sensors"];
+  REQUIRE(sensors.size() == 2);
+  CHECK(sensors[0]["text"] == f.cat.role("tank.ph")->label);
+  CHECK(sensors[1]["text"] == f.cat.role("tank.water_temp")->label);
+  CHECK(dev->text.key == "watch.life.silent");
+  CHECK(dev->text.args["source"] == "sensor.hub_life");
+  CHECK(dev->text.args["ageS"] == 75);  // the oldest: nothing looks fresher than it is
+  CHECK(f.item(w, "reading.tank.ph") == nullptr);
+  CHECK(f.item(w, "reading.tank.water_temp") == nullptr);
+  CHECK(f.item(w, "life.sensor.doser_life") == nullptr);
+  // EC is stale for its own reason: its own item, with that reason
+  REQUIRE(f.item(w, "reading.tank.ec") != nullptr);
+  CHECK(f.item(w, "reading.tank.ec")->status == "problem");
+  CHECK(f.item(w, "reading.tank.ec")->text.args["reason"]["key"] == "truth.life_stale");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.band.no_value");  // one cause, one message
+  CHECK(w.problems == 2);
+  // Next to the devices, before the readings, so the overview's first three problems show it
+  auto at = [](const WatchResult& r, const std::string& id) {
+    for (size_t i = 0; i < r.items.size(); ++i)
+      if (r.items[i].id == id) return static_cast<int>(i);
+    return -1;
+  };
+  CHECK(at(w, "life.sensor.hub_life") == at(w, "devices") + 1);
+  CHECK(at(w, "life.sensor.hub_life") < at(w, "reading.tank.ec"));
+  // In maintenance mode and during the start-up grace it is still a problem; only the bands rest (RAT-015)
+  w = eval(1790010000, 1790000000, 1790010600);
+  CHECK(f.item(w, "life.sensor.hub_life")->status == "problem");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.maintenance");
+  w = eval(1790000050, 1790000000);
+  CHECK(f.item(w, "life.sensor.hub_life")->status == "problem");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.startup");
+  // EC's device falls silent too, without a known age: a second item, the age stays missing (R5)
+  stale("tank.ec", say(kDeviceSilent));
+  w = eval();
+  REQUIRE(f.item(w, "life.sensor.doser_life") != nullptr);
+  CHECK(f.item(w, "life.sensor.doser_life")->text.args["ageS"].is_null());
+  CHECK(f.item(w, "life.sensor.doser_life")->label.args["sensors"].size() == 1);
+  CHECK(f.item(w, "reading.tank.ec") == nullptr);
+  CHECK(w.problems == 2);
+  // A sensor that says its device is silent but has no sign of life set any
+  // more keeps its own item: nothing is hidden
+  f.cfg.devices[1].life.clear();
+  f.cfg.devices[1].lifeChannel.clear();
+  w = eval();
+  REQUIRE(f.item(w, "reading.tank.water_temp") != nullptr);
+  CHECK(f.item(w, "reading.tank.water_temp")->status == "problem");
+  REQUIRE(f.item(w, "life.sensor.hub_life") != nullptr);
+  CHECK(f.item(w, "life.sensor.hub_life")->label.args["sensors"].size() == 1);
+  CHECK(f.item(w, "life.sensor.hub_life")->text.args["ageS"] == 70);
+  CHECK(w.problems == 3);
+}

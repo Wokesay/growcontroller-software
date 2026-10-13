@@ -153,6 +153,13 @@ void Hub::boot() {
     } else {
       try {
         cfg_ = configFromJson(j);
+        // A zone saved before the hub checked it falls back to the default when read: say so
+        if (j.contains("system") && j["system"].is_object() && j["system"].contains("timezone")) {
+          const json& tz = j["system"]["timezone"];
+          if (!tz.is_string() || tz.get<std::string>() != cfg_.system.timezone)
+            log_.add(bootEpoch_, "system", "notice", say("ev.cfg.timezone_reset"),
+                     say("ev.cfg.timezone_reset.text", {{"zone", utf8Prefix(tz.is_string() ? tz.get<std::string>() : tz.dump(), 64)}, {"default", cfg_.system.timezone}}));
+        }
       } catch (const std::exception& e) {
         broken = plain(e.what());
       }
@@ -869,7 +876,10 @@ Result Hub::setSystem(const json& j) {
   SystemCfg sys = cfg_.system;
   Limits lim = cfg_.limits;
   if (j.contains("name") && j["name"].is_string()) sys.name = utf8Prefix(j["name"].get<std::string>(), 40);
-  if (j.contains("timezone") && j["timezone"].is_string()) sys.timezone = j["timezone"];
+  if (j.contains("timezone")) {
+    if (!j["timezone"].is_string() || !isTimeZoneName(j["timezone"].get<std::string>())) return Result::fail(422, say("system.timezone"));
+    sys.timezone = j["timezone"];
+  }
   if (j.contains("language") && j["language"].is_string()) {
     std::string lang = j["language"];
     if (lang != "de" && lang != "en") return Result::fail(422, "system.language", "Sprache muss de oder en sein");
@@ -1371,6 +1381,11 @@ Result Hub::putFunction(const std::string& id, const json& j) {
 
 Result Hub::importConfig(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  // Reading the saved file falls back to the default zone; a file chosen to import is refused instead.
+  if (j.is_object() && j.contains("system") && j["system"].is_object() && j["system"].contains("timezone")) {
+    const json& tz = j["system"]["timezone"];
+    if (!tz.is_string() || !isTimeZoneName(tz.get<std::string>())) return Result::fail(422, say("system.timezone"));
+  }
   Config next;
   try {
     next = configFromJson(j);

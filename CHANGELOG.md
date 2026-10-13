@@ -28,7 +28,10 @@ listed in every release under "Security".
   channel's last measurement) or a timestamp sensor. The age then counts
   from the last measurement, shown green up to 30 s, yellow from 31 s and
   red from 60 s, and the value is outdated after 60 s without a
-  measurement. Without a sign of life the age now says "unverändert seit"
+  measurement. A text older than 60 s makes all its sensors outdated and
+  shows in the monitoring as one problem titled with the readings it
+  affects, with the sign of life's entity ID at the end (#107). Without a
+  sign of life the age now says "unverändert seit"
   (unchanged for), as the app sees only the last change. A sign of life
   that is unavailable, unreadable, misses the channel, lies in the future
   or dates the measurement before the sensor's own report makes the value
@@ -93,6 +96,18 @@ listed in every release under "Security".
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
   or replace it; pH correction then waits for your confirmation.
+- **Plan: access from outside through a relay** (SD-062,
+  `docs/ROADMAP.md` M6): if you switch on access from outside at setup or
+  later, your ESP32-S3 connects out over its Wi-Fi to a relay. You scan a
+  QR code, put the app's icon on your home screen and sign in with your
+  password, from anywhere; no router settings, no open port. The
+  encryption ends on your ESP32-S3, so the relay is built not to read
+  your data. At "View from outside" you see values and history, can
+  press "Stop" and acknowledge messages; a latch is acknowledged only at
+  home. The
+  project runs a relay free of charge, and you can run your own. A
+  direct way through a port forward is not offered. Whether an app comes
+  into the stores is decided later.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
@@ -146,6 +161,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The hub checks the time zone:** it stored any text sent as the time
+  zone, and only the app checked it. Now saving or importing one that is
+  not a name like `Europe/Berlin` (starting with a letter; letters, digits,
+  `_`, `+`, `-` in parts separated by `/`, none empty; at most 64 characters) is refused
+  with its reason, and nothing else of the change is taken over; the app
+  checks the same form at the field. A zone saved before that is no such
+  name falls back to `Europe/Berlin` when the hub starts, an event says so,
+  and the configuration stays readable: one that was not text at all made
+  the hub start with factory settings. Nothing in the hub uses the zone
+  yet; light and watering times will.
 - **Stop is never silent** (SD-055): a Stop the hub does not confirm
   within 5 seconds, or that gets no connection, says so in its dialog
   ("Stopp nicht bestätigt – keine Antwort vom Hub") with what to do in an

@@ -148,6 +148,10 @@ test("Settings refuse a time zone that does not exist and save one in its usual 
   await tz.fill("Mars/Olympus");
   await tz.blur();
   await expect(card.getByText("Diese Zeitzone gibt es nicht. Schreib sie wie Europe/Berlin.")).toBeVisible();
+  // An offset that newer browsers know is no zone name for the hub: refused at the field too
+  await tz.fill("+01:00");
+  await expect(card.getByText("Diese Zeitzone gibt es nicht. Schreib sie wie Europe/Berlin.")).toBeVisible();
+  await card.getByRole("button", { name: "Speichern" }).click();
   await card.getByRole("button", { name: "Speichern" }).click();
   await tz.fill("asia/tokyo");
   await card.getByRole("button", { name: "Speichern" }).click();
