@@ -112,7 +112,9 @@ std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err, 
   // abgelaufene Sitzungen aufräumen, höchstens 16 gleichzeitig
   for (auto it = sessions_.begin(); it != sessions_.end();)
     it = (now - it->second > kSessionIdle) ? sessions_.erase(it) : std::next(it);
-  if (sessions_.size() >= 16) sessions_.erase(sessions_.begin());
+  // Full: the session used longest ago ends, not one by the order of the tokens (SD-063)
+  if (sessions_.size() >= kMaxSessions)
+    sessions_.erase(std::min_element(sessions_.begin(), sessions_.end(), [](const auto& x, const auto& y) { return x.second < y.second; }));
   sessions_[t] = now;
   return t;
 }

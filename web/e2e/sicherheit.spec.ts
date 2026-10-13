@@ -98,3 +98,27 @@ test("Someone guessing from another device does not lock out this browser (SD-05
   await login(page);
   await scenario(request, "demo");  // no lockout left for the next cases
 });
+
+test("A page left open renews its session, so a Stop still has one; a session the hub no longer knows is named on the sign-in page (SD-063)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await page.clock.install();
+  await login(page);
+  // Every 10 minutes the page asks, and the hub sends the cookie for another 12 hours
+  const renewed = page.waitForResponse((r) => r.url().endsWith("/api/v1/auth/session") && r.request().method() === "GET");
+  await page.clock.fastForward("10:01");
+  const res = await renewed;
+  expect(await res.headerValue("set-cookie")).toMatch(/^gc_session=[0-9a-f]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/);
+  expect(await res.headerValue("cache-control")).toBe("no-store");  // the answer carries the session key
+  // No answer (Wi-Fi not back yet): still signed in, nothing said
+  await page.route(/\/api\/v1\/auth\/session$/, (route) => route.abort());
+  await page.clock.fastForward("10:01");
+  await expect(page.getByTestId("watchdog")).toBeVisible();
+  await expect(page.getByTestId("session-expired")).toHaveCount(0);
+  // The session is gone (a restart of the hub, a password change elsewhere): a phone that wakes up
+  // asks at once, as its timers slept
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route(/\/api\/v1\/auth\/session$/, (route) => route.fulfill({ json: { authenticated: false, hasPassword: true } }));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByTestId("session-expired")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

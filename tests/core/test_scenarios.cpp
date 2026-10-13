@@ -386,6 +386,27 @@ TEST_CASE("Szenario: Dosierblock antwortet im Lauf nicht → Frist, Pumpe aus, a
   CHECK(c.state()["dosing"].is_null());
 }
 
+TEST_CASE("Scenario: a page left open still stops more than 12 hours after signing in; one unused for 12 hours cannot; none after a restart (SD-063)") {
+  sim::Simulation s(test::opts("demo"));
+  Client wall{s, "", "192.168.1.20"};
+  Client idle{s, "", "192.168.1.21"};
+  wall.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  idle.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 13 * 6; ++i) {  // 13 hours; the page asks every 10 minutes
+    s.fastForward(1.0 / 6);
+    REQUIRE(wall.ok("GET", "/api/v1/auth/session")["authenticated"] == true);
+  }
+  CHECK(idle.call("POST", "/api/v1/stop").first == 401);
+  CHECK(wall.state()["stopped"] == false);
+  wall.ok("POST", "/api/v1/stop");
+  CHECK(wall.state()["stopped"] == true);
+  wall.ok("POST", "/api/v1/resume");
+  // Sessions live in memory only: after a restart, sign in again
+  s.reboot();
+  CHECK(wall.ok("GET", "/api/v1/auth/session")["authenticated"] == false);
+  CHECK(wall.call("POST", "/api/v1/stop").first == 401);
+}
+
 TEST_CASE("Szenario: Bus-Job-IDs der Regler sind nach einem Neustart neu (Vorschlag firmware)") {
   // Ohne Kennung je Start hieße die erste EC-Gabe nach jedem Neustart gleich
   // („ec-1#1“). Der Dosierblock hielte sie für eine Wiederholung und liefe nicht.

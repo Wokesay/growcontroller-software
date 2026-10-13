@@ -59,6 +59,34 @@ TEST_CASE("Anmeldung: Sitzung läuft ab, Passwortwechsel meldet alle ab") {
   CHECK(a.changePassword("falsch", "x-123456789", 0, "").key == "auth.wrong");
 }
 
+TEST_CASE("Sign-in: a session in use stays signed in; one unused for 12 hours ends (SD-063)") {
+  Auth a(rng);
+  a.setInitialPassword("geheim-123");
+  Msg e;
+  auto t = a.login("geheim-123", 0, e, "");
+  REQUIRE(t);
+  CHECK(a.check(*t, Auth::kSessionIdle - 1));
+  CHECK(a.check(*t, 2 * Auth::kSessionIdle - 2));  // renewed by the use before, though past 12 h since signing in
+  CHECK_FALSE(a.check(*t, 3 * Auth::kSessionIdle));  // then 12 hours without a request
+}
+
+TEST_CASE("Sign-in: a 17th session ends the one used longest ago, not the page left open (SD-063)") {
+  Auth a(rng);
+  a.setInitialPassword("geheim-123");
+  Msg e;
+  std::vector<std::string> t;
+  for (int i = 0; i < 16; ++i) {
+    auto tok = a.login("geheim-123", i, e, "");
+    REQUIRE(tok);
+    t.push_back(*tok);
+  }
+  CHECK(a.check(t[0], 100));  // the wall page, signed in first, still in use
+  REQUIRE(a.login("geheim-123", 200, e, ""));
+  CHECK(a.check(t[0], 300));
+  CHECK_FALSE(a.check(t[1], 300));  // used longest ago
+  for (int i = 2; i < 16; ++i) CHECK(a.check(t[static_cast<size_t>(i)], 300));
+}
+
 // A lockout per client (SD-051): someone guessing in the network locks only
 // the clients that never signed in, never one that did.
 TEST_CASE("Sign-in: a client that signed in before keeps its own lockout; the others share one") {

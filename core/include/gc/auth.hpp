@@ -40,6 +40,7 @@ class Auth {
 
   static constexpr std::uint32_t kIterations = 10000;
   static constexpr Ms kSessionIdle = 12 * kHour;
+  static constexpr size_t kMaxSessions = 16;  // a further sign-in ends the session used longest ago (SD-063)
   // Lockout per client (SD-051): a client that signed in before has a count
   // of its own; every other client shares one, which also brakes guessing
   // from many addresses. Kept in memory only.

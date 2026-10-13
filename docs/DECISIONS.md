@@ -1827,6 +1827,55 @@ then they are the software's working basis.
   (PD-024).
 
 
+## SD-063: A Stop from the app needs a signed-in session; a session lasts while it is in use
+
+Decided by the project owner on 2026-10-13 in the software session, one
+question at a time: `ux` asked during the polish for 0.1.0-proto.5
+(SD-055, #130) whether a Stop should work without a session, and
+`reviewer` and `security` then found that the browser dropped the cookie
+12 hours after signing in, even on a page in use.
+
+- **A Stop from the app needs a session,** like every other function
+  (EN 18031-1 access control, `docs/SECURITY_MODEL.md`).
+- **A session lasts while it is in use:** the hub ends one after 12 hours
+  without a request (`Auth::kSessionIdle`), on a restart and on a password
+  change. An open page asks every 10 minutes and when it is woken
+  (`GET /auth/session`), and the hub sends the cookie again for another
+  12 hours, so a phone on the wall keeps its session. There is no fixed
+  longest lifetime: a page in use stays signed in. This holds in the home
+  network; a shorter session from outside stays open (SD-059).
+- With 16 sessions, a 17th sign-in ends the one used longest ago, not one
+  by the order of the tokens, which could be the page left open.
+- When the session has ended, the sign-in page says that what was just
+  clicked, a Stop included, was not carried out, and names the way in an
+  emergency (#130); a page left open says so as soon as it next asks.
+- **In an emergency:** unplug the hub, and switch off devices on smart
+  plugs at the plug, since unplugging the hub leaves them as they are; on
+  the carrier board (M1) also its Stop button (PD-164), which the sign-in
+  hint will name then. After a restart, every device that has not signed
+  in since shares one lockout count (SD-051), so someone guessing in the
+  network can delay signing in; from outside, SD-059's residual risk
+  applies.
+- **Residual risk of no fixed longest lifetime:** a session once obtained
+  (a lost or shared phone, a browser left signed in, a cookie read off the
+  unencrypted home network until HTTPS) stays valid as long as it is used
+  at least every 12 hours. Changing the password ends every session at
+  once; a "sign out all devices" button can come later (`Auth::logoutAll`
+  exists). OWASP ASVS 4.0.3 V3.3.2 asks for signing in again after 30 days
+  even while in use; whether EN 18031-1 accepts a session without an upper
+  limit while in use is a question for `regulatorik` in the product
+  repository.
+- When the way from outside comes (SD-059, SD-062), its renewal follows
+  the shorter lifetime chosen for outside, not the home network's.
+- Not chosen: a Stop without a session (any device or malware in the home
+  network could keep the system stopped, so plants get no water, and
+  EN 18031-1 would need a documented reason for a function without access
+  control, a question for `regulatorik` in the product repository); a
+  cookie that ends 12 hours after signing in whatever the use (a phone on
+  the wall loses its session while still showing live values); a session
+  kept for a fixed 30 days on a device (signing in again each month, and a
+  lost phone stays signed in that long).
+
 ---
 
 ## Drafts (waiting for "entschieden")

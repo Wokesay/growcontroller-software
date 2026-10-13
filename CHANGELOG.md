@@ -96,6 +96,14 @@ listed in every release under "Security".
   temperature sensor fails. The pH calibration on the board's input will
   refuse a probe whose zero point is more than 30 mV off and ask to clean
   or replace it; pH correction then waits for your confirmation.
+- **You stay signed in while you use the app** (SD-063): a page left
+  open, such as a phone on the wall, renews its sign-in every 10 minutes
+  and when it wakes up, so a Stop from it still works the next day.
+  Before, the browser dropped the sign-in 12 hours after signing in, even
+  while you used the app. A sign-in still ends after 12 hours without
+  use, when the hub restarts and when the password changes; a page left
+  open says so as soon as it next asks. A Stop from the app still needs a
+  signed-in session. More under Security.
 - **Plan: access from outside through a relay** (SD-062,
   `docs/ROADMAP.md` M6): if you switch on access from outside at setup or
   later, your ESP32-S3 connects out over its Wi-Fi to a relay. You scan a
@@ -272,6 +280,19 @@ session and "Stop". No GHSA or CVE is issued.
   wait nor one before the first password is.
 
 Hardening, without a vulnerability behind it:
+
+- **Sessions last while they are in use** (SD-063): the browser kept the
+  sign-in cookie 12 hours from signing in, a fixed upper limit even for a
+  page in use; now a page in use renews it (`GET /auth/session` sends it
+  again) and there is no fixed longest lifetime. A session still ends
+  after 12 hours without a request, on a restart and on a password change.
+  Residual risk: a session once obtained (a lost or shared phone, a
+  browser left signed in, a cookie read off the unencrypted home network
+  until HTTPS) stays valid as long as it is used at least every 12 hours;
+  changing the password ends every session at once.
+- **A 17th sign-in no longer signs out a device by chance:** with 16
+  sessions, it ended one by the order of the keys, possibly the phone on
+  the wall; now it ends the one used longest ago (SD-063).
 
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator

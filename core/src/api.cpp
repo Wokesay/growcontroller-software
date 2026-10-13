@@ -53,6 +53,8 @@ Epoch qnum(const ApiRequest& r, const char* k, Epoch def) {
 std::string sessionCookie(const std::string& token, int maxAge) {
   return "gc_session=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" + std::to_string(maxAge);
 }
+// The browser keeps the cookie as long as the hub keeps an unused session (SD-063)
+constexpr int kCookieMaxAgeS = static_cast<int>(Auth::kSessionIdle / kSecond);
 
 }  // namespace
 
@@ -128,7 +130,10 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("GET", {"auth", "session"})) {
     bool ok = authorized(req);
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
-    return jsonResp(200, {{"authenticated", ok}, {"hasPassword", hub_.auth().hasPassword()}});
+    ApiResponse r = jsonResp(200, {{"authenticated", ok}, {"hasPassword", hub_.auth().hasPassword()}});
+    // A page left open asks now and then: its cookie lasts as long as the session is in use (SD-063)
+    if (ok) r.headers.emplace_back("Set-Cookie", sessionCookie(req.token, kCookieMaxAgeS));
+    return r;
   }
   if (is("POST", {"auth", "setup"})) {
     // Pflichtpasswort bei der Ersteinrichtung; danach nur noch mit Anmeldung änderbar.
@@ -149,7 +154,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err, req.client);
     ApiResponse r = jsonResp(200, {{"ok", true}});
-    if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
+    if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS));
     return r;
   }
   if (is("POST", {"auth", "login"})) {
@@ -164,7 +169,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     }
     hub_.logEvent("auth", "info", say("ev.auth.signed_in"));
     ApiResponse r = jsonResp(200, {{"ok", true}});
-    r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, 12 * 3600));
+    r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS));
     return r;
   }
   if (is("POST", {"auth", "logout"})) {
