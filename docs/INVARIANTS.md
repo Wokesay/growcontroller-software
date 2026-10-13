@@ -1,6 +1,6 @@
 # Domain rules (invariants): implementation and test evidence
 
-As of 2026-10-11. These are the domain rules documented in
+As of 2026-10-13. These are the domain rules documented in
 [`RATIONALE.md`](RATIONALE.md), grouped by module (M1–M15), with their
 implementation and test evidence. "Rationale" cites the RAT ID;
 "proposal by <agent>" marks a rule that came from a review; R1–R8 are the
@@ -39,7 +39,8 @@ dedicated test or with a deviation · **○** open.
 | Deadline per run: without feedback, off and counted as run | proposal by `reviewer` | ✓ | `Doser::tick` · test_scenarios "Szenario: Dosierblock antwortet im Lauf nicht", "Kappe im Lauf abgezogen" |
 | Fixed limits in code, configuration only tightens them | R7 | ✓ | `Limits::bounded`, `validateConfig` · test_catalog_config, test_api "Import" |
 | Actual run time from the dosing block, not the requested one | RAT-070 | ◐ | `RunStatus::actualMs`, booking per run |
-| Hardware time limit above the longest run (SW 60 s / HW 90 s) | RAT-007, RAT-018 | ◐ | gateway 60 s; dosing-block twin 90 s. In hardware: open |
+| Hardware time limit above the longest run (SW 60 s / HW 90 s) | RAT-007, RAT-018 | ◐ | gateway 60 s; the dosing-block twin refuses runs over 90 s. Board v0.1 has no time limit in hardware (PD-160): the board watchdog cuts off on a hang (#94); the per-run cap and the safety component's limits run in the same firmware (SD-045, SD-066; row below, open) |
+| Board v0.1: per pump at most 60 s per run, a ceiling per job, a budget at the 100 % rate and a minimum pause, each tested on its own, in the safety component; budget and pause survive a restart, a Stop and a clock step; sign of life only from it | SD-045, SD-066 | ○ | open: M1 (SD-045); the limits in SD-066 step 4 |
 | One channel at a time | PD-010, proposal by `firmware` | ◐ | gateway and twin refuse |
 
 ## M3 Calibration

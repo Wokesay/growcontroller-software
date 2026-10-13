@@ -1959,6 +1959,237 @@ needs the whole repository.
   second way to publish, to be reviewed by `security`); the whole test
   only after the tag.
 
+
+## SD-066: Product requirement (from PD-187 to PD-190): one dosing pump type with speed stages, feedback and an ID chip
+
+Recorded on 2026-10-13 from #132 (SD-029). The project owner decided in
+the software session to plan it now and build it after 0.1.0-proto.5 as
+part of M1, simulator first. `domain` checked the requirement against
+`RATIONALE.md` and `INVARIANTS.md`. The issue holds the full behaviour.
+This entry says how the software fits it to the existing rules. Where a
+point reads a product decision, it is the software's proposal until the
+product side answers the question named with it (Q1 to Q16, below).
+
+- **The requirement in short:** one 12 V peristaltic pump type with a
+  built-in driver, a speed signal and speed feedback as pulses, about
+  20:1 (the first candidate about 10:1), doses from about 0.5 ml to 4 L
+  and the shortest dose about 2.5 s; 10 pump ports; an ID chip in each
+  module with identity, calibration, product and tubing counter; the
+  module sits on the nutrient container; third-party 12 V pumps run
+  on/off at full speed without feedback or chip. Booking stays as PD-147
+  says: a fixed end, booked before the start, an interrupted run counts
+  as run; the feedback only checks.
+- **A long dose is a job of short runs** (proposed until Q4 is answered).
+  "Up to about 20 min" applies to a dose as a job. Each run keeps its
+  fixed end of at most 60 s (`kHardMaxRunS`) and the pause after it, as
+  mixing already does (RAT-055). If control stops sequencing a dose
+  midway (it loses the job's state, or a stop command does not reach the
+  output), the run's fixed end stops the running run and no further run
+  starts: at most one run goes in (about 200 ml at 200 ml/min), not the
+  whole dose. If the whole firmware hangs, the board watchdog cuts the
+  pumps (#94). A dropped connection to the app is not such a case: the
+  job runs to its end (PD-161). All of this holds only while the per-run
+  cap works, and on board v0.1 it runs in the same firmware (PD-160): a
+  firmware that keeps running but does not end a run, or an output stage
+  stuck on, has no cut-off in hardware. Against a stuck output stage the
+  new pump has a second stop path, the speed signal at standstill (to be
+  confirmed on samples, as some drivers run at full speed without a
+  signal), and the current check below switches the group off; a
+  third-party pump has only the current check. Control rounds keep their
+  6 partial runs (RAT-055); a slower stage means more runs. Not chosen:
+  one run of up to 20 min, which would change RAT-007, RAT-018 and
+  RAT-055 and could put 4 L into the tank on one failed end.
+- **Two separate bookings** (proposed until Q5 is answered). The safety
+  budget is booked at the 100 % rate times the planned run time before
+  the run starts, and an interrupted run counts in full (PD-147). Stock,
+  consumption and mix progress are booked at the stage's rate times the
+  actual run time (RAT-040, RAT-070). Before the first run, the worst
+  case of the whole job (every run and every part of a pair at the
+  100 % rate) must fit the budget, so the budget never cuts a pair after
+  part A (RAT-054). Budget and minimum pause survive a restart, a Stop
+  and a clock step (SD-028). Not chosen: one booking for both, which
+  would take up to the stage ratio (10–20 times) too much off the stock,
+  or break the catch-up of a pair (RAT-054).
+- **Saving bookings during a long job** (proposed until Q16 is
+  answered). SD-045 says a write waits for the job's end, because a
+  flash write can hold up the sign of life while a pump runs. A job of
+  20 min would then save nothing until its end. Proposed: each run's
+  booking is saved in the pause before it, with no pump running, so a
+  restart mid-job knows what went in (RAT-003, RAT-054). This would
+  change SD-045 for this case. If the answer is no: the whole job's
+  worst case is booked once before the first run, the result is saved at
+  the job's end, and after a restart mid-job the progress and the stock
+  are unknown (RAT-015): reported, the stock left for the user to
+  confirm, and neither resumed nor caught up without the user.
+- **A slow stage only within the dose's upper bound.** The worst case is
+  the duration times the 100 % rate. A lower stage only lasts longer, so
+  if the highest stage that reaches the minimum run time fails, every
+  stage fails: the dose is refused with the reason, never dosed outside
+  the bound. Proposed bounds (Q1): for pH the RAT-050 cap, which keeps
+  own pH doses within 0.3 pH, the reason they stay unannounced (RAT-042);
+  for an EC round the largest EC step (RAT-056), shared across the parts;
+  for a hand dose the hand-dose cap (RAT-039). **A mix part has no bound
+  today** apart from 200 runs per step: if its bound were the planned
+  amount, no slow stage could ever be used for a mix. Its bound is open
+  (Q1), for example the planned amount plus one EC step (RAT-056) or the
+  alarm margin (RAT-033).
+- **What the bound means for small tanks,** at a 100 % rate of about
+  200 ml/min and the start effect for pH (RAT-050):
+  - Automatic pH dosing is refused below about 56 L with a minimum run
+    time of 1.0 s, and below about 139 L with 2.5 s, the shortest dose
+    #132 names. pH control cannot learn a weaker effect without dosing,
+    so below that size it never starts. Today's pumps (42–53 ml/min)
+    work from about 12–15 L. What decides it is the 100 % rate of the
+    module, not the number of stages (Q2).
+  - With 2.5 s, a hand dose at the default cap of 5 ml is never possible
+    (5 ml at full speed lasts 1.5 s; any slower stage has a worst case
+    of at least 8.3 ml), an EC round with three parts fails below about
+    7–10 L, and a 5 L mix that needs 5 ml of a part is refused unless
+    the mix bound allows more. A default cap above 5 ml would change
+    RAT-039 (product repository).
+- **Calibration per stage.** Until Q6 is answered, only calibrated
+  stages are used, and never beyond the support points (#132). Without
+  a rate at 100 % there is no dose at any stage (R5, RAT-015, PD-015).
+  Today's single calibration value counts as one stage at 100 %, so
+  existing setups keep working. Setup calibrates only the stages the
+  tank size needs; when one pump of a pair is recalibrated, it offers the
+  partner too (RAT-054). Runs before any calibration (prime, calibration
+  run, test run) are capped by a ceiling per pump type in code; a value
+  from the chip can only tighten it (R7, Q7).
+- **The dose ends by the timer** (PD-147); ending it by revolution count
+  is not decided (Q13). The feedback checks every run. #132 asks: no
+  pulses stop the dose (whether it also latches is Q11), clearly too fast
+  stops the dose, any other deviation is reported. `domain` adds: pulses
+  at speed 0 or clearly too fast latch the pump until the user
+  acknowledges it (RAT-062); after any deviation the round counts as not
+  clean (RAT-057); a run stopped for no pulses counts in full for the
+  budget, and stock and progress take its actual time, as for any
+  interrupted run (RAT-070). The volume from revolutions is compared
+  with the stock booking and only reported. These checks get rows in
+  `INVARIANTS.md` with step 5, citing this entry.
+- **Speed signal at standstill** at boot, on Stop, on an internal error
+  and before every release (R6, RAT-007, RAT-036, PD-077); the firmware
+  sets it before it switches 12 V on. If the board watchdog trips (#94),
+  the firmware may be hung: the board cuts 12 V and, as #132 says, sets
+  the speed signal to standstill itself.
+- **Prime** is capped in ml at the 100 % rate (hose volume plus a
+  margin) instead of the 20 s today, which is 67 ml at 200 ml/min. It is
+  not consumption only where it goes into a cup or fills the tubing
+  (RAT-040, RAT-070). Whether the outlet points into the tank, and
+  whether prime reduces the stock, is Q9; whatever goes into the tank is
+  a dose and stays within that dose's bound (RAT-039, RAT-050).
+- **Stock.** A stock driven below 0 is reported (RAT-015); today the hub
+  stops it at 0 without a report, which step 7 changes. A short part of a
+  pair blocks the whole mix (RAT-054). Whether a short stock warns or
+  blocks, and for which jobs, is Q10.
+- **Current check.** #94 measures the current of the pump group. Current
+  while no pump is switched on switches the group off and latches it
+  until the user acknowledges it (RAT-062), for every pump type.
+- **Third-party pumps** get a device ID of their own per port, so roles
+  still bind to a device ID, never to a port. Their budget uses the
+  calibrated rate times a margin (Q8). Two residual risks for setup to
+  name: a third-party pump moved to another port is driven for that
+  port's role and doses its own liquid in its place, which nothing can
+  detect; and the chip stores the product set at setup but cannot tell
+  which container the module sits on, so a nutrient module put on the
+  pH− container doses acid at the recipe's ml/L. Step 7 asks for the
+  liquid at each container change.
+- **Three-way valve** (#50: it waits while dosing or filling runs).
+  Proposed (Q15): it may move in a pause between runs, and the pause is
+  lengthened to the valve's travel time plus twice the 0.2 s start offset
+  of #50. Otherwise watering waits for the whole mix, about 35–45 min for
+  1,000 L at 200 ml/min, depending on the recipe. Watering would then
+  draw from a tank in the middle of a mix (part A without B, not yet
+  mixed in, before the pH step), which Q15 asks about too.
+- **Settle time in large tanks.** #132 covers mixes up to 1,000 L. In
+  the simulator's mixing model a 1,000 L tank is only about 17 % mixed
+  after the 4 min settle time, so an EC correction would overdose, which
+  cannot be undone (RAT-012). Until a settle time from volume and
+  circulation is measured (RAT-052, product repository), mixing to the
+  target and EC and pH rounds wait at least the model's time to
+  tolerance at that volume with RAT-058's margin, marked as an
+  assumption; configuration can only lengthen it (R7). The expected
+  duration includes all waits.
+- **RAT-007 and RAT-018** name a 90 s cut-off in the dosing block. Board
+  v0.1 has none (PD-160, SD-045). Both entries say so now; the
+  simulator's 90 s check stays for the earlier dosing block only.
+- **Built in steps** (M1, after proto.5, each its own PR with tests):
+  1. Calibration table and stage picker as pure functions in the core,
+     backwards compatible.
+  2. Simulator: speed and pulses on the bus, the board v0.1 pump twin
+     with 10 ports and its faults; existing scenarios stay on today's
+     pump profile. The new bus method for the speed signal joins the R1
+     check in `tools/arch_check.sh`, with a test case.
+  3. Planning uses the picker: mix, EC and pH rounds, hand doses, and an
+     expected duration that includes pauses, waits and settle time.
+  4. Safety limits in a core module that only decides: `Actuators` calls
+     it, and it never calls the bus (R1). It holds 60 s per run; a
+     ceiling per job, counted in pumping time, from the dose's upper
+     bound at the 100 % rate and never below the longest valid job
+     (RAT-018), as the job's fixed end (SD-045); the budget at the 100 %
+     rate; the minimum pause; and the stock at the actual time.
+  5. Feedback checks, latches and the speed signal at standstill.
+  6. ID chip and third-party pumps with the current check.
+  7. Container change: prime in ml, remaining volume, liquid check,
+     tubing counter with the reminder to both pumps of a pair, stock
+     below 0 reported.
+  8. App: stage table from the tank size, expected duration, "Which pump
+     is running?", with `ux`.
+
+  Steps 3 to 7 change when doses are refused, the gateway or protective
+  cut-offs: they need `security` and the project owner's "mergen"
+  (SD-033).
+- **Simulator numbers** for the new pump will be listed as assumptions in
+  `SIMULATOR.md` with step 2, until the samples are measured: the 100 %
+  rate itself (about 200 ml/min, derived from #132), the stage table,
+  rate and spread per pump and stage, start and stop volume, minimum
+  stable speed, pulses per revolution, currents, detection times and
+  tube wear. A 100 % rate of 200 ml/min would make the demo tank
+  (31–40 L) unable to dose pH, which is why existing scenarios keep
+  today's profile.
+- **Open for the product side** (taken there by the project owner,
+  SD-029):
+  - Q1 What is a dose's upper bound per purpose, and for a mix part?
+    Proposed: the existing caps, and for a mix part one of the options
+    above.
+  - Q2 Does pH− (and later pH+) use the same pump? Then automatic pH
+    needs at least about 56 L or 139 L. Proposed: a low-flow module
+    (10–20 ml/min, usable from about 3–6 L at 1.0 s, 7–14 L at 2.5 s).
+  - Q3 Minimum run time of the new pump: 1.0 s or 2.5 s? With 2.5 s the
+    default hand-dose cap needs to change (RAT-039).
+  - Q4 Does "up to about 20 min" mean per run or per job? Proposed: per
+    job.
+  - Q5 Does PD-147's booking cover stock and mix progress too, or only
+    the safety budget? Proposed: only the budget.
+  - Q6 Calibration runs last 10–60 s, doses as little as 1–3.5 s, where
+    start and stop volume dominate. How are short doses calibrated? May
+    stages between support points be filled in, for example from ml per
+    revolution?
+  - Q7 Which ceiling per type applies before any calibration? It lives
+    in code; a value from the chip can only tighten it.
+  - Q8 Budget values and time window: from the tank capacity? What
+    margin for third-party pumps?
+  - Q9 Where does the outlet point during prime and the test run, tank
+    or cup? Does prime reduce the stock?
+  - Q10 Short stock: warn or block? For mixes only, or also EC and pH
+    rounds and hand doses?
+  - Q11 Does "no pulses" latch the pump until acknowledged?
+  - Q12 Tubing counter: what it counts, at which threshold, and stored
+    on the chip (write wear) or on the board?
+  - Q13 May a dose end by revolution count? That would change PD-147.
+  - Q14 Mixing outside the tank, for example in 5 L buckets (open in
+    SD-057).
+  - Q15 May the three-way valve move in a pause between runs, and may
+    watering draw from a tank in the middle of a mix?
+  - Q16 May a booking be saved in the pause between two runs of a job,
+    which changes SD-045's "the write waits for the job's end"?
+- **RAT entries the product side may change later,** depending on the
+  answers: RAT-039 (the hand-dose default, if Q3 is 2.5 s), RAT-040 and
+  RAT-070 (if prime reduces the stock, Q9), RAT-055 (if Q4 is per run),
+  RAT-052 (once settle times are measured). No RAT rule changes with
+  this entry; RAT-007 and RAT-018 only say now what PD-160 decided
+  instead of "still open".
+
 ---
 
 ## Drafts (waiting for "entschieden")
