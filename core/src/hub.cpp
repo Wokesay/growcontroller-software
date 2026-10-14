@@ -516,6 +516,8 @@ void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
   if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
   if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
   for (auto& [role, until] : rt_.jumpLocks) until = std::min(until + jump, epoch + kJumpHoldS);
+  for (auto& [latch, at] : rt_.selfReleased)
+    if (plausibleEpoch(at)) at = std::min(at + jump, epoch);  // never in the future; an implausible one counts as now (SD-067)
   ec_.shiftClock(jump);
   ph_.shiftClock(jump);
   refill_.shiftClock(jump);
@@ -572,7 +574,9 @@ void Hub::tickImpl() {
     }
 
   Ctx c = ctx();
+  const auto latchesBefore = rt_.latches;  // a latch set or released in this tick is saved at once (RAT-063)
   act_.enforce(c);
+  if (rt_.latches != latchesBefore) stateDirty_ = true;  // also when a later step of the tick throws
   for (auto it = testOff_.begin(); it != testOff_.end();) {
     if (now < it->second) {
       ++it;
@@ -631,6 +635,7 @@ void Hub::tickImpl() {
     for (const auto& [id, p] : pumps_) in.pumpFlow[id] = p.flowMlPerMin;
     watch_ = evaluate(in);  // Watchdog liest nur, er bekommt keine Aktoren
   }
+  if (rt_.latches != latchesBefore) stateDirty_ = true;
   if (stateDirty_ || epoch - lastStateSave_ >= 60) {
     lastStateSave_ = epoch;
     saveState();
@@ -1222,10 +1227,21 @@ Result Hub::deleteCanister(const std::string& id) {
       if (s.canister == id) return Result::fail(409, "canister.used", "Wird im Rezept „" + r.name + "“ verwendet");
   auto it = std::find_if(cfg_.canisters.begin(), cfg_.canisters.end(), [&](const CanisterCfg& k) { return k.id == id; });
   if (it == cfg_.canisters.end()) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  std::string name = it->name;
+  const std::string name = it->name, pair = it->pair;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
-  saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  // A pair needs two: the one left behind is no longer paired, otherwise every later
+  // check of the whole configuration refuses it (#147)
+  std::vector<CanisterCfg*> rest;
+  if (!pair.empty())
+    for (auto& k : cfg_.canisters)
+      if (k.pair == pair) rest.push_back(&k);
+  if (rest.size() == 1) {
+    rest[0]->pair.clear();
+    saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", rest[0]->name}}));
+  } else {
+    saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  }
   return Result::ok();
 }
 

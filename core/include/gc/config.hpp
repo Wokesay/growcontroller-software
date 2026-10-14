@@ -217,6 +217,7 @@ struct RuntimeState {
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
   double ecEffect = kNaN;  // gelernte Wirkung Rezept (mS/cm je ml/L Summe)
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund
+  std::map<std::string, Epoch> selfReleased;  // latch → when it last released itself (SD-022)
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis
   std::map<std::string, double> manual;    // Handmessungen, z. B. "ph"
   Epoch manualAt = 0;

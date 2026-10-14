@@ -136,6 +136,7 @@ nutrient solution". This comes straight from the resolver.
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | event "Cap … is back. Is it still on part A?" |
+| Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 
 ## 6. Notifications (concept, not implemented yet)
 
@@ -168,3 +169,23 @@ Rules:
   grey.
 - Mobile first: bottom bar, large buttons, numbers in the format of the
   chosen language (decimal point in English, comma in German; PD-035).
+  Durations and ages join the number and its unit with a no-break space
+  ("45 s", "vor 3 min"; #106), so they never break apart: the ages the app
+  writes and every text of the app and the hub with seconds, minutes, hours
+  or days (checked by `tools/i18n_keys.test.mjs`). Other numbers with units
+  (ml, ml/L) do not yet (#148).
+- Dialogs (`Modal`) take the focus when they open: the dialog itself, so a
+  screen reader names it by its title and a phone opens no keyboard; Tab
+  and Shift+Tab stay inside, and bring the focus back in when it has
+  fallen out; on closing (Escape, the close button or an action) the focus
+  returns to what opened it, if it is known and still there, else to a
+  place the dialog names (after removing a bottle: "+ Bottle"); a dialog
+  opened from one that closed ("Edit recipe" from "Bottle still in use")
+  names none yet (#148); the title is the dialog's accessible name (#105).
+- A step that cannot be undone should ask first, in a confirmation (`Modal`
+  with a message, role `alertdialog`): the title asks the question, the
+  message names the thing and what follows and is read out with the title,
+  and the button that does it says the verb ("Remove"), next to "Cancel".
+  What the hub would refuse is said up front, with the way out, instead of
+  offered. Removing a bottle (#120) and mixing a tank again do; removing a
+  recipe or a device still acts at once (#148).

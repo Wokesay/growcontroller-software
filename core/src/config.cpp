@@ -522,6 +522,7 @@ void to_json(json& j, const RuntimeState& s) {
        {"phEffect", numOrNull(s.phEffect)},
        {"ecEffect", numOrNull(s.ecEffect)},
        {"latches", s.latches},
+       {"selfReleased", s.selfReleased},
        {"jumpLocks", s.jumpLocks},
        {"manual", s.manual},
        {"manualAt", s.manualAt},
@@ -541,6 +542,18 @@ RuntimeState runtimeFromJson(const json& j) {
   s.phEffect = numOrNaN(j, "phEffect");
   s.ecEffect = numOrNaN(j, "ecEffect");
   if (j.contains("latches")) s.latches = j["latches"].get<std::map<std::string, json>>();
+  // Read as strictly as the latches: a damaged entry makes the whole state damaged (RAT-063)
+  // A damaged or out-of-range time reads as implausible: the next latch holds, and the guard
+  // counts from when the clock is known (SD-067); the other latches are kept
+  if (j.contains("selfReleased")) {
+    const json& sr = j["selfReleased"];
+    if (!sr.is_object()) s.selfReleased["circulation.dry"] = 0;
+    else
+      for (const auto& [k, v] : sr.items()) {
+        const double at = v.is_number() ? v.get<double>() : kNaN;
+        s.selfReleased[k] = isNum(at) && at >= 0 && at <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(at) : 0;
+      }
+  }
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});

@@ -79,6 +79,10 @@ class Actuators {
   // Je Takt: Trockenlauf, Notgrenze, Zeitlimits; schaltet nur AUS, nie EIN.
   void enforce(const Ctx& c);
 
+  // The circulation pump's dry-run latch stands and will release itself (SD-067): the
+  // controller shows it as blocked, not as needing a person.
+  bool dryLatchReleasesItself(const Ctx& c) const;
+
  private:
   bool sw(const std::string& dev, int channel, bool on, std::string& err);
   std::optional<bool> swState(const std::string& dev, int channel) const;
@@ -88,11 +92,14 @@ class Actuators {
   // Scheitert das Ausschalten, lautet die Meldung „Aus nicht bestätigt“;
   // enforce versucht es weiter, solange Grund oder Rastung bestehen, und
   // meldet „Aus bestätigt“, sobald der Ausgang aus ist.
+  // failedText, if given, is the reason in "Off not confirmed" (a text that promises no release).
   bool cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
-           const std::string& severity, const Msg& title, const Msg& text);
+           const std::string& severity, const Msg& title, const Msg& text, const Msg* failedText = nullptr);
   // Grund wieder scharf (neue Rastung) bzw. als schon gemeldet vermerken.
   void rearm(const std::string& role, const std::string& key);
   void noteReported(const std::string& role, const std::string& key);
+  // A dry-run latch caused only by a low level releases itself once the tank is refilled (SD-022).
+  void releaseDryLatch(const Ctx& c);
 
   IBus& bus_;
   INetBus* net_ = nullptr;
@@ -110,6 +117,8 @@ class Actuators {
   std::string runningPump_;
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit
+  std::optional<Ms> dryBackSince_;     // level back above the release level since (SD-022)
+  bool dryOffSeen_ = false;            // the latched pump has been read as off (SD-067)
 };
 
 // Ein Dosierauftrag = ein Kanister, in Teilläufe zerlegt. Gebucht wird je

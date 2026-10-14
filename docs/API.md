@@ -10,7 +10,7 @@ UI can do, an integration can do as well.
   whether the first password needs a setup code (`setupCode`, #79).
 - `POST /auth/setup {password, code}` sets the initial password, exactly
   once (otherwise 409). Where the platform armed a setup code (the Home
-  Assistant app prints it to its log, SD-067), `code` from the JSON body
+  Assistant app prints it to its log, SD-068), `code` from the JSON body
   must match it, in any case and with or without dashes, or the answer is
   403 `auth.code`, the same for a missing and a wrong code; wrong codes
   lock nobody out and are logged at most once per 15 min. Then at least 8

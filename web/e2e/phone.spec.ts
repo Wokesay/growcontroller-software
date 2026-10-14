@@ -191,6 +191,15 @@ test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", as
   await expect(page.getByRole("dialog").locator("input").first()).toBeVisible();
   await check("bottle dialog");
   expect(await offScreen(page), "bottle dialog").toEqual([]);
+  // The question before removing a bottle, and the answer for one a recipe still uses (#120)
+  await page.keyboard.press("Escape");
+  await page.locator(".rtable tbody tr").filter({ hasText: "pH−" }).getByRole("button", { name: "„pH−“ entfernen" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Kanister entfernen?" })).toBeVisible();
+  expect(await offScreen(page), "remove dialog").toEqual([]);
+  await page.keyboard.press("Escape");
+  await page.locator(".rtable tbody tr").filter({ hasText: "Teil A" }).getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Kanister wird noch gebraucht" })).toBeVisible();
+  expect(await offScreen(page), "bottle in use dialog").toEqual([]);
 });
 
 // A device that sends nothing is one problem (#107); it names its sign of

@@ -59,7 +59,7 @@ the add-on store (SD-034):
 4. **Set the password:** the page first asks for the setup code, in the
    newest line "Setup code for the first password: …" of the app's **Log**
    tab (Settings → Apps → growcontroller → Log), so nobody else in the
-   network can set it first (#79, SD-067). Then choose the sensors in
+   network can set it first (#79, SD-068). Then choose the sensors in
    Devices › Assignment (step 6 below).
 
 Nothing is configured and no token is made: `gc_ha_server --app` reaches
@@ -590,7 +590,7 @@ time is no value.
   password travels in the clear there. The first password needs the
   one-time setup code the app prints to its log, which only Home
   Assistant's administrators read, so nobody else in the network can set
-  it first (#79, SD-067). Clearing the port hides the web app from the
+  it first (#79, SD-068). Clearing the port hides the web app from the
   network, not from Home Assistant's internal network. Home Assistant's
   ingress (its own login and HTTPS) would need the web app to work below a
   path; that is a follow-up.

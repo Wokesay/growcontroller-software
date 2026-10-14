@@ -72,6 +72,19 @@ listed in every release under "Security".
   it is published. The app's documentation in Home Assistant and the
   release notes ask you to back up the app before updating; if the
   published app fails, a fixing release follows at once.
+- **The circulation pump's dry-run lock releases itself once the tank is
+  refilled** (SD-022, SD-067, #27). A lock set because the level fell below
+  the minimum while the pump ran now lifts by itself when a valid level has
+  stayed at or above the minimum plus a margin (the larger of 0.5 L and
+  2 % of the tank) for 5 minutes, and the event log says so. Maintenance
+  mode pauses this; the 5 minutes start when it ends. It still holds until
+  you tap "Release", and says why, if switching off was not confirmed or
+  the pump ran again after it was off, if the level was low again within
+  an hour of the last self-release, if the level jumped while locked, and
+  for a lock saved by an older version. Filling by hand? Start maintenance
+  mode first, or the jump holds the lock.
+  The inlet's emergency cut-off is unchanged. A lock set or released is
+  now saved at once.
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.
@@ -192,6 +205,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Removing one bottle of a pair no longer blocks every later save**
+  (#147): the other bottle kept its pair label on its own, and the hub
+  then refused saving a recipe, the tank, a zone or a function, binding a
+  role, importing a configuration or starting a grow ("Paar AB hat nur
+  einen Kanister") until the label was cleared by hand. Now the bottle left
+  behind is no longer paired; the removal dialog and the event say so. If
+  a bottle is already left with a pair label of its own, clear its "Pair"
+  field under Recipes › Bottles.
 - **Home Assistant: only plain numbers are values** (#71): a state such as
   `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
   value instead of a guess, and the device says why ("is no plain
@@ -199,6 +220,26 @@ listed in every release under "Security".
   instead of guessing it from what a device measures. Text from Home
   Assistant in names and faults is checked to be well-formed UTF-8 by the
   adapter itself, too.
+- **Removing a bottle asks first** (#120): under Recipes › Bottles the
+  remove button took a bottle away at once, with its stock, and on a phone
+  it sits next to "Edit". Now "Remove bottle?" ("Kanister entfernen?")
+  names it and what follows (its stock goes; its pump, if it has one,
+  becomes free and stays calibrated if it was); only "Remove" removes it.
+  A bottle a recipe still uses says "Bottle still in use", names the
+  recipes and how to take it out (both bottles of a pair, since the hub
+  refuses half a pair) and, when exactly one recipe uses it, offers "Edit
+  recipe" (with several: "Got it"), instead of offering a removal the hub
+  refuses.
+- **Dialogs and the keyboard** (#105): a dialog now takes the focus when it
+  opens, Tab stays inside it (also a folded list's heading, and back in
+  when the focus has fallen out), the focus returns to the button that
+  opened it when that is known (after removing a bottle: to "+ Bottle"),
+  and a screen reader names it by its title; a confirmation (removing a
+  bottle, mixing a tank again) reads out its consequence.
+- **Durations and ages stay on one line** (#106): "vor 45 s" / "45 s ago"
+  and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
+  no longer break between the number and the unit; other numbers with
+  units (ml, ml/L) follow (#148).
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so
@@ -331,7 +372,7 @@ AMD's CVE-2025-62626.
   "Stop". Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
 - **Nobody else can set the Home Assistant app's first password** (#79,
-  SD-067): until the owner set it, any device in the home network could
+  SD-068): until the owner set it, any device in the home network could
   set it first, see the names of Home Assistant's sensors and the values of
   those it could pick, and lock the owner out until the app was
   reinstalled. The app now prints a one-time setup code to its log, which
@@ -351,6 +392,21 @@ AMD's CVE-2025-62626.
   aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
   microcode or BIOS fix. Nothing to do after the update: the restart ends
   every old session, and salts need not be secret.
+
+A protective cut-off relaxed on purpose:
+
+- **A protective lock that releases itself, deliberately** (SD-067, #27):
+  the circulation pump's dry-run lock, when caused by a low level, now
+  lifts by itself after the tank is refilled (see Changed). This relaxes a
+  protective cut-off on purpose, as SD-022 asks. It stays locked until a
+  person releases it if switching off failed or the pump ran again, if the level was low again
+  within an hour of the last self-release, if the level jumped while
+  locked, and for a lock saved by an older version or with anything else
+  stored with it; the inlet, EC and pH locks never release themselves.
+  Residual risk: a level sensor that reads a refilled tank that is not
+  can release the lock while the tank is still low; a jump of more than
+  20 L in 5 minutes holds it, a slow drift, a small tank, a wrong reading
+  during a refill or right after a restart do not (SD-067).
 
 Hardening, without a vulnerability behind it:
 

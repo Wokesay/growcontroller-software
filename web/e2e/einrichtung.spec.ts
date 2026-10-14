@@ -485,6 +485,13 @@ test("Home Assistant: a sensor the hub does not suggest can be chosen from the o
   await expect(others.getByRole("button", { name: /Selbstbau Feuchte/ })).toBeEnabled();
   const not = page.getByTestId("ha-others-not");
   await expect(not.locator("summary")).toHaveText("Passt nicht zu Luftfeuchte (3) – mit Grund");
+  // Tab reaches the folded list inside the dialog (#105)
+  let reached = false;
+  for (let i = 0; i < 30 && !reached; i++) {
+    await page.keyboard.press("Tab");
+    reached = await not.locator("summary").evaluate((el) => el === document.activeElement);
+  }
+  expect(reached).toBe(true);
   await expect(not.getByRole("button", { name: /Handy Akku/ })).not.toBeVisible();
   await not.locator("summary").click();
   await expect(not.getByRole("button", { name: /Handy Akku/ })).toBeDisabled();
@@ -810,6 +817,7 @@ test("Home Assistant: a sensor gets a sign of life; its age then counts from the
   await expect(row.locator(".age")).toHaveClass(/age-fresh/);
   ageMs = 45000;
   await expect(row.locator(".age")).toHaveText("gemessen vor 45 s", { timeout: 10000 });
+  expect(await row.locator(".age").textContent()).toBe("gemessen vor 45\u00a0s");  // number and unit stay on one line (#106)
   await expect(row.locator(".age")).toHaveClass(/age-late/);
   await expect(row.locator(".age")).toHaveAttribute("title", "über 30 s alt");
   // In whole seconds rounded half up: 30.499 s is still green, 30.5 s is yellow, 60 s red

@@ -84,8 +84,11 @@ function GrowCard() {
               {g.phases.map((p, i) => (
                 <tr style={i === g.phase ? "font-weight:650" : ""}>
                   <td>{i === g.phase ? "▶" : ""}</td>
-                  <td>{p.name}</td>
-                  <td class="num">{tr("tank.days", { n: p.days })}</td>
+                  {/* The days under the name: a phone's width holds three columns, not four (#106) */}
+                  <td>
+                    {p.name}
+                    <div class="small muted">{tr("tank.days", { n: p.days })}</div>
+                  </td>
                   <td class="small muted">{Object.entries(p.params).map(([k, v]) => (k === "recipe" ? tr("tank.paramRecipe", { name: recipes.value.find((r) => r.id === v)?.name ?? v }) : `${k === "ph_target" ? "pH" : k === "ec_target" ? "EC" : k} ${typeof v === "number" ? num(v, 2) : v}`)).join(" · ")}</td>
                 </tr>
               ))}
