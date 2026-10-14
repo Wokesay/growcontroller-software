@@ -360,8 +360,9 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
                fmt(cap->plausMax, 1),
            {{"value", *assessed}, {"min", cap->plausMin}, {"max", cap->plausMax}});
     } else {
-      // Sprungsperre: Änderung größer als die Schwelle innerhalb von 5 min ohne
-      // Erklärung durch eine eigene Gabe → gesperrt bis 15 min Ruhe.
+      // Jump lock: a change above the threshold within 5 min that no announced
+      // intervention explains (mix, hand dose, EC round, inlet, calibration,
+      // maintenance; not an own pH dose, RAT-042) locks until 15 min of calm.
       if (s->ts != tr.lastTs) {
         tr.lastTs = s->ts;
         while (!tr.window.empty() && s->ts - tr.window.front().first > kJumpWindow) tr.window.pop_front();

@@ -76,7 +76,7 @@ class EcController {
 class PhController {
  public:
   void tick(const Ctx& c, ControlEnv& env);
-  void onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p);
+  void onDoseFinished(const Ctx& c, const DoseProgress& p);
   void reset() { phase_ = Phase::Idle; }
   const CtlStatus& status() const { return st_; }
   bool busy() const { return phase_ != Phase::Idle; }
