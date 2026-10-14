@@ -675,13 +675,21 @@ test("Recipes: taking a bottle out of its pair says the other is then no longer 
   const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
   await row("Teil A").getByTitle("Bearbeiten").click();
   const editor = page.getByRole("dialog", { name: "Kanister „Teil A“" });
-  await expect(editor.getByTestId("bottle-unpairs")).toHaveCount(0);
+  const save = editor.getByRole("button", { name: "Speichern" });
+  await expect(editor.locator("#bottle-unpairs")).toHaveCount(0);
   await editor.locator("input[name=canister-pair]").fill("");
-  await expect(editor.getByTestId("bottle-unpairs")).toHaveText("„Teil B“ ist danach ohne Paar.");
-  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor.locator("#bottle-unpairs")).toHaveText("Nach dem Speichern ist „Teil B“ ohne Paar.");
+  await expect(save).toHaveAccessibleDescription("Nach dem Speichern ist „Teil B“ ohne Paar.");
+  await save.click();
   await expect(editor).toHaveCount(0);
   await expect(row("Teil A")).not.toContainText("Paar AB");
   await expect(row("Teil B")).not.toContainText("Paar AB");
+  // A save the hub checks as a whole still works
+  const saved = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/tank", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    return r.status;
+  });
+  expect(saved).toBe(200);
 });
 
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {

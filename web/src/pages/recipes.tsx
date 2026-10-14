@@ -192,6 +192,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           </button>
           <Button
             variant="primary"
+            aria-describedby={unpairs ? "bottle-unpairs" : undefined}
             onClick={async () => {
               await post("/canisters", { id: p.can?.id, ...v, pair: v.kind === "nutrient" ? v.pair : "" });
               await refreshConfig();
@@ -238,11 +239,6 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" />
         </Field>
       </div>
-      {unpairs && (
-        <p class="small muted" role="status" data-testid="bottle-unpairs">
-          {t("recipes.removeUnpairs", { partner: unpairs.name })}
-        </p>
-      )}
       <div class="row">
         {COLORS.map((c) => (
           <button
@@ -252,6 +248,11 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           />
         ))}
       </div>
+      {unpairs && (
+        <p class="small muted" role="status" id="bottle-unpairs">
+          {t("recipes.editUnpairs", { partner: unpairs.name })}
+        </p>
+      )}
     </Modal>
   );
 }

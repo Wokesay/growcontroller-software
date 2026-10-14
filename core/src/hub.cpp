@@ -99,6 +99,25 @@ Result errors(const std::vector<Msg>& errs) {
   return {422, {{"error", {{"key", "validation"}, {"text", errs.empty() ? "" : errs.front().text}}}, {"errors", arr}}};
 }
 
+// A pair needs two: a bottle left alone with the label is no longer paired, otherwise every
+// later check of the whole configuration refuses it (#147, #152). Returns its name, or "".
+std::string unpairLone(Config& cfg, const std::string& pair) {
+  if (pair.empty()) return "";
+  std::vector<CanisterCfg*> rest;
+  for (auto& k : cfg.canisters)
+    if (k.pair == pair) rest.push_back(&k);
+  if (rest.size() != 1) return "";
+  rest[0]->pair.clear();
+  return rest[0]->name;
+}
+
+// The first bottle of a new pair may stand alone until its partner is added, and a recipe may
+// already hold it, so a pair can be built in any order (#152). A recipe left with half of a
+// pair is still refused.
+void allowLonePair(std::vector<Msg>& errs) {
+  errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single"; }), errs.end());
+}
+
 }  // namespace
 
 Hub::Hub(const Catalog& cat, IBus& bus, IStorage& storage, const IClock& clock, RandomFn rng)
@@ -1202,22 +1221,10 @@ Result Hub::putCanister(const json& j) {
   if (j.contains("color")) k->color = jstr(j, "color");
   if (j.contains("capacityMl")) k->capacityMl = j["capacityMl"].is_number() ? j["capacityMl"].get<double>() : kNaN;
   if (k->name.empty()) return Result::fail(422, "canister.name", "Name fehlt");
-  // A bottle that leaves its pair takes the label from a partner left alone, as removing it
-  // does, or every later check of the whole configuration refuses it (#147, #152)
-  std::string unpaired;
-  if (!oldPair.empty() && k->pair != oldPair) {
-    std::vector<CanisterCfg*> rest;
-    for (auto& x : next.canisters)
-      if (x.pair == oldPair) rest.push_back(&x);
-    if (rest.size() == 1) {
-      unpaired = rest[0]->name;
-      rest[0]->pair.clear();
-    }
-  }
+  // A bottle that leaves its pair takes the label from a partner left alone, as removing it does
+  const std::string unpaired = k->pair != oldPair ? unpairLone(next, oldPair) : "";
   auto errs = validateConfig(next, cat_);
-  // The first bottle of a new pair may stand alone until its partner is added. A recipe left
-  // with half a pair is refused (#152).
-  errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single"; }), errs.end());
+  allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
@@ -1239,18 +1246,9 @@ Result Hub::deleteCanister(const std::string& id) {
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
   stateDirty_ = true;  // the stock goes from the card too, or a new bottle of the same name would get it (#152)
-  // A pair needs two: the one left behind is no longer paired, otherwise every later
-  // check of the whole configuration refuses it (#147)
-  std::vector<CanisterCfg*> rest;
-  if (!pair.empty())
-    for (auto& k : cfg_.canisters)
-      if (k.pair == pair) rest.push_back(&k);
-  if (rest.size() == 1) {
-    rest[0]->pair.clear();
-    saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", rest[0]->name}}));
-  } else {
-    saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
-  }
+  const std::string partner = unpairLone(cfg_, pair);
+  if (!partner.empty()) saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", partner}}));
+  else saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
   return Result::ok();
 }
 
@@ -1288,6 +1286,7 @@ Result Hub::putRecipe(const json& j) {
   }
   if (r->name.empty()) return Result::fail(422, "recipe.name", "Name fehlt");
   auto errs = validateConfig(next, cat_);
+  allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
   saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
