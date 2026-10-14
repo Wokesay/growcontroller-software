@@ -232,18 +232,21 @@ test("the lockfile's packages are checked for a lost provenance before they are 
 test("the triage template starts only for people with a role, never for a pull request comment (#29)", () => {
   const file = join(dir, "..", "..", "docs", "templates", "claude-triage.yml");
   const text = readFileSync(file, "utf8");
-  const m = text.match(/\n\s+if:([\s\S]*?)\n\s+runs-on:/);
-  assert.ok(m, "the job has an if:");
-  const branches = m[1].replace(/\s+/g, " ").split("||");
-  assert.equal(branches.length, 2, "one branch for issues, one for comments");
+  const m = text.match(/\n\s+if: >-\n([\s\S]*?)\n\s+runs-on:/);
+  assert.ok(m, "the job has a folded if:");
   const roles = `contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), `;
-  const [issue, comment] = branches;
-  assert.ok(issue.includes("github.event_name == 'issues'"), issue);
-  assert.ok(issue.includes(roles + "github.event.issue.author_association)"), issue);
-  assert.ok(comment.includes("github.event_name == 'issue_comment'"), comment);
-  assert.ok(comment.includes("!github.event.issue.pull_request"), comment);
-  assert.ok(comment.includes("'@claude'"), comment);
-  assert.ok(comment.includes(roles + "github.event.comment.author_association)"), comment);
+  assert.equal(
+    m[1].trim().replace(/\s+/g, " "),
+    `(github.event_name == 'issues' && ${roles}github.event.issue.author_association)) || ` +
+      `(github.event_name == 'issue_comment' && !github.event.issue.pull_request && ` +
+      `contains(github.event.comment.body, '@claude') && ${roles}github.event.comment.author_association))`,
+  );
+  // Only new issues and new comments, never an edit
+  assert.match(text, /\n {2}issues:\n {4}types: \[opened\]\n {2}issue_comment:\n {4}types: \[created\]\n/);
+  // The workflow's own token, limited by permissions; never the app's token
+  assert.match(text, /\n {10}github_token: \$\{\{ secrets\.GITHUB_TOKEN \}\}\n/);
+  assert.doesNotMatch(text, /^\s*id-token:/m);
+  assert.match(text, /\n {10}persist-credentials: false\n/);
   // GitHub's own actions pinned like the workflows'; Dependabot does not see this file
   let n = 0;
   for (const line of text.split("\n")) {

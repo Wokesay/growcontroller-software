@@ -69,8 +69,10 @@ listed in every release under "Security".
   the owner, a member or a collaborator, or for "@claude" in their
   comment on an issue, not on a pull request. Anyone else's issue waits
   until someone with a role, in practice the owner, comments "@claude".
-  Its checkout is pinned by commit SHA like the active workflows, and a
-  test keeps both.
+  It passes the workflow's own token, which its permissions limit, and
+  its checkout is pinned by commit SHA like the active workflows; a test
+  keeps all of this. `docs/WORKFLOW.md` lists what to do before
+  activating it.
 - **Release acceptance in two parts** (SD-065, `docs/RELEASE.md`): the
   project owner tests what a release brings with the release branch's
   server against a real Home Assistant before saying "mergen", and the
