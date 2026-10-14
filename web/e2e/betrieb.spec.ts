@@ -592,6 +592,82 @@ test("Recipes: a bottle a recipe uses says where and how to take it out, a pair 
   await expect(blocked).toHaveCount(0);
 });
 
+test("Recipes: the removal dialog's text follows the pump, the recipes and the language (#120)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  // pH−'s pump reads as not calibrated once the page asks again (state without the live stream)
+  let uncalibrated = false;
+  await page.route(/\/api\/v1\/events\/stream/, (route) => route.abort());
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    if (uncalibrated) for (const d of st.devices) if (d.id === "CAP-1F02D9") d.info = { ...d.info, flowMlPerMin: null };
+    await route.fulfill({ response: res, json: st });
+  });
+  await login(page);
+  await page.goto("/#/rezepte");
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  const ask = page.getByRole("alertdialog", { name: "Kanister entfernen?" });
+  const blocked = page.getByRole("alertdialog", { name: "Kanister wird noch gebraucht" });
+  // A calibrated pump stays calibrated
+  await row("pH−").getByRole("button", { name: "„pH−“ entfernen" }).click();
+  await expect(ask).toHaveAccessibleDescription(
+    "Damit entfernst du „pH−“ samt Vorrat. Die Pumpe darauf bleibt eingemessen und ist frei für einen anderen Kanister. Das kannst du nicht rückgängig machen.",
+  );
+  await ask.getByRole("button", { name: "Abbrechen" }).click();
+  // A bottle without a pair in two recipes: both named, no recipe to open
+  await row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" }).click();
+  await expect(blocked).toHaveAccessibleDescription(
+    "„CalMag“ steckt in den Rezepten „Wachstum“ und „Blüte“. Nimm den Kanister dort heraus (Menge leeren, speichern) oder lösch die Rezepte. Danach kannst du ihn entfernen.",
+  );
+  await expect(blocked.getByRole("button", { name: "Rezept bearbeiten" })).toHaveCount(0);
+  await blocked.getByRole("button", { name: "Verstanden" }).click();
+  // A pump without a calibration is only freed
+  uncalibrated = true;
+  await page.reload();
+  await expect(row("pH−").getByRole("link", { name: "einmessen" })).toBeVisible();
+  await row("pH−").getByRole("button", { name: "„pH−“ entfernen" }).click();
+  await expect(ask).toHaveAccessibleDescription(
+    "Damit entfernst du „pH−“ samt Vorrat. Die Pumpe darauf ist dann frei für einen anderen Kanister. Das kannst du nicht rückgängig machen.",
+  );
+  await ask.getByRole("button", { name: "Abbrechen" }).click();
+  // In English, the pair as the bottle's
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await row("Teil A").getByRole("button", { name: 'Remove "Teil A"' }).click();
+  await expect(page.getByRole("alertdialog", { name: "Bottle still in use" })).toHaveAccessibleDescription(
+    '"Teil A" forms a pair with "Teil B" and is in the recipes "Wachstum" and "Blüte". Take both out of each (clear their amounts, save) or delete the recipes. Then you can remove the bottle.',
+  );
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Recipes: removing one bottle of a pair says the other is then no longer paired, and saving still works (#147)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const freed = await page.evaluate(async () => {
+    const cfg = await (await fetch("/api/v1/config")).json();
+    const gone = await Promise.all(cfg.recipes.map((r: { id: string }) => fetch(`/api/v1/recipes/${r.id}`, { method: "DELETE" })));
+    return gone.every((r) => r.ok);
+  });
+  expect(freed).toBe(true);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  await expect(row("Teil B")).toContainText("Paar AB");
+  await row("Teil A").getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Kanister entfernen?" });
+  await expect(dialog).toHaveAccessibleDescription(
+    "Damit entfernst du „Teil A“ samt Vorrat. Die Pumpe darauf bleibt eingemessen und ist frei für einen anderen Kanister. „Teil B“ ist danach ohne Paar. Das kannst du nicht rückgängig machen.",
+  );
+  await dialog.getByRole("button", { name: "Entfernen", exact: true }).click();
+  await expect(row("Teil A")).toHaveCount(0);
+  await expect(row("Teil B")).not.toContainText("Paar AB");
+  const saved = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/recipes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Nur B", steps: [{ canister: "teil-b", mlPerL: 1 }] }) });
+    return r.status;
+  });
+  expect(saved).toBe(200);
+});
+
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);

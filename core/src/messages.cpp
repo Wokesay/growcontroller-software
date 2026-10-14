@@ -271,6 +271,7 @@ constexpr Entry kMessages[] = {
     {"ev.cfg.zone", "Area saved: {name}"},
     {"ev.cfg.canister", "Bottle saved: {name}"},
     {"ev.cfg.canister_removed", "Bottle removed: {name}"},
+    {"ev.cfg.canister_removed_pair", "Bottle removed: {name}; {partner} unpaired"},
     {"ev.cfg.recipe", "Recipe saved: {name}"},
     {"ev.cfg.recipe_removed", "Recipe removed: {name}"},
     {"ev.cfg.pair_template", "Bottles paired from the template"},

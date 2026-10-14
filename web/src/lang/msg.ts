@@ -252,6 +252,7 @@ export const msgDe: Record<string, string> = {
   "ev.cfg.zone": "Bereich: {name}",
   "ev.cfg.canister": "Kanister: {name}",
   "ev.cfg.canister_removed": "Kanister entfernt: {name}",
+  "ev.cfg.canister_removed_pair": "Kanister entfernt: {name}; {partner} ohne Paar",
   "ev.cfg.recipe": "Rezept: {name}",
   "ev.cfg.recipe_removed": "Rezept entfernt: {name}",
   "ev.cfg.pair_template": "Paar aus der Vorlage übernommen",
