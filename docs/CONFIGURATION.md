@@ -93,7 +93,8 @@ config {schemaVersion, revision}
 Stored separately:
 
 - `state.json`: stock, known volume, learned effects, latches, jump locks,
-  manual measurements. It changes all the time; that needs no new
+  the time of the last self-release of a latch (SD-067), manual
+  measurements. It changes all the time; that needs no new
   configuration revision.
 - `auth.json`: hash and salt only.
 - `events.json` and `history.bin` (snapshots: at every start, once a day,

@@ -637,8 +637,9 @@ void CirculationController::tick(const Ctx& c, ControlEnv& env, bool demand) {
   }
   env.circulationOn = isOn;
   if (inh && desired) {
-    st_.state = c.rt.latches.count("circulation.dry") ? "latched" : "blocked";
-    const bool latched = st_.state == "latched";
+    // A latch that releases itself needs no person: blocked, though the line names the latch (SD-067)
+    const bool latched = c.rt.latches.count("circulation.dry") > 0;
+    st_.state = latched && !env.act.dryLatchReleasesItself(c) ? "latched" : "blocked";
     st_.line = say(latched ? "circ.latched" : "circ.blocked", {{"reason", *inh}});
   } else if (isOn) {
     st_.state = "working";

@@ -36,7 +36,7 @@ constexpr Ms kDrySettle = 5 * kMinute;
 constexpr Epoch kDryRepeatS = 60 * 60;
 
 double dryReleaseLevel(const TankCfg& tank) {
-  return tank.minL + std::max(kDryMarginL, isNum(tank.capacityL) ? kDryMarginShare * tank.capacityL : 0.0);
+  return tank.minL + (isNum(tank.capacityL) ? std::max(kDryMarginL, kDryMarginShare * tank.capacityL) : kDryMarginL);
 }
 
 // Whether a stored dry-run latch releases itself: caused by a low level, with a minimum to
@@ -45,6 +45,7 @@ double dryReleaseLevel(const TankCfg& tank) {
 // (RAT-063, SD-067).
 bool selfReleasing(const json& l, const TankCfg& tank) {
   if (!l.is_object() || !l.contains("cause") || l["cause"] != "level" || !isNum(tank.minL)) return false;
+  if (isNum(tank.capacityL) && dryReleaseLevel(tank) > tank.capacityL) return false;  // a level it can never reach
   for (const auto& [k, v] : l.items())
     if (k != "at" && k != "levelL" && k != "cause") return false;
   return true;
@@ -281,13 +282,23 @@ void Actuators::noteReported(const std::string& role, const std::string& key) {
   if (auto it = cuts_.find(role); it != cuts_.end()) it->second.keys.insert(key);
 }
 
+bool Actuators::dryLatchReleasesItself(const Ctx& c) const {
+  auto l = c.rt.latches.find("circulation.dry");
+  return l != c.rt.latches.end() && c.cfg.binding("tank.level") && selfReleasing(l->second, c.cfg.tank());
+}
+
 // SD-022 (#27): the level has to stay usable, at or above the release level and not above
 // the capacity for 5 min, outside maintenance mode (hands in the tank), with the pump read
 // as off; any other reading starts the wait again (SD-067).
 void Actuators::releaseDryLatch(const Ctx& c) {
+  // A self-release stored without a plausible time (before the clock was known, or damaged)
+  // counts as now once the clock is known: one more careful hour, then the guard ages out
+  if (auto last = c.rt.selfReleased.find("circulation.dry"); last != c.rt.selfReleased.end() && !plausibleEpoch(last->second) && plausibleEpoch(c.epoch))
+    last->second = c.epoch;
   auto l = c.rt.latches.find("circulation.dry");
   if (l == c.rt.latches.end()) {
     dryBackSince_.reset();
+    dryOffSeen_ = false;
     return;
   }
   // A jump of the level while latched has no explanation the hub knows (a sensor stuck high,
@@ -296,6 +307,7 @@ void Actuators::releaseDryLatch(const Ctx& c) {
   const auto& level = c.truth.get("tank.level");
   const auto& tank = c.cfg.tank();
   const auto pump = roleState(c.cfg, "tank.circulation");
+  if (pump && !*pump) dryOffSeen_ = true;  // from now on, running again means it did not stay off
   const bool back = selfReleasing(l->second, tank) && c.cfg.binding("tank.level") && level.usable() && *level.value >= dryReleaseLevel(tank) &&
                     (!isNum(tank.capacityL) || *level.value <= tank.capacityL) && c.epoch >= c.maintenanceUntil && pump && !*pump;
   if (!back) {
@@ -363,6 +375,9 @@ void Actuators::enforce(const Ctx& c) {
         rearm("tank.circulation", "circulation.dry");  // neue Rastung, z. B. nach Quittierung: neu melden
       }
       json& latch = c.rt.latches["circulation.dry"];
+      // Running again after it was read as off (a button on the device, a relay that does not
+      // hold): it may have run dry meanwhile, so a person looks (SD-067)
+      if (dryLatched && dryOffSeen_ && latch.is_object()) latch["hold"] = "off_failed";
       const bool self = levelBound && selfReleasing(latch, tank);
       // If switching off fails, the alarm asks for a person instead: the pump may be running dry
       Msg text, failed;
@@ -370,13 +385,13 @@ void Actuators::enforce(const Ctx& c) {
         const json args = {{"level", *level.value}, {"min", tank.minL}, {"back", dryReleaseLevel(tank)}};
         const bool repeat = holdReason(latch) == "repeat";
         text = say(self ? "ev.circ.dry.low_self" : repeat ? "ev.circ.dry.low_repeat" : "ev.circ.dry.low", args);
-        failed = say(repeat ? "ev.circ.dry.low_repeat" : "ev.circ.dry.low", args);
+        failed = say("ev.circ.dry.low", args);
       } else {
         text = self ? say("ev.circ.dry.latched_self", {{"back", dryReleaseLevel(tank)}}) : say("ev.circ.dry.latched");
         failed = say("ev.circ.dry.latched");
       }
       ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", say("ev.circ.dry"), text, &failed);
-      if (!ok) holdLatch(latch, "off_failed");
+      if (!ok && latch.is_object()) latch["hold"] = "off_failed";  // overrides another reason: check the pump first
     } else if (!level.usable()) {
       ok = cut(c, "tank.circulation", "circulation.level", "block", "warn", say("ev.circ.off"), say("ev.circ.off.text", {{"reason", level.reason}}));
     } else {

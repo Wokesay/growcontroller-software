@@ -766,6 +766,59 @@ TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
   CHECK(c.state()["latches"]["inlet.fault"]["why"]["key"] == "why.level_invalid");
 }
 
+TEST_CASE("Circulation pump switched on at the plug while latched: the latch no longer releases itself (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 60000));
+  s.step(5000);
+  REQUIRE_FALSE(outlet(s, id, 0).on);
+  CHECK_FALSE(c.state()["latches"]["circulation.dry"].contains("hold"));  // off for sure: it would release itself
+  outlet(s, id, 0).on = true;  // pressed at the plug: it may run dry until the hub sees it
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 0).on);
+  CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 10.0}});  // below the jump threshold: only the plug holds it
+  }
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+}
+
+TEST_CASE("Circulation pump on a plug that does not answer: no self-release until it reads as off (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 60000));
+  s.step(5000);
+  fault(s, id, "offline");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 10.0}});
+  }
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+  fault(s, id, "none");
+  REQUIRE(until(s, [&] { return !c.state()["latches"].contains("circulation.dry"); }, 7 * 60 * 1000));
+}
+
 TEST_CASE("Umwälzpumpe klemmt: neuer Trockenlauf nach Quittierung meldet neu") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};

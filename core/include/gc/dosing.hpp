@@ -79,6 +79,10 @@ class Actuators {
   // Je Takt: Trockenlauf, Notgrenze, Zeitlimits; schaltet nur AUS, nie EIN.
   void enforce(const Ctx& c);
 
+  // The circulation pump's dry-run latch stands and will release itself (SD-067): the
+  // controller shows it as blocked, not as needing a person.
+  bool dryLatchReleasesItself(const Ctx& c) const;
+
  private:
   bool sw(const std::string& dev, int channel, bool on, std::string& err);
   std::optional<bool> swState(const std::string& dev, int channel) const;
@@ -114,6 +118,7 @@ class Actuators {
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit
   std::optional<Ms> dryBackSince_;     // level back above the release level since (SD-022)
+  bool dryOffSeen_ = false;            // the latched pump has been read as off (SD-067)
 };
 
 // Ein Dosierauftrag = ein Kanister, in Teilläufe zerlegt. Gebucht wird je
