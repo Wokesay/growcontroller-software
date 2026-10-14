@@ -681,3 +681,40 @@ TEST_CASE("Bottles: removing a bottle without a pair, or one whose label is alre
   CHECK(canisterById(c, "teil-a")["pair"] == "AB");
   CHECK(canisterById(c, "teil-b")["pair"] == "AB");
 }
+
+TEST_CASE("Bottles: editing one bottle out of a pair leaves its partner unpaired, so later saves still work (#152)") {
+  for (const gc::json& edit : {gc::json{{"id", "teil-a"}, {"pair", ""}}, gc::json{{"id", "teil-a"}, {"pair", "XY"}}, gc::json{{"id", "teil-a"}, {"kind", "ph_down"}, {"pair", ""}}}) {
+    CAPTURE(edit.dump());
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    deleteRecipes(c);
+    c.ok("POST", "/api/v1/canisters", edit);
+    CHECK(canisterById(c, "teil-b")["pair"] == "");
+    const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
+    CHECK(ev["title"]["key"] == "ev.cfg.canister_unpairs");
+    CHECK(ev["title"]["args"].value("partner", "") == "Teil B");
+    // Moved into a new pair, Teil A is that pair's first bottle and may stand alone until its partner comes
+    if (edit["pair"] != "XY") c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "teil-b"}, {"mlPerL", 1.0}}}}});
+  }
+}
+
+TEST_CASE("Bottles: an edit that would leave a recipe with half a pair is refused; a first partner may stand alone (#152)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // A bottle no recipe uses joins pair AB, while the recipes hold only Teil A and Teil B of it
+  const std::string extra = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom C"}, {"kind", "nutrient"}})["id"];
+  const gc::json before = canisterById(c, extra);
+  auto [code, body] = c.call("POST", "/api/v1/canisters", {{"id", extra}, {"pair", "AB"}});
+  CHECK(code == 422);
+  CHECK(body["errors"].at(0)["key"] == "cfg.recipe.pair");
+  CHECK(canisterById(c, extra) == before);
+  // CalMag is in both recipes: with it, pair AB stays whole in them
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", "AB"}});
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", ""}});
+  // A new bottle with a new pair label may stand alone until its partner comes next
+  c.ok("POST", "/api/v1/canisters", {{"name", "Bloom A"}, {"kind", "nutrient"}, {"pair", "CD"}});
+  c.ok("POST", "/api/v1/canisters", {{"name", "Bloom B"}, {"kind", "nutrient"}, {"pair", "CD"}});
+  c.ok("POST", "/api/v1/recipes", {{"name", "Weiter"}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 1.0}}}}});
+}

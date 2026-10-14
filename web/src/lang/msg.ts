@@ -251,6 +251,7 @@ export const msgDe: Record<string, string> = {
   "ev.cfg.tank": "Tank: {name}",
   "ev.cfg.zone": "Bereich: {name}",
   "ev.cfg.canister": "Kanister: {name}",
+  "ev.cfg.canister_unpairs": "Kanister: {name}; {partner} ohne Paar",
   "ev.cfg.canister_removed": "Kanister entfernt: {name}",
   "ev.cfg.canister_removed_pair": "Kanister entfernt: {name}; {partner} ohne Paar",
   "ev.cfg.recipe": "Rezept: {name}",

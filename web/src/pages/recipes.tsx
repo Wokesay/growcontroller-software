@@ -177,6 +177,10 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
     stockMl: (p.can ? st.stock[p.can.id] : 1000) as number | null,
   });
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
+  // Leaving its pair takes the label from a partner left alone (#152), as removing does
+  const oldPair = p.can?.pair ?? "";
+  const others = oldPair && (v.kind === "nutrient" ? v.pair : "") !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === oldPair) : [];
+  const unpairs = others.length === 1 ? others[0] : undefined;
   return (
     <Modal
       title={p.can ? t("recipes.bottleTitle", { name: p.can.name }) : t("recipes.addBottle")}
@@ -224,7 +228,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         </Field>
         {v.kind === "nutrient" && (
           <Field label={t("setup.nut.pair")} hint={t("recipes.pairHint")}>
-            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} />
+            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} name="canister-pair" />
           </Field>
         )}
         <Field label={t("recipes.bottleSize")}>
@@ -234,6 +238,11 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" />
         </Field>
       </div>
+      {unpairs && (
+        <p class="small muted" role="status" data-testid="bottle-unpairs">
+          {t("recipes.removeUnpairs", { partner: unpairs.name })}
+        </p>
+      )}
       <div class="row">
         {COLORS.map((c) => (
           <button

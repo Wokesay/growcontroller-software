@@ -1186,6 +1186,7 @@ Result Hub::putCanister(const json& j) {
   CanisterCfg* k = nullptr;
   for (auto& x : next.canisters)
     if (x.id == id) k = &x;
+  const std::string oldPair = k ? k->pair : "";
   if (!k) {
     std::string base = slug(jstr(j, "name", "kanister"));
     id = base;
@@ -1201,16 +1202,29 @@ Result Hub::putCanister(const json& j) {
   if (j.contains("color")) k->color = jstr(j, "color");
   if (j.contains("capacityMl")) k->capacityMl = j["capacityMl"].is_number() ? j["capacityMl"].get<double>() : kNaN;
   if (k->name.empty()) return Result::fail(422, "canister.name", "Name fehlt");
+  // A bottle that leaves its pair takes the label from a partner left alone, as removing it
+  // does, or every later check of the whole configuration refuses it (#147, #152)
+  std::string unpaired;
+  if (!oldPair.empty() && k->pair != oldPair) {
+    std::vector<CanisterCfg*> rest;
+    for (auto& x : next.canisters)
+      if (x.pair == oldPair) rest.push_back(&x);
+    if (rest.size() == 1) {
+      unpaired = rest[0]->name;
+      rest[0]->pair.clear();
+    }
+  }
   auto errs = validateConfig(next, cat_);
-  // Ein unvollständiges Paar ist beim Anlegen des ersten Partners erlaubt.
-  errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single" || m.key == "cfg.recipe.pair"; }),
-             errs.end());
+  // The first bottle of a new pair may stand alone until its partner is added. A recipe left
+  // with half a pair is refused (#152).
+  errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single"; }), errs.end());
   if (!errs.empty()) return errors(errs);
   cfg_ = next;
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
   else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
   stateDirty_ = true;
-  saveConfig(say("ev.cfg.canister", {{"name", k->name}}));
+  saveConfig(unpaired.empty() ? say("ev.cfg.canister", {{"name", k->name}})
+                              : say("ev.cfg.canister_unpairs", {{"name", k->name}, {"partner", unpaired}}));
   return Result::ok({{"id", id}});
 }
 
@@ -1224,6 +1238,7 @@ Result Hub::deleteCanister(const std::string& id) {
   const std::string name = it->name, pair = it->pair;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
+  stateDirty_ = true;  // the stock goes from the card too, or a new bottle of the same name would get it (#152)
   // A pair needs two: the one left behind is no longer paired, otherwise every later
   // check of the whole configuration refuses it (#147)
   std::vector<CanisterCfg*> rest;

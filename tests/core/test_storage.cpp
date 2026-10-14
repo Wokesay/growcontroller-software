@@ -387,3 +387,21 @@ TEST_CASE("Storage: a snapshot that does not fit leaves no temporary file, and a
   CHECK(gc::jbool(json::parse(onDisk(dir.path / "state.json"), nullptr, false), "stopped", false));
 }
 #endif
+
+TEST_CASE("Storage: a removed bottle's stock leaves the card at once; a new bottle of the same name starts full (#152)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(61000);  // just after a regular save of the runtime state
+  REQUIRE(c.state()["stock"]["ph"].get<double>() < 500);
+  c.ok("DELETE", "/api/v1/canisters/ph");
+  s.step(2000);
+  // A hard stop: the first simulation never saves again; a second one starts from what is on disk
+  sim::Simulation again(onCard(dir, s.hub().now() + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const std::string id = c2.ok("POST", "/api/v1/canisters", {{"name", "pH−"}, {"kind", "ph_down"}, {"capacityMl", 500}})["id"];
+  REQUIRE(id == "ph");
+  CHECK(c2.state()["stock"]["ph"].get<double>() == doctest::Approx(500));
+}

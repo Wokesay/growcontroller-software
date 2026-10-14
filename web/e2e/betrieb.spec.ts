@@ -668,6 +668,22 @@ test("Recipes: removing one bottle of a pair says the other is then no longer pa
   expect(saved).toBe(200);
 });
 
+test("Recipes: taking a bottle out of its pair says the other is then no longer paired, and both stay usable (#152)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/rezepte");
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  await row("Teil A").getByTitle("Bearbeiten").click();
+  const editor = page.getByRole("dialog", { name: "Kanister „Teil A“" });
+  await expect(editor.getByTestId("bottle-unpairs")).toHaveCount(0);
+  await editor.locator("input[name=canister-pair]").fill("");
+  await expect(editor.getByTestId("bottle-unpairs")).toHaveText("„Teil B“ ist danach ohne Paar.");
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(row("Teil A")).not.toContainText("Paar AB");
+  await expect(row("Teil B")).not.toContainText("Paar AB");
+});
+
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
