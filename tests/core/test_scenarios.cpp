@@ -267,6 +267,11 @@ TEST_CASE("Szenario Stufe 1: Regelung bringt pH und EC ins Ziel, ohne Rastung") 
   bool phDosed = false;
   for (const auto& e : findEvents(c, "dose")) phDosed = phDosed || e["data"]["purpose"] == "ph";
   CHECK(phDosed);
+  // the hub's own pH doses are not announced and still never lock the reading (RAT-042):
+  // the only jump is the one the demo puts into its run
+  int jumps = 0;
+  for (const auto& e : findEvents(c, "block")) jumps += e["title"]["key"] == "ev.jump" ? 1 : 0;
+  CHECK(jumps == 1);
 }
 
 TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
@@ -309,6 +314,48 @@ TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereigni
   for (const auto& e : findEvents(c, "block")) ev = ev || e["title"]["key"] == "ev.jump";
   CHECK(ev);
   s.step(10 * 60 * 1000);
+  for (const auto& e : findEvents(c, "dose"))
+    if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+}
+
+TEST_CASE("Scenario: a pH jump while the hub's own pH dose settles still locks the reading (RAT-042, RAT-044)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // An own pH dose is sized to move pH by at most 0.3 (RAT-050), so it does not explain a jump
+  // of more than 1.0 (RAT-042). A mix announces pH for 10 min after it ends, the inlet for
+  // 5 min and an EC round until 1 min after its settle time: start a pH round only after
+  // 11 quiet minutes.
+  constexpr gc::Ms kPoll = 5000;
+  gc::Ms quiet = 0;
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    bool calm = st["job"].is_null() && st["outputs"]["tank.inlet"] == false &&
+                st["controllers"]["refill"]["state"] != "working" && st["controllers"]["ec"]["state"] == "idle" &&
+                st["controllers"]["ph"]["state"] == "idle";
+    quiet = calm ? quiet + kPoll : 0;
+    return quiet > 11 * gc::kMinute;
+  }, 8 * 3600 * 1000, kPoll));
+  s.world().tank.ph += 0.4;  // the solution drifts up
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ph"]["line"]["key"] == "ph.settling"; },
+                30 * 60 * 1000, kPoll));
+  REQUIRE(c.state()["controllers"]["ec"]["state"] == "idle");
+  auto before = c.state()["eventId"].get<std::uint64_t>();
+  s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "jump"}});
+  s.step(60000);
+  auto st = c.state();
+  CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.settling");  // the jump came while it settled
+  CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
+  bool ev = false;
+  for (const auto& e : findEvents(c, "block"))
+    if (e["id"].get<std::uint64_t>() > before) ev = ev || e["title"]["key"] == "ev.jump";
+  CHECK(ev);
+  // past the settle time and while the lock holds (15 min), no pH dose on the jumped reading
+  s.step(10 * 60 * 1000);
+  st = c.state();
+  CHECK(st["controllers"]["ph"]["state"] == "blocked");
+  CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.invalid");
+  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump");
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
