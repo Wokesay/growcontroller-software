@@ -81,8 +81,9 @@ only the sync workflow may write there.
    template started only by people with a role and its checkout pinned.
    Left: immutable releases, switched on by the project owner after the
    first release (`0.1.0-proto.2`, a pre-release, is the test pre-release
-   #29 asks for), and pinning `claude-code-action` before the triage
-   template is activated (item 2).
+   #29 asks for); the setting "Require actions to be pinned to a
+   full-length commit SHA", also the owner's; and pinning
+   `claude-code-action` before the triage template is activated (item 2).
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 

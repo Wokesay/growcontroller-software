@@ -246,7 +246,19 @@ test("the triage template starts only for people with a role, never for a pull r
   // The workflow's own token, limited by permissions; never the app's token
   assert.match(text, /\n {10}github_token: \$\{\{ secrets\.GITHUB_TOKEN \}\}\n/);
   assert.doesNotMatch(text, /^\s*id-token:/m);
+  assert.match(text, /\npermissions:\n {2}contents: read\n {2}issues: write\njobs:\n/);
+  assert.equal((text.match(/^\s*permissions:/gm) ?? []).length, 1, "one permissions block, at the top");
   assert.match(text, /\n {10}persist-credentials: false\n/);
+  // Its own API key and the workflow's token, nothing else; never Bash
+  assert.deepEqual([...new Set([...text.matchAll(/secrets\.(\w+)/g)].map((s) => s[1]))].sort(), ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]);
+  const tools = text.match(/claude_args:.*"([^"]*)"/);
+  assert.ok(tools, "the tools are named");
+  assert.doesNotMatch(tools[1], /bash/i);
+  // Only the checkout and Claude's action
+  assert.deepEqual(
+    [...text.matchAll(/^\s*(?:-\s+)?uses:\s*([^@\s]+)@/gm)].map((u) => u[1]),
+    ["actions/checkout", "anthropics/claude-code-action"],
+  );
   // GitHub's own actions pinned like the workflows'; Dependabot does not see this file
   let n = 0;
   for (const line of text.split("\n")) {
