@@ -317,12 +317,19 @@ listed in every release under "Security".
   pages of the menu in German and English, every setup step, and the Home
   Assistant app's introduction, devices, assignment and sign-of-life
   window with long sensor IDs.
-- **Event log: devices are "back" after a full outage** (#69): when every
-  device stopped answering at once, for example while Home Assistant
-  restarted, the log said "getrennt" (not responding) for each of them but
-  never "wieder da" (is back). Now each device you added logs that it is
-  back. After a start, the devices that answer first are still not logged
-  as back.
+- **Event log: a device is "back" only after it was gone** (#69, #115):
+  when every device stopped answering at once, for example while Home
+  Assistant restarted, the log said "getrennt" (not responding) for each
+  of them but never "wieder da" (is back). Now each device you added logs
+  that it is back. A start logs no "back", also for devices that answer
+  later than the first ones, such as Home Assistant's integrations
+  reconnecting one after another or the hub's bus devices. So a pump asks
+  whether it is still on its bottle only when it was unplugged and plugged
+  in again while the hub runs. "Back" now names the device as "not
+  responding" does: its name, else its kind (before, "not responding"
+  named a device without a name by its ID). In German, "getrennt" now
+  says what to check (cable, power or Wi-Fi), and the pump's question
+  names the bottle as English does.
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
   buffer instead of showing a step the hub did not have. The window now

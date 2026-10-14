@@ -159,9 +159,11 @@ view. Renaming a phase changes nothing (test M15-1).
 - **When a device is accepted**, a measuring role is bound automatically
   if there is exactly one candidate. The hub never binds dosing or
   switching roles automatically.
-- **If a cap comes back after re-plugging**, the hub asks in the event
-  log: "Is it still on Part A?". It cannot detect electrically which
-  canister the cap sits on.
+- **If a cap comes back after re-plugging** while the hub runs, after
+  the hub logged it as not responding, the hub asks in the event log:
+  "Is it still on the bottle 'Part A'?". It cannot detect electrically which canister
+  the cap sits on. A start asks nothing, also for a cap that answers
+  later (#115).
 
 ## 6. Open points
 
