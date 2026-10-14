@@ -353,6 +353,28 @@ void runDry(sim::Simulation& s, Client& c) {
   s.world().fill(2.0, 1.2, 6.0);
   REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 30000));
 }
+// The circulation pump on a smart plug, so a test can press its button or make it stick
+std::string circulateOnPlug(sim::Simulation& s, Client& c) {
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  json r;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    r = s.control("net_add", {{"class", "shelly_plug"}, {"loads", json::array({{{"load", "circulation"}, {"watts", 18}}})}});
+  }
+  const std::string id = r["id"];
+  REQUIRE(until(s, [&] {
+    const json st = c.state();
+    for (const auto& d : st["devices"])
+      if (d["id"] == id && d["online"] == true) return true;
+    return false;
+  }, 10000));
+  c.ok("POST", "/api/v1/devices/" + id + "/accept", {{"name", ""}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  c.ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 60000));
+  return id;
+}
 }  // namespace
 
 TEST_CASE("Scenario: a dry-run latch from a low level releases itself 5 min after the tank is back above minimum plus margin (SD-022, #27)") {
@@ -400,6 +422,7 @@ TEST_CASE("Scenario: a low level again within 60 min of releasing itself holds u
   runDry(s, c);  // 30-odd min later: something keeps draining the tank or the sensor flutters
   CHECK(findEvents(c, "alarm").at(0)["text"]["key"] == "ev.circ.dry.low_repeat");  // check for a leak, then tap Release
   CHECK(c.state()["controllers"]["circulation"]["line"]["args"]["reason"]["key"] == "act.circ.latched_repeat");
+  CHECK(c.state()["controllers"]["circulation"]["state"] == "latched");  // a person is needed
   s.world().fill(10.0, 1.2, 6.0);
   s.step(15 * 60 * 1000);
   CHECK(c.state()["latches"].contains("circulation.dry"));
@@ -587,8 +610,9 @@ TEST_CASE("Scenario: a stored time of the last self-release that is not plausibl
 }
 
 TEST_CASE("Scenario: the release level grows with the tank: 0.5 L at least, 2 % of the capacity above 25 L (SD-067)") {
-  for (const auto& [capacity, min, back] : std::vector<std::tuple<double, double, double>>{{10, 3, 3.5}, {200, 3, 7.0}}) {
-    CAPTURE(capacity);
+  // A tank without a capacity gets the 0.5 L floor
+  for (const auto& [capacity, min, back] : std::vector<std::tuple<json, double, double>>{{10, 3, 3.5}, {200, 3, 7.0}, {nullptr, 3, 3.5}}) {
+    CAPTURE(capacity.dump());
     sim::Simulation s(test::opts("demo"));
     Client c{s};
     circulateAlways(s, c);
@@ -615,6 +639,118 @@ TEST_CASE("Scenario: no self-release above the capacity, nor while the pump's st
   s.step(10000);
   c.ok("POST", "/api/v1/maintenance", {{"minutes", 0}});
   REQUIRE(until(s, [&] { return !c.state()["latches"].contains("circulation.dry"); }, 6 * 60 * 1000));
+}
+
+TEST_CASE("Scenario: a latch that cannot release itself needs a person and says so (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  circulateAlways(s, c);
+  auto needsPerson = [&] {
+    s.step(5000);
+    const json st = c.state();
+    CHECK(st["controllers"]["circulation"]["state"] == "latched");
+    CHECK(st["controllers"]["circulation"]["line"]["args"]["reason"]["key"] == "act.circ.latched");
+    auto [code, body] = c.call("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+    CHECK(code == 409);
+    CHECK(body["error"]["key"] == "act.circ.latched");
+  };
+  SUBCASE("the release level lies above the capacity") {
+    c.ok("PUT", "/api/v1/tank", {{"name", "Tank 1"}, {"capacityL", 3.4}, {"minL", 3}, {"water", "ro"}});
+    runDry(s, c);
+    CHECK(findEvents(c, "alarm").at(0)["text"]["key"] == "ev.circ.dry.low");  // "tap Release"
+    needsPerson();
+    s.world().fill(3.3, 1.2, 6.0);
+    s.step(15 * 60 * 1000);
+    CHECK(c.state()["latches"].contains("circulation.dry"));
+  }
+  SUBCASE("the level sensor is unbound while latched") {
+    runDry(s, c);
+    c.ok("DELETE", "/api/v1/roles/tank.level");
+    needsPerson();
+  }
+  SUBCASE("the minimum is cleared while latched") {
+    runDry(s, c);
+    c.ok("PUT", "/api/v1/tank", {{"name", "Tank 1"}, {"capacityL", 60}, {"minL", nullptr}, {"water", "ro"}});
+    needsPerson();
+  }
+}
+
+TEST_CASE("Scenario: \"the pump did not stay off\" replaces a repeat hold and no later reason replaces it (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string id = circulateOnPlug(s, c);
+  runDry(s, c);
+  s.world().fill(10.0, 1.2, 6.0);
+  REQUIRE(until(s, [&] { return !c.state()["latches"].contains("circulation.dry"); }, 10 * 60 * 1000));
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 30000));
+  s.step(5 * 60 * 1000);
+  SUBCASE("pressed on at the plug during a repeat hold, then a level jump") {
+    runDry(s, c);
+    REQUIRE(c.state()["latches"]["circulation.dry"]["hold"] == "repeat");
+    s.step(5000);
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().netPlug(id)->outlets[0].on = true;
+    }
+    s.step(5000);
+    CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+    auto [code, body] = c.call("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+    CHECK(code == 409);
+    CHECK(body["error"]["key"] == "act.circ.latched_off");
+    s.step(10 * 60 * 1000);
+    s.world().fill(40.0, 1.2, 6.0);  // a jump: the first reason to look stays
+    s.step(2 * 60 * 1000);
+    CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  }
+  SUBCASE("the plug sticks when a repeat latch cuts it") {
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", id}, {"fault", "stuck"}});
+    }
+    runDry(s, c);
+    s.step(2000);
+    CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  }
+}
+
+TEST_CASE("Scenario: a damaged time of the last self-release keeps the other latches and holds the next latch (SD-067)") {
+  for (const json& damaged : {json{{"circulation.dry", "gestern"}}, json("kaputt"), json{{"circulation.dry", -5}}}) {
+    CAPTURE(damaged.dump());
+    const auto dir = std::filesystem::temp_directory_path() / ("gc-test-dry-damaged-" + std::to_string(std::random_device{}()));
+    std::filesystem::remove_all(dir);
+    auto o = test::opts("demo");
+    o.dataDir = dir.string();
+    {
+      sim::Simulation s(o);
+      Client c{s};
+      circulateAlways(s, c);
+      s.step(10000);
+    }
+    {
+      const auto file = dir / "state.json";
+      json st = json::parse(std::ifstream(file));
+      st["selfReleased"] = damaged;
+      st["latches"]["inlet.fault"] = {{"at", 1790000000}, {"why", "alt"}};
+      std::ofstream(file) << st.dump();
+    }
+    o.startEpoch += 3 * 3600;
+    sim::Simulation s(o);
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    CHECK(c.state()["stopped"] == false);
+    CHECK(c.state()["latches"].contains("inlet.fault"));
+    REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 60000));
+    // Down to the minimum in steps below the jump threshold, then a dry run
+    for (double v : {s.world().tank.volumeL - 15, s.world().tank.volumeL - 30}) {
+      if (v <= 3) break;
+      s.world().fill(v, 1.2, 6.0);
+      s.step(6 * 60 * 1000);
+    }
+    s.world().fill(std::min(2.0, s.world().tank.volumeL), 1.2, 6.0);
+    REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 30000));
+    CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "repeat");
+    std::filesystem::remove_all(dir);
+  }
 }
 
 TEST_CASE("Scenario: a clock step keeps the hour of the repeat guard (SD-067)") {
