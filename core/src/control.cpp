@@ -475,7 +475,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   st_.line = say("ph.start", {{"from", *ph.value}, {"target", numOrNull(target)}, {"n", doses_ + 1}, {"ml", numOrNull(plan.ml)}});
 }
 
-void PhController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p) {
+void PhController::onDoseFinished(const Ctx& c, const DoseProgress& p) {
   if (p.state != DoseProgress::State::Done) {
     c.log.add(c.epoch, "block", "warn", say("ev.ph.aborted"), p.error);
     reset();
@@ -487,7 +487,9 @@ void PhController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
   doses_++;
   phase_ = Phase::Settling;
   settleUntil_ = c.now + minutesParam(pv.num("settle_min"), 5);
-  env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
+  // Not announced: the dose is sized to move pH by at most 0.3 (RAT-050),
+  // below the jump threshold of 1.0, so a jump while it settles locks the
+  // reading (RAT-042, RAT-044)
 }
 
 // ---------------------------------------------------------------- Zulauf

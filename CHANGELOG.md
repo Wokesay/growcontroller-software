@@ -240,6 +240,12 @@ listed in every release under "Security".
   and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
   no longer break between the number and the unit; other numbers with
   units (ml, ml/L) follow (#148).
+- **A pH jump is caught while the hub's own pH dose settles** (RAT-042,
+  RAT-044): after its own pH dose, the hub took any pH change as expected
+  for the whole wait after the dose plus a minute (6 min by default), so a
+  disturbed probe did not lock the reading, and pH control then dosed pH−
+  on the wrong value. Now the reading locks, and pH control doses nothing
+  until the lock lifts after 15 min of calm. More under Security.
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so
@@ -335,11 +341,12 @@ nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
 session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
 each with the password, and whoever has the password can already stop,
-switch or change it; the fifth needs a device in the home network before
-the owner sets the first password, and the Home Assistant app switches
-nothing; the sixth needs a Linux x86-64 host with an AMD Zen 5 processor
-without AMD's fix, and even there a session token or salt is only partly
-predictable. No GHSA or CVE of our own is issued; the sixth follows from
+switch or change it; the fifth, like the first, concerns the hub's own
+probes; the sixth needs a device in the home network before the owner sets
+the first password, and the Home Assistant app switches nothing; the
+seventh needs a Linux x86-64 host with an AMD Zen 5 processor without
+AMD's fix, and even there a session token or salt is only partly
+predictable. No GHSA or CVE of our own is issued; the seventh follows from
 AMD's CVE-2025-62626.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
@@ -371,6 +378,18 @@ AMD's CVE-2025-62626.
   using could be signed out and had to sign in again before it could reach
   "Stop". Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+- **A disturbed pH probe is no longer taken as the hub's own pH dose**
+  (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
+  until a minute after the dose's wait, against RAT-042, which keeps own pH
+  doses unannounced because they are sized to move pH by at most 0.3, far
+  below the 1.0 of a jump. A jump in that time became the new reference,
+  and pH control dosed on it. The jump lock now holds then as at any other
+  time. It can now also trip when an own dose moves pH far more than
+  planned, which stops pH control until 15 min of calm, the safe direction;
+  that dose's effect is then not learned, which a follow-up addresses. A
+  jump in the last minutes of another announcement (after a mix or hand
+  dose, the inlet, an EC round or a probe calibration) is still taken as
+  explained; that stays open.
 - **Nobody else can set the Home Assistant app's first password** (#79,
   SD-068): until the owner set it, any device in the home network could
   set it first, see the names of Home Assistant's sensors and the values of

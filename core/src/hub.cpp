@@ -597,7 +597,7 @@ void Hub::tickImpl() {
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
     if (id.rfind("ec-", 0) == 0) ec_.onDoseFinished(c, env, *fin);
-    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, env, *fin);
+    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, *fin);
     else onJobDose(c, *fin);
     stateDirty_ = true;
   }
