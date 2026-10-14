@@ -130,7 +130,9 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     }
     if (d.ml < 1.0) warn("mix.small", k->name + ": " + fmt(d.ml, 1) + " ml – unter 1 ml ungenau. Mehr Wasser oder von Hand dosieren.");
     auto st = rt.stockMl.find(k->id);
-    if (st != rt.stockMl.end() && isNum(st->second) && st->second < d.ml)
+    if (st != rt.stockMl.end() && isNum(st->second) && st->second < 0.0)  // used up by the count (SD-066)
+      p.errors.push_back(say("mix.stock_negative", {{"name", k->name}, {"canister", k->id}}));
+    else if (st != rt.stockMl.end() && isNum(st->second) && st->second < d.ml)
       error("mix.stock", k->name + ": Vorrat reicht nicht (" + fmt(d.ml, 0) + " ml nötig, " + fmt(st->second, 0) +
                              " ml im Kanister)", {{"canister", k->id}});
     p.totalMl += d.ml;

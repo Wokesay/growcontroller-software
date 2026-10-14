@@ -482,6 +482,19 @@ TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übe
   CHECK(c.call("POST", "/api/v1/recipes", {{"name", "Doppelt"}, {"steps", {{{"canister", m}, {"mlPerL", 1}}, {{"canister", m}, {"mlPerL", 1}}}}}).first == 422);
 }
 
+TEST_CASE("API: a stock entered is never below zero (SD-066)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = c.ok("POST", "/api/v1/canisters", {{"name", "Eins"}, {"kind", "nutrient"}, {"pump", ""}, {"capacityMl", 1000}, {"stockMl", 3}})["id"];
+  auto [code, err] = c.call("POST", "/api/v1/canisters", {{"id", id}, {"name", "Eins"}, {"stockMl", -5}});
+  CHECK(code == 422);
+  CHECK(err["error"]["key"] == "canister.stock");
+  CHECK(err["error"]["text"] == "The amount left can't be below 0 ml. Enter what is in the bottle.");
+  CHECK(c.state()["stock"][id.get<std::string>()] == 3);
+  CHECK(c.call("POST", "/api/v1/canisters/" + id.get<std::string>() + "/stock", {{"ml", -1}}).first == 422);
+}
+
 TEST_CASE("System: abgelehnte Änderung lässt alles unverändert") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

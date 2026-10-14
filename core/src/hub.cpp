@@ -1223,6 +1223,13 @@ Result Hub::putCanister(const json& j) {
   errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single" || m.key == "cfg.recipe.pair"; }),
              errs.end());
   if (!errs.empty()) return errors(errs);
+  if (j.contains("stockMl") && j["stockMl"].is_number()) {
+    // A stock entered is never below zero; an unchanged one still saves, so a
+    // bottle booked below zero can be renamed (SD-066)
+    const double ml = j["stockMl"];
+    auto was = rt_.stockMl.find(id);
+    if ((!isNum(ml) || ml < 0) && !(was != rt_.stockMl.end() && was->second == ml)) return Result::fail(422, say("canister.stock"));
+  }
   cfg_ = next;
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
   else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
@@ -1260,7 +1267,7 @@ Result Hub::setStock(const std::string& id, double ml) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const CanisterCfg* k = cfg_.canister(id);
   if (!k) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  if (!isNum(ml) || ml < 0) return Result::fail(422, "canister.stock", "Vorrat ungültig");
+  if (!isNum(ml) || ml < 0) return Result::fail(422, say("canister.stock"));
   rt_.stockMl[id] = ml;
   stateDirty_ = true;
   log_.add(clock_.epoch(), "config", "info", say("ev.bottle_changed"), say("ev.bottle_changed.text", {{"name", k->name}, {"ml", ml}}));
@@ -1500,8 +1507,9 @@ Result Hub::mixStart(const json& req) {
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
   if (!plan.ok) {
     json b = plan;
-    return Result::fail(422, plan.errors.empty() ? "mix.invalid" : plan.errors.front().key,
-                        plan.errors.empty() ? "Plan ungültig" : plan.errors.front().text, {{"plan", b}});
+    // the first error as the message it is, with its values (SD-032)
+    return Result::fail(422, plan.errors.empty() ? Msg{"mix.invalid", "Plan ungültig", json::object()} : plan.errors.front(),
+                        {{"plan", b}});
   }
   // Abgleich des Rezepts mit den wirklich vorhandenen Kanistern vor der ersten Gabe.
   Job j;

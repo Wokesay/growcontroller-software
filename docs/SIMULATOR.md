@@ -38,6 +38,8 @@ default password (EN 18031-1).
 | Noise | pH σ 0.006, EC σ 0.004, temperature σ 0.02, level 2 mV | RAT-082 (EC set larger here) |
 | Measurement interval | 5 s per head | as on the reference installation |
 | Flow rate of the caps | 42–53 ml/min, random per cap | RAT-054: 38–53 ml/min |
+| Run length of a cap | ends exactly at the requested time, with no overrun or stop volume | **Assumption**; real overrun is to be measured (SD-066 step 2) |
+| Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
 | Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |

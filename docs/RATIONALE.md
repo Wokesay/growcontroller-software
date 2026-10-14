@@ -155,8 +155,8 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** When a run time or an amount is computed from a stand-in value, a fault turns into a dose that nobody notices. Missing data must therefore fail a watchdog check, not silence it. Comparisons do not catch NaN, since every comparison with NaN is false (NaN < 1 and NaN ≤ 0 alike), so guards test for a finite number explicitly. A counter quietly restarted at 0 later looks like a real one, so an unknown stock stays unbooked.
 - **Evidence:** Observed on the reference installation (2026): default values meant for missing readings did not take effect when a sensor was offline, and many of them were 0 anyway; a check for "volume ≤ 0" let a missing (NaN) volume pass.
 - **Deviation:** The reference still allowed a plausible operating default where one existed, for example a pump flow rate of 100 ml/min. The software is stricter and doses nothing without a measured calibration (product decision PD-015).
-- **Implemented in:** core/src/mix.cpp (`planMix`), core/src/dosing.cpp (`Actuators::startRun`, `Doser::book`), core/src/watchdog.cpp, web/src/pages/setup.tsx (calibration is mandatory during setup), docs/DECISIONS.md (SD-003), ha/ha_bus.cpp (`convert`: no factor for TDS or %)
-- **Tests:** tests/core/test_mix.cpp "Mischen: ohne Einmesswert kein Auftrag" (M3-4), "Mischen: Wassermenge fehlt → nichts geplant" (M1-4); tests/core/test_scenarios.cpp "Szenario Stufe 0: ohne Einmesswert wird nichts dosiert"; tests/core/test_watchdog.cpp "Watchdog: ungültiger Wert ist ein Problem, nie neutral" (M9-1)
+- **Implemented in:** core/src/mix.cpp (`planMix`), core/src/dosing.cpp (`Actuators::startRun`, `Doser::book`: a stock booked below zero stays below zero and is reported each time it falls below zero, SD-066), core/src/hub.cpp (`Hub::putCanister`, `Hub::setStock`: a stock entered is never below zero), core/src/watchdog.cpp, web/src/pages/setup.tsx (calibration is mandatory during setup), docs/DECISIONS.md (SD-003), ha/ha_bus.cpp (`convert`: no factor for TDS or %)
+- **Tests:** tests/core/test_mix.cpp "Mischen: ohne Einmesswert kein Auftrag" (M3-4), "Mischen: Wassermenge fehlt → nichts geplant" (M1-4); tests/core/test_scenarios.cpp "Szenario Stufe 0: ohne Einmesswert wird nichts dosiert", "Scenario: a stock booked below zero is kept and reported, never set to 0 (RAT-015, RAT-071)"; tests/core/test_api.cpp "API: a stock entered is never below zero (SD-066)"; tests/core/test_watchdog.cpp "Watchdog: stock below the minimum, below zero by the count, or unknown (RAT-071, RAT-015)"; tests/core/test_watchdog.cpp "Watchdog: ungültiger Wert ist ein Problem, nie neutral" (M9-1)
 
 
 ### RAT-016 – Exported data leaves gaps empty
@@ -678,7 +678,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** The aim is not to refill during a run; a canister running empty silently breaks dosing. pH− is used in tiny amounts, so it needs its own, lower threshold.
 - **Evidence:** Calculated from the reference installation's figures (2026): a full run needs about 30 ml of pH− (range 2–114 ml) against roughly 0.7–3.3 L per nutrient product.
 - **Implemented in:** core/src/watchdog.cpp, docs/INVARIANTS.md
-- **Tests:** —
+- **Tests:** tests/core/test_watchdog.cpp "Watchdog: stock below the minimum, below zero by the count, or unknown (RAT-071, RAT-015)"; tests/core/test_scenarios.cpp "Scenario: a stock booked below zero is kept and reported, never set to 0 (RAT-015, RAT-071)" (a stock below zero has its own text, SD-066)
 
 
 ### RAT-072 – Normal states are counted, only deviations are listed

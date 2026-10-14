@@ -65,6 +65,34 @@ TEST_CASE("Watchdog: ungültiger Wert ist ein Problem, nie neutral (M9-1, RAT-01
   CHECK(w.overall == "problem");
 }
 
+TEST_CASE("Watchdog: stock below the minimum, below zero by the count, or unknown (RAT-071, RAT-015)") {
+  Fix f;
+  f.cfg.canisters.push_back({"a", "Teil A", "nutrient", "", "", "#000", 1000});
+  f.cfg.canisters.push_back({"m", "pH−", "ph_down", "", "", "#000", 500});
+  const auto text = [&](const std::string& id) {
+    auto w = f.eval();
+    const Assessment* a = f.item(w, "stock." + id);
+    return a ? a->text.key : std::string();
+  };
+  CHECK(text("a").empty());  // unknown stock is not judged
+  f.rt.stockMl["a"] = 150;
+  CHECK(text("a").empty());
+  f.rt.stockMl["a"] = 149.9;
+  CHECK(text("a") == "watch.stock.low");
+  f.rt.stockMl["a"] = 0;
+  CHECK(text("a") == "watch.stock.low");
+  f.rt.stockMl["a"] = -0.4;  // a rounded run time, shown as 0 ml
+  CHECK(text("a") == "watch.stock.low");
+  f.rt.stockMl["a"] = -0.5;  // shown as -1 ml
+  CHECK(text("a") == "watch.stock.negative");
+  f.rt.stockMl["a"] = -0.6;
+  CHECK(text("a") == "watch.stock.negative");
+  f.rt.stockMl["m"] = 20;
+  CHECK(text("m").empty());
+  f.rt.stockMl["m"] = 19.9;
+  CHECK(text("m") == "watch.stock.low");
+}
+
 TEST_CASE("Watchdog: Alarmband weiter als Regelband (RAT-033)") {
   Fix f;
   f.readings["tank.ph"].value = 6.1;  // Ziel 5,8 ± 0,15 → Alarmband bis 6,15

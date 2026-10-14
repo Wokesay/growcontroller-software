@@ -46,6 +46,7 @@ export const de = {
   "recipes.bottleSize": "Kanistergröße",
   "recipes.stockNow": "Inhalt jetzt",
   "recipes.stockNowHint": "Leer lassen, wenn unbekannt",
+  "recipes.stockBelowZero": "Rechnerisch {ml} ml. Trag ein, was wirklich im Kanister ist.",
   "recipes.colour": "Farbe {c}",
 
   // Recipes
@@ -106,6 +107,7 @@ export const en: Record<keyof typeof de, string> = {
   "recipes.bottleSize": "Bottle size",
   "recipes.stockNow": "Amount left",
   "recipes.stockNowHint": "Leave empty if you don't know",
+  "recipes.stockBelowZero": "{ml} ml by the hub's count. Enter what is really in the bottle.",
   "recipes.colour": "Colour {c}",
 
   "recipes.recipes": "Recipes",

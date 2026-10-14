@@ -254,6 +254,19 @@ listed in every release under "Security".
   and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
   no longer break between the number and the unit; other numbers with
   units (ml, ml/L) follow (#148).
+- **A stock below zero is reported** (RAT-015, RAT-071, SD-066): when more
+  was booked from a bottle than its stock, the hub set the stock to 0 and
+  showed "0 ml left – change the bottle soon", which hid that more had
+  been booked than entered and that doses after that went in short. Now
+  the stock stays below zero ("-2 ml by the hub's count – bottle empty?
+  Change it, or enter the amount left"; German "Rechnerisch -2 ml …"), the
+  event log says each time it falls below zero what to do (empty? change
+  it; otherwise enter the amount left under Recipes & bottles; calibrate
+  the pump again only if it keeps happening), and a mix says the stock is
+  used up. Entering the amount left or tapping "Bottle changed" clears it.
+  Less than half a millilitre below zero raises no alarm. An amount left
+  entered below zero is refused, and the bottle editor sends it only when
+  you changed it, so a dose booked while the editor is open is kept.
 - **A pH jump is caught while the hub's own pH dose settles** (RAT-042,
   RAT-044): after its own pH dose, the hub took any pH change as expected
   for the whole wait after the dose plus a minute (6 min by default), so a

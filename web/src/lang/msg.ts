@@ -158,6 +158,7 @@ export const msgDe: Record<string, string> = {
   "watch.level.low": "{value:1} L unter {min:1} L",
   "watch.stock.label": "Vorrat {name}",
   "watch.stock.low": "{ml:0} ml – nachfüllen",
+  "watch.stock.negative": "Rechnerisch {ml:0} ml – Kanister leer? Wechseln, sonst Inhalt eintragen",
   "watch.calib.label": "Einmessen {name}",
   "watch.calib.missing": "Pumpe nicht eingemessen – wird nicht dosiert",
   "watch.ctl.ec": "EC nachdosieren",
@@ -316,6 +317,9 @@ export const msgDe: Record<string, string> = {
   "ev.manual.text": "Manuell",
   "ev.bottle_changed": "Kanister gewechselt",
   "ev.bottle_changed.text": "{name}: {ml:0} ml",
+  "ev.stock.below_zero": "Vorrat rechnerisch unter null",
+  "ev.stock.below_zero.text": "{name}: Kanister leer? Dann wechsle ihn; Gaben seit dem Leerlaufen kamen nicht ganz an. Sonst trag unter Rezepte & Kanister ein, was drin ist. Passiert das öfter, miss die Pumpe neu ein.",
+  "canister.stock": "Der Inhalt kann nicht unter 0 ml liegen. Trag ein, was im Kanister ist.",
 
   // Events: control (control.cpp)
   "ev.ec.no_effect": "EC-Nachdosierung ohne Wirkung",
@@ -381,6 +385,7 @@ export const msgDe: Record<string, string> = {
   "job.aborted_none": "Abgebrochen. Drin: nichts",
   "job.emergency_stop": "Durch Not-Halt abgebrochen",
   "mix.done": "Fertig: {water:1} L „{recipe}“. {after}",
+  "mix.stock_negative": "{name}: Vorrat rechnerisch aufgebraucht – Kanister ansehen und Inhalt unter Rezepte & Kanister eintragen",
   "mix.failed_open": "Eine Mischung ist mittendrin stehen geblieben: erst fortsetzen oder beenden.",
   "mix.after_auto": "pH zuletzt: Die pH-Regelung übernimmt nach dem Mischen.",
   "mix.after_manual": "pH zuletzt: Jetzt pH von Hand messen und eintragen.",
