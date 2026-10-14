@@ -216,7 +216,8 @@ repository itself are recorded here in full.
   itself once a valid level is back above the minimum level plus a margin;
   the release is reported.
 - Dry run, emergency limit and latches with an unknown cause still hold
-  until acknowledged (RAT-051, RAT-062, RAT-063). Not implemented yet.
+  until acknowledged (RAT-051, RAT-062, RAT-063). Implemented for the
+  circulation pump with SD-067 (#27); the inlet waits for a product answer.
 
 
 ## SD-023: Product requirement (from PD-045): who merges
@@ -2189,6 +2190,103 @@ product side answers the question named with it (Q1 to Q16, below).
   RAT-052 (once settle times are measured). No RAT rule changes with
   this entry; RAT-007 and RAT-018 only say now what PD-160 decided
   instead of "still open".
+
+## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
+
+Implements SD-022 for the circulation pump. Decided in the software session
+on 2026-10-13 after the `domain` and `security` reviews. The margin, the
+wait and the reasons to hold are own rules, not from a source.
+
+- **Which latch:** the circulation pump's latch `circulation.dry`. It is
+  set only when a usable level falls below the minimum while the pump runs
+  (RAT-062), so its cause is a low level; it now stores that
+  (`cause: "level"`). Its texts say "dry run" because that is what it
+  prevents. "Dry run" in SD-022 ("dry run … still holds") is read as a dry
+  run detected from the pump itself (current draw, RAT-049, PD-031); such
+  a latch will get a cause of its own and hold. This reading follows RAT-051
+  (the reference installation's level-type dry-run lock released itself);
+  if PD-044 meant otherwise, that is a product question.
+- **The inlet is unchanged:** none of its latch reasons is a low level (an
+  invalid level is an unknown cause, the capacity reached is the emergency
+  limit, "open too long" is an unknown cause), so all of them keep holding
+  (RAT-031). Which inlet latch PD-044 means is a product question, asked
+  in #27.
+- **Release:** a valid level has to stay at or above the minimum plus
+  max(0.5 L, 2 % of the capacity), and not above the capacity, for 5 min
+  (60 L tank, minimum 3 L: 4.2 L), with the pump read as off (an unknown
+  state, a plug that does not answer, waits). Any other reading starts the
+  wait again, and so does a restart. Not in maintenance mode (hands in the
+  tank); after it ends, the 5 min start then. Where the release level lies
+  above the capacity, the latch never releases itself and says so. The
+  release is an event with the level ("Dry-run lock released itself"); the
+  circulation controller then decides whether the pump runs. While such a
+  latch stands, the controller shows "blocked", not "needs release"; the
+  Release button stays. During an emergency stop the latch may release
+  itself too; the pump starts only after Resume, a person's act.
+  - The margin is at least the switch-on hysteresis of 0.5 L (RAT-078) and
+    grows with the tank above 25 L, whose level sensor moves more in
+    litres (10 L: 0.5 L, 60 L: 1.2 L, 200 L: 4 L).
+  - 5 min let a refill settle, waves and a moving sensor pass, and still
+    let mixing resume soon.
+- **Holds until acknowledged** (stored as `hold`, the reason named in the
+  texts):
+  - `off_failed`: switching off was not confirmed, or the pump ran again
+    after it had been read as off (a button on the device, a relay that
+    does not hold), so it may have run dry; the "Off not confirmed" alarm
+    asks for a person. This reason replaces any other: check the pump
+    first;
+  - `repeat`: the level was low again within 60 min of the last
+    self-release: something keeps draining the tank or the sensor flutters.
+    The time of the last self-release is kept in the runtime state
+    (`selfReleased`), survives a restart and keeps its distance across a
+    clock jump. One stored before the clock was known, or damaged, counts
+    as the moment the clock is known: one more careful hour, then it ages
+    out; the other latches are kept;
+  - `jump`: the level jumped while latched (RAT-042) without an inlet run
+    or maintenance mode to explain it, for example a sensor stuck high,
+    condensation, or a hose without maintenance mode (one tap then, with
+    the person at the tank);
+  - a latch without a stored cause (saved by an older version), with any
+    other key (written by another version) or damaged (RAT-063);
+  - all other latches: `inlet.fault`, `ec.no_effect`, `ph.no_effect`, the
+    planned heater cut-off; jump locks lift by their own rule (RAT-042).
+- **Texts say which kind it is:** a latch that releases itself says from
+  which level ("the lock releases itself once the level has stayed at
+  4.2 L or more for 5 min") and asks for maintenance mode when filling by
+  hand; one that holds says why and what to check; without a level sensor
+  it says to tap "Release". The texts speak of dry-run protection, since
+  the pump was switched off before it ran dry. Acknowledging stays
+  possible at any time.
+- **Saved at once:** a latch set or released by the hub, any latch, is
+  saved in that tick, also when a later step of the tick fails; an
+  acknowledgement within a second (RAT-063).
+- **Residual risks, accepted with "mergen":** a level sensor that reads a
+  refilled tank that is not can restart the pump, which then may run dry
+  until the level reads low again or, later, the current draw shows it
+  (PD-031). Before SD-022 a person looked at the tank. The `jump` hold
+  only sees a change of more than 20 L within 5 min (RAT-042, catalog),
+  so it does not see:
+  - a sensor that drifts high slowly or sticks without such a jump; in a
+    tank under about 20 L between its minimum and its capacity no stuck
+    reading is a jump at all;
+  - a wrong reading while the inlet is open and for 5 min after it, since
+    a refill explains a change;
+  - a wrong first reading after a restart, since the jump check starts
+    without a reference.
+  The level has no standstill check, and its plausible range is 0–1000 L.
+  The repeat guard catches a second low reading within the hour. A
+  restart in maintenance mode ends it (#154), so the 5 min can then start
+  with hands in the tank. A jump threshold that scales with the tank is a
+  follow-up (#154).
+- **Operating patterns:** in NFT or RDWC, drain-back after the cut can
+  raise the tank by more than the margin: one self-release, one more cut
+  at the minimum, then `repeat` holds. In ebb and flow with floods more
+  than an hour apart, each flood that drains the tank below the minimum
+  gives an alarm that clears itself without asking a person; that is what
+  SD-022 asks for.
+- This changes a protective cut-off in the actuator gateway, so the merge
+  waits for the project owner's "mergen" (SD-023, SD-033).
+
 
 ---
 
