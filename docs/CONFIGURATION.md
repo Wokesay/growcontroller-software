@@ -67,7 +67,9 @@ the attack surface, and safety would depend on the script (`architekt`).
 
 **Runtime** (controller): `off`, `idle` (resting), `working`
 (controlling), `waiting` (waiting), `blocked` (switch-on lock, clears
-itself), `latched` (latched, needs acknowledgement; Rationale: RAT-062).
+itself), `latched` (latched, needs acknowledgement; Rationale: RAT-062;
+the circulation pump's dry-run latch from a low level also releases
+itself once the tank is refilled, SD-067).
 
 A set-up device that is not responding right now does not make a
 function `unavailable`. It shows "blocked: device not responding".

@@ -516,6 +516,8 @@ void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
   if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
   if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
   for (auto& [role, until] : rt_.jumpLocks) until = std::min(until + jump, epoch + kJumpHoldS);
+  for (auto& [latch, at] : rt_.selfReleased)
+    if (plausibleEpoch(at)) at = std::min(at + jump, epoch);  // never in the future; an implausible one holds anyway
   ec_.shiftClock(jump);
   ph_.shiftClock(jump);
   refill_.shiftClock(jump);
@@ -572,6 +574,7 @@ void Hub::tickImpl() {
     }
 
   Ctx c = ctx();
+  const auto latchesBefore = rt_.latches;  // a latch set or released in this tick is saved at once (RAT-063)
   act_.enforce(c);
   for (auto it = testOff_.begin(); it != testOff_.end();) {
     if (now < it->second) {
@@ -631,6 +634,7 @@ void Hub::tickImpl() {
     for (const auto& [id, p] : pumps_) in.pumpFlow[id] = p.flowMlPerMin;
     watch_ = evaluate(in);  // Watchdog liest nur, er bekommt keine Aktoren
   }
+  if (rt_.latches != latchesBefore) stateDirty_ = true;
   if (stateDirty_ || epoch - lastStateSave_ >= 60) {
     lastStateSave_ = epoch;
     saveState();

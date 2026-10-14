@@ -687,6 +687,20 @@ TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pum
   s.step(5000);
   CHECK(countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 2);
   CHECK(countEvents(c, "ev.off_confirmed", "Umwälzpumpe") == 1);
+  // Switching off was not confirmed: the alarm asks for a person, and the latch does not
+  // release itself (SD-022, SD-067)
+  const json events = c.ok("GET", "/api/v1/events?limit=200")["events"];
+  json unconfirmed;
+  for (const auto& e : events)
+    if (unconfirmed.is_null() && sameEvent(e, "ev.off_unconfirmed", "Umwälzpumpe")) unconfirmed = e;  // the newest: the dry run
+  REQUIRE(unconfirmed.is_object());
+  CHECK(unconfirmed["text"]["args"]["reason"]["key"] == "ev.circ.dry.low");
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+  CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  auto [refusedCode, refused] = c.call("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  CHECK(refusedCode == 409);
+  CHECK(refused["error"]["key"] == "act.circ.latched_off");  // why it needs a person
 }
 
 TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätigt“ im Protokoll") {

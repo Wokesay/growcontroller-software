@@ -72,6 +72,17 @@ listed in every release under "Security".
   it is published. The app's documentation in Home Assistant and the
   release notes ask you to back up the app before updating; if the
   published app fails, a fixing release follows at once.
+- **The circulation pump's dry-run lock releases itself once the tank is
+  refilled** (SD-022, SD-067, #27). A lock set because the level fell below
+  the minimum while the pump ran now lifts by itself when a valid level has
+  stayed at or above the minimum plus a margin (the larger of 0.5 L and
+  2 % of the tank) for 5 minutes, and the event log says so. Maintenance
+  mode pauses this; the 5 minutes start when it ends. It still holds until
+  you tap "Release", and says why, if switching off was not confirmed, if
+  the level was low again within an hour of the last self-release, if the
+  level jumped while locked, and for a lock saved by an older version.
+  The inlet's emergency cut-off is unchanged. A lock set or released is
+  now saved at once.
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.
@@ -356,6 +367,16 @@ switch or change it. No GHSA or CVE is issued.
 
 Hardening, without a vulnerability behind it:
 
+- **A protective lock that releases itself, deliberately** (SD-067, #27):
+  the circulation pump's dry-run lock, when caused by a low level, now
+  lifts by itself after the tank is refilled (see Changed). This relaxes a
+  protective cut-off on purpose, as SD-022 asks. It stays locked until a
+  person releases it if switching off failed, if the level was low again
+  within an hour of the last self-release, if the level jumped while
+  locked, and for a lock saved by an older version or with anything else
+  stored with it; the inlet, EC and pH locks never release themselves.
+  Residual risk: a level sensor that drifts high slowly, without a jump,
+  can release the lock while the tank is still low.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
   page in use; now a page in use renews it (`GET /auth/session` sends it

@@ -522,6 +522,7 @@ void to_json(json& j, const RuntimeState& s) {
        {"phEffect", numOrNull(s.phEffect)},
        {"ecEffect", numOrNull(s.ecEffect)},
        {"latches", s.latches},
+       {"selfReleased", s.selfReleased},
        {"jumpLocks", s.jumpLocks},
        {"manual", s.manual},
        {"manualAt", s.manualAt},
@@ -541,6 +542,8 @@ RuntimeState runtimeFromJson(const json& j) {
   s.phEffect = numOrNaN(j, "phEffect");
   s.ecEffect = numOrNaN(j, "ecEffect");
   if (j.contains("latches")) s.latches = j["latches"].get<std::map<std::string, json>>();
+  // Read as strictly as the latches: a damaged entry makes the whole state damaged (RAT-063)
+  if (j.contains("selfReleased")) s.selfReleased = j["selfReleased"].get<std::map<std::string, Epoch>>();
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});

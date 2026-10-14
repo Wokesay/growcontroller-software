@@ -88,11 +88,14 @@ class Actuators {
   // Scheitert das Ausschalten, lautet die Meldung „Aus nicht bestätigt“;
   // enforce versucht es weiter, solange Grund oder Rastung bestehen, und
   // meldet „Aus bestätigt“, sobald der Ausgang aus ist.
+  // failedText, if given, is the reason in "Off not confirmed" (a text that promises no release).
   bool cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
-           const std::string& severity, const Msg& title, const Msg& text);
+           const std::string& severity, const Msg& title, const Msg& text, const Msg* failedText = nullptr);
   // Grund wieder scharf (neue Rastung) bzw. als schon gemeldet vermerken.
   void rearm(const std::string& role, const std::string& key);
   void noteReported(const std::string& role, const std::string& key);
+  // A dry-run latch caused only by a low level releases itself once the tank is refilled (SD-022).
+  void releaseDryLatch(const Ctx& c);
 
   IBus& bus_;
   INetBus* net_ = nullptr;
@@ -110,6 +113,7 @@ class Actuators {
   std::string runningPump_;
   std::string runningPurpose_;
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit
+  std::optional<Ms> dryBackSince_;     // level back above the release level since (SD-022)
 };
 
 // Ein Dosierauftrag = ein Kanister, in Teilläufe zerlegt. Gebucht wird je
