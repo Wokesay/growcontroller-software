@@ -117,6 +117,9 @@ Three ways, can be combined (source: Claude Code docs, retrieved
    - Template in `docs/templates/claude-triage.yml`.
    - Needs the Claude GitHub app and a secret (`ANTHROPIC_API_KEY` or
      `CLAUDE_CODE_OAUTH_TOKEN`).
+   - Only the owner, members and collaborators start it: an issue they
+     open, or "@claude" in their comment on an issue. An issue from anyone
+     else waits until the owner comments "@claude" (#29).
 
 **Protection** (issue texts are outside input). In June 2026 a crafted
 issue gained write access through the Claude Code Action; fixed from

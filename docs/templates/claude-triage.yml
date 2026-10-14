@@ -22,11 +22,19 @@ permissions:
   issues: write
 jobs:
   triage:
-    if: github.event_name == 'issues' || contains(github.event.comment.body, '@claude')
+    # Only people with a role in the repository start it (#29): an issue they
+    # open, or "@claude" in their comment on an issue (not on a pull request).
+    # An issue from anyone else is triaged when the owner comments "@claude".
+    if: >-
+      (github.event_name == 'issues' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)) ||
+      (github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@claude') &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Pin to a commit SHA of v1.0.94 or later before activating.

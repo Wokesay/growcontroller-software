@@ -64,6 +64,12 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Triage template (not active) only for people with a role** (#29):
+  `docs/templates/claude-triage.yml` starts only for an issue opened by
+  the owner, a member or a collaborator, or for "@claude" in their
+  comment on an issue, not on a pull request. Anyone else's issue waits
+  until the owner comments "@claude". Its checkout is pinned by commit SHA
+  like the active workflows.
 - **Release acceptance in two parts** (SD-065, `docs/RELEASE.md`): the
   project owner tests what a release brings with the release branch's
   server against a real Home Assistant before saying "mergen", and the
