@@ -403,13 +403,15 @@ repository.
 - The software is worked on in a session of its own with access to this
   repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
-  written, so PD numbers do not collide.
+  written, so PD numbers do not collide. Changed by SD-069: it attaches
+  the product repository for its product questions only.
 - Product requirements arrive as English issues in this repository. A
   requirement that comes from a PD is recorded here as "Product
   requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
-  repository's session.
+  repository's session. Changed by SD-069: the software session takes it
+  to the product repository itself.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -2337,6 +2339,30 @@ lock the owner out until the app was reinstalled.
 - Open for the product session (PD-100): whether a code of 80 bits without
   a rate limit meets EN 18031-1 AUM-6, and whether the app's log counts as
   a channel only the owner reaches.
+
+
+## SD-069: The software session takes its product questions to the product repository itself
+
+Decided by the project owner on 2026-10-14 in the software session.
+Changes SD-029: the software session attaches the product repository for
+its product questions and takes them there itself. It still names them in
+the issue and to the project owner.
+
+- A product question met here goes into the note
+  `docs/notizen/fragen-aus-der-software.md` of the product repository
+  `Wokesay/growcontroller`, as a pull request there, in German like that
+  repository: per question the context, the options and the software's
+  recommendation, with references to SD, RAT and pull requests of this
+  repository.
+- The software session writes nothing else there: no PD, no other file,
+  no merge. The product repository's session decides, records the PD
+  (PD-100), and sends what it means for the software as an English issue
+  to this repository, as before.
+- The session attaches the product repository only for this, with the
+  project owner's approval of the access.
+- First use: three questions in Wokesay/growcontroller#77 (the setup
+  code and EN 18031-1, build tools in the SBOM, CRA Art. 14 and
+  advisories).
 
 ---
 
