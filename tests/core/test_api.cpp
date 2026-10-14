@@ -30,6 +30,57 @@ TEST_CASE("API: Ersteinrichtung setzt das Passwort genau einmal") {
   CHECK(other.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}}).first == 409);
 }
 
+TEST_CASE("API: with a setup code armed, the first password needs it, and info says so (#79)") {
+  sim::Simulation s(test::opts("neu"));
+  std::string code;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    code = s.hub().armSetupCode();
+  }
+  Client someone{s, {}, "192.168.1.66"};
+  CHECK(someone.call("GET", "/api/v1/info").second["setupCode"] == true);
+  auto refused = someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}});
+  CHECK(refused.first == 403);
+  CHECK(refused.second["error"]["key"] == "auth.code");
+  CHECK(someone.call("POST", "/api/v1/auth/setup?code=" + code, {{"password", "uebernahme-123"}}).first == 403);  // from the body only
+  for (int i = 0; i < 48; ++i)
+    CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", "2222-2222-2222-2222"}}).first == 403);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", 42}}).first == 403);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", nullptr}}).first == 403);
+  CHECK(someone.token.empty());
+  Client owner{s, {}, "192.168.1.20"};
+  CHECK(owner.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}, {"code", code}}).first == 200);  // no lockout in the way
+  CHECK(owner.call("GET", "/api/v1/state").first == 200);
+  CHECK(owner.call("GET", "/api/v1/info").second["setupCode"] == false);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", code}}).first == 409);  // used up
+  // The owner learns of the tries: the first wrong code, not one entry per try, and the count at the setup
+  const gc::json events = owner.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  int wrong = 0;
+  bool summary = false;
+  for (const auto& e : events) {
+    const std::string title = e["title"].is_object() ? e["title"].value("key", std::string()) : "";
+    wrong += title == "ev.auth.code_wrong";
+    if (title == "ev.auth.password_set" && e["text"].is_object())
+      summary = e["text"].value("key", std::string()) == "ev.auth.first_setup_wrong" && e["text"]["args"]["count"] == 52;
+  }
+  CHECK(wrong == 1);
+  CHECK(summary);
+  // The code is in none of what the hub gives out
+  std::string bare;
+  for (char ch : code) if (ch != '-') bare += ch;
+  for (const char* path : {"/api/v1/info", "/api/v1/auth/session", "/api/v1/state", "/api/v1/config", "/api/v1/config/export", "/api/v1/diagnostics", "/api/v1/events?limit=2000"}) {
+    const std::string out = owner.ok("GET", path).dump();
+    CHECK_MESSAGE(out.find(bare) == std::string::npos, path);
+    CHECK_MESSAGE(out.find(code) == std::string::npos, path);
+  }
+}
+
+TEST_CASE("API: without an armed setup code, info asks for none (#79)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  CHECK(c.call("GET", "/api/v1/info").second["setupCode"] == false);
+}
+
 TEST_CASE("API: Fehlversuche führen zur Sperre (429), Abmelden beendet die Sitzung") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -280,6 +331,7 @@ TEST_CASE("API: Passwort verloren → keine Ersteinrichtung über das Netz (EN 1
   gc::Hub h(cat, bus, store, clk, rng);
   h.boot();
   CHECK(h.credentialsLost());
+  CHECK(h.armSetupCode().empty());  // no code for a setup that cannot happen (#79)
   CHECK(setup(h) == 423);
 }
 

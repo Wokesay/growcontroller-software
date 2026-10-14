@@ -12,7 +12,6 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
-#include <random>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -25,7 +24,7 @@
 #include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
-#include "scenario.hpp"  // sim::FileStorage
+#include "scenario.hpp"  // sim::FileStorage, sim::randomBytes
 
 namespace {
 
@@ -47,11 +46,6 @@ class HostClock : public gc::IClock {
  private:
   std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
-
-void randomBytes(std::uint8_t* p, size_t n) {
-  static std::random_device rd;
-  for (size_t i = 0; i < n; ++i) p[i] = static_cast<std::uint8_t>(rd());
-}
 
 std::string tokenOf(const httplib::Request& req) {
   auto auth = req.get_header_value("Authorization");
@@ -94,7 +88,8 @@ void usage() {
             << "  --app               as a Home Assistant app (SD-034): Home Assistant at http://supervisor/core with the\n"
             << "                      Supervisor's token (SUPERVISOR_TOKEN), data in /data/hub, the web app from /web,\n"
             << "                      reachable in the network on port 8099 (--data, --host, --web, --port still apply);\n"
-            << "                      --config and --token-file are refused\n";
+            << "                      --config and --token-file are refused\n"
+            << "Until a password is set, the start prints a setup code that the first password needs (#79).\n";
 }
 
 }  // namespace
@@ -192,10 +187,14 @@ int main(int argc, char** argv) {
     return 2;
   }
   ha::HaBus bus(mapping.entities);
-  gc::Hub hub(cat, bus, store, clock, randomBytes);
+  gc::Hub hub(cat, bus, store, clock, sim::randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
   ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
+  // The first password needs a code that only who reads this output sees: as
+  // an app, Home Assistant's administrators in its log. Otherwise anyone in
+  // the network could set it first (#79).
+  const std::string setupCode = hub.armSetupCode();
   // A sign of life holds 60 s (SD-042): reading more seldom than every 10 s
   // would leave a healthy sensor read every 30 s too little margin
   if (everyS > 10)
@@ -327,8 +326,12 @@ int main(int argc, char** argv) {
   });
 
   std::cout << "growcontroller on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
-            << "\nReading " << bus.entities().size() << " picked sensors from " << mapping.url << " every " << everyS << " s\n"
-            << std::flush;
+            << "\nReading " << bus.entities().size() << " picked sensors from " << mapping.url << " every " << everyS << " s\n";
+  if (!setupCode.empty())
+    std::cout << "Setup code for the first password: " << setupCode << "\n"
+              << "  Type it on growcontroller's page with your new password. Do not share it.\n"
+              << "  It works once; every restart makes a new one.\n";
+  std::cout << std::flush;
   svr.listen_after_bind();
   g_running = false;
   loop.join();

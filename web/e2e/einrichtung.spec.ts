@@ -261,6 +261,47 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Home Assistant app: the first password needs the setup code from the app's log; a wrong one is named (#79)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await page.goto("/");
+  await expect(page.locator("input[name=password2]")).toBeVisible();
+  await expect(page.locator("input[name=code]")).toHaveCount(0);  // the simulator asks for none
+  // gc_ha_server prints a code at the start and asks for it; here the simulator's answers are changed to look like that
+  await asHomeAssistant(page, "ok");
+  const printed = "K7QF-M2XP-9WTB-H4NC";
+  const sent: { password?: string; code?: string }[] = [];
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
+    info.setupCode = !info.hasPassword;
+    await route.fulfill({ response: res, json: info });
+  });
+  await page.route(/\/api\/v1\/auth\/setup$/, async (route) => {
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    if ((body.code ?? "").replace(/[\s-]/g, "").toUpperCase() !== printed.replaceAll("-", ""))
+      return route.fulfill({ status: 403, json: { error: { key: "auth.code", text: "Setup code missing or wrong" } } });
+    return route.continue({ postData: JSON.stringify({ password: body.password }) });
+  });
+  await page.reload();
+  const code = page.getByLabel("Einrichtungscode");
+  await expect(code).toBeVisible();
+  await expect(page.getByText("Einstellungen › Apps › growcontroller › Protokoll, in der neuesten Zeile", { exact: false })).toBeVisible();
+  await code.fill("2222-2222-2222-2222");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page.getByText("Einrichtungscode fehlt oder stimmt nicht")).toBeVisible();
+  await expect(page).not.toHaveURL(/#\/willkommen/);
+  // Typed as it is read off the log: lower case, spaces between the groups
+  await code.fill(" k7qf m2xp 9wtb h4nc ");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page).toHaveURL(/#\/willkommen/);
+  expect(sent.map((b) => b.code)).toEqual(["2222-2222-2222-2222", " k7qf m2xp 9wtb h4nc "]);
+  expect(sent.every((b) => b.password === "mein-passwort")).toBe(true);
+});
+
 test("Read-only trial (Home Assistant): the introduction can be skipped; nothing is chosen then", async ({ page, request }) => {
   await scenario(request, "neu");
   await asHomeAssistant(page, "ok");

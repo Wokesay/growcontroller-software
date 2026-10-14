@@ -18,6 +18,13 @@
 
 namespace sim {
 
+// Random bytes from the operating system for salts, session tokens and the
+// setup code (#79): getentropy(), on Windows the system's generator. Never
+// std::random_device on the others: libstdc++ tries RDSEED first and takes the
+// zero a Zen 5 processor reports as success (AMD-SB-7055). Aborts rather
+// than going on without.
+void randomBytes(std::uint8_t* p, size_t n);
+
 // Files in a data folder (#68); without a folder in memory only.
 //   write():  on disk when it returns true – temporary file, fsync, rename,
 //             then the folder (Linux; best effort on macOS and Windows).

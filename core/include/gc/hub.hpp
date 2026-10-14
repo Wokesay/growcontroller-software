@@ -63,6 +63,9 @@ class Hub {
   // Passwort war gesetzt, auth.json fehlt aber: kein Setup über das Netz.
   bool credentialsLost() const { return cfg_.system.passwordSet && !auth_.hasPassword(); }
   void markPasswordSet();
+  // The platform shows the code to its owner alone (#79); "" when a password
+  // is set or its credentials are lost (setup is refused then anyway).
+  std::string armSetupCode(Ms validFor = 0);
   Auth& auth() { return auth_; }
   IUpdater* updater() { return updater_; }
 

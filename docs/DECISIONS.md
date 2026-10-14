@@ -2288,6 +2288,56 @@ wait and the reasons to hold are own rules, not from a source.
   waits for the project owner's "mergen" (SD-023, SD-033).
 
 
+## SD-068: The Home Assistant app's first password needs a setup code from its log
+
+Decided by the project owner on 2026-10-13 in the software session (#79,
+option 1 of the issue); the details come from a review by `security`.
+Until now anyone in the home network who opened the app's page first could
+set its password, see the names and values of Home Assistant's sensors and
+lock the owner out until the app was reinstalled.
+
+- **The code:** at every start without a password, `gc_ha_server` makes a
+  setup code and prints it to its output, which as an app is the app's log
+  in Home Assistant, readable by its administrators only (and by apps they
+  gave the Supervisor role `manager` or `admin`, which are as privileged). 16 characters of
+  32 (no 0, 1, I or O; 80 bits), in groups of four. The first password
+  needs it; it is typed in any case, with dashes or spaces.
+- **Kept in memory only,** never in a file, the event log, the state or the
+  diagnostic package; used up by the password; a new start makes a new
+  one and voids the old. No time limit for the app; the core takes one,
+  which SD-044's setup token for the ESP (15 min) will use.
+- **No lockout for wrong codes:** 80 bits leave nothing to guess (rate
+  limiting is asked for below 64 bits, NIST SP 800-63B revision 3,
+  §5.1.2.2; not checked against revision 4), and a
+  count shared by every device that never signed in (SD-051) would let
+  anyone in the network block the owner's setup. Wrong codes are counted;
+  the event log gets the first one and then at most one entry per 15 min
+  with the count, and the setup's entry names the count, so a loop cannot
+  fill the log (SD-051).
+- **The order of the checks:** a password already set (409), then the
+  code (403 `auth.code`, the same for a missing and a wrong one, from the
+  JSON body only), then the password's strength (422); no password is
+  hashed before the code is right.
+- `GET /info` says `setupCode: true` while one is needed, so the setup
+  page asks for it and says where it is.
+- No code while the credentials are lost (setup answers 423 then).
+- **Random numbers** for the code, salts and session tokens come from
+  `getentropy()` (on Windows the system's generator), not from
+  `std::random_device`: libstdc++ tries RDSEED first and takes the zero
+  that a Zen 5 processor without its fix reports as success (AMD-SB-7055).
+- The simulator asks for no code: it listens on 127.0.0.1 unless told
+  otherwise, its data is simulated and it switches nothing real; started
+  with `--host 0.0.0.0`, whoever comes first sets its password, and the
+  demo has a fixed one. The ESP gets SD-044's token; until it is built,
+  whoever comes first sets the ESP's password.
+- Not chosen: Home Assistant's ingress now (its login and HTTPS, but the
+  web app would have to work below a path); it stays the follow-up before
+  the app leaves `stage: experimental`. A lockout for wrong codes (see
+  above).
+- Open for the product session (PD-100): whether a code of 80 bits without
+  a rate limit meets EN 18031-1 AUM-6, and whether the app's log counts as
+  a channel only the owner reaches.
+
 ---
 
 ## Drafts (waiting for "entschieden")

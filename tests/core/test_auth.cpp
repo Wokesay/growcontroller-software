@@ -2,11 +2,13 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
 #include "gc/auth.hpp"
 #include "gc/sha256.hpp"
+#include "scenario.hpp"  // sim::randomBytes
 
 using namespace gc;
 
@@ -189,6 +191,96 @@ TEST_CASE("Password change: a wrong old password counts as a failed attempt; a c
   CHECK(a.login("neu-geheim-456", kMinute, e, "192.168.1.20").has_value());
   CHECK_FALSE(a.login("neu-geheim-456", kMinute, e, "192.168.1.21"));
   CHECK(e.key == "auth.locked");
+}
+
+TEST_CASE("First password: an armed setup code is needed, used up by the password and never stored (#79)") {
+  Auth a(rng);
+  const std::string code = a.armSetupCode(0);
+  REQUIRE(code.size() == 19);  // 16 characters of 32 (80 bits) in groups of four
+  for (size_t i = 0; i < code.size(); ++i) {
+    if (i % 5 == 4) CHECK(code[i] == '-');
+    else CHECK_MESSAGE(std::string("23456789ABCDEFGHJKLMNPQRSTUVWXYZ").find(code[i]) != std::string::npos, code);
+  }
+  CHECK(a.setupCodeRequired());
+  CHECK(a.setInitialPassword("geheim-123").key == "auth.code");
+  std::string wrong = code;
+  wrong[0] = wrong[0] == '2' ? '3' : '2';
+  CHECK(a.setInitialPassword("geheim-123", wrong).key == "auth.code");
+  CHECK(a.setInitialPassword("kurz", code).key == "auth.too_short");  // not used up by a refused password
+  CHECK_FALSE(a.hasPassword());
+  // Typed or pasted as it comes: lower case, spaces, a tab or a line break for dashes
+  std::string typed;
+  int gap = 0;
+  for (char ch : code) typed += ch == '-' ? " \t\n"[gap++ % 3] : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  CHECK(a.setInitialPassword("geheim-123", " " + typed + "\r\n").key.empty());
+  CHECK(a.hasPassword());
+  CHECK_FALSE(a.setupCodeRequired());
+  std::string bare;
+  for (char ch : code) if (ch != '-') bare += ch;
+  CHECK(a.toJson().dump().find(bare) == std::string::npos);
+  CHECK(a.toJson().dump().find(code) == std::string::npos);
+  CHECK(a.armSetupCode(0).empty());  // a password is set: no code to arm
+  CHECK_FALSE(a.setupCodeRequired());
+}
+
+TEST_CASE("First password: without an armed code it needs none, as before; arming again voids the code before (#79)") {
+  Auth a(rng);
+  CHECK_FALSE(a.setupCodeRequired());
+  CHECK(a.setInitialPassword("geheim-123").key.empty());
+  Auth b(rng);
+  const std::string first = b.armSetupCode(0);
+  const std::string second = b.armSetupCode(0);  // a new start makes a new one
+  CHECK(first != second);
+  CHECK(b.setInitialPassword("geheim-123", first).key == "auth.code");
+  CHECK(b.setInitialPassword("geheim-123", second).key.empty());
+}
+
+TEST_CASE("First password: the code is checked before the password, and a wrong one counts (#79)") {
+  Auth a(rng);
+  const std::string code = a.armSetupCode(0);
+  CHECK(a.setInitialPassword("kurz", "2222-2222-2222-2222").key == "auth.code");
+  CHECK(a.wrongSetupCodes() == 1);
+  CHECK(a.setInitialPassword("kurz", code).key == "auth.too_short");
+  CHECK(a.wrongSetupCodes() == 1);
+}
+
+TEST_CASE("First password: a setup code given a time limit is refused from its end on, as SD-044 needs (#79)") {
+  Auth a(rng);
+  const std::string code = a.armSetupCode(kMinute, 15 * kMinute);
+  CHECK(a.setInitialPassword("geheim-123", code, 16 * kMinute).key == "auth.code");  // exactly at its end
+  Auth b(rng);
+  const std::string inTime = b.armSetupCode(kMinute, 15 * kMinute);
+  CHECK(b.setInitialPassword("geheim-123", inTime, 16 * kMinute - 1).key.empty());
+  CHECK(a.setupCodeRequired());  // expired is not "no code needed"
+  const std::string next = a.armSetupCode(16 * kMinute, 15 * kMinute);
+  CHECK(a.setInitialPassword("geheim-123", next, 30 * kMinute).key.empty());
+}
+
+TEST_CASE("First password: wrong setup codes lock no one out; the log gets the first and then one per 15 min (#79)") {
+  Auth a(rng);
+  const std::string code = a.armSetupCode(0);
+  int logged = 0;
+  for (int i = 0; i < 1000; ++i) {
+    CHECK(a.setInitialPassword("uebernahme-123", "2222-2222-2222-2222", i * kSecond).key == "auth.code");
+    logged += a.logWrongSetupCode(i * kSecond);
+  }
+  CHECK(a.wrongSetupCodes() == 1000);
+  CHECK(logged == 2);  // at 0 s and at 900 s
+  CHECK_FALSE(a.logWrongSetupCode(1000 * kSecond));
+  CHECK(a.setInitialPassword("mein-passwort", code, 1000 * kSecond).key.empty());  // no lockout in the owner's way
+}
+
+TEST_CASE("Random bytes come from the operating system in any length, never all zeros (#79)") {
+  for (size_t n : {1, 256, 272, 1000}) {
+    std::vector<std::uint8_t> x(n, 0), y(n, 0);
+    sim::randomBytes(x.data(), n);
+    sim::randomBytes(y.data(), n);
+    if (n >= 16) {  // 128 bits: equal or all zeros only if broken
+      CHECK(x != y);
+      CHECK(std::any_of(x.begin(), x.end(), [](std::uint8_t b) { return b != 0; }));
+      if (n > 256) CHECK(std::any_of(x.begin() + 256, x.end(), [](std::uint8_t b) { return b != 0; }));  // at least 16 bytes past the first call
+    }
+  }
 }
 
 TEST_CASE("Client key: IPv4 as it is, IPv6 in full without its zone, an IPv4-mapped address as IPv4, anything else unknown") {

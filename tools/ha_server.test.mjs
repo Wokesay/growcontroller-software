@@ -2,14 +2,15 @@
 // gc_ha_server as a Home Assistant app (SD-034): --app refuses a mapping
 // file and a token file, takes the token only from SUPERVISOR_TOKEN and
 // writes nothing without it, is not switched on by an option's value, and
-// still honours --data, --host, --web and --port. Values that a stand-in
-// Home Assistant reports reach the hub's readings (#112). Runs the built
+// still honours --data, --host, --web and --port. The first password needs
+// the setup code the start prints (#79). Values that a stand-in Home
+// Assistant reports reach the hub's readings (#112). Runs the built
 // server (tools/ci.sh builds it first; the app image's own server in
 // .github/workflows/app.yml).
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer as httpServer, get, request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -54,6 +55,16 @@ function info(port) {
       })
       .on("error", () => resolve(null));
   });
+}
+
+// The setup code the start printed (#79), once it is out.
+async function setupCode(output) {
+  for (let i = 0; i < 60; i++) {
+    const m = /Setup code for the first password: ([2-9A-HJ-NP-Z]{4}(?:-[2-9A-HJ-NP-Z]{4}){3})\n/.exec(output());
+    if (m) return m[1];
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  assert.fail(`no setup code in the output:\n${output()}`);
 }
 
 // tools/ci.sh builds the server first: in CI a missing one is a failure,
@@ -124,6 +135,56 @@ test("--app starts with the Supervisor's token and honours --data, --host, --web
   for (const f of files) assert.equal(statSync(join(data, f)).mode & 0o777, 0o600, f);
 });
 
+test("the first password needs the setup code the start printed; a restart makes a new one; once set, a start prints none (#79)", { skip }, async () => {
+  const data = join(tmp, "code");
+  const start = async () => {
+    const port = await freePort();
+    const child = spawn(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
+      env: env({ SUPERVISOR_TOKEN: "test-token" }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const run = { port, child, out: "" };
+    child.stdout.on("data", (c) => (run.out += c));
+    child.stderr.on("data", (c) => (run.out += c));
+    run.ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    return run;
+  };
+  const before = await start();
+  let old;
+  try {
+    old = await setupCode(() => before.out);
+  } finally {
+    before.child.kill("SIGTERM");
+  }
+  assert.deepEqual(await before.ended, { code: 0, signal: null }, before.out);
+  const first = await start();
+  try {
+    const code = await setupCode(() => first.out);
+    assert.notEqual(code, old, "a restart makes a new code");
+    assert.equal(await post(first.port, "/api/v1/auth/setup", { password: "uebernahme-123", code: old }, "127.0.0.1"), 403, "the code of the start before");
+    assert.equal((await info(first.port)).setupCode, true);
+    assert.equal(await post(first.port, "/api/v1/auth/setup", { password: "uebernahme-123" }, "127.0.0.1"), 403, "without the code");
+    assert.equal(await post(first.port, "/api/v1/auth/setup", { password: "uebernahme-123", code: "2222-2222-2222-2222" }, "127.0.0.1"), 403);
+    assert.equal(await post(first.port, "/api/v1/auth/setup", { password: "mein-passwort", code: code.toLowerCase() }, "127.0.0.1"), 200);
+    assert.equal((await info(first.port)).setupCode, false);
+    for (const f of readdirSync(data)) assert.doesNotMatch(readFileSync(join(data, f), "utf8"), new RegExp(code.replaceAll("-", "-?")), f);
+  } finally {
+    first.child.kill("SIGTERM");
+  }
+  assert.deepEqual(await first.ended, { code: 0, signal: null }, first.out);
+  const again = await start();
+  try {
+    assert.equal((await info(again.port)).setupCode, false);
+    for (let i = 0; i < 60 && !/Reading \d+ picked sensors/.test(again.out); i++) await new Promise((r) => setTimeout(r, 250));
+    assert.match(again.out, /Reading \d+ picked sensors/, "the start's output is complete");  // a code would come right after it
+    assert.doesNotMatch(again.out, /Setup code/);
+  } finally {
+    again.child.kill("SIGTERM");
+  }
+  assert.deepEqual(await again.ended, { code: 0, signal: null }, again.out);
+});
+
 // A stand-in for Home Assistant: every read gets these states and a Date
 // header by its own clock, as Home Assistant sends one.
 async function standIn(states, clock) {
@@ -178,7 +239,8 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     assert.ok(up, `the server answers on ${port}:\n${out}`);
     // as the web app does it: set the password, then pick a sensor per measurement
     const json = { "Content-Type": "application/json", Origin: base };
-    const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1" }) });
+    const code = await setupCode(() => out);
+    const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1", code }) });
     assert.equal(setup.status, 200, out);
     const cookie = (setup.headers.get("set-cookie") ?? "").split(";")[0];
     // a sensor can be picked once the hub has read it from Home Assistant
@@ -242,12 +304,15 @@ test("the lockout tells devices apart by the connection's address (SD-051)", { s
   const port = await freePort();
   const child = spawn(bin, ["--app", "--data", join(tmp, "lockout"), "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
     env: env({ SUPERVISOR_TOKEN: "test-token" }),
-    stdio: ["ignore", "ignore", "ignore"],
+    stdio: ["ignore", "pipe", "ignore"],
   });
+  let out = "";
+  child.stdout.on("data", (c) => (out += c));
   const ended = new Promise((resolve) => child.on("exit", resolve));
   try {
     for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
-    assert.equal(await post(port, "/api/v1/auth/setup", { password: "mein-passwort" }, "127.0.0.1"), 200);  // signed in from here
+    const code = await setupCode(() => out);
+    assert.equal(await post(port, "/api/v1/auth/setup", { password: "mein-passwort", code }, "127.0.0.1"), 200);  // signed in from here
     const tries = [];
     for (let i = 0; i < 6; i++) tries.push(await post(port, "/api/v1/auth/login", { password: "falsch" }, "127.0.0.2"));
     assert.deepEqual(tries, [401, 401, 401, 401, 401, 429]);
