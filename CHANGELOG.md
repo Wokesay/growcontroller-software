@@ -64,6 +64,15 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Triage template (not active) only for people with a role** (#29):
+  `docs/templates/claude-triage.yml` starts only for an issue opened by
+  the owner, a member or a collaborator, or for "@claude" in their
+  comment on an issue, not on a pull request. Anyone else's issue waits
+  until someone with a role, in practice the owner, comments "@claude".
+  It passes the workflow's own token, which its permissions limit, and
+  its checkout is pinned by commit SHA like the active workflows; a test
+  keeps all of this. `docs/WORKFLOW.md` lists what to do before
+  activating it.
 - **Release acceptance in two parts** (SD-065, `docs/RELEASE.md`): the
   project owner tests what a release brings with the release branch's
   server against a real Home Assistant before saying "mergen", and the
@@ -258,6 +267,12 @@ listed in every release under "Security".
   and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
   no longer break between the number and the unit; other numbers with
   units (ml, ml/L) follow (#148).
+- **A pH jump is caught while the hub's own pH dose settles** (RAT-042,
+  RAT-044): after its own pH dose, the hub took any pH change as expected
+  for the whole wait after the dose plus a minute (6 min by default), so a
+  disturbed probe did not lock the reading, and pH control then dosed pH−
+  on the wrong value. Now the reading locks, and pH control doses nothing
+  until the lock lifts after 15 min of calm. More under Security.
 - **Mixing twice is caught after a long mix too** (RAT-003): another mix
   within 30 minutes needs your confirmation, because dosing again doubles
   the nutrients. The 30 minutes counted from the start of the last mix, so
@@ -329,12 +344,19 @@ listed in every release under "Security".
   pages of the menu in German and English, every setup step, and the Home
   Assistant app's introduction, devices, assignment and sign-of-life
   window with long sensor IDs.
-- **Event log: devices are "back" after a full outage** (#69): when every
-  device stopped answering at once, for example while Home Assistant
-  restarted, the log said "getrennt" (not responding) for each of them but
-  never "wieder da" (is back). Now each device you added logs that it is
-  back. After a start, the devices that answer first are still not logged
-  as back.
+- **Event log: a device is "back" only after it was gone** (#69, #115):
+  when every device stopped answering at once, for example while Home
+  Assistant restarted, the log said "getrennt" (not responding) for each
+  of them but never "wieder da" (is back). Now each device you added logs
+  that it is back. A start logs no "back", also for devices that answer
+  later than the first ones, such as Home Assistant's integrations
+  reconnecting one after another or the hub's bus devices. So a pump asks
+  whether it is still on its bottle only when it was unplugged and plugged
+  in again while the hub runs. "Back" now names the device as "not
+  responding" does: its name, else its kind (before, "not responding"
+  named a device without a name by its ID). In German, "getrennt" now
+  says what to check (cable, power or Wi-Fi), and the pump's question
+  names the bottle as English does.
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
   buffer instead of showing a step the hub did not have. The window now
@@ -353,7 +375,8 @@ nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
 session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
 each with the password, and whoever has the password can already stop,
-switch or change it. No GHSA or CVE is issued.
+switch or change it; the fifth, like the first, concerns the hub's own
+probes. No GHSA or CVE is issued.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -384,6 +407,18 @@ switch or change it. No GHSA or CVE is issued.
   using could be signed out and had to sign in again before it could reach
   "Stop". Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+- **A disturbed pH probe is no longer taken as the hub's own pH dose**
+  (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
+  until a minute after the dose's wait, against RAT-042, which keeps own pH
+  doses unannounced because they are sized to move pH by at most 0.3, far
+  below the 1.0 of a jump. A jump in that time became the new reference,
+  and pH control dosed on it. The jump lock now holds then as at any other
+  time. It can now also trip when an own dose moves pH far more than
+  planned, which stops pH control until 15 min of calm, the safe direction;
+  that dose's effect is then not learned, which a follow-up addresses. A
+  jump in the last minutes of another announcement (after a mix or hand
+  dose, the inlet, an EC round or a probe calibration) is still taken as
+  explained; that stays open.
 
 A protective cut-off relaxed on purpose:
 

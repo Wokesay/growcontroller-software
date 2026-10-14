@@ -106,6 +106,8 @@ TEST_CASE("Sensorwahrheit: Sprungsperre, überlebt Neustart, frei nach 15 min Ru
 }
 
 TEST_CASE("Sensorwahrheit: eigene Gabe erklärt die Änderung (M8-3)") {
+  // An announced change (mix, hand dose, EC round, inlet) explains a jump; the hub's own
+  // pH dose is not announced (RAT-042)
   Fix f;
   for (int i = 0; i < 4; ++i) {
     f.ph(6.18);

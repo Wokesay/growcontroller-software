@@ -395,34 +395,45 @@ void Hub::detectDevices() {
   for (const auto& d : devices_)
     if (d.online) online.insert(d.id);
   Epoch e = clock_.epoch();
+  // "Not responding" and "back" name a known device alike: its name, else
+  // its kind; an unknown device by its ID.
+  auto named = [&](const std::string& id, const DeviceCfg* known) -> json {
+    if (!known) return id;
+    if (!known->name.empty()) return known->name;
+    const DeviceClassDef* dc = cat_.deviceClass(known->cls);
+    return dc ? json(dc->label) : json(id);
+  };
   for (const auto& id : online)
     if (!seenOnline_.count(id)) {
+      const DeviceCfg* known = cfg_.device(id);
+      const bool wasLost = reportedLost_.erase(id) > 0;
+      if (known && !wasLost) continue;  // a start, however late it answers: not "back" (#115)
       const DeviceReport* d = nullptr;
       for (const auto& x : devices_)
         if (x.id == id) d = &x;
       const DeviceClassDef* dc = d ? cat_.deviceClass(d->cls) : nullptr;
-      const DeviceCfg* known = cfg_.device(id);
       Msg where = d && d->slot >= 0 ? say("where.slot", {{"n", d->slot + 1}})
                   : d && d->port > 0 ? say("where.port", {{"n", d->port}})
                   : dc && dc->attach == "net" ? say("where.net")
                   : dc && dc->attach == "ha"  ? say("where.ha")
                                               : say("where.hub");
-      json label = dc ? json(dc->label) : json(say("device.unnamed"));
+      // "label" also for "back": events stored before #115 carry the kind under it
+      const json label = known ? named(id, known) : dc ? json(dc->label) : json(say("device.unnamed"));
       Msg title = say(known ? "ev.device.back" : "ev.device.found", {{"label", label}});
       Msg text = say("ev.device.where", {{"where", where}});
-      // Pumpe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
+      // A pump back after it was gone while the hub runs: is it still on the same bottle?
       if (known && d && d->cls == "pump_cap")
         if (const CanisterCfg* k = cfg_.canisterByPump(id)) text = say("ev.device.where_pump", {{"where", where}, {"name", k->name}});
-      if (anyOnlineSinceStart_ || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
+      log_.add(e, "device", "info", title, text, {{"device", id}});
     }
   for (const auto& id : seenOnline_)
     if (!online.count(id)) {
       const DeviceCfg* known = cfg_.device(id);
-      log_.add(e, "device", known ? "warn" : "info", say("ev.device.lost", {{"name", known && !known->name.empty() ? known->name : id}}),
-               say("ev.device.lost.text"), {{"device", id}});
+      log_.add(e, "device", known ? "warn" : "info", say("ev.device.lost", {{"name", named(id, known)}}), say("ev.device.lost.text"),
+               {{"device", id}});
+      reportedLost_.insert(id);
     }
   seenOnline_ = online;
-  if (!online.empty()) anyOnlineSinceStart_ = true;
 }
 
 double Hub::tankVolume() const {
@@ -616,7 +627,7 @@ void Hub::tickImpl() {
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
     if (id.rfind("ec-", 0) == 0) ec_.onDoseFinished(c, env, *fin);
-    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, env, *fin);
+    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, *fin);
     else onJobDose(c, *fin);
     stateDirty_ = true;
   }

@@ -56,15 +56,34 @@ only the sync workflow may write there.
    `docs/templates/claude-triage.yml` (§4). It needs
    `anthropics/claude-code-action` on the Actions allow list, pinned by
    commit SHA, because only actions created by GitHub are allowed
-   (SD-027).
+   (SD-027). This changes the SD-027 checks in `tools/workflows.test.mjs`
+   (only `actions/*`, no `: write` outside `release.yml`), so it waits
+   for the owner's "mergen". Before activating (`security`, #29):
+   - pin the newest release's commit SHA (at least v1.0.94) and check the
+     action's security advisories;
+   - keep the workflow's own token (`github_token`) and never add
+     `id-token: write`, which would hand it the app's token that can
+     write code;
+   - decide how it reads the issue and answers: the action's tag mode
+     (`track_progress: true`) fetches the issue itself, drops edits made
+     after the trigger and posts through its own comment; never grant
+     Bash, and put at most the issue number into the prompt;
+   - restrict the tools with `--tools`, not `--allowedTools` (which only
+     pre-approves them);
+   - set a concurrency group per issue, a turn limit and an API key of
+     its own with a spending cap;
+   - never turn on debug logging for it: the logs of a public repository
+     are public.
 3. **Release hardening (#29):** done before the first release tag:
    read-only build jobs, tag on `main`, actions pinned by SHA with
    Dependabot, provenance, C++ SBOM, the `espressif/idf` container by
-   digest, `reuse` from a requirements file with hashes. Left: immutable
-   releases, switched on by the project owner after the first release
-   (`0.1.0-proto.2`, a pre-release, is the test pre-release #29 asks
-   for), and pinning `claude-code-action` before the triage template is
-   activated (item 2).
+   digest, `reuse` from a requirements file with hashes, the triage
+   template started only by people with a role and its checkout pinned.
+   Left: immutable releases, switched on by the project owner after the
+   first release (`0.1.0-proto.2`, a pre-release, is the test pre-release
+   #29 asks for); the setting "Require actions to be pinned to a
+   full-length commit SHA", also the owner's; and pinning
+   `claude-code-action` before the triage template is activated (item 2).
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 
@@ -115,8 +134,14 @@ Three ways, can be combined (source: Claude Code docs, retrieved
    - It posts nothing publicly without his approval.
 3. **GitHub Action with `@claude`:**
    - Template in `docs/templates/claude-triage.yml`.
-   - Needs the Claude GitHub app and a secret (`ANTHROPIC_API_KEY` or
-     `CLAUDE_CODE_OAUTH_TOKEN`).
+   - Needs a secret (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`);
+     it uses the workflow's own token (§2 item 2).
+   - Only the owner, members and collaborators start it: an issue they
+     open, or "@claude" in their comment on an issue (not on a pull
+     request). An issue from anyone else waits until someone with a role,
+     in practice the owner, comments "@claude" (#29). Before that, read
+     the issue's raw Markdown: hidden comments and invisible characters
+     reach the model too.
 
 **Protection** (issue texts are outside input). In June 2026 a crafted
 issue gained write access through the Claude Code Action; fixed from
