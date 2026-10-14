@@ -1387,14 +1387,15 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
         k.pair = rename[pairs[k.id]];
         changed = true;
       }
+    if (!changed) return r;
     // The pairing goes in when it adds no problem the configuration did not have already: another
-    // bottle waiting for its partner does not stop it, and no part is left alone with a label (#152)
-    const auto had = validateConfig(cfg_, cat_);
-    const auto now = validateConfig(next, cat_);
-    const bool adds = std::any_of(now.begin(), now.end(), [&](const Msg& m) {
-      return std::none_of(had.begin(), had.end(), [&](const Msg& h) { return h.key == m.key && h.text == m.text; });
-    });
-    if (changed && !adds) {
+    // bottle waiting for its partner does not stop it, and no part is left alone with a label (#152).
+    // Counted, since two recipes may share a name and so the text of a problem.
+    std::map<std::pair<std::string, std::string>, int> before;
+    for (const auto& m : validateConfig(cfg_, cat_)) ++before[{m.key, m.text}];
+    bool addsProblem = false;
+    for (const auto& m : validateConfig(next, cat_)) addsProblem |= --before[{m.key, m.text}] < 0;
+    if (!addsProblem) {
       cfg_ = next;
       saveConfig(say("ev.cfg.pair_template"));
     }
