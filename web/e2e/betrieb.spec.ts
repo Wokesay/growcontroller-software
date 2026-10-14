@@ -677,6 +677,12 @@ test("Recipes: taking a bottle out of its pair says the other is then no longer 
   const editor = page.getByRole("dialog", { name: "Kanister „Teil A“" });
   const save = editor.getByRole("button", { name: "Speichern" });
   await expect(editor.locator("#bottle-unpairs")).toHaveCount(0);
+  // A pH bottle has no pair: the type alone takes it out
+  const kind = editor.locator("label.field", { hasText: "Typ" }).locator("select");
+  await kind.selectOption("ph_down");
+  await expect(editor.locator("#bottle-unpairs")).toHaveText("Nach dem Speichern ist „Teil B“ ohne Paar.");
+  await kind.selectOption("nutrient");
+  await expect(editor.locator("#bottle-unpairs")).toHaveCount(0);
   await editor.locator("input[name=canister-pair]").fill("");
   await expect(editor.locator("#bottle-unpairs")).toHaveText("Nach dem Speichern ist „Teil B“ ohne Paar.");
   await expect(save).toHaveAccessibleDescription("Nach dem Speichern ist „Teil B“ ohne Paar.");
@@ -690,6 +696,33 @@ test("Recipes: taking a bottle out of its pair says the other is then no longer 
     return r.status;
   });
   expect(saved).toBe(200);
+});
+
+test("Recipes: taking one bottle out of a pair of three leaves the other two a pair, and the editor says nothing (#152)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const paired = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/canisters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "calmag", pair: "AB" }) });
+    return r.status;
+  });
+  expect(paired).toBe(200);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  await expect(row("CalMag")).toContainText("Paar AB");
+  await row("Teil A").getByTitle("Bearbeiten").click();
+  const editor = page.getByRole("dialog", { name: "Kanister „Teil A“" });
+  const save = editor.getByRole("button", { name: "Speichern" });
+  await editor.locator("input[name=canister-pair]").fill("");
+  await expect(editor.locator("input[name=canister-pair]")).toHaveValue("");
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(editor.locator("#bottle-unpairs")).toHaveCount(0);
+  await expect(save).toHaveAccessibleDescription("");
+  await save.click();
+  await expect(editor).toHaveCount(0);
+  await expect(row("Teil A")).not.toContainText("Paar AB");
+  await expect(row("Teil B")).toContainText("Paar AB");
+  await expect(row("CalMag")).toContainText("Paar AB");
 });
 
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {

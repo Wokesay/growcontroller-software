@@ -1376,7 +1376,14 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
         k.pair = rename[pairs[k.id]];
         changed = true;
       }
-    if (changed && validateConfig(next, cat_).empty()) {
+    // The pairing goes in when it adds no problem the configuration did not have already: another
+    // bottle waiting for its partner does not stop it, and no part is left alone with a label (#152)
+    const auto had = validateConfig(cfg_, cat_);
+    const auto now = validateConfig(next, cat_);
+    const bool adds = std::any_of(now.begin(), now.end(), [&](const Msg& m) {
+      return std::none_of(had.begin(), had.end(), [&](const Msg& h) { return h.key == m.key && h.text == m.text; });
+    });
+    if (changed && !adds) {
       cfg_ = next;
       saveConfig(say("ev.cfg.pair_template"));
     }

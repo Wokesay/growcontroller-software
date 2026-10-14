@@ -212,14 +212,14 @@ listed in every release under "Security".
   cleared by hand, as removing a bottle did before #147. Now the bottle
   left behind is no longer paired; the bottle editor says so before you
   save, and the event log afterwards. With a new label, part A is that
-  pair's first bottle until its partner joins: a recipe may already hold
-  it, other saves wait for the partner, as before. An edit that would
-  leave a recipe with only half of a pair (a third bottle joining a pair
-  the recipe holds two of) is now refused and nothing is saved; the
-  reason is still shown in German only (#148). The hub now lets a recipe
-  hold both bottles before the second gets the label, so two bottles a
-  recipe holds one of can be paired; the recipe editor cannot add a bottle
-  to an existing recipe yet (#159).
+  pair's first bottle until its partner joins: a recipe, also one from a
+  template, may already hold it; other saves wait for the partner, as
+  before. An edit that would leave a recipe with only half of a pair (a
+  third bottle joining a pair the recipe holds two of) is now refused and
+  nothing is saved; the reason is still shown in German only (#148). The
+  hub now lets a recipe hold both bottles before the second gets the
+  label, so two bottles a recipe holds one of can be paired; the recipe
+  editor cannot add a bottle to an existing recipe yet (#159).
 - **A removed bottle's stock is saved at once** (#152): until the next
   regular save, a power cut brought it back, and a new bottle of the same
   name then showed the old stock.
