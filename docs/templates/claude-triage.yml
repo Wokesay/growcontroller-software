@@ -24,7 +24,8 @@ jobs:
   triage:
     # Only people with a role in the repository start it (#29): an issue they
     # open, or "@claude" in their comment on an issue (not on a pull request).
-    # An issue from anyone else is triaged when the owner comments "@claude".
+    # An issue from anyone else is triaged once someone with a role (in
+    # practice the owner) comments "@claude".
     if: >-
       (github.event_name == 'issues' &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)) ||
@@ -34,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      # Dependabot does not update this file: take the SHA from .github/workflows/ when activating.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

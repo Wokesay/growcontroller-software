@@ -4,6 +4,7 @@
 // keeps both up to date. Node's types for the web app's tests are those of
 // the Node that CI runs (#101). The web app's packages are checked against
 // their registry signatures right after they are installed (#100, SD-058).
+// The inactive triage template starts only for people with a role (#29).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -226,4 +227,31 @@ test("the lockfile's packages are checked for a lost provenance before they are 
   const install = ci.findIndex((l) => /\bnpm ci\b/.test(l) && !/^\s*#/.test(l));
   assert.ok(check >= 0, "tools/ci.sh runs tools/check_provenance.mjs on a line of its own");
   assert.ok(install > check, "before npm ci");
+});
+
+test("the triage template starts only for people with a role, never for a pull request comment (#29)", () => {
+  const file = join(dir, "..", "..", "docs", "templates", "claude-triage.yml");
+  const text = readFileSync(file, "utf8");
+  const m = text.match(/\n\s+if:([\s\S]*?)\n\s+runs-on:/);
+  assert.ok(m, "the job has an if:");
+  const branches = m[1].replace(/\s+/g, " ").split("||");
+  assert.equal(branches.length, 2, "one branch for issues, one for comments");
+  const roles = `contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), `;
+  const [issue, comment] = branches;
+  assert.ok(issue.includes("github.event_name == 'issues'"), issue);
+  assert.ok(issue.includes(roles + "github.event.issue.author_association)"), issue);
+  assert.ok(comment.includes("github.event_name == 'issue_comment'"), comment);
+  assert.ok(comment.includes("!github.event.issue.pull_request"), comment);
+  assert.ok(comment.includes("'@claude'"), comment);
+  assert.ok(comment.includes(roles + "github.event.comment.author_association)"), comment);
+  // GitHub's own actions pinned like the workflows'; Dependabot does not see this file
+  let n = 0;
+  for (const line of text.split("\n")) {
+    const u = line.match(/^\s*(?:-\s+)?uses:\s*(actions\/\S+)(.*)$/);
+    if (!u) continue;
+    n++;
+    assert.match(u[1], /@[0-9a-f]{40}$/, u[1]);
+    assert.match(u[2], /^\s+# v\d+\.\d+\.\d+\s*$/, `${u[1]} needs a "# vX.Y.Z" comment`);
+  }
+  assert.ok(n >= 1, "the checkout is there");
 });

@@ -60,11 +60,12 @@ only the sync workflow may write there.
 3. **Release hardening (#29):** done before the first release tag:
    read-only build jobs, tag on `main`, actions pinned by SHA with
    Dependabot, provenance, C++ SBOM, the `espressif/idf` container by
-   digest, `reuse` from a requirements file with hashes. Left: immutable
-   releases, switched on by the project owner after the first release
-   (`0.1.0-proto.2`, a pre-release, is the test pre-release #29 asks
-   for), and pinning `claude-code-action` before the triage template is
-   activated (item 2).
+   digest, `reuse` from a requirements file with hashes, the triage
+   template started only by people with a role and its checkout pinned.
+   Left: immutable releases, switched on by the project owner after the
+   first release (`0.1.0-proto.2`, a pre-release, is the test pre-release
+   #29 asks for), and pinning `claude-code-action` before the triage
+   template is activated (item 2).
 4. **Later:** a trademark search before a trademark of our own or the
    first sale.
 
@@ -118,8 +119,9 @@ Three ways, can be combined (source: Claude Code docs, retrieved
    - Needs the Claude GitHub app and a secret (`ANTHROPIC_API_KEY` or
      `CLAUDE_CODE_OAUTH_TOKEN`).
    - Only the owner, members and collaborators start it: an issue they
-     open, or "@claude" in their comment on an issue. An issue from anyone
-     else waits until the owner comments "@claude" (#29).
+     open, or "@claude" in their comment on an issue (not on a pull
+     request). An issue from anyone else waits until someone with a role,
+     in practice the owner, comments "@claude" (#29).
 
 **Protection** (issue texts are outside input). In June 2026 a crafted
 issue gained write access through the Claude Code Action; fixed from
