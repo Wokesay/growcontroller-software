@@ -135,7 +135,7 @@ nutrient solution". This comes straight from the resolver.
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
-| Cap after replugging | event "Cap … is back. Is it still on part A?" |
+| Cap after replugging | while the hub runs: event "Pump A not responding", then "Pump A is back" with "Pump 2 on the dosing block. Is it still on the bottle 'Part A'?". A start logs neither, also for devices that answer later, so a pump that first answers after a start asks nothing; Devices shows it offline until it answers (#115) |
 | Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 
 ## 6. Notifications (concept, not implemented yet)

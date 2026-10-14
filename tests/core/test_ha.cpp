@@ -2239,10 +2239,75 @@ TEST_CASE("Devices: after every device was offline at once, each known device lo
   CHECK(devices(hub, "ev.device.back") == std::vector<std::string>{"PHEC-1", "PHEC-1", "PHEC-1", "PHEC-2", "PHEC-2"});
 }
 
-TEST_CASE("Devices: a pump that answers after the first devices at a start, or after a full outage, is back and asks for its bottle") {
-  // As before #69, only the first devices after a start are not "back": a
-  // pump plugged in later still asks whether it is on the same bottle
-  // (docs/UX.md).
+TEST_CASE("Devices: a start logs no \"back\", also when devices answer one after another; every \"back\" follows a \"not responding\" (#115)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  bus.head("PHEC-1");
+  bus.head("PHEC-2");
+  bus.head("PHEC-3");
+  auto tick = [&](gc::Hub& h) {
+    clk.ms += 1000;
+    h.tick();
+  };
+  {
+    gc::Hub first(cat, bus, store, clk, pseudoRandom);
+    first.boot();
+    tick(first);
+    for (const char* id : {"PHEC-1", "PHEC-2", "PHEC-3"}) REQUIRE(first.acceptDevice(id, "").status == 200);
+    first.flush();
+  }
+  // The devices of the events with this title, sorted
+  auto devices = [&](gc::Hub& h, const std::string& key) {
+    std::vector<std::string> ids;
+    const json events = h.events(0, 9999999999, "device", 2000)["events"];
+    for (const auto& e : events)
+      if (e["title"]["key"] == key) ids.push_back(e["data"].value("device", std::string()));
+    std::sort(ids.begin(), ids.end());
+    return ids;
+  };
+  for (auto& d : bus.devs) d.online = false;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  bus.devs[0].online = true;  // Home Assistant's integrations come back one after another
+  tick(hub);
+  bus.devs[1].online = true;
+  tick(hub);
+  CHECK(devices(hub, "ev.device.back").empty());  // PHEC-2 was never gone
+  CHECK(devices(hub, "ev.device.lost").empty());
+  // A full outage: the two that were there are gone, then all three answer
+  bus.devs[0].online = false;
+  bus.devs[1].online = false;
+  tick(hub);
+  CHECK(devices(hub, "ev.device.lost") == std::vector<std::string>{"PHEC-1", "PHEC-2"});
+  for (auto& d : bus.devs) d.online = true;
+  tick(hub);
+  CHECK(devices(hub, "ev.device.back") == std::vector<std::string>{"PHEC-1", "PHEC-2"});  // PHEC-3 was never there
+  // Back once per loss, and only after it
+  tick(hub);
+  bus.devs[2].online = false;
+  tick(hub);
+  bus.devs[2].online = true;
+  tick(hub);
+  CHECK(devices(hub, "ev.device.lost") == std::vector<std::string>{"PHEC-1", "PHEC-2", "PHEC-3"});
+  CHECK(devices(hub, "ev.device.back") == std::vector<std::string>{"PHEC-1", "PHEC-2", "PHEC-3"});
+  // In time, each "back" follows a "not responding" of the same device not yet answered by one
+  const json events = hub.events(0, 9999999999, "device", 2000)["events"];
+  std::map<std::string, int> open;
+  for (auto it = events.rbegin(); it != events.rend(); ++it) {  // the list is newest first
+    const std::string id = (*it)["data"].value("device", std::string());
+    if ((*it)["title"]["key"] == "ev.device.lost") ++open[id];
+    if ((*it)["title"]["key"] == "ev.device.back") {
+      CHECK_MESSAGE(open[id] > 0, id);
+      --open[id];
+    }
+  }
+}
+
+TEST_CASE("Devices: a start logs no \"back\", also for a pump that answers later; a pump replugged while the hub runs is back and asks for its bottle") {
+  // The bottle question comes with "back", so only after the hub saw the
+  // pump go (docs/UX.md, "Cap after replugging", #115).
   gc::Catalog cat = gc::Catalog::builtin();
   gc::MemoryStorage store;
   test::FakeBus bus;
@@ -2266,11 +2331,11 @@ TEST_CASE("Devices: a pump that answers after the first devices at a start, or a
     clk.ms += 1000;
     hub.tick();
   };
-  auto back = [&] {
+  auto titled = [&](const std::string& key) {
     std::vector<json> out;
     const json events = hub.events(0, 9999999999, "device", 2000)["events"];
     for (const auto& e : events)
-      if (e["title"]["key"] == "ev.device.back") out.push_back(e);
+      if (e["title"]["key"] == key) out.push_back(e);
     return out;
   };
   auto asksForBottle = [](const json& e) {
@@ -2278,19 +2343,117 @@ TEST_CASE("Devices: a pump that answers after the first devices at a start, or a
            e["text"]["args"]["where"]["key"] == "where.slot" && e["text"]["args"]["where"]["args"]["n"] == 1;
   };
   tick();  // only the head answers at the start
-  CHECK(back().empty());
-  bus.devs[1].online = true;  // the pump is plugged in a moment later
+  bus.devs[1].online = true;  // the pump answers a moment later, as bus devices do
   tick();
-  REQUIRE(back().size() == 1);
-  CHECK(asksForBottle(back()[0]));
+  CHECK(titled("ev.device.back").empty());
+  CHECK(titled("ev.device.lost").empty());
+  bus.devs[1].online = false;  // unplugged while the hub runs ...
+  tick();
+  REQUIRE(titled("ev.device.lost").size() == 1);
+  CHECK(titled("ev.device.lost")[0]["title"]["args"].value("name", "") == "Pump A");
+  bus.devs[1].online = true;  // ... and plugged in again
+  tick();
+  REQUIRE(titled("ev.device.back").size() == 1);
+  const json back = titled("ev.device.back")[0];
+  CHECK(asksForBottle(back));
+  CHECK(back["title"]["args"].value("label", "") == "Pump A");  // the name "not responding" used, under the arg stored events have
+  // After a full outage, both are back and the pump asks again
   for (auto& d : bus.devs) d.online = false;
   tick();
   for (auto& d : bus.devs) d.online = true;
   tick();
-  const auto after = back();
+  const auto after = titled("ev.device.back");
   REQUIRE(after.size() == 3);
   CHECK(std::count_if(after.begin(), after.end(), asksForBottle) == 2);
   CHECK(std::count_if(after.begin(), after.end(), [](const json& e) { return e["data"]["device"] == "PHEC-1"; }) == 1);
+}
+
+TEST_CASE("Devices: a known device without a name is \"not responding\" and \"back\" by its kind, an unknown one by its ID (#115)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  bus.head("PHEC-1");
+  bus.head("PHEC-2");
+  store.write("config.json", json{{"devices", json::array({{{"id", "PHEC-1"}, {"class", "head_ph_ec"}, {"name", ""}}})}}.dump());
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  auto tick = [&] {
+    clk.ms += 1000;
+    hub.tick();
+  };
+  auto names = [&](const std::string& key) {
+    std::vector<std::string> out;
+    const json events = hub.events(0, 9999999999, "device", 2000)["events"];
+    for (const auto& e : events)
+      if (e["title"]["key"] == key)
+        out.push_back(e["data"].value("device", "") + "=" + e["title"]["args"].value(key == "ev.device.back" ? "label" : "name", ""));
+    std::sort(out.begin(), out.end());
+    return out;
+  };
+  const std::string kind = cat.deviceClass("head_ph_ec")->label;
+  REQUIRE_FALSE(kind.empty());
+  tick();
+  for (auto& d : bus.devs) d.online = false;
+  tick();
+  CHECK(names("ev.device.lost") == std::vector<std::string>{"PHEC-1=" + kind, "PHEC-2=PHEC-2"});
+  for (auto& d : bus.devs) d.online = true;
+  tick();
+  CHECK(names("ev.device.back") == std::vector<std::string>{"PHEC-1=" + kind});  // the unknown one is "detected", not back
+}
+
+TEST_CASE("Devices: a device that was not responding before a restart is not back after it, and asks nothing (#115)") {
+  // What was lost is kept in memory only: a start logs no "back" (R6)
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  bus.head("PHEC-1");
+  gc::DeviceReport cap;
+  cap.id = "CAP-1";
+  cap.cls = "pump_cap";
+  cap.parent = "DB-1";
+  cap.port = 2;
+  cap.slot = 0;
+  cap.online = true;
+  bus.devs.push_back(cap);
+  store.write("config.json", json{{"devices", json::array({{{"id", "PHEC-1"}, {"class", "head_ph_ec"}, {"name", "pH/EC"}},
+                                                           {{"id", "CAP-1"}, {"class", "pump_cap"}, {"name", "Pump A"}}})},
+                                  {"canisters", json::array({{{"id", "grow-a"}, {"name", "Grow A"}, {"pump", "CAP-1"}}})}}
+                                 .dump());
+  auto tick = [&](gc::Hub& h) {
+    clk.ms += 1000;
+    h.tick();
+  };
+  auto count = [](gc::Hub& h, const std::string& key) {
+    int n = 0;
+    const json events = h.events(0, 9999999999, "device", 2000)["events"];
+    for (const auto& e : events)
+      if (e["title"]["key"] == key) ++n;
+    return n;
+  };
+  {
+    gc::Hub first(cat, bus, store, clk, pseudoRandom);
+    first.boot();
+    tick(first);
+    bus.devs[1].online = false;  // the pump goes ...
+    tick(first);
+    REQUIRE(count(first, "ev.device.lost") == 1);
+    first.flush();
+  }
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  tick(hub);
+  bus.devs[1].online = true;  // ... and answers after the restart
+  tick(hub);
+  CHECK(count(hub, "ev.device.lost") == 1);  // the one from before the restart
+  CHECK(count(hub, "ev.device.back") == 0);
+  bus.devs[1].online = false;  // a loss while this hub runs is back as before
+  tick(hub);
+  bus.devs[1].online = true;
+  tick(hub);
+  CHECK(count(hub, "ev.device.lost") == 2);
+  CHECK(count(hub, "ev.device.back") == 1);
 }
 
 TEST_CASE("Home Assistant: a device that sends nothing is one problem in the watchdog, naming its sensors; each keeps its own state (SD-042, SD-047)") {
