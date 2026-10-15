@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Rezepte und Kanister: Nährstoffe den Pumpen zuordnen, Paare (A:B), Vorrat,
 // Rezepte mit Reihenfolge, Vorlagen.
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, RefreshCw, ScrollText, Trash2 } from "lucide-preact";
 import { del, post, type Canister, type Recipe, type RecipeTemplate } from "../api";
 import { lang, t, type TextKey } from "../i18n";
@@ -100,6 +100,12 @@ function TemplateDialog(p: { tpl: RecipeTemplate; onClose: () => void }) {
   );
 }
 
+// Names in quotes as a list: „A“, „B“ und „C“
+function quotedList(names: string[]): string {
+  const q = names.map((name) => t("recipes.quoted", { name }));
+  return q.length < 2 ? q.join("") : t("recipes.listAnd", { list: q.slice(0, -1).join(", "), last: q[q.length - 1] });
+}
+
 // Removing a bottle erases its stock and cannot be undone, so it asks first
 // (#120). The hub refuses it while a recipe uses the bottle, so the dialog says
 // that up front, and how to take it out, instead of offering a removal that fails.
@@ -109,8 +115,7 @@ function RemoveCanister(p: { can: Canister; flow: number | null; onClose: () => 
   const using = recipes.value.filter((r) => r.steps.some((s) => s.canister === p.can.id));
   const partner = p.can.pair ? canisters.value.find((k) => k.id !== p.can.id && k.pair === p.can.pair) : undefined;
   if (using.length) {
-    const names = using.map((r) => t("recipes.quoted", { name: r.name }));
-    const list = names.length < 2 ? names.join("") : t("recipes.listAnd", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
+    const list = quotedList(using.map((r) => r.name));
     const key = partner ? (using.length === 1 ? "recipes.removeUsedPair" : "recipes.removeUsedPairMany") : using.length === 1 ? "recipes.removeUsed" : "recipes.removeUsedMany";
     return (
       <Modal
@@ -192,6 +197,34 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   const oldPair = p.can?.pair ?? "";
   const others = oldPair && (v.kind === "nutrient" ? v.pair : "") !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === oldPair) : [];
   const unpairs = others.length === 1 ? others[0] : undefined;
+  // What the hub would refuse is said before saving (#159): no name, joining a pair that a
+  // recipe holds only part of (pairs stay whole, RAT-054), or a pH bottle a recipe still holds
+  // (pH comes last, RAT-004). Leaving a pair never leaves half of it.
+  const has = (r: Recipe, id: string) => r.steps.some((s) => s.canister === id);
+  const newPair = v.kind === "nutrient" ? v.pair : "";
+  const mates = newPair && newPair !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === newPair) : [];
+  const half = mates.length
+    ? recipes.value.filter((r) => {
+        const self = !!p.can && has(r, p.can.id);
+        const n = mates.filter((k) => has(r, k.id)).length;
+        return (self || n > 0) && !(self && n === mates.length);
+      })
+    : [];
+  const holding = p.can && v.kind !== "nutrient" ? recipes.value.filter((r) => has(r, p.can!.id)) : [];
+  const problems: string[] = [];
+  if (!v.name.trim()) problems.push(t("recipes.bottleNoName"));
+  if (half.length) {
+    // The recipe editor the text sends you to shows the stored name
+    const args = { pair: newPair, recipes: quotedList(half.map((r) => r.name)), all: quotedList([...mates.map((k) => k.name), p.can?.name ?? v.name.trim()]) };
+    if (!p.can) problems.push(half.length === 1 ? t("recipes.pairHalfNew", args) : t("recipes.pairHalfNewMany", args));
+    else problems.push(half.length === 1 ? t("recipes.pairHalf", args) : t("recipes.pairHalfMany", args));
+  }
+  if (holding.length) {
+    const args = { name: p.can!.name, recipes: quotedList(holding.map((r) => r.name)) };
+    problems.push(holding.length === 1 ? t("recipes.phInRecipe", args) : t("recipes.phInRecipeMany", args));
+  }
+  const conflict = half.length > 0 || holding.length > 0;
+  const described = [unpairs && "bottle-unpairs", problems.length > 0 && "bottle-problems"].filter(Boolean).join(" ");
   return (
     <Modal
       title={p.can ? t("recipes.bottleTitle", { name: p.can.name }) : t("recipes.addBottle")}
@@ -203,7 +236,8 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           </button>
           <Button
             variant="primary"
-            aria-describedby={unpairs ? "bottle-unpairs" : undefined}
+            disabled={problems.length > 0}
+            aria-describedby={described || undefined}
             onClick={async () => {
               const stockMl = p.can && v.stockMl === stockOpened ? null : v.stockMl;
               await post("/canisters", { id: p.can?.id, ...v, stockMl, pair: v.kind === "nutrient" ? v.pair : "" });
@@ -218,12 +252,16 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         </>
       }
     >
+      {/* Present from the start, so a screen reader reads each change (a region added with its text is often missed) */}
+      <div class="sr-only" role="status">
+        {[unpairs ? t("recipes.editUnpairs", { partner: unpairs.name }) : "", ...problems].filter(Boolean).join(" ")}
+      </div>
       <div class="form-grid">
         <Field label={t("common.name")}>
           <input class="input" value={v.name} placeholder={t("recipes.nameHint")} onInput={(e) => set("name", (e.target as HTMLInputElement).value)} name="canister-name" />
         </Field>
         <Field label={t("recipes.type")}>
-          <select class="select" value={v.kind} onChange={(e) => set("kind", (e.target as HTMLSelectElement).value)}>
+          <select class="select" value={v.kind} onChange={(e) => set("kind", (e.target as HTMLSelectElement).value)} aria-invalid={holding.length > 0 || undefined} aria-describedby={holding.length ? "bottle-problems" : undefined}>
             <option value="nutrient">{t("setup.nut.kindNutrient")}</option>
             <option value="ph_down">{t("recipes.phDownAcid")}</option>
             <option value="ph_up">{t("recipes.phUpBase")}</option>
@@ -241,7 +279,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         </Field>
         {v.kind === "nutrient" && (
           <Field label={t("setup.nut.pair")} hint={t("recipes.pairHint")}>
-            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} name="canister-pair" />
+            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} name="canister-pair" aria-invalid={half.length > 0 || undefined} aria-describedby={half.length ? "bottle-problems" : undefined} />
           </Field>
         )}
         <Field label={t("recipes.bottleSize")}>
@@ -268,25 +306,82 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         ))}
       </div>
       {unpairs && (
-        <p class="small muted" role="status" id="bottle-unpairs">
+        <p class="small muted" id="bottle-unpairs">
           {t("recipes.editUnpairs", { partner: unpairs.name })}
+        </p>
+      )}
+      {problems.length > 0 && (
+        <p class={`small ${conflict ? "warn-text" : "muted"}`} id="bottle-problems">
+          {problems.join(" ")}
         </p>
       )}
     </Modal>
   );
 }
 
+type Step = { canister: string; mlPerL: number | null };
+// Only a bottle with an amount is in the recipe; the hub takes nothing else. An empty field or 0
+// leaves it out; a negative or endless number is said to be invalid.
+const filled = (s: Step) => s.mlPerL !== null && Number.isFinite(s.mlPerL) && s.mlPerL > 0;
+const invalid = (s: Step) => s.mlPerL !== null && (!Number.isFinite(s.mlPerL) || s.mlPerL < 0);
+// The next row with an amount above or below row i
+function neighbour(list: Step[], i: number, d: number) {
+  for (let j = i + d; j >= 0 && j < list.length; j += d) if (filled(list[j])) return j;
+  return -1;
+}
+
 function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: () => HTMLElement | null }) {
   const cans = canisters.value.filter((k) => k.kind === "nutrient");
   const [name, setName] = useState(p.recipe?.name ?? "");
   const [note, setNote] = useState(p.recipe?.note ?? "");
-  const [steps, setSteps] = useState<{ canister: string; mlPerL: number | null }[]>(p.recipe?.steps ?? cans.map((k) => ({ canister: k.id, mlPerL: null })));
-  const move = (i: number, d: number) => {
-    const s = [...steps];
-    [s[i], s[i + d]] = [s[i + d], s[i]];
-    setSteps(s);
-  };
-  const pairs = new Set(cans.filter((k) => k.pair).map((k) => k.pair));
+  // Every nutrient bottle has a row: the recipe's own first, in their order, then the others
+  // empty. An amount puts a bottle in, clearing it takes it out (#159).
+  const [steps, setSteps] = useState<Step[]>(() => {
+    const own = p.recipe?.steps ?? [];
+    return [...own, ...cans.filter((k) => !own.some((s) => s.canister === k.id)).map((k) => ({ canister: k.id, mlPerL: null }))];
+  });
+  // Up and down pass over the rows without an amount: only the dosing order counts
+  const moved = useRef<{ id: string; dir: "up" | "down" } | null>(null);
+  const move = (id: string, d: number) =>
+    setSteps((cur) => {
+      const i = cur.findIndex((x) => x.canister === id);
+      const j = neighbour(cur, i, d);
+      if (i < 0 || j < 0) return cur;
+      const s = [...cur];
+      const [row] = s.splice(i, 1);
+      s.splice(j, 0, row);
+      moved.current = { id, dir: d < 0 ? "up" : "down" };
+      return s;
+    });
+  // The focus moves with the row, to its other button once it reaches an end
+  const list = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const m = moved.current;
+    moved.current = null;
+    if (!m || !list.current) return;
+    const row = Array.from(list.current.querySelectorAll<HTMLElement>("[data-step]")).find((el) => el.dataset.step === m.id);
+    const same = row?.querySelector<HTMLButtonElement>(`button[data-dir="${m.dir}"]`);
+    const other = row?.querySelector<HTMLButtonElement>(`button[data-dir="${m.dir === "up" ? "down" : "up"}"]`);
+    (same && !same.disabled ? same : other)?.focus();
+  }, [steps]);
+  // What the hub would refuse is said before saving, with the way out (#159); a pair goes in whole
+  // or not at all (RAT-054)
+  const inRecipe = new Set(steps.filter(filled).map((s) => s.canister));
+  const pairs = [...new Set(cans.filter((k) => k.pair).map((k) => k.pair))];
+  const problems: string[] = [];
+  if (!name.trim()) problems.push(t("recipes.noName"));
+  const bad = steps.filter(invalid).map((s) => cans.find((k) => k.id === s.canister)?.name ?? s.canister);
+  if (bad.length) problems.push(bad.length === 1 ? t("recipes.amountInvalid", { names: quotedList(bad) }) : t("recipes.amountInvalidMany", { names: quotedList(bad) }));
+  else if (!inRecipe.size) problems.push(t("recipes.noAmount"));
+  let conflict = bad.length > 0;
+  for (const pair of pairs) {
+    const all = cans.filter((k) => k.pair === pair);
+    const missing = all.filter((k) => !inRecipe.has(k.id));
+    if (all.length < 2 || !missing.length || missing.length === all.length) continue;
+    const args = { pair, missing: quotedList(missing.map((k) => k.name)) };
+    problems.push(missing.length === 1 ? t("recipes.pairMissing", args) : t("recipes.pairMissingMany", args));
+    conflict = true;
+  }
   return (
     <Modal
       wide
@@ -300,8 +395,10 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
           </button>
           <Button
             variant="primary"
+            disabled={problems.length > 0}
+            aria-describedby={problems.length ? "recipe-problems" : undefined}
             onClick={async () => {
-              await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter((s) => s.mlPerL) });
+              await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter(filled) });
               await refreshConfig();
               toast(t("recipes.recipeSaved"));
               p.onClose();
@@ -312,6 +409,10 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
         </>
       }
     >
+      {/* Present from the start, so a screen reader reads each change */}
+      <div class="sr-only" role="status">
+        {problems.join(" ")}
+      </div>
       <div class="form-grid">
         <Field label={t("common.name")}>
           <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} placeholder={t("recipes.recipeNameHint")} />
@@ -320,26 +421,35 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
           <input class="input" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
         </Field>
       </div>
-      <div class="section-title">{t("recipes.order")}</div>
-      <div class="steps">
+      <div>
+        <div class="section-title">{t("recipes.order")}</div>
+        <p class="muted small">{t("recipes.emptyLeftOut")}</p>
+      </div>
+      <div class="steps recipe-steps" ref={list}>
         {steps.map((s, i) => {
           const k = cans.find((c) => c.id === s.canister);
+          const label = k?.name ?? s.canister;
+          const on = filled(s);
+          // Without an amount the number and the order buttons keep their place but are not there
+          const hidden = on ? undefined : "visibility:hidden";
           return (
-            <div class="step">
-              <span class="n">{i + 1}</span>
+            <div class="step" key={s.canister} data-step={s.canister}>
+              <span class="n" style={hidden}>
+                {on ? steps.slice(0, i + 1).filter(filled).length : ""}
+              </span>
               <div class="row">
                 <span class="swatch" style={`background:${k?.color}`} />
-                <strong>{k?.name ?? s.canister}</strong>
-                {k?.pair && <span class="faint small">{t("recipes.pairOf", { p: k.pair })}</span>}
+                <strong>{label}</strong>
+                {k?.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
               </div>
               <div class="row">
                 <div style="width:130px">
-                  <NumberInput value={s.mlPerL} onValue={(v) => setSteps(steps.map((x, j) => (j === i ? { ...x, mlPerL: v } : x)))} unit="ml/L" />
+                  <NumberInput ariaLabel={t("recipes.amountOf", { name: label })} value={s.mlPerL} onValue={(v) => setSteps((cur) => cur.map((x) => (x.canister === s.canister ? { ...x, mlPerL: v } : x)))} unit="ml/L" />
                 </div>
-                <button class="btn ghost sm" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("recipes.moveUp", { name: k?.name ?? s.canister })}>
+                <button class="btn ghost sm" style={hidden} data-dir="up" disabled={!on || neighbour(steps, i, -1) < 0} onClick={() => move(s.canister, -1)} aria-label={t("recipes.moveUp", { name: label })}>
                   <ArrowUp size={15} />
                 </button>
-                <button class="btn ghost sm" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={t("recipes.moveDown", { name: k?.name ?? s.canister })}>
+                <button class="btn ghost sm" style={hidden} data-dir="down" disabled={!on || neighbour(steps, i, 1) < 0} onClick={() => move(s.canister, 1)} aria-label={t("recipes.moveDown", { name: label })}>
                   <ArrowDown size={15} />
                 </button>
               </div>
@@ -349,8 +459,13 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
       </div>
       <p class="muted small">
         {t("recipes.mixNote")}
-        {pairs.size > 0 && ` ${t("recipes.pairsComplete")}`}
+        {pairs.length > 0 && ` ${t("recipes.pairsComplete")}`}
       </p>
+      {problems.length > 0 && (
+        <p class={`small ${conflict ? "warn-text" : "muted"}`} id="recipe-problems">
+          {problems.join(" ")}
+        </p>
+      )}
     </Modal>
   );
 }
@@ -401,7 +516,7 @@ export function RecipesPage() {
                       <span class="row" style="gap:8px">
                         <span class="swatch" style={`background:${k.color}`} />
                         <strong>{k.name}</strong>
-                        {k.pair && <span class="faint small">{t("recipes.pairOf", { p: k.pair })}</span>}
+                        {k.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
                       </span>
                     </td>
                     <td class="hide-sm muted">{t(KIND[k.kind])}</td>

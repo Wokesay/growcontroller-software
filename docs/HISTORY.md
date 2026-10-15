@@ -50,7 +50,8 @@ a snapshot (`history.bin`, about 0.6 MB per series) plus a journal
   prefill, "advance"): each file goes to disk once at the end, and a
   journal is never emptied behind its failed snapshot; what failed is
   given to the hub, which writes it again. Without a data folder (or one
-  that cannot be created) everything stays in memory.
+  that cannot be created, or one whose files cannot be read, SD-074)
+  everything stays in memory.
 
 Not for the device yet: its storage partition (2 MB on the N32R16V, 1 MB
 on the N8R8) cannot hold the

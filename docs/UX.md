@@ -131,7 +131,7 @@ nutrient solution". This comes straight from the resolver.
 | Mixed twice | "This tank was mixed 12 min ago. Dosing again doubles the nutrients." – only with confirmation |
 | Leftover solution in the tank | mode "Top up: X L fresh water" |
 | Very small dose | warning below 1 ml; pump runs under 1 s are blocked |
-| pH bottle in the recipe | rejected ("pH always comes last") |
+| pH bottle in the recipe | the recipe editor does not list pH bottles; the bottle editor does not save a bottle a recipe holds as a pH bottle and says how to take it out (#159) |
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
@@ -139,6 +139,7 @@ nutrient solution". This comes straight from the resolver.
 | Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 | Bottle refilled without telling the hub, run dry, or stock entered too low | the stock goes below zero by the count and stays there; one event says what to do (empty? change it; otherwise enter the amount left; recalibrate only if it keeps happening), the monitoring stays red and a mix is refused until the amount left is entered or "Bottle changed" is tapped (SD-066) |
 | Bottle edited out of its pair | the bottle editor says before saving "After you save, "Part B" is no longer paired." (read out with Save), the event log afterwards; an edit that would leave a recipe with half a pair is refused and nothing is saved (#152) |
+| Recipe with only part of a pair, or a bottle added later | the recipe editor lists every nutrient bottle (an amount puts it in, clearing it takes it out); before saving, one line above Save names the bottles missing from a pair, a missing name or amount, or an amount below 0, and Save stays off until fixed. The bottle editor does the same when a pair label would leave a recipe with part of a pair, and for a pH bottle a recipe holds (#159) |
 
 ## 6. Notifications (concept, not implemented yet)
 
