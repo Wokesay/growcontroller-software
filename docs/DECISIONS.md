@@ -2535,6 +2535,61 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
 
 ---
 
+## Drafts (waiting for "entschieden")
+
+| # | Draft | Core | Needs PD |
+|---|---|---|---|
+| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
+| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
+| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
+| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
+| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
+| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
+| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
+| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
+| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
+| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
+| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
+| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
+| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
+| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
+| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
+
+Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
+`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
+
+---
+
+## SD-073: A control round a Stop cut settles as after a restart
+
+Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
+for EC and pH control after a restart (PD-070, PD-071) to the Stop.
+
+- While stopped, the circulation pump is off, so time spent stopped mixes
+  nothing in. A Stop that cut an EC or pH round while it dosed or settled
+  therefore marks the round as cut.
+- Once automation runs again (after Resume, and after maintenance mode or
+  a probe calibration that followed), the cut round first waits for the
+  circulation pump and asks for it. While it waits it holds the other
+  controller but not refill, since the pump may need the refilled level
+  (RAT-047). Its line says "blocked": at once when the hub refuses the
+  pump (level, dry-run latch; the circulation line names why), otherwise
+  after 2 minutes without the pump. Its settle time counts from when the
+  pump runs: the controller's settle time, but at least 15 minutes (the
+  rest after an aborted dose). Then it decides as after any settle time:
+  done, the most rounds, or the next round. Its effect is not learned
+  (RAT-057).
+- While it settles, the cut round is busy as any round is: refill waits,
+  and the other controller waits (pH for EC, RAT-004; EC for pH,
+  RAT-057).
+- The mark lasts until the settle time has run out, so a reset meanwhile
+  (maintenance mode, a probe calibration, a latch) settles it again
+  later; switching the function off ends it.
+- Not covered yet: the internal-error path (#178), and the mark across a
+  restart while stopped, which belongs with SD-028's saved pauses (#20).
+
+---
+
 ## SD-074: A data folder the simulator cannot read runs it in memory only
 
 Decided by the project owner on 2026-10-15 in the software session
@@ -2575,28 +2630,3 @@ it cannot read.
   the firmware.
 - Not covered: a file that can be opened but is not a regular file (for
   example a folder named `config.json`).
-
----
-
-## Drafts (waiting for "entschieden")
-
-| # | Draft | Core | Needs PD |
-|---|---|---|---|
-| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
-| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
-| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
-| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
-| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
-| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
-| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
-| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
-| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
-| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
-| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
-| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
-| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
-| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
-| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
-
-Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
-`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.

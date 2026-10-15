@@ -313,3 +313,53 @@ test("Home Assistant: the introduction, devices, assignment and sign of life fit
   await fits(page, "sign of life");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+for (const lang of ["de", "en"]) {
+  test(`The recipe editor with ten bottles and the bottle editor with its pair line fit the phone's screen (${lang}, #159)`, async ({ page, request }) => {
+    await scenario(request, "demo");
+    await login(page);
+    const added = await page.evaluate(async (l) => {
+      localStorage.setItem("gc.lang", l);
+      let ok = true;
+      for (const name of ["Booster", "Enzym", "Silizium", "Wurzelstimulator", "Bloom Kick", "Fulvinsäure", "Wurzelstimulatorkonzentratspezialmischung"])
+        ok = (await fetch("/api/v1/canisters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, kind: "nutrient", capacityMl: 1000 }) })).ok && ok;
+      // A recipe name without spaces as long as the hub keeps (40)
+      const recipe = { name: "Blütephasenspezialrezeptmitzusatzstoffen", steps: [{ canister: "booster", mlPerL: 1 }] };
+      ok = (await fetch("/api/v1/recipes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(recipe) })).ok && ok;
+      return ok;
+    }, lang);
+    expect(added).toBe(true);
+    await page.goto("/#/rezepte");
+    await page.reload();
+    await fits(page, "recipes with a long bottle and recipe name");
+    const de = lang === "de";
+    await page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) }).getByRole("button", { name: de ? "Bearbeiten" : "Edit" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator(".step")).toHaveCount(10);
+    await fits(page, "recipe editor");
+    // The name sits above its amount and order buttons, a usual name on one line; a long word breaks
+    for (const step of await dialog.locator(".step").all()) {
+      const label = (await step.locator("strong").textContent()) ?? "";
+      const name = (await step.locator("strong").boundingBox())!;
+      const field = (await step.locator("input").boundingBox())!;
+      expect(name.y + name.height, label).toBeLessThanOrEqual(field.y);
+      for (const other of await step.locator("input, button").all()) {
+        const box = await other.boundingBox();
+        if (box) expect(apart(name, box), label).toBe(true);
+      }
+      if (label === "Wurzelstimulator") expect(name.height, label).toBeLessThan(30);
+    }
+    // The reason Save is off sits right above it
+    await dialog.getByRole("textbox", { name: de ? "Menge für Teil B in ml pro Liter" : "Amount of Teil B in ml per litre" }).fill("");
+    const save = dialog.getByRole("button", { name: de ? "Speichern" : "Save" });
+    await save.scrollIntoViewIfNeeded();
+    await expect(dialog.locator("#recipe-problems")).toBeInViewport();
+    await expect(save).toBeInViewport();
+    await fits(page, "recipe editor with its pair line");
+    await dialog.getByRole("button", { name: de ? "Abbrechen" : "Cancel" }).click();
+    await page.locator(".rtable tbody tr").filter({ has: page.getByText("Wurzelstimulator", { exact: true }) }).getByTitle(de ? "Bearbeiten" : "Edit").click();
+    await page.getByRole("dialog").locator("input[name=canister-pair]").fill("AB");
+    await expect(page.getByRole("dialog").locator("#bottle-problems")).toBeVisible();
+    await fits(page, "bottle editor with its pair line");
+  });
+}

@@ -231,6 +231,20 @@ listed in every release under "Security".
   Running in memory only." and runs in memory only. It reads, writes and
   removes nothing in that folder, so data of an earlier start stays as
   it was.
+- **After a Stop, an interrupted control round mixes in before the next decision**
+  (#180, SD-073): a Stop that cut an EC or pH round, while it dosed or
+  waited for the dose to mix in, only reset the controller. After Resume
+  it could start the next round right away, on a reading the cut dose had
+  not mixed into, since the circulation pump is off while stopped; too
+  much EC can only be undone by diluting. Now, as after a restart, the cut
+  round first waits for the circulation pump and then settles with it
+  running, for its settle time but at least 15 minutes, while the other
+  controller and refill wait. Refill is not held while the round waits for
+  the pump, which may need the level back; the line says why ("Blocked:
+  circulation pump not running – after the Stop, mixing comes first", or,
+  when the hub refuses the pump, "Blocked: circulation pump can't run –
+  after the Stop, mixing comes first") (RAT-036, RAT-052, RAT-004,
+  RAT-047).
 - **The simulator starts with a web app folder it cannot read**: when
   `--web` pointed into a folder the simulator may not enter, or through a
   link that loops, it ended at the start ("filesystem error: status").
@@ -247,12 +261,31 @@ listed in every release under "Security".
   save, and the event log afterwards. With a new label, part A is that
   pair's first bottle until its partner joins: a recipe, also one from a
   template, may already hold it; other saves wait for the partner, as
-  before. An edit that would leave a recipe with only half of a pair (a
-  third bottle joining a pair the recipe holds two of) is now refused and
-  nothing is saved; the reason is still shown in German only (#148). The
-  hub now lets a recipe hold both bottles before the second gets the
-  label, so two bottles a recipe holds one of can be paired; the recipe
-  editor cannot add a bottle to an existing recipe yet (#159).
+  before. An edit that would leave a recipe with only half of a pair
+  (for example a third bottle joining a pair the recipe holds two of) is
+  refused and nothing is saved. The hub now lets a recipe hold both
+  bottles before the second gets the label, so two bottles can be paired
+  when a recipe holds only one of them: put the other in first.
+- **A bottle can go into an existing recipe** (#159): the recipe editor
+  listed only the recipe's own bottles, so a bottle added later could
+  only go into a new recipe. It now lists every nutrient bottle, the
+  recipe's own first: an amount puts one in, numbered in its row's place,
+  and clearing it takes it out. Only bottles with an amount get a number
+  and the order buttons, which pass over the others; each value stays
+  with its bottle when the order changes (before, a value could show in
+  the wrong row), and the focus moves with the row. Each amount field is
+  named for screen readers, and on a phone the rows no longer run past
+  the screen with long names. A long name without spaces now breaks in
+  the bottle list and as a recipe card's title too, instead of running
+  past the card.
+- **The recipe and bottle editors say before saving what the hub would
+  refuse** (#159), with the way out, in German and English, and Save
+  stays off until it is fixed: a pair only partly in a recipe (naming
+  the bottles missing), a recipe without a name or an amount, an amount
+  below 0, a bottle without a name, a pair label that would leave a
+  recipe with part of a pair, and a pH bottle that a recipe still holds.
+  A screen reader reads each change. Before, the hub refused after Save
+  with a German-only message.
 - **A new bottle no longer takes over an old stock** (#161): importing a
   backup without a bottle kept that bottle's stock, and a new bottle of
   the same name created without a stock, as the setup wizard does, then
