@@ -64,6 +64,14 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Sessions claim an issue before working on it** (SD-076): parallel
+  sessions had picked up the same issue. Before a session starts, it
+  fetches the issue again and leaves it alone if a live claim or an open
+  pull request covers it. Otherwise it claims it with a comment naming
+  the session and its branch and the label `in-progress`; of two claims
+  the first comment wins. A multi-part issue is claimed per part, a claim
+  with an open pull request never goes stale, and any other claim quiet
+  for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
 - **Product questions are issues here** (#190, SD-072, from PD-226;
   replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an

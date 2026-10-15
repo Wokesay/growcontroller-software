@@ -85,6 +85,54 @@ Product, hardware and business live in the private product repository
 3. Check open `product-question` issues for answers from the owner's
    account (SD-072).
 
+## Claiming an issue (SD-076)
+
+All sessions post as the owner's account, so a claim is a comment that
+names its session. Your *link* is your Claude-Session URL (as in your
+commit trailers); your claim belongs to your branch.
+
+- **Live claim:** a "Claimed by", "Taken over by" or "Continued by"
+  comment from the owner's account, posted since the issue was last
+  (re)opened. It ends with a later "Withdrawn", "Released" or "Taken over
+  by" comment that names its branch (and its part, if it has one), or
+  when its pull request is merged or closed. Comments from other accounts
+  never count.
+- **Taken:** an issue, or a part of it, is taken if a live claim or an
+  open (also draft) pull request whose description says "Closes",
+  "Fixes", "Resolves" or "Part of #N" covers it; "Part of #N" without a
+  named part covers the whole issue. If any part is taken, claim only
+  free parts. Decide by the comments and pull requests; the label
+  `in-progress` only shows that some claim is live.
+- **Claim** when you start work towards a change (after "umsetzen" or
+  similar where needed); it needs no further approval. Fetch the issue
+  again, comment "Claimed by <link>, branch `<branch>`" (", part: <item
+  or heading>" for a part of a multi-part issue), add `in-progress`, then
+  read the comments again. If a live claim on another branch for the
+  same issue or part is listed before yours, comment "Withdrawn: <link>,
+  branch `<branch>`" and do not touch the label.
+- **While working:** open the draft pull request with your first commit
+  ("Closes #N", or "Part of #N, part: <item or heading>"). Before each
+  push and before merging, fetch the issue again; if your claim was taken
+  over, or a live claim on another branch now shows before yours, stop
+  and tell the owner.
+- **Waiting and stale:** a claim with an open pull request is never
+  stale. Without one, a claim waiting for the owner says "Waiting for
+  <what>: <link>, branch `<branch>`". Any other claim with no push to its
+  branch and no comment naming its branch for 24 h may be taken over:
+  "Taken over by <link>, branch `<branch>`, from <old link>, branch
+  `<old branch>`, quiet since <UTC>"; then read the comments again as for
+  a claim.
+- **Continue** a claim's branch in a new session only for your own
+  earlier work (for example after a restart) or on the owner's word:
+  "Continued by <link>, branch `<branch>`".
+- **End:** after merging a "Closes #N" pull request, remove the label.
+  After a "Part of #N" merge, or when work stops: comment "Released:
+  <link>, branch `<branch>`[, part: …]: <reason or PR>", and remove the
+  label if no other live claim is left.
+- If the owner asks for a taken issue, say who holds it; take it over
+  only on his word ("Taken over by … on the owner's request"). Not for
+  `product-question` issues (SD-072).
+
 ## Code rules (checked by `tools/arch_check.sh`)
 
 - **Platform-neutral core:** no platform, network or thread headers in
