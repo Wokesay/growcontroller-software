@@ -192,8 +192,14 @@ entry under `[Unreleased]`.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
-   - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
-     the statically linked compiler runtimes; the web app embedded in the
+   - The SBOMs list what ships, not the build tools (SD-075). The web
+     build fails when a module the bundler puts into the app is neither
+     our source, the page nor a runtime package of the lockfile; the web
+     SBOM is to list exactly those packages (today `npm sbom --omit dev`
+     leaves out `preact`, #201). Code the build tools
+     write into our own modules or the page is ours as built by them. The C++ SBOM
+     lists the header libraries from `cmake/deps.cmake`, not yet the
+     statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
      yet (#81): it holds the same server code, the web app, and musl and the
      GCC runtime from Alpine 3.24, whose exact package versions the image

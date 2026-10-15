@@ -2533,32 +2533,6 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   outside input. At session start, open `product-question` issues are
   checked for answers.
 
----
-
-## Drafts (waiting for "entschieden")
-
-| # | Draft | Core | Needs PD |
-|---|---|---|---|
-| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
-| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
-| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
-| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
-| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
-| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
-| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
-| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
-| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
-| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
-| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
-| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
-| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
-| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
-| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
-
-Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
-`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
-
----
 
 ## SD-073: A control round a Stop cut settles as after a restart
 
@@ -2589,6 +2563,7 @@ for EC and pH control after a restart (PD-070, PD-071) to the Stop.
   restart while stopped, which belongs with SD-028's saved pauses (#20).
 
 ---
+
 
 ## SD-074: A data folder the simulator cannot read runs it in memory only
 
@@ -2630,3 +2605,83 @@ it cannot read.
   the firmware.
 - Not covered: a file that can be opened but is not a regular file (for
   example a folder named `config.json`).
+
+
+## SD-075: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
+
+Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
+
+- **The SBOM lists only what ships in the product.** Build tools (for
+  example Vite, TypeScript, compilers, base images) do not go into it.
+- **Gaps to close:**
+  - the bundler's helper code: the check for tool code covers Rolldown
+    (with the next release; done, below). If its helpers could not be
+    avoided, Rolldown would be listed as a shipped package;
+  - the statically linked runtimes (musl, the GCC runtime) in the SBOM;
+  - an SBOM for the Home Assistant app image (#81);
+  - the firmware's runtimes, once the firmware ships.
+  musl, the GCC runtime and the image SBOM probably come with the release
+  after the next one.
+- **Technical documentation:** names the build tools, generated per
+  release from the lockfile and the image digests.
+- **A public tool list with every release:** npm and C++ build tools,
+  compilers and base images with their digests, as a plain file with the
+  header "not an SBOM, not shipped", part of `SHA256SUMS` and the
+  attestation. No second "build" SBOM, and no `scope: excluded` in one.
+- **Open on the software side** (proposals to the project owner): how
+  the build inputs Dependabot does not watch are tracked
+  (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
+  and whether a CVE in a build tool counts as a security item (PD-220).
+- **Open on the product side:** what the implementing act on the SBOM
+  format (CRA Art. 13(24)) will require.
+- **Done: the build checks every module the bundler puts into the app.**
+  A Vite plugin (`web/scripts/tool-code-guard.mjs`) looks at every module
+  of every chunk and fails the build on one that is neither our source,
+  the page nor a runtime package of `web/package-lock.json`: Rolldown's
+  runtime helpers, Oxc's lowering helpers, Vite's preload helper and
+  polyfill, any other module of a build tool, and a build-time package.
+  It also fails when it checked nothing (no chunk lists `src/main.tsx`),
+  and on a script that is not a chunk of the build (a web worker).
+  `web/scripts/tool-code-guard-selftest.mjs` (in `tools/ci.sh`) builds two
+  throwaway apps with the pinned bundler to show the guard names
+  Rolldown's and Vite's helpers and passes plain modules. The text check
+  of `web/scripts/no-tool-code.mjs` stays for the output, the page
+  included. On 2026-10-15 the app holds no such module, and the built app
+  is the same byte for byte with and without the guard.
+- **What it does not see:** code the build tools write into our own
+  modules (for example helpers a transform inlines), text added after the
+  modules are rendered, the page, files the app imports as URLs, CSS
+  `@import` and `url()` files, and `web/public/`. A web worker (also one
+  inlined into a chunk) and a script that is not a chunk of the build (a
+  script imported as a URL) fail the build rather than pass unseen.
+  That is ours as built by the tools in the tool list. It keeps the SBOM
+  accurate against honest tools and mistakes; it is no defence against a
+  malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
+
+---
+
+
+## Drafts (waiting for "entschieden")
+
+| # | Draft | Core | Needs PD |
+|---|---|---|---|
+| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
+| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
+| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
+| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
+| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
+| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
+| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
+| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
+| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
+| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
+| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
+| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
+| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
+| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
+| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
+
+Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
+`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
+
+---
