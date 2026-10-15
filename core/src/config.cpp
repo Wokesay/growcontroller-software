@@ -2,6 +2,7 @@
 #include "gc/config.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <stdexcept>
 
@@ -560,8 +561,14 @@ RuntimeState runtimeFromJson(const json& j) {
   // an object still counts as a fill a restart cut; a count out of range starts again (SD-075)
   if (j.contains("refill") && j["refill"].is_object()) {
     const json& r = j["refill"];
-    for (const char* k : {"fill", "check", "unconfirmed"})
-      if (r.contains(k)) s.refill[k] = r[k].is_object() ? r[k] : json::object();
+    for (const char* k : {"fill", "check", "unconfirmed"}) {
+      if (!r.contains(k)) continue;
+      json part = r[k].is_object() ? r[k] : json::object();
+      // An amount or a time that is not a number of zero or more is left out: read as not known
+      for (const char* f : {"startL", "plannedL", "expectedL", "sumL", "openMin", "plannedMin", "flow", "at", "due", "seenAt", "closedMs"})
+        if (part.contains(f) && !(part[f].is_number() && std::isfinite(part[f].get<double>()) && part[f].get<double>() >= 0)) part.erase(f);
+      s.refill[k] = part;
+    }
     const double n = numOrNaN(r, "unjudged");
     s.refill["unjudged"] = isNum(n) && n >= 0 && n < 100 ? static_cast<int>(n) : 0;
   }

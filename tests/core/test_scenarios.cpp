@@ -1033,11 +1033,43 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
     REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null(); }, 30 * 60 * 1000, 10000));
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
-    // A second fill would pass the target from where the first began: the two are judged now
+    // A second fill would pass the target from where the first began: a person looks now. Not as "did not
+    // rise": the pump drew from the tank
     REQUIRE(inletLatched(c));
-    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");
+    CHECK(c.state()["latches"]["inlet.fault"]["why"]["args"]["why"]["key"] == "refill.unjudged.irrigation");
     CHECK(refills(c) == 1);
     CHECK(s.world().tank.volumeL < 30.0 + 0.3);
+  }
+  SUBCASE("refills not judged count across refills until one rises as it should: two in a row latch, even with the level back above the start level each time") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 35);
+    irrigationPlug(s, c);
+    // From 28 L to 45 L. A leak in the line loses 60 % of it and the pump runs in the pause: too little
+    // rise, not judged, yet the level ends above the start level (30 L)
+    const auto refill = [&](bool leak) {
+      s.world().inletLpm = leak ? 0.8 : 2.0;
+      s.world().fill(28, 1.3, 5.9);
+      REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+      REQUIRE(soon(s, [&] { return !inletOpen(c); }, 15 * 60 * 1000, 5000));
+      s.step(60000, 5000);
+      if (leak) {
+        c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+        s.step(30000, 5000);
+        c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+      }
+      REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.ok" || inletLatched(c); }, 15 * 60 * 1000, 10000));
+    };
+    refill(true);
+    CHECK_FALSE(inletLatched(c));
+    refill(false);  // rises as it should: the count starts again
+    refill(true);
+    CHECK_FALSE(inletLatched(c));
+    refill(true);
+    REQUIRE(inletLatched(c));
+    CHECK(latchWhy(c) == "why.refill_unchecked");
+    CHECK(refills(c) == 4);
   }
   SUBCASE("the pump running only in the pause is counted too") {
     sim::Simulation s(test::opts("demo"));
@@ -1054,7 +1086,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
     REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null(); }, 15 * 60 * 1000, 10000));
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
-    CHECK(latchWhy(c) == "why.refill_no_rise");  // the stuck level, judged before another fill
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");  // no second fill unchecked
     CHECK(refills(c) == 1);
   }
   SUBCASE("a pump whose state is not known and a stuck level: no second fill unchecked, the tank stays within its target") {
@@ -1066,7 +1098,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     s.world().fill(29, 1.3, 5.9);  // refill below 30 L to 45 L
     freezeLevel(s);
     REQUIRE(soon(s, [&] { return inletLatched(c); }, 60 * 60 * 1000));
-    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
     CHECK(refills(c) == 1);
     CHECK(s.world().tank.volumeL < 45.0 + 0.3);
@@ -1121,6 +1153,27 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     CHECK_FALSE(inletOpen(c));
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 5 * 60 * 1000, 5000));
   }
+  SUBCASE("after maintenance the fill waits its full settling time, however long irrigation kept it waiting before") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    irrigationPlug(s, c);
+    s.world().fill(20, 1.3, 5.9);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    s.step(30000, 5000);
+    REQUIRE(refillLine(c)["key"] == "refill.settle");  // after irrigation
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 40}});
+    s.step(10 * 60 * 1000, 5000);
+    s.world().fill(22, 1.3, 5.9);  // filled by hand, still below the start level
+    s.step(31 * 60 * 1000, 5000);  // maintenance ended a minute ago
+    CHECK(refillLine(c)["key"] == "refill.settle");
+    s.step(60000, 5000);
+    CHECK_FALSE(inletOpen(c));  // two minutes after it, the reading may still follow the hand fill
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
+  }
   SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1148,7 +1201,8 @@ TEST_CASE("Scenario: small refills in a row are judged together, and the smalles
     freezeLevel(s);
     c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"start_below_l", 38}, {"target_l", 40}}}});
     REQUIRE(soon(s, [&] { return inletLatched(c); }, 60 * 60 * 1000, 10000));
-    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");  // too small to say "did not rise"
+    CHECK(c.state()["latches"]["inlet.fault"]["why"]["args"]["why"]["key"] == "refill.unjudged.small");
     CHECK(s.world().tank.volumeL < 40.0 + 0.3);  // 2.5 L once: a second fill would pass the target
   }
   SUBCASE("a small fill that rose too little is not added to a later refill that does not follow at once") {
@@ -1166,6 +1220,24 @@ TEST_CASE("Scenario: small refills in a row are judged together, and the smalles
     REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.ok" || inletLatched(c); }, 40 * 60 * 1000, 10000));
     CHECK_FALSE(inletLatched(c));  // judged alone: 10 L of 10 L
     CHECK(s.world().tank.volumeL == doctest::Approx(40.0).epsilon(0.03));
+  }
+  SUBCASE("a new level curve while a small fill waits: it cannot be compared with the level now, so a person looks") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28);
+    freezeLevel(s);
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", false}});  // about 2 L: too small to judge alone
+    s.step(60000, 5000);
+    // The level is calibrated again in the pause: the same tank now reads 0.5 L more
+    json cfg = c.ok("GET", "/api/v1/config/export");
+    for (auto& p : cfg["calibrations"]["LVL-77B210"]["tank_curve"]["points"]) p[1] = p[1].get<double>() + 0.5;
+    c.ok("POST", "/api/v1/config/import", cfg);
+    REQUIRE(soon(s, [&] { return inletLatched(c); }, 30 * 60 * 1000, 10000));
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");
+    CHECK(c.state()["latches"]["inlet.fault"]["why"]["args"]["why"]["key"] == "refill.unjudged.curve");
+    CHECK(s.world().tank.volumeL < 30.0 + 0.3);  // no second fill
   }
   SUBCASE("max_open_min 1: steps of 1 L reach the target, also with 20 s between ticks") {
     sim::Simulation s(test::opts("demo"));
@@ -1185,7 +1257,7 @@ TEST_CASE("Scenario: small refills in a row are judged together, and the smalles
     freezeLevel(s);
     c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"max_open_min", 1}}}});
     REQUIRE(soon(s, [&] { return inletLatched(c); }, 60 * 60 * 1000));
-    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(latchWhy(c) == "why.refill_unconfirmed");
     CHECK(refills(c) == 1);
     CHECK(s.world().tank.volumeL < 28.0 + 1.0 + 0.2);
   }
@@ -1214,6 +1286,61 @@ TEST_CASE("Scenario: a refill across a restart: steps end and are reported, a pe
     CHECK(s.world().tank.volumeL == doctest::Approx(30.3).epsilon(0.03));  // above the start level: rests
     CHECK_FALSE(inletLatched(c));
     CHECK(lastEvent(c, "tank", "ev.refill.restart")["text"]["args"]["step"] == 1);
+  }
+  SUBCASE("a power cut longer than the rest of a fill counts only what ran until then: no false latch") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 2.3);
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(60000, 5000);
+    s.reboot(15 * 60 * 1000, true, true);
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.fastForward(1.2, 5000);
+    CHECK_FALSE(inletLatched(c));
+    CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
+  }
+  SUBCASE("the open fill and its pending check are saved at once, not with the next save (RAT-063)") {
+    struct Dir {
+      std::filesystem::path path = std::filesystem::temp_directory_path() / ("gc-test-refill-save-" + std::to_string(std::random_device{}()));
+      ~Dir() { std::filesystem::remove_all(path); }
+    } d;
+    const auto& dir = d.path;
+    auto o = test::opts("demo");
+    o.dataDir = dir.string();
+    sim::Simulation s(o);
+    Client c{s};
+    demoAt(s, c, 2.3);
+    REQUIRE(until(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 1000));
+    CHECK(json::parse(std::ifstream(dir / "state.json"))["refill"].contains("fill"));
+    REQUIRE(until(s, [&] { return !inletOpen(c); }, 20 * 60 * 1000, 1000));
+    const json saved = json::parse(std::ifstream(dir / "state.json"));
+    CHECK(saved["refill"].contains("check"));
+    CHECK_FALSE(saved["refill"].contains("fill"));
+  }
+  SUBCASE("a power cut in the tick the valve opened: one minute is counted, no false latch") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 2.3);
+    REQUIRE(until(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 1000));
+    s.reboot(15 * 60 * 1000, true, true);
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.fastForward(1.2, 5000);
+    CHECK_FALSE(inletLatched(c));
+    CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
+  }
+  SUBCASE("a clock step back during a fill, then a power cut: what ran is still counted from the fill's start") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 2.3);
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(60000, 5000);
+    s.control("time", {{"stepS", -2 * 3600}});
+    s.step(60000, 5000);
+    s.reboot(15 * 60 * 1000, true, true);
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.fastForward(1.2, 5000);
+    CHECK_FALSE(inletLatched(c));
+    CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
   }
   SUBCASE("a stuck level and a restart in the pause: the check is judged after it, no second fill") {
     sim::Simulation s(test::opts("demo"));
@@ -1282,10 +1409,42 @@ TEST_CASE("Scenario: what ends refill steps, an inlet closed outside the refill,
   CHECK_FALSE(inletLatched(c));
 }
 
+TEST_CASE("Scenario: refill steps go on across a clock step in the pause, and a hand dose in the pause ends them (#155, SD-075)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 2.3);
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+  REQUIRE(soon(s, [&] { return !inletOpen(c); }, 20 * 60 * 1000, 5000));
+  // The clock steps 2 h ahead in the pause: the check stays at the end of the pause, then step 2
+  s.step(60000, 5000);
+  s.control("time", {{"stepS", 2 * 3600}});
+  s.step(60000, 5000);
+  CHECK(refillLine(c)["key"] == "refill.check_step");
+  CHECK_FALSE(inletOpen(c));
+  REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.ok"; }, 60 * 60 * 1000, 5000));
+  CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.03));
+  CHECK_FALSE(inletLatched(c));
+  // A hand dose that ends within the pause: the next step would dilute it, so the steps end. With the
+  // valve open at most 8 min, 14 L fit in one fill: from 26 L that is two steps to 45 L.
+  c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"max_open_min", 8}}}});
+  s.world().fill(26, 1.3, 5.9);
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+  CHECK(refillLine(c)["args"]["steps"] == 2);
+  REQUIRE(soon(s, [&] { return !inletOpen(c); }, 10 * 60 * 1000, 5000));
+  s.step(60000, 5000);
+  c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 5}});
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 8 * 60 * 1000, 1000));
+  CHECK(refillLine(c)["key"] == "refill.check");
+  s.fastForward(0.5, 5000);
+  CHECK(s.world().tank.volumeL == doctest::Approx(40.0).epsilon(0.03));
+  CHECK_FALSE(inletLatched(c));
+}
+
 TEST_CASE("Scenario: the refill does not take over a valve opened by hand, and says it will lock (#155, SD-075)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   demoAt(s, c, 10);
+  for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});  // their waits would hide the line
   c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
   c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
   s.step(5 * 60 * 1000, 5000);
@@ -1294,6 +1453,18 @@ TEST_CASE("Scenario: the refill does not take over a valve opened by hand, and s
   const json line = refillLine(c);
   CHECK(line["key"] == "refill.open_by_hand_limit");
   CHECK(line["args"]["min"] == 15);
+  // Closed by hand below the start level: the next fill waits until the reading has settled (RAT-038)
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", false}});
+  s.step(60000, 5000);
+  CHECK(refillLine(c)["key"] == "refill.settle");
+  CHECK_FALSE(inletOpen(c));
+  // So does a start: what happened before it is not known
+  s.reboot(0, true, true);
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(2 * 60 * 1000, 5000);
+  CHECK(refillLine(c)["key"] == "refill.settle");
+  CHECK_FALSE(inletOpen(c));
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
 }
 
 TEST_CASE("Scenario: the inlet opened by hand still closes and latches after max_open_min (RAT-031, RAT-032, #155)") {

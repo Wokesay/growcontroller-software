@@ -2658,15 +2658,20 @@ Decided by the project owner on 2026-10-15 in the software session
   fits, or reaches the target. A step ends the refill early when the
   level passes the target by 1 L (RAT-038). The steps end on Stop,
   maintenance mode, the function switched off, a block other than the
-  pause, a latch, a mix or hand dose, or a change of the target, the
-  rate or the open time.
+  pause, a latch, a mix or hand dose (also one that ran only during a
+  fill or its pause), or a change of the target, the rate or the open
+  time.
 - **Before every fill** the level reading must have been undisturbed
   for 3 min: no irrigation pump running, no maintenance, no valve opened
   by hand, no start of the hub. The reading lags 1.5–2 min (RAT-038), so
   a fill opened right after irrigation or draining would start from a
   level read too high and could look like a missing rise. A reading that
-  does not settle for 30 min (irrigation every few minutes) does not keep
-  the tank short: the fill goes ahead, marked as irrigated. The refill
+  irrigation keeps from settling for 30 min (irrigation every few
+  minutes) does not keep the tank short: the fill goes ahead, marked as
+  irrigated. Only irrigation may end the wait early: it reads the level
+  too high, so a fill comes out smaller. Maintenance, a valve opened by
+  hand and a start always get the full 3 min, since a hand fill read too
+  low would make the fill larger. The refill
   does not take over a valve opened by hand; its line says that valve
   closes and locks after `max_open_min`.
 - **The rise is checked:** at the end of each fill's pause, on a level
@@ -2692,9 +2697,18 @@ Decided by the project owner on 2026-10-15 in the software session
     than the target allows from there, nor stay open longer than one fill
     may; when nothing more fits, they are judged now. So a plug offline,
     a calibration left open or a level stuck low gets no second full fill
-    unchecked.
+    unchecked. Judged now, they latch as "did not rise" only when the
+    rise could have shown; fills the irrigation pump drew from, a restart
+    cut, too small to judge or a damaged record latch as not checkable,
+    with that reason. Measured on another level curve than the one now,
+    they cannot be compared and latch as not checkable; during a level
+    calibration the sum starts again with the fill being checked, keeping
+    their open time.
   - **Two fills in a row that could not be judged latch the inlet too,**
-    with their reason, as a backstop.
+    with their reason, as a backstop. The count starts again only when a
+    rise passes or a person releases the latch, not when the level is back
+    above the start level: a leak while the irrigation pump runs in every
+    pause would otherwise never latch.
   - A check due while the level is not valid (right after a start) waits
     up to 3 min for one. A due time is never more than one pause ahead,
     so a clock that was not set before a start cannot hold EC and pH.
@@ -2706,12 +2720,23 @@ Decided by the project owner on 2026-10-15 in the software session
   confirmed and the count of fills not judged are saved in the same tick
   (RAT-063), and a damaged record is cleaned when read, so it never stops
   the hub. After a restart a pending check is still judged; a fill the
-  restart cut counts as not judged, with what may have flowed until the
-  start; steps it ended are reported and not resumed (RAT-007, R6).
+  restart cut counts as not judged, with what may have flowed until it
+  was last seen open (saved once a minute), not through the outage after;
+  steps it ended are reported and not resumed (RAT-007, R6). A value in
+  the record that is missing or not a number of zero or more is read as
+  not known (R5), and fills with such a record latch as not checkable.
+  A hard reset between the valve opening and the save at the end of that
+  tick loses the fill's record; the inlet is off after a start (R6). An
+  inlet on a socket that keeps its power while only the hub restarts (a
+  crash, an update) flows on until its own auto-off or the off after the
+  start; that water is not counted, so with a level reading stuck low the
+  next fill can pass the target by it.
 - **EC and pH wait** from the first opening of a refill until its last
   fill is checked (RAT-055, RAT-057): a round in a tank half filled would
   be diluted by the next step. The longest hold is the number of steps
-  times the open time plus 10 min, plus waits for a running dose.
+  times the open time plus 10 min, plus waits for a running dose, for
+  the reading to settle (at most 30 min each) and for a valid level after
+  a start (3 min).
 - **Assumptions, not measured (RAT-038):** 50 %, 4 L, the 1 min margin and
   the 3 min settling; the inlet rate stays constant during a fill (it
   falls with a pressure tank or a gravity barrel, which can latch); the
@@ -2724,12 +2749,17 @@ Decided by the project owner on 2026-10-15 in the software session
     With an inlet faster than its set rate, more water flows in that time.
   - Between a start level and a target less than 4 L apart, a fill that
     rose too little but brings the level back above the start level is
-    not noticed: a small leak repeats each time.
+    not noticed: a small leak repeats each time, and a level reading that
+    hovers at the start level without following can let fills repeat.
   - A circulation pump in interval mode holds water outside the tank in
     NFT and RDWC, and ebb and flow drains back for longer than 3 min:
     both can make a fill look short or overfill past the target.
   - A level sensor that reads low by a fixed amount but follows the rise
     passes; the computed gap is then filled in steps.
+  - When one fill's open time holds less than 4 L (a short
+    `max_open_min` or a slow inlet), its fills are judged at that size: a
+    reading off by the level's uncertainty (RAT-030, RAT-078) can latch a
+    correct refill as not checkable.
   - An irrigation pump the hub does not know (an outside timer, a Home
     Assistant automation) can make a correct fill look like a missing rise
     and latch: it belongs bound as `zone.irrigation_pump` (#233).

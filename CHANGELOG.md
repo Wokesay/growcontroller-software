@@ -228,8 +228,10 @@ listed in every release under "Security".
   limit (half of it, if that is shorter), and the rest follows in steps
   with a 10 min pause between them, each step named in the refill's line
   ("Füllt: Etappe 1 von 2 …"). Each fill waits until the level reading
-  has been undisturbed for 3 min, for example after irrigation.
-  EC and pH wait from the first opening until the last step is checked.
+  has been undisturbed for 3 min, for example after irrigation (there at
+  most 30 min) or maintenance.
+  EC and pH wait from the first opening until the last step is checked;
+  a mix or hand dose meanwhile ends the steps.
   The limit itself is unchanged and still closes a valve the hub opened.
   The refill no longer takes over an inlet opened by hand, and says that
   such a valve locks after the limit.
@@ -566,8 +568,12 @@ A protective cut-off added:
   are judged, and two not judged in a row latch the inlet too. A pending
   check survives a restart. Residual risk: a level reading wrongly low
   still gets fills up to the target or one fill's open time before the
-  latch, and an irrigation pump the hub does not know can make a correct
-  fill look like a missing rise: bind it as the irrigation pump. After the
+  latch; with start level and target less than 4 L apart, a level that
+  hovers at the start level without following can let small fills
+  repeat; an inlet on a socket that keeps running while only the hub
+  restarts is not counted for that time; and an irrigation pump the hub
+  does not know can make a correct fill look like a missing rise: bind it
+  as the irrigation pump. After the
   update, check that the inlet rate under Functions is about right: one
   set at more than twice the real rate now latches every refill.
 

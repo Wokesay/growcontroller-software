@@ -8,6 +8,7 @@
 // Vorschlag anwender; Quelle: RAT-037, RAT-039, RAT-046).
 #pragma once
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -140,8 +141,9 @@ class RefillController {
   bool booted_ = false;
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
-  Ms disturbedMs_ = 0;  // the level reading was last disturbed (irrigation, maintenance, a hand on the valve)
-  Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle
+  Ms disturbedMs_ = 0;  // the level reading was last disturbed by maintenance, a hand on the valve or a start
+  Ms irrigatedMs_ = std::numeric_limits<Ms>::min() / 2;  // the irrigation pump last ran; not since the start
+  Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle after irrigation
   Epoch bootEpoch_ = 0;
   double startL_ = kNaN, plannedL_ = kNaN;
   // The refill as planned at its first fill: target, rate and open time, then step by step the
