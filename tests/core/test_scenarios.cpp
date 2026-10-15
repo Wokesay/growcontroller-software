@@ -1020,7 +1020,7 @@ TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet
 }
 
 TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, SD-075)") {
-  SUBCASE("too little rise while the pump ran is not judged; the next fill without it latches") {
+  SUBCASE("too little rise while the pump ran is not judged; with the level still stuck it latches before another fill") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
     demoAt(s, c, 28, 25, 30);
@@ -1033,10 +1033,11 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
     REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null(); }, 30 * 60 * 1000, 10000));
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
-    CHECK_FALSE(inletLatched(c));
-    REQUIRE(soon(s, [&] { return inletLatched(c); }, 40 * 60 * 1000, 10000));
+    // A second fill would pass the target from where the first began: the two are judged now
+    REQUIRE(inletLatched(c));
     CHECK(latchWhy(c) == "why.refill_no_rise");
-    CHECK(refills(c) == 2);
+    CHECK(refills(c) == 1);
+    CHECK(s.world().tank.volumeL < 30.0 + 0.3);
   }
   SUBCASE("the pump running only in the pause is counted too") {
     sim::Simulation s(test::opts("demo"));
@@ -1053,23 +1054,22 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
     REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null(); }, 15 * 60 * 1000, 10000));
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
-    CHECK_FALSE(inletLatched(c));
+    CHECK(latchWhy(c) == "why.refill_no_rise");  // the stuck level, judged before another fill
+    CHECK(refills(c) == 1);
   }
-  SUBCASE("a pump whose state is not known: two fills not judged, then the inlet waits for a person") {
+  SUBCASE("a pump whose state is not known and a stuck level: no second fill unchecked, the tank stays within its target") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
-    demoAt(s, c, 28, 25, 30);
+    demoAt(s, c, 31);
     const std::string plug = irrigationPlug(s, c);
     s.control("fault", {{"device", plug}, {"fault", "offline"}});
-    s.world().fill(20, 1.3, 5.9);
+    s.world().fill(29, 1.3, 5.9);  // refill below 30 L to 45 L
     freezeLevel(s);
-    REQUIRE(soon(s, [&] { return inletLatched(c); }, 90 * 60 * 1000, 10000));
-    const json why = c.state()["latches"]["inlet.fault"]["why"];
-    CHECK(why["key"] == "why.refill_unchecked");
-    CHECK(why["args"]["n"] == 2);
-    CHECK(why["args"]["why"]["key"] == "refill.unjudged.irrigation");
-    CHECK(refills(c) == 2);
-    CHECK(s.world().tank.volumeL < 20 + 2 * 10 + 0.5);
+    REQUIRE(soon(s, [&] { return inletLatched(c); }, 60 * 60 * 1000));
+    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
+    CHECK(refills(c) == 1);
+    CHECK(s.world().tank.volumeL < 45.0 + 0.3);
   }
   SUBCASE("a pump bound but off does not keep a stuck level from latching") {
     sim::Simulation s(test::opts("demo"));
@@ -1103,6 +1103,40 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.ok"; }, 30 * 60 * 1000));
     CHECK(lastEvent(c, "tank", "ev.refill.unjudged").is_null());
     CHECK_FALSE(inletLatched(c));
+  }
+  SUBCASE("a step after irrigation late in the pause waits too") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 31);
+    irrigationPlug(s, c);
+    s.world().fill(14, 1.3, 5.9);  // to 45 L in steps of 14 L at max_open_min 8
+    c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"max_open_min", 8}}}});
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    REQUIRE(soon(s, [&] { return !inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(9 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+    s.step(20000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.settle"; }, 2 * 60 * 1000, 5000));
+    CHECK_FALSE(inletOpen(c));
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 5 * 60 * 1000, 5000));
+  }
+  SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    irrigationPlug(s, c);
+    s.world().fill(20, 1.3, 5.9);
+    bool opened = false;
+    for (int i = 0; i < 18 && !opened; ++i) {  // on 1 min, off 1 min
+      c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+      s.step(60000, 5000);
+      c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+      s.step(60000, 5000);
+      opened = inletOpen(c) || refills(c) > 0;
+      if (i < 13) CHECK_FALSE(opened);  // waits while the reading does not settle
+    }
+    CHECK(opened);
   }
 }
 
@@ -1143,6 +1177,17 @@ TEST_CASE("Scenario: small refills in a row are judged together, and the smalles
     s.fastForward(4.0, 20000);
     CHECK_FALSE(inletLatched(c));
     CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
+  }
+  SUBCASE("max_open_min 1 and a stuck level: the small fills together stay within the open time, then they are judged") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28);
+    freezeLevel(s);
+    c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"max_open_min", 1}}}});
+    REQUIRE(soon(s, [&] { return inletLatched(c); }, 60 * 60 * 1000));
+    CHECK(latchWhy(c) == "why.refill_no_rise");
+    CHECK(refills(c) == 1);
+    CHECK(s.world().tank.volumeL < 28.0 + 1.0 + 0.2);
   }
   SUBCASE("an inlet too slow for its open time is blocked and says so") {
     sim::Simulation s(test::opts("demo"));

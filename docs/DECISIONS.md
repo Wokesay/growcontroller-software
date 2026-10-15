@@ -2660,11 +2660,13 @@ Decided by the project owner on 2026-10-15 in the software session
   maintenance mode, the function switched off, a block other than the
   pause, a latch, a mix or hand dose, or a change of the target, the
   rate or the open time.
-- **Before the first fill** the level reading must have been undisturbed
+- **Before every fill** the level reading must have been undisturbed
   for 3 min: no irrigation pump running, no maintenance, no valve opened
   by hand, no start of the hub. The reading lags 1.5–2 min (RAT-038), so
   a fill opened right after irrigation or draining would start from a
-  level read too high and could look like a missing rise. The refill
+  level read too high and could look like a missing rise. A reading that
+  does not settle for 30 min (irrigation every few minutes) does not keep
+  the tank short: the fill goes ahead, marked as irrigated. The refill
   does not take over a valve opened by hand; its line says that valve
   closes and locks after `max_open_min`.
 - **The rise is checked:** at the end of each fill's pause, on a level
@@ -2681,27 +2683,35 @@ Decided by the project owner on 2026-10-15 in the software session
     draws from the tank; no estimate, R5); no valid level at the check;
     no level read since the valve closed; the level sensor being
     calibrated, or its curve changed; a fill cut by a restart.
-  - **Two fills in a row that could not be judged latch the inlet too,**
-    with their reason. Without that, a plug offline or a calibration left
-    open would let every fill pass unchecked.
   - A fill smaller than 4 L, or than twice the volume at the level
     curve's first point when it starts at or below that point, is too
     small for the level's uncertainty (RAT-030, RAT-078) to judge alone.
-    It is added to the next fill if that starts right after the check.
-    Fills judged together never add more than the target allows from
-    where they began; when the next one would, they are judged now.
+  - **Fills whose rise is not confirmed** (too small, or not judged) are
+    added up from where the first began, until a rise is confirmed or the
+    level is back above the start level. Together they never add more
+    than the target allows from there, nor stay open longer than one fill
+    may; when nothing more fits, they are judged now. So a plug offline,
+    a calibration left open or a level stuck low gets no second full fill
+    unchecked.
+  - **Two fills in a row that could not be judged latch the inlet too,**
+    with their reason, as a backstop.
+  - A check due while the level is not valid (right after a start) waits
+    up to 3 min for one. A due time is never more than one pause ahead,
+    so a clock that was not set before a start cannot hold EC and pH.
   - A fill closed outside the refill (the device's own auto-off, a person
     in the app, an internal error) is checked too, after the pause; one
     the gateway's emergency limit or a person's Stop or maintenance
     closed is not.
-- **Across a restart:** the open fill, the pending check and the count
-  of fills not judged are saved at once (RAT-063). After a restart a
-  pending check is still judged; a fill the restart cut counts as not
-  judged; steps it ended are reported and not resumed (RAT-007, R6).
+- **Across a restart:** the open fill, the pending check, the fills not
+  confirmed and the count of fills not judged are saved in the same tick
+  (RAT-063), and a damaged record is cleaned when read, so it never stops
+  the hub. After a restart a pending check is still judged; a fill the
+  restart cut counts as not judged, with what may have flowed until the
+  start; steps it ended are reported and not resumed (RAT-007, R6).
 - **EC and pH wait** from the first opening of a refill until its last
   fill is checked (RAT-055, RAT-057): a round in a tank half filled would
   be diluted by the next step. The longest hold is the number of steps
-  times the open time plus 10 min.
+  times the open time plus 10 min, plus waits for a running dose.
 - **Assumptions, not measured (RAT-038):** 50 %, 4 L, the 1 min margin and
   the 3 min settling; the inlet rate stays constant during a fill (it
   falls with a pressure tank or a gravity barrel, which can latch); the
@@ -2709,9 +2719,15 @@ Decided by the project owner on 2026-10-15 in the software session
   buckets); water draining back into the tank (ebb and flow) can hide a
   missing rise.
 - **Residual risks:**
-  - A level reading wrongly low gets one capped fill (at most rate × open
-    time) before the check latches; a fill too small to judge, up to the
-    target, before the fills are judged together.
+  - A level reading wrongly low gets fills up to the target or up to one
+    fill's open time, whichever comes first, before the check latches.
+    With an inlet faster than its set rate, more water flows in that time.
+  - Between a start level and a target less than 4 L apart, a fill that
+    rose too little but brings the level back above the start level is
+    not noticed: a small leak repeats each time.
+  - A circulation pump in interval mode holds water outside the tank in
+    NFT and RDWC, and ebb and flow drains back for longer than 3 min:
+    both can make a fill look short or overfill past the target.
   - A level sensor that reads low by a fixed amount but follows the rise
     passes; the computed gap is then filled in steps.
   - An irrigation pump the hub does not know (an outside timer, a Home

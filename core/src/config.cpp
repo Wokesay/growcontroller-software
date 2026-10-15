@@ -556,7 +556,15 @@ RuntimeState runtimeFromJson(const json& j) {
       }
   }
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
-  if (j.contains("refill") && j["refill"].is_object()) s.refill = j["refill"];
+  // The refill's record is cleaned when read: a damaged part never stops the hub. A fill that is not
+  // an object still counts as a fill a restart cut; a count out of range starts again (SD-075)
+  if (j.contains("refill") && j["refill"].is_object()) {
+    const json& r = j["refill"];
+    for (const char* k : {"fill", "check", "unconfirmed"})
+      if (r.contains(k)) s.refill[k] = r[k].is_object() ? r[k] : json::object();
+    const double n = numOrNaN(r, "unjudged");
+    s.refill["unjudged"] = isNum(n) && n >= 0 && n < 100 ? static_cast<int>(n) : 0;
+  }
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});
   if (j.contains("clock")) s.clock = stampFromJson(j["clock"]);

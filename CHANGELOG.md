@@ -227,8 +227,8 @@ listed in every release under "Security".
   tank. Now one fill keeps the valve open at most a minute less than the
   limit (half of it, if that is shorter), and the rest follows in steps
   with a 10 min pause between them, each step named in the refill's line
-  ("Füllt: Etappe 1 von 2 …"). The first fill waits until the level
-  reading has been undisturbed for 3 min, for example after irrigation.
+  ("Füllt: Etappe 1 von 2 …"). Each fill waits until the level reading
+  has been undisturbed for 3 min, for example after irrigation.
   EC and pH wait from the first opening until the last step is checked.
   The limit itself is unchanged and still closes a valve the hub opened.
   The refill no longer takes over an inlet opened by hand, and says that
@@ -561,11 +561,13 @@ A protective cut-off added:
   the alarm names what to check. A fill whose rise cannot be judged (a
   rise too small while the irrigation pump ran or its state was not
   known, no valid or fresh level, a level calibration, a fill cut by a
-  restart) ends its steps, and two of them in a row latch the inlet too.
-  A pending check and that count survive a restart. Residual risk: a
-  level reading wrongly low still gets one capped fill before the latch,
-  and an irrigation pump the hub does not know can make a correct fill
-  look like a missing rise: bind it as the irrigation pump. After the
+  restart) ends its steps; fills not confirmed are added up and never
+  fill past the target or stay open longer than one fill may before they
+  are judged, and two not judged in a row latch the inlet too. A pending
+  check survives a restart. Residual risk: a level reading wrongly low
+  still gets fills up to the target or one fill's open time before the
+  latch, and an irrigation pump the hub does not know can make a correct
+  fill look like a missing rise: bind it as the irrigation pump. After the
   update, check that the inlet rate under Functions is about right: one
   set at more than twice the real rate now latches every refill.
 

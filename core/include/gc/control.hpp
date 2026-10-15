@@ -135,13 +135,14 @@ class RefillController {
     leftL_ = 0;
   }
   // The open fill becomes a check of its rise at the end of the pause (SD-075)
-  void toCheck(const Ctx& c, double expectedL);
+  void toCheck(const Ctx& c, double expectedL, double openMin);
   void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
   bool booted_ = false;
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
   Ms disturbedMs_ = 0;  // the level reading was last disturbed (irrigation, maintenance, a hand on the valve)
-  Ms chainAt_ = -1;     // a fill too small to judge alone was checked in this tick: the next one adds to it
+  Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle
+  Epoch bootEpoch_ = 0;
   double startL_ = kNaN, plannedL_ = kNaN;
   // The refill as planned at its first fill: target, rate and open time, then step by step the
   // litres left and the fixed number of steps; the total is computed once (RAT-001, SD-075)
