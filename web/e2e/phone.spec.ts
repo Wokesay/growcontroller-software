@@ -323,12 +323,15 @@ for (const lang of ["de", "en"]) {
       let ok = true;
       for (const name of ["Booster", "Enzym", "Silizium", "Wurzelstimulator", "Bloom Kick", "Fulvinsäure", "Wurzelstimulatorkonzentratspezialmischung"])
         ok = (await fetch("/api/v1/canisters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, kind: "nutrient", capacityMl: 1000 }) })).ok && ok;
+      // A recipe name without spaces as long as the hub keeps (40)
+      const recipe = { name: "Blütephasenspezialrezeptmitzusatzstoffen", steps: [{ canister: "booster", mlPerL: 1 }] };
+      ok = (await fetch("/api/v1/recipes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(recipe) })).ok && ok;
       return ok;
     }, lang);
     expect(added).toBe(true);
     await page.goto("/#/rezepte");
     await page.reload();
-    await fits(page, "recipes with a long bottle name");
+    await fits(page, "recipes with a long bottle and recipe name");
     const de = lang === "de";
     await page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) }).getByRole("button", { name: de ? "Bearbeiten" : "Edit" }).click();
     const dialog = page.getByRole("dialog");
