@@ -66,9 +66,14 @@ release.
 
 ## Flash
 
-1. Connect the hub over USB. If it is not detected and your board has
-   BOOT and RESET buttons (development boards do), hold BOOT, press and
-   release RESET, then release BOOT (download mode).
+1. Connect the hub over USB. On the ESP32-S3's own USB port (the
+   carrier board's port, or the DevKit's port marked USB) no button is
+   needed: esptool starts download mode by itself. If the hub is not
+   detected and your board has BOOT and RESET buttons (development boards
+   do), hold BOOT, press and release RESET, then release BOOT (download
+   mode). As any computer on either USB port of the DevKit can flash the
+   hub without a button (the UART port through its auto-program
+   circuit), unplug USB while the hub is in operation (SD-076).
 2. Flash and watch the log:
 
    ```bash
@@ -94,10 +99,18 @@ release.
 3. Configuration, password, calibration values and history stay on the
    `storage` and `history` partitions as long as you flash only
    bootloader, partition table, OTA data and app, onto the same board,
-   with an unchanged partition table (`firmware/boards/<board>.csv`). The
+   with the partitions in the same places (`firmware/boards/<board>.csv`;
+   adding the factory data partition `fctry` moved nothing, SD-076). The
    OTA data makes the hub start the app you flashed. On a
    new or erased hub, setup starts as usual (first password in the web
    app).
+
+Do not erase the whole flash (`idf.py erase-flash`, `esptool
+erase_flash`, or "Erase" in a browser installer) unless you mean to: it
+also erases `fctry`, which on a pre-flashed hub holds the setup network's
+key printed on its label; the label then no longer applies. A factory
+reset on the hub (holding BOOT for 10 s, once the firmware has it) keeps
+it (SD-076).
 
 Once secrets are stored in encrypted NVS (SD-024), your own firmware needs
 the same NVS encryption setting and HMAC key ID to read them; otherwise it
