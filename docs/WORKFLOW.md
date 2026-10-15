@@ -59,6 +59,8 @@ only the sync workflow may write there.
    (SD-027). This changes the SD-027 checks in `tools/workflows.test.mjs`
    (only `actions/*`, no `: write` outside `release.yml`), so it waits
    for the owner's "mergen". Before activating (`security`, #29):
+   - leave `product-question` issues out: they are answered by the
+     product session (SD-072);
    - pin the newest release's commit SHA (at least v1.0.94) and check the
      action's security advisories;
    - keep the workflow's own token (`github_token`) and never add
@@ -107,9 +109,9 @@ builds and tests.
 Other views stay in the product repository: `kunde` (customer), `anwender`
 (grower), `architekt` (architecture), `firmware`, `hardware`,
 `regulatorik` (regulatory), `produkt` (product and business). This
-repository asks them through the product repository: Claude writes the
-question into its note `docs/notizen/fragen-aus-der-software.md` as a
-pull request there (PD-100, SD-069).
+repository asks them with an English issue labelled `product-question`,
+which the product repository's session picks up (PD-100, SD-072). The
+software session does not access the product repository.
 
 **Flow of a change:**
 
@@ -200,6 +202,6 @@ devices, so 2–5 h per week with Claude triage. Rules:
   repository they appear as "Product requirement (from PD-xxx)".
   They are written only in the product repository's session; this
   repository receives requirements as issues and names product questions
-  instead of deciding them (PD-100, SD-029). Claude takes these questions
-  to the product repository itself, as a pull request to a note there,
-  never as a PD (SD-069).
+  instead of deciding them (PD-100, SD-029). Claude files these questions
+  as `product-question` issues here and never decides them as a PD
+  (SD-072).

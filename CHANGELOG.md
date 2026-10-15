@@ -64,11 +64,12 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Product questions go to the product repository directly** (SD-069):
-  the software session writes each product question it meets, with
-  context, options and its recommendation, into a note of the product
-  repository as a pull request there, instead of handing it to the
-  project owner. Decisions (PD) are still made only there.
+- **Product questions are issues here** (#190, SD-072, from PD-226;
+  replaces SD-069): the software session files each product question it meets,
+  with its software basis, the options and its recommendation, as an
+  English issue labelled `product-question`. The product repository's
+  session picks it up and decides it there (PD). The software session no
+  longer accesses the product repository.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their

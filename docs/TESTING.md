@@ -66,7 +66,8 @@ ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
 - Fuzzing of the API inputs (JSON, paths) and of the configuration file.
 - Long run: 30 days of simulated time, memory and event limits.
 - Hardware-in-the-loop on breadboard P0 once `firmware/` runs: acceptance
-  according to `docs/prototyp/README.md` in the product repository.
+  by the product side's tests for P0, which come here as an issue
+  (SD-072).
 - First boot on both boards (N32R16V, N8R8): flash chip recognised, PSRAM
   size, history read above 16 MB on the N32R16V; `GET /api/v1/auth/session`
   with a session sends the cookie again (`Max-Age=43200`, SD-064) through
