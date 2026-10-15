@@ -1,26 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The web SBOM: exactly the runtime packages of web/package-lock.json, the
 // packages whose code the app may hold (web/scripts/tool-code-guard.mjs;
-// #201, SD-075). `npm sbom --omit dev` is not that: it drops every package a
-// build tool depends on, peers included, and so left out preact. This takes
-// npm's SBOM of the whole lockfile and keeps the components whose
-// `cdx:npm:package:path` is a runtime entry of the lockfile, as required, and
-// the dependency edges between them. A runtime package npm did not list
-// fails.
-//   (cd web && npm sbom --sbom-format cyclonedx --package-lock-only) \
+// #201, SD-075). A runtime package is every entry not marked `dev`, as for
+// the guard and the license check (tools/license_policy.mjs): devOptional
+// ones too, which `npm ci --omit=dev` installs.
+// `npm sbom --omit dev` is not that: it drops every package a build tool
+// depends on, peers included, and so left out preact. This takes npm's SBOM
+// of the whole tree and keeps, unchanged, the components whose
+// `cdx:npm:package:path` is a runtime entry, and the dependency edges
+// between them. It fails rather than write a wrong SBOM: a runtime package
+// npm did not list (an optional one not installed here is left out, it
+// cannot ship), one npm marks as development, a component without a path,
+// one listed twice.
+//   (cd web && npm sbom --sbom-format cyclonedx) \
 //     | node tools/sbom_web.mjs web/package-lock.json > sbom-web.cdx.json
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const PATH = "cdx:npm:package:path";
-const DEVELOPMENT = "cdx:npm:package:development";
+const PATH_PROP = "cdx:npm:package:path";
+const DEVELOPMENT_PROP = "cdx:npm:package:development";
 
 // Lockfile path → name@version of every runtime package
 export function runtimePackages(lock) {
+  if (!(lock?.lockfileVersion >= 2) || !lock.packages) throw new Error("web/package-lock.json must be lockfile version 2 or later");
   const out = new Map();
-  for (const [path, entry] of Object.entries(lock.packages ?? {})) {
-    if (!path || entry.dev || entry.devOptional) continue;
-    const name = entry.name ?? path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length);
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    // A link has no flags of its own; its target's entry has them
+    if (!path || entry.dev || entry.link) continue;
+    const name = entry.name ?? path.replace(/^.*node_modules\//, "");
     out.set(path, `${name}@${entry.version}`);
   }
   return out;
@@ -28,22 +35,26 @@ export function runtimePackages(lock) {
 
 export function webSbom(full, lock) {
   const runtime = runtimePackages(lock);
-  const kept = [];
-  const seen = new Set();
+  const components = [];
+  const seenPaths = new Set();
+  const refs = new Set();
   for (const c of full.components ?? []) {
-    const path = c.properties?.find((p) => p.name === PATH)?.value;
-    if (path === undefined) throw new Error(`${c["bom-ref"]} has no ${PATH}: npm's SBOM changed, check tools/sbom_web.mjs`);
+    const path = c.properties?.find((p) => p.name === PATH_PROP)?.value;
+    if (path === undefined) throw new Error(`${c["bom-ref"]} has no ${PATH_PROP}: npm's SBOM changed, check tools/sbom_web.mjs`);
     if (!runtime.has(path)) continue;
-    seen.add(path);
-    kept.push({ ...c, scope: "required", properties: c.properties.filter((p) => p.name !== DEVELOPMENT) });
+    if (c.properties.some((p) => p.name === DEVELOPMENT_PROP)) throw new Error(`npm marks ${c["bom-ref"]} (${path}) as development, the lockfile does not: run npm install and check web/package-lock.json`);
+    if (refs.has(c["bom-ref"])) throw new Error(`npm lists ${c["bom-ref"]} twice among the runtime packages: its dependency edges would be ambiguous`);
+    refs.add(c["bom-ref"]);
+    seenPaths.add(path);
+    components.push(c);
   }
-  const missing = [...runtime].filter(([path]) => !seen.has(path));
+  const missing = [...runtime].filter(([path]) => !seenPaths.has(path) && !lock.packages[path].optional);
   if (missing.length) throw new Error(missing.map(([path, id]) => `${id} (${path}) is a runtime package of web/package-lock.json but not in npm's SBOM`).join("\n"));
-  const refs = new Set([full.metadata?.component?.["bom-ref"], ...kept.map((c) => c["bom-ref"])]);
+  refs.add(full.metadata?.component?.["bom-ref"]);
   const dependencies = (full.dependencies ?? [])
     .filter((d) => refs.has(d.ref))
     .map((d) => ({ ...d, dependsOn: (d.dependsOn ?? []).filter((r) => refs.has(r)) }));
-  return { ...full, components: kept, dependencies };
+  return { ...full, components, dependencies };
 }
 
 function isMain() {
@@ -57,10 +68,14 @@ function isMain() {
 if (isMain()) {
   const lockPath = process.argv[2];
   if (!lockPath) {
-    console.error("usage: npm sbom --sbom-format cyclonedx --package-lock-only | node tools/sbom_web.mjs <package-lock.json>");
+    console.error("usage: npm sbom --sbom-format cyclonedx | node tools/sbom_web.mjs <package-lock.json>");
     process.exit(2);
   }
-  const full = JSON.parse(readFileSync(0, "utf8"));
-  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-  process.stdout.write(`${JSON.stringify(webSbom(full, lock), null, 2)}\n`);
+  const input = readFileSync(0, "utf8");
+  if (!input.trim()) {
+    console.error("no SBOM from npm on stdin");
+    process.exit(1);
+  }
+  const sbom = webSbom(JSON.parse(input), JSON.parse(readFileSync(lockPath, "utf8")));
+  process.stdout.write(`${JSON.stringify(sbom, null, 2)}\n`);
 }

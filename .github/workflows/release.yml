@@ -166,7 +166,7 @@ jobs:
           node tools/third_party.mjs web/dist/THIRD_PARTY_LICENSES.txt --web
           cp LICENSE web/dist/LICENSE.txt
           tar -C web -czf "out/dist/growcontroller-web-$v.tar.gz" dist
-          (cd web && npm sbom --sbom-format cyclonedx --package-lock-only) | node tools/sbom_web.mjs web/package-lock.json > out/dist/sbom-web.cdx.json
+          (cd web && npm sbom --sbom-format cyclonedx) | node tools/sbom_web.mjs web/package-lock.json > out/dist/sbom-web.cdx.json
           node tools/sbom_cpp.mjs "$v" > out/dist/sbom-simulator-cpp.cdx.json
           (cd out/dist && sha256sum -- * > SHA256SUMS)
           # A tag takes its CHANGELOG section (checked in verify); a dry run

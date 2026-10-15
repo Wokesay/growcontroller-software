@@ -197,7 +197,10 @@ entry under `[Unreleased]`.
      our source, the page nor a runtime package of the lockfile, and the
      web SBOM lists exactly those packages (`tools/sbom_web.mjs`, #201;
      `npm sbom --omit dev` left out `preact`, which a build tool has as a
-     peer). Code the build tools write into our own modules or the page
+     peer). It is built from the packages `npm ci` installed, and fails
+     the step when npm and the lockfile disagree; as `npm sbom` checks
+     the edges of every package, a broken peer of a build tool fails it
+     too. Code the build tools write into our own modules or the page
      is ours as built by them. The C++ SBOM
      lists the header libraries from `cmake/deps.cmake`, not yet the
      statically linked compiler runtimes; the web app embedded in the

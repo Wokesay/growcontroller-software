@@ -223,9 +223,10 @@ listed in every release under "Security".
 - **The web SBOM lists preact** (#201, SD-075): the release built
   `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
   package a build tool depends on, peers included, so it left out
-  `preact`, the app's core library. The web SBOMs of 0.1.0-proto.4 and
-  earlier lack it. The SBOM now lists exactly the runtime packages of
-  `web/package-lock.json`, and a test fails when it differs from them.
+  `preact`, the app's core library. The web SBOMs of 0.1.0-proto.2 to
+  proto.4 lack it. The SBOM now lists exactly the runtime packages of
+  `web/package-lock.json`, the packages the build lets into the app, as
+  npm describes them, and a test fails when it differs from them.
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example

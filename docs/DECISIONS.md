@@ -2648,10 +2648,11 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   of `web/scripts/no-tool-code.mjs` stays for the output, the page
   included. On 2026-10-15 the app holds no such module, and the built app
   is the same byte for byte with and without the guard.
-- **The web SBOM** lists exactly the runtime packages of the lockfile,
-  the packages the guard lets into the app (`tools/sbom_web.mjs`, #201).
-  `npm sbom --omit dev` left out `preact`, which a build tool has as a
-  peer, up to 0.1.0-proto.4.
+- **Done: the web SBOM lists exactly the packages the guard lets into
+  the app,** the runtime packages of the lockfile (every entry not marked
+  `dev`; `tools/sbom_web.mjs`, #201). `npm sbom --omit dev` left out
+  `preact`, which a build tool has as a peer, in 0.1.0-proto.2 to
+  proto.4.
 - **What it does not see:** code the build tools write into our own
   modules (for example helpers a transform inlines), text added after the
   modules are rendered, the page, files the app imports as URLs, CSS
