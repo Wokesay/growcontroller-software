@@ -811,6 +811,11 @@ test("Recipes: an existing recipe lists every nutrient bottle; an amount puts it
   await page.keyboard.press("Enter");
   await expect(names).toHaveText(["Enzym", "Teil A", "Teil B", "Booster", "CalMag"]);
   await expect(editor.getByRole("button", { name: "Enzym nach unten" })).toBeFocused();
+  // 0 leaves a bottle out, as an empty field does, and is no problem
+  await amount("Booster").fill("0");
+  await expect(editor.locator(".step .n")).toHaveText(["1", "2", "3", "", "4"]);
+  await expect(editor.getByRole("button", { name: "Booster nach oben" })).toHaveCount(0);
+  await expect(editor.locator("#recipe-problems")).toHaveCount(0);
   await editor.getByRole("button", { name: "Speichern" }).click();
   await expect(editor).toHaveCount(0);
   const steps = await page.evaluate(async () => {
@@ -866,6 +871,20 @@ test("Recipes: the recipe editor says before saving that a pair is only partly i
   await bloom.getByRole("textbox", { name: "Name" }).fill("");
   await expect(bloom.locator("#recipe-problems")).toHaveText("Gib dem Rezept einen Namen. Trag für mindestens einen Kanister eine Menge ein.");
   await bloom.getByRole("button", { name: "Abbrechen" }).click();
+  // A new recipe says what it still needs, without an alarm colour, and saves once it has it
+  await page.getByRole("button", { name: "Rezept", exact: true }).click();
+  const fresh = page.getByRole("dialog", { name: "Rezept anlegen" });
+  await expect(fresh.locator("#recipe-problems")).toHaveText("Gib dem Rezept einen Namen. Trag für mindestens einen Kanister eine Menge ein.");
+  await expect(fresh.locator("#recipe-problems")).toHaveClass(/muted/);
+  await expect(fresh.getByRole("button", { name: "Speichern" })).toBeDisabled();
+  await fresh.getByRole("textbox", { name: "Name" }).fill("Neu");
+  await fresh.getByRole("textbox", { name: "Menge für Teil B in ml pro Liter" }).fill("1");
+  await expect(fresh.locator("#recipe-problems")).toHaveClass(/warn-text/);  // half a pair is a conflict
+  await fresh.getByRole("textbox", { name: "Menge für Teil A in ml pro Liter" }).fill("1");
+  await fresh.getByRole("textbox", { name: "Menge für CalMag in ml pro Liter" }).fill("0,5");  // CalMag is in pair AB here
+  await expect(fresh.locator("#recipe-problems")).toHaveCount(0);
+  await fresh.getByRole("button", { name: "Speichern" }).click();
+  await expect(fresh).toHaveCount(0);
   // In English, and the hub still refuses half a pair on its own
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
   await page.reload();
@@ -897,16 +916,26 @@ test("Recipes: the bottle editor says before saving that a pair label would leav
   await expect(editor.getByRole("button", { name: "Speichern" })).toHaveAccessibleDescription(
     "Nach dem Speichern ist „Teil B“ ohne Paar. So stünde Paar CD nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Cee“ und „Teil A“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.",
   );
+  await expect(editor.getByRole("status")).toHaveText(
+    "Nach dem Speichern ist „Teil B“ ohne Paar. So stünde Paar CD nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Cee“ und „Teil A“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.",
+  );
   await editor.getByRole("button", { name: "Abbrechen" }).click();
   editor = await bottle("Booster");
   let save = editor.getByRole("button", { name: "Speichern" });
   await editor.locator("input[name=canister-pair]").fill("AB");
   const many = "So stünde Paar AB nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Teil A“, „Teil B“ und „Booster“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.";
   await expect(editor.locator("#bottle-problems")).toHaveText(many);
+  await expect(editor.getByRole("status")).toHaveText(many);  // read out from a region there from the start
   await expect(save).toBeDisabled();
   await expect(save).toHaveAccessibleDescription(many);
-  await editor.locator("input[name=canister-pair]").fill("XY");
+  // The field that causes it points to the reason
+  const pairField = editor.locator("input[name=canister-pair]");
+  await expect(pairField).toHaveAttribute("aria-invalid", "true");
+  await expect(pairField).toHaveAccessibleDescription(many);
+  await pairField.fill("XY");
   await expect(editor.locator("#bottle-problems")).toHaveCount(0);
+  await expect(editor.getByRole("status")).toHaveText("");
+  await expect(pairField).not.toHaveAttribute("aria-invalid", /.*/);
   await expect(save).toBeEnabled();
   await editor.getByRole("button", { name: "Abbrechen" }).click();
   // One recipe: the singular, and its way out works
@@ -945,8 +974,14 @@ test("Recipes: the bottle editor says before saving that a pair label would leav
   save = editor.getByRole("button", { name: "Speichern" });
   await editor.locator("label.field", { hasText: "Typ" }).locator("select").selectOption("ph_down");
   const ph = "Ein pH-Kanister gehört in kein Rezept, „CalMag“ steht aber im Rezept „Wachstum“. Nimm ihn dort erst heraus (Menge leeren, speichern).";
+  const kind = editor.locator("label.field", { hasText: "Typ" }).locator("select");
   await expect(editor.locator("#bottle-problems")).toHaveText(ph);
   await expect(save).toBeDisabled();
+  await expect(kind).toHaveAttribute("aria-invalid", "true");
+  await expect(kind).toHaveAccessibleDescription(ph);
+  await kind.selectOption("nutrient");
+  await expect(editor.locator("#bottle-problems")).toHaveCount(0);
+  await expect(save).toBeEnabled();
 });
 
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {

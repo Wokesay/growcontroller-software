@@ -249,13 +249,14 @@ listed in every release under "Security".
   with its bottle when the order changes (before, a value could show in
   the wrong row), and the focus moves with the row. Each amount field is
   named for screen readers, and on a phone the rows no longer run past
-  the screen with long names.
+  the screen with long names. A long bottle name without spaces now
+  breaks in the bottle list and on the recipe cards too, instead of
+  running past the card.
 - **The recipe and bottle editors say before saving what the hub would
   refuse** (#159), with the way out, in German and English, and Save
   stays off until it is fixed: a pair only partly in a recipe (naming
   the bottles missing), a recipe without a name or an amount, an amount
-  below 0 (before, it was left out without a word), a bottle without a
-  name, a pair label that would leave a recipe with part of a pair, and
+  below 0, a bottle without a name, a pair label that would leave a recipe with part of a pair, and
   a pH bottle that a recipe still holds. A screen reader reads each
   change. Before, the hub refused after Save with a German-only message.
 - **A new bottle no longer takes over an old stock** (#161): importing a

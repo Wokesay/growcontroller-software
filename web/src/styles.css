@@ -324,7 +324,8 @@ small, .small { font-size: 0.85rem; }
 .step.failed { background: var(--bad-weak); }
 .step.failed .n { background: var(--bad); color: #fff; }
 .warn-text { color: var(--warn); }
-.recipe-steps strong { overflow-wrap: anywhere; }
+/* A long name without spaces breaks instead of running past its box (#159) */
+.recipe-steps strong, .rtable td strong, .card h3 { overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   /* A row of the recipe editor on a phone: the name on top, amount and order below it (#159) */
   .recipe-steps .step { grid-template-columns: 28px minmax(0, 1fr); row-gap: 8px; }
