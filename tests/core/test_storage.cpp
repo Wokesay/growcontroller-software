@@ -474,3 +474,71 @@ TEST_CASE("Storage: an import drops the stock of the bottles it leaves out; a bo
   REQUIRE(c2.ok("POST", "/api/v1/canisters", {{"name", "Minus"}, {"kind", "nutrient"}, {"stockMl", 0}})["id"] == "minus");
   CHECK(c2.state()["stock"]["minus"].get<double>() == doctest::Approx(0));
 }
+
+namespace {
+sim::Options onFreshCard(const TempDir& d, gc::Epoch start = 1790000000) {
+  sim::Options o = test::opts("neu");
+  o.dataDir = d.path.string();
+  o.startEpoch = start;
+  return o;
+}
+json withoutBottle(json file, const std::string& id) {
+  json kept = json::array();
+  for (const auto& k : file["canisters"])
+    if (k["id"] != id) kept.push_back(k);
+  file["canisters"] = kept;
+  return file;
+}
+}  // namespace
+
+TEST_CASE("Storage: an import keeps the stock of the bottles it keeps (#161)") {
+  TempDir dir;
+  sim::Simulation s(onFreshCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  const std::string one = c.ok("POST", "/api/v1/canisters", {{"name", "Eins"}, {"kind", "nutrient"}, {"capacityMl", 1000}, {"stockMl", 123}})["id"];
+  const std::string two = c.ok("POST", "/api/v1/canisters", {{"name", "Zwei"}, {"kind", "nutrient"}, {"capacityMl", 1000}, {"stockMl", 45}})["id"];
+  c.ok("POST", "/api/v1/config/import", withoutBottle(c.ok("GET", "/api/v1/config/export"), two));
+  s.step(2000);
+  const json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
+  CHECK(c.state()["stock"][one].get<double>() == doctest::Approx(123));
+  CHECK(state["stockMl"][one].get<double>() == doctest::Approx(123));
+  CHECK_FALSE(state["stockMl"].contains(two));
+}
+
+TEST_CASE("Storage: an import refused while a dose runs drops no stock (#161)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 600 && !(c.state()["job"].is_null() && c.state()["dosing"].is_null()); ++i) s.step(5000);
+  const json file = withoutBottle(c.ok("GET", "/api/v1/config/export"), "ph");
+  const double ph = c.state()["stock"]["ph"].get<double>();
+  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
+  CHECK(c.call("POST", "/api/v1/config/import", file).first == 409);
+  CHECK(c.state()["stock"]["ph"].get<double>() == doctest::Approx(ph));
+  s.step(2000);
+  CHECK(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("ph"));
+}
+
+TEST_CASE("Storage: a bottle new to the hub that comes with an import does not take over a stock left behind (#161)") {
+  TempDir dir;
+  sim::Simulation s(onFreshCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  const std::string one = c.ok("POST", "/api/v1/canisters", {{"name", "Eins"}, {"kind", "nutrient"}, {"capacityMl", 1000}, {"stockMl", 123}})["id"];
+  const json file = c.ok("GET", "/api/v1/config/export");
+  c.ok("DELETE", "/api/v1/canisters/" + one);
+  s.step(2000);
+  json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
+  state["stockMl"][one] = 77;  // left behind by an older version
+  {
+    std::ofstream out(dir.path / "state.json", std::ios::trunc);
+    out << state.dump();
+  }
+  sim::Simulation again(onFreshCard(dir, s.hub().now() + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  c2.ok("POST", "/api/v1/config/import", file);
+  CHECK(c2.state()["stock"][one].is_null());
+}

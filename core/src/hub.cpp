@@ -1489,11 +1489,12 @@ Result Hub::importConfig(const json& j) {
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
-  cfg_ = next;
-  // Only the stock of the bottles in the file stays, so a later bottle of the same name cannot take one over (#161)
+  // Only the stock of a bottle the hub had and the file keeps stays; a bottle new to the hub, now or
+  // later, never takes over one left behind (#161)
   for (auto it = rt_.stockMl.begin(); it != rt_.stockMl.end();)
-    it = cfg_.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
+    it = cfg_.canister(it->first) && next.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
   stateDirty_ = true;
+  cfg_ = next;
   if (net_)
     cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
       const RoleDef* rd = cat_.role(role);
