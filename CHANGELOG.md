@@ -198,7 +198,7 @@ listed in every release under "Security".
   Rolldown, so the built files differ.
 - CI and release workflows: `actions/upload-artifact` 7.0.2,
   `actions/download-artifact` 8.0.2 and `actions/setup-node` 7.1.0, pinned
-  by commit as before (proposed by Dependabot).
+  by commit SHA as before (proposed by Dependabot).
 - **Home Assistant app on Alpine 3.24** (proposed by Dependabot): the
   server in the app is now linked against musl 1.2.6 and the runtime of
   GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
