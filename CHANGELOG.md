@@ -64,7 +64,7 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-078,
+- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
   from PD-225; replaces SD-068's setup code for the app). From
   0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
   Assistant's login, and the setup code goes away. Port 8099 is closed by

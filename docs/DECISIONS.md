@@ -545,7 +545,7 @@ Assistant way is still a product question.
   needs a review (`tools/app.test.mjs`).
 - The web app is served on port 8099 of the Home Assistant host, plain
   HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
-  a follow-up. Changed by SD-078 (from PD-225): from 0.1.0-proto.5 on the
+  a follow-up. Changed by SD-077 (from PD-225): from 0.1.0-proto.5 on the
   app runs behind Ingress, and port 8099 is closed by default.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
@@ -2331,7 +2331,7 @@ option 1 of the issue); the details come from a review by `security`.
 Until now anyone in the home network who opened the app's page first could
 set its password, see the names and values of Home Assistant's sensors and
 lock the owner out until the app was reinstalled. The setup code of the
-Home Assistant app is replaced by SD-078 (from PD-225): the app moves
+Home Assistant app is replaced by SD-077 (from PD-225): the app moves
 behind Home Assistant's Ingress. The rest stays, its rule on random
 numbers included.
 
@@ -2931,7 +2931,7 @@ is re-evaluated in the product repository and is not part of this entry.
 
 ---
 
-## SD-078: Product requirement (from PD-225): the Home Assistant app behind Ingress; a password of its own only for direct access
+## SD-077: Product requirement (from PD-225): the Home Assistant app behind Ingress; a password of its own only for direct access
 
 Recorded on 2026-10-15 from #190, section 2 (SD-029). It does SD-034's
 follow-up (Ingress). PD-225 left to the software, to propose before
@@ -2999,8 +2999,8 @@ leaves `stage: experimental`.
   app and the port opened in the app's network settings. A bookmark from
   0.1.0-proto.4 works again after that; the release notes and
   `ha/app/DOCS.md` say so.
-- **The ESP keeps its own login (SD-044);** this entry does not change
-  it.
+- **The ESP keeps its own login** (SD-044, SD-076); this entry does
+  not change it.
 - **Not chosen:**
   - a password of its own also behind Ingress, or only for imports and
     calibration: little gain, since an administrator of Home Assistant
@@ -3021,7 +3021,8 @@ leaves `stage: experimental`.
   Home Assistant; framing; only the Supervisor on the Ingress listener;
   the origin check behind Ingress; the host check; the sessions of port
   8099), the reasoning in `docs/SECURITY_MODEL.md`, including why the app
-  is protected more strictly than the ESP (#190), and the product side's
+  is protected more strictly than the ESP with its first-password window
+  (SD-076, #190), and the product side's
   decision on remote access through Ingress, which #190 asks for before
   this release.
 - **Residual risks,** for the docs:
