@@ -830,3 +830,36 @@ TEST_CASE("Templates: a template pairs its parts while another bottle waits for 
     CHECK(canisterById(c, solo)["pair"] == "XY");
   }
 }
+
+TEST_CASE("Bottles: saving a bottle whose stock is unknown leaves it unknown, also when it first gets a size (RAT-015, #184)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  const std::string id = c.ok("POST", "/api/v1/canisters", {{"name", "Booster"}, {"kind", "nutrient"}, {"capacityMl", nullptr}})["id"];
+  CHECK(c.state()["stock"][id].is_null());
+  // A size says how big the bottle is, not how full it is now
+  c.ok("POST", "/api/v1/canisters", {{"id", id}, {"capacityMl", 1000}});
+  CHECK(c.state()["stock"][id].is_null());
+  for (const gc::json& edit : {gc::json{{"id", id}, {"name", "Booster neu"}}, gc::json{{"id", id}, {"color", "#336699"}}, gc::json{{"id", id}, {"pump", ""}},
+                               gc::json{{"id", id}, {"stockMl", nullptr}}}) {
+    CAPTURE(edit.dump());
+    c.ok("POST", "/api/v1/canisters", edit);
+    CHECK(c.state()["stock"][id].is_null());
+  }
+  // Only a bottle change or an amount entered gives it a number
+  c.ok("POST", "/api/v1/canisters/" + id + "/stock", {{"ml", 1000}});
+  CHECK(c.state()["stock"][id].get<double>() == doctest::Approx(1000));
+  c.ok("POST", "/api/v1/canisters", {{"id", id}, {"stockMl", 400}});
+  CHECK(c.state()["stock"][id].get<double>() == doctest::Approx(400));
+  // A known stock stays through a rename and a new size; 0 is an amount entered, not unknown
+  c.ok("POST", "/api/v1/canisters", {{"id", id}, {"name", "Booster"}, {"capacityMl", 2000}});
+  CHECK(c.state()["stock"][id].get<double>() == doctest::Approx(400));
+  c.ok("POST", "/api/v1/canisters", {{"id", id}, {"stockMl", 0}});
+  CHECK(c.state()["stock"][id].get<double>() == doctest::Approx(0));
+  // A new bottle whose amount is left empty on purpose stays unknown; one sent without the field at all
+  // (as the setup does) is set up full
+  const std::string blank = c.ok("POST", "/api/v1/canisters", {{"name", "Enzym"}, {"kind", "nutrient"}, {"capacityMl", 1000}, {"stockMl", nullptr}})["id"];
+  CHECK(c.state()["stock"][blank].is_null());
+  const std::string full = c.ok("POST", "/api/v1/canisters", {{"name", "Silizium"}, {"kind", "nutrient"}, {"capacityMl", 1000}})["id"];
+  CHECK(c.state()["stock"][full].get<double>() == doctest::Approx(1000));
+}
