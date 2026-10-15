@@ -64,7 +64,7 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Sessions claim an issue before working on it** (SD-077): parallel
+- **Sessions claim an issue before working on it** (SD-078): parallel
   sessions had picked up the same issue. Before a session starts, it
   fetches the issue again and leaves it alone if a live claim or an open
   pull request covers it. Otherwise it claims it with a comment naming
@@ -72,6 +72,15 @@ listed in every release under "Security".
   the first comment wins. A multi-part issue is claimed per part, a claim
   with an open pull request never goes stale, and any other claim quiet
   for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
+- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
+  from PD-225; replaces SD-068's setup code for the app). From
+  0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
+  Assistant's login, and the setup code goes away. Port 8099 is closed by
+  default. A bookmark to it works again once the port is opened in the
+  app's network settings and the app has a password for direct access
+  (set by a Home Assistant administrator in the app; a password from
+  0.1.0-proto.4 is kept); without one, port 8099 only says where the app
+  is now. The ESP keeps its own login. Built in a later change.
 - **Product questions are issues here** (#190, SD-072, from PD-226;
   replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an
@@ -255,6 +264,20 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator and the Home Assistant server no longer end at the start
+  on a bad path or value** (#213): `gc_ha_server --config` with a file it
+  cannot read (below a folder it may not enter, a link that loops, no
+  permission) now says so and exits 2, instead of crashing or saying the
+  file holds no mapping. In `gc_sim_server`, a `--port`, `--speed` or
+  `--prefill` that is no number now says so and exits 2 instead of
+  crashing, and one out of range (port 1–65535, time-lapse 0–600 as in the
+  simulator panel, history ahead 0–1000 h) is refused instead of taken;
+  both servers name the range. A start without arguments that finds
+  neither its own folder nor the working folder runs in memory only and
+  says so. A data folder it cannot create is no longer named as its data
+  folder. The port search stops at 65535. The download's smoke test also
+  starts it plainly with a data folder it cannot read (SD-074) and with no
+  folder for the data, on macOS and Linux (#214).
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example

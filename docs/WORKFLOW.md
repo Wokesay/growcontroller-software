@@ -117,19 +117,19 @@ software session does not access the product repository.
 
 ```
 Issue/idea ─► triage ─► project owner decides (priority, whether at all)
-   ─► Claude claims the issue (label in-progress + comment, SD-077)
+   ─► Claude claims the issue (label in-progress + comment, SD-078)
    ─► Claude: branch, test first, then code ─► tools/ci.sh green
    ─► reviewer + qa (+ security for gateway/sensor truth/auth/update, + ux for UI)
    ─► PR with CHANGELOG entry ─► CI green ─► reviews ─► merge ─► release collects
 ```
 
-**Parallel sessions (SD-077):** all sessions post as the owner's account,
+**Parallel sessions (SD-078):** all sessions post as the owner's account,
 so an issue is claimed with a comment naming the session and its branch,
 and the label `in-progress` shows that a claim is live. A session fetches
 the issue again before it starts and leaves it alone if a live claim or
 an open pull request covers it. Of two claims, the first comment wins. A
 claim with an open pull request never goes stale; any other claim quiet
-for 24 hours may be taken over. The rule is SD-077; `CLAUDE.md` has the
+for 24 hours may be taken over. The rule is SD-078; `CLAUDE.md` has the
 short form.
 
 ## 4. Making issues visible in Claude Code and working through them

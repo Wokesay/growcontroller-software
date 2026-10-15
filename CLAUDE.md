@@ -85,7 +85,7 @@ Product, hardware and business live in the private product repository
 3. Check open `product-question` issues for answers from the owner's
    account (SD-072).
 
-## Claiming an issue (SD-077)
+## Claiming an issue (SD-078)
 
 All sessions post as the owner's account, so a claim is a comment that
 names its session. Your *link* is your Claude-Session URL (as in your
