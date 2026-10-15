@@ -186,13 +186,16 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
     pump: p.can?.pump ?? caps.find((c) => !used.has(c.id))?.id ?? "",
     pair: p.can?.pair ?? "",
     color: p.can?.color ?? COLORS[canisters.value.length % COLORS.length],
-    capacityMl: p.can?.capacityMl ?? (1000 as number | null),
+    // An existing bottle without a size keeps none until someone enters it (RAT-015, #184)
+    capacityMl: (p.can ? (p.can.capacityMl ?? null) : 1000) as number | null,
     stockMl: (p.can ? editableStock(st.stock[p.can.id] ?? null) : 1000) as number | null,
   });
   // The amount left is sent only when it was changed here: a dose booked while
   // the editor is open is not undone by saving a new name (SD-066)
   const [stockOpened] = useState(v.stockMl);
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
+  // A new bottle starts full: its stock follows its size until the stock itself is changed
+  const [stockTouched, setStockTouched] = useState(false);
   // Leaving its pair takes the label from a partner left alone (#152), as removing does
   const oldPair = p.can?.pair ?? "";
   const others = oldPair && (v.kind === "nutrient" ? v.pair : "") !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === oldPair) : [];
@@ -283,17 +286,31 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           </Field>
         )}
         <Field label={t("recipes.bottleSize")}>
-          <NumberInput value={v.capacityMl} onValue={(x) => set("capacityMl", x)} unit="ml" />
+          <NumberInput value={v.capacityMl} onValue={(x) => setV({ ...v, capacityMl: x, ...(!p.can && !stockTouched ? { stockMl: x } : {}) })} unit="ml" name="canister-size" />
         </Field>
         <Field
           label={t("recipes.stockNow")}
           hint={
-            p.can && belowZero(st.stock[p.can.id] ?? null)
-              ? t("recipes.stockBelowZero", { ml: num(st.stock[p.can.id], 0) })
-              : t("recipes.stockNowHint")
+            !p.can
+              ? t("recipes.stockNowHint")
+              : belowZero(st.stock[p.can.id] ?? null)
+                ? t("recipes.stockBelowZero", { ml: num(st.stock[p.can.id], 0) })
+                : (st.stock[p.can.id] ?? null) === null
+                  ? t("recipes.stockUnknownHint")
+                  : t("recipes.stockCountedHint")
           }
         >
-          <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" name="canister-stock" />
+          <NumberInput
+            // While it follows the size, it shows each new size, also an empty one
+            key={!p.can && !stockTouched ? `size-${v.capacityMl}` : "own"}
+            value={v.stockMl}
+            onValue={(x) => {
+              setStockTouched(true);
+              set("stockMl", x);
+            }}
+            unit="ml"
+            name="canister-stock"
+          />
         </Field>
       </div>
       <div class="row">
@@ -479,6 +496,8 @@ export function RecipesPage() {
   const [editFrom, setEditFrom] = useState<string | null>(null);
   const cans = canisters.value;
   const rs = recipes.value;
+  // A stock the hub does not know is said with the way to enter it, for example after a backup (#184)
+  const unknownStock = cans.filter((k) => (st.stock[k.id] ?? null) === null);
   const templates = catalog.value?.templates?.recipes ?? [];
   const [tpl, setTpl] = useState<RecipeTemplate | null>(null);
   const pumpFlow = (id: string) => st.devices.find((d) => d.id === id)?.info?.flowMlPerMin ?? null;
@@ -496,69 +515,76 @@ export function RecipesPage() {
         {!cans.length ? (
           <Empty icon={<FlaskConical size={34} />} title={t("recipes.noBottles")} text={t("recipes.noBottlesText")} />
         ) : (
-          <table class="table rtable">
-            <thead>
-              <tr>
-                <th>{t("term.bottle")}</th>
-                <th class="hide-sm">{t("recipes.type")}</th>
-                <th>{t("setup.nut.pump")}</th>
-                <th>{t("recipes.stock")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {cans.map((k) => {
-                const ml = st.stock[k.id] ?? null;
-                const flow = pumpFlow(k.pump);
-                return (
-                  <tr key={k.id}>
-                    <td class="full">
-                      <span class="row" style="gap:8px">
-                        <span class="swatch" style={`background:${k.color}`} />
-                        <strong>{k.name}</strong>
-                        {k.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
-                      </span>
-                    </td>
-                    <td class="hide-sm muted">{t(KIND[k.kind])}</td>
-                    <td class="small" data-label={t("setup.nut.pump")}>
-                      {k.pump ? (flow ? <span class="muted">{num(flow, 1)} ml/min</span> : <a href={`#/geraete?pump=${k.pump}`}>{t("recipes.calibrate")}</a>) : <span class="faint">{t("recipes.noPump")}</span>}
-                    </td>
-                    <td data-label={t("recipes.stock")}>
-                      <div class="row" style="gap:8px;flex-wrap:nowrap">
-                        <div class={`bar ${ml !== null && ml < (k.kind === "nutrient" ? 150 : 20) ? "low" : ""}`} style="width:80px">
-                          <span style={`width:${k.capacityMl && ml !== null ? Math.max(2, Math.min(100, (ml / k.capacityMl) * 100)) : 0}%`} />
-                        </div>
-                        <span class="small num nowrap" style={belowZero(ml) ? "color:var(--bad)" : undefined}>
-                          {ml === null ? "?" : `${num(ml, 0)} ml`}
+          <>
+            {unknownStock.length > 0 && (
+              <Banner tone="info">
+                {unknownStock.length === 1 ? t("recipes.stockUnknownOne", { name: unknownStock[0].name }) : t("recipes.stockUnknownMany", { n: unknownStock.length })}
+              </Banner>
+            )}
+            <table class="table rtable">
+              <thead>
+                <tr>
+                  <th>{t("term.bottle")}</th>
+                  <th class="hide-sm">{t("recipes.type")}</th>
+                  <th>{t("setup.nut.pump")}</th>
+                  <th>{t("recipes.stock")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {cans.map((k) => {
+                  const ml = st.stock[k.id] ?? null;
+                  const flow = pumpFlow(k.pump);
+                  return (
+                    <tr key={k.id}>
+                      <td class="full">
+                        <span class="row" style="gap:8px">
+                          <span class="swatch" style={`background:${k.color}`} />
+                          <strong>{k.name}</strong>
+                          {k.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
                         </span>
-                      </div>
-                    </td>
-                    <td class="num nowrap full actions">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={t("recipes.bottleChanged")}
-                        disabled={!k.capacityMl}
-                        onClick={async () => {
-                          await post(`/canisters/${k.id}/stock`, { ml: k.capacityMl });
-                          await refreshState();
-                          toast(t("recipes.newBottle", { name: k.name }));
-                        }}
-                      >
-                        <RefreshCw size={15} />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title={t("common.edit")}>
-                        <Pencil size={15} />
-                      </Button>
-                      <Button size="sm" variant="ghost" title={t("recipes.remove")} aria-label={t("recipes.removeNamed", { name: k.name })} data-remove={k.id} onClick={() => setRemoveCan(k)}>
-                        <Trash2 size={15} />
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td class="hide-sm muted">{t(KIND[k.kind])}</td>
+                      <td class="small" data-label={t("setup.nut.pump")}>
+                        {k.pump ? (flow ? <span class="muted">{num(flow, 1)} ml/min</span> : <a href={`#/geraete?pump=${k.pump}`}>{t("recipes.calibrate")}</a>) : <span class="faint">{t("recipes.noPump")}</span>}
+                      </td>
+                      <td data-label={t("recipes.stock")}>
+                        <div class="row" style="gap:8px;flex-wrap:nowrap">
+                          <div class={`bar ${ml === null ? "unknown" : ml < (k.kind === "nutrient" ? 150 : 20) ? "low" : ""}`} style="width:80px">
+                            <span style={`width:${k.capacityMl && ml !== null ? Math.max(2, Math.min(100, (ml / k.capacityMl) * 100)) : 0}%`} />
+                          </div>
+                          <span class="small num nowrap" style={belowZero(ml) ? "color:var(--bad)" : undefined}>
+                            {ml === null ? t("area.unknown") : `${num(ml, 0)} ml`}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="num nowrap full actions">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title={k.capacityMl ? t("recipes.bottleChanged") : t("recipes.bottleChangedNoSize")}
+                          disabled={!k.capacityMl}
+                          onClick={async () => {
+                            await post(`/canisters/${k.id}/stock`, { ml: k.capacityMl });
+                            await refreshState();
+                            toast(t("recipes.newBottle", { name: k.name }));
+                          }}
+                        >
+                          <RefreshCw size={15} />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditCan(k)} title={t("common.edit")}>
+                          <Pencil size={15} />
+                        </Button>
+                        <Button size="sm" variant="ghost" title={t("recipes.remove")} aria-label={t("recipes.removeNamed", { name: k.name })} data-remove={k.id} onClick={() => setRemoveCan(k)}>
+                          <Trash2 size={15} />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
         )}
       </Card>
       <Card
