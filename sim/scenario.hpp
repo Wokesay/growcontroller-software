@@ -99,6 +99,8 @@ class Simulation {
   FileStorage& storage() { return *store_; }
   std::recursive_mutex& mutex() { return mtx_; }
   const std::string& scenario() const { return opts_.scenario; }
+  // The data folder in use; empty: none given, or one it cannot read (SD-074).
+  const std::string& dataDir() const { return opts_.dataDir; }
   double speed = 1.0;
   std::string demoPassword() const { return opts_.password; }
 
