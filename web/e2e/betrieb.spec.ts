@@ -1003,6 +1003,13 @@ test("Recipes: a bottle whose stock is unknown stays unknown when edited, also w
   await expect(editor.getByText("Der Hub kennt den Inhalt nicht. Trag ein, was im Kanister ist, bei einem vollen die Kanistergröße.")).toBeVisible();
   await editor.locator("input[name=canister-size]").fill("1000");
   await expect(editor.locator("input[name=canister-stock]")).toHaveValue("");
+  // Typed key by key, an existing bottle's amount keeps its focus too; left empty again, nothing is entered
+  const amount = editor.locator("input[name=canister-stock]");
+  await amount.click();
+  await amount.pressSequentially("250", { delay: 30 });
+  await expect(amount).toBeFocused();
+  await expect(amount).toHaveValue("250");
+  await amount.fill("");
   await editor.locator("input[name=canister-name]").fill("Booster Plus");
   await editor.getByRole("button", { name: "Speichern" }).click();
   await expect(editor).toHaveCount(0);
@@ -1036,13 +1043,13 @@ test("Recipes: a new bottle starts full: its amount follows its size until the a
   await expect(amount).toHaveValue("1000");
   // Typed key by key, as on a phone: each field keeps its focus and every digit
   await size.click();
-  await size.press("Control+a");
+  await size.press("ControlOrMeta+a");
   await size.pressSequentially("500", { delay: 30 });
   await expect(size).toBeFocused();
   await expect(size).toHaveValue("500");
   await expect(amount).toHaveValue("500");
   await amount.click();
-  await amount.press("Control+a");
+  await amount.press("ControlOrMeta+a");
   await amount.pressSequentially("300", { delay: 30 });
   await expect(amount).toBeFocused();
   await expect(amount).toHaveValue("300");
@@ -1065,7 +1072,7 @@ test("Recipes: a new bottle starts full: its amount follows its size until the a
   expect(await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).stock.enzym)).toBeNull();
 });
 
-test("Setup: run again over a bottle whose stock is unknown, it keeps the stock unknown and adds no size (RAT-015, #184)", async ({ page, request }) => {
+test("Setup run again over a bottle whose stock is unknown keeps it unknown and adds no size (RAT-015, #184)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
   const bottle = (id: string) =>

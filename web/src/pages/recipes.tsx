@@ -195,7 +195,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   const [stockOpened] = useState(v.stockMl);
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
   // A new bottle starts full: its stock follows its size until the stock itself is changed.
-  // The size it last followed keys the field, so typing in it never rebuilds it (#184).
+  // The size it last followed keys the amount field, so typing in the amount never rebuilds it (#184).
   const [stockTouched, setStockTouched] = useState(false);
   const [followed, setFollowed] = useState(v.capacityMl);
   // Leaving its pair takes the label from a partner left alone (#152), as removing does
