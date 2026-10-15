@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Schicht 8: Aktor-Gateway und Dosierausführung.
+// Layer 8: actuator gateway and dose execution.
 //
-// Actuators ist der EINZIGE Weg zu Pumpen und Schaltausgängen (Regel R1).
-// Hier steht das fest codierte Sicherheitsminimum, das der Katalog nur
-// verschärfen kann (R7): Einmesswert vorhanden, Laufzeitgrenzen, ein Lauf
-// zugleich, Not-Halt, Trockenlaufschutz, Notgrenze des Zulaufs.
-// Der Watchdog bindet diesen Header nie ein (Architekturtest, R2).
+// Actuators is the ONLY way to pumps and switched outputs (rule R1).
+// It holds the hard-coded safety minimum that the catalog can only make
+// stricter (R7): a calibration value present, run time limits, one run at
+// a time, the Stop, dry-run protection, the inlet's emergency limit.
+// The watchdog never includes this header (architecture test, R2).
 #pragma once
 
 #include <map>
@@ -32,7 +32,7 @@ struct Ctx {
   const PumpMap& pumps;
   Ms now = 0;
   Epoch epoch = 0;
-  bool stopped = false;          // Not-Halt aktiv
+  bool stopped = false;          // Stop active
   Epoch maintenanceUntil = 0;    // Pflegemodus: Automatik ruht
 };
 
@@ -71,8 +71,8 @@ class Actuators {
   // Warum eine Rolle gerade nicht eingeschaltet werden darf (Einschaltsperre).
   std::optional<Msg> inhibit(const Ctx& c, const std::string& role) const;
 
-  // Not-Halt: alle Pumpen und Ausgänge aus, idempotent (Quelle: RAT-036).
-  // Zählt als Ausschalten: Mindestpausen gelten auch danach.
+  // Stop: all pumps and outputs off, idempotent (RAT-036).
+  // Counts as switching off: minimum pauses hold afterwards too.
   // keepPowerLossOn: after a restart, roles that come back on after a power
   // loss (fans, PD-050) keep their state.
   void stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keepPowerLossOn = false);

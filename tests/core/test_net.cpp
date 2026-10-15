@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Schaltbare Netzsteckdosen (Shelly im Simulator): Erkennen, Übernehmen,
-// Schutzeinstellung im Gerät mit Rücklesen, Sicherheitsprofile im Gateway,
-// Not-Halt und Stromausfall (Konzept PLANT_AUTOMATION.md §2–§3).
+// Switched mains sockets (Shelly in the simulator): discovery, adoption,
+// the device's protection setting read back, safety profiles in the gateway,
+// Stop and power loss (concept PLANT_AUTOMATION.md §2–§3).
 #include <doctest/doctest.h>
 
 #include <cmath>
@@ -206,7 +206,7 @@ TEST_CASE("Sockets: a fan socket that keeps \"on after power loss\" is reported"
   CHECK(hasEvent(c, "ev.net.stays_on", "Umluft"));
 }
 
-TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)") {
+TEST_CASE("Stop: survives a power loss, fans stay off until resume (PD-076)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
@@ -231,7 +231,7 @@ TEST_CASE("Not-Halt: survives a power loss, fans stay off until resume (PD-076)"
   CHECK(outlet(s, id, 1).powerOn == gc::PowerOn::On);  // back to the fan setting
 }
 
-TEST_CASE("Not-Halt: a fan socket assigned during the stop stays off after a power loss (PD-076)") {
+TEST_CASE("Stop: a fan socket assigned during the Stop stays off after a power loss (PD-076)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
@@ -394,7 +394,7 @@ TEST_CASE("Gateway: unbekannter Zustand des Gegengeräts sperrt (R5)") {
   CHECK(e["error"]["key"] == "act.climate.pair_unknown");
 }
 
-TEST_CASE("Gateway: Kompressor-Pause gilt auch nach Not-Halt") {
+TEST_CASE("Gateway: the compressor pause holds after a Stop too") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
@@ -480,7 +480,7 @@ TEST_CASE("Gateway: Umzuordnen und Entfernen schalten den alten Ausgang aus, Tes
   CHECK_FALSE(outlet(s, id, 1).on);
 }
 
-TEST_CASE("Steckdose: Not-Halt und Stromausfall schalten aus, offline gibt Klartext") {
+TEST_CASE("Socket: a Stop and a power loss switch it off, offline gives a plain reason") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
