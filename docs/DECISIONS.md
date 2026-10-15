@@ -2578,9 +2578,9 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
 - **What it does not see:** code the build tools write into our own
   modules (for example helpers a transform inlines), text added after the
   modules are rendered, the page, files the app imports as URLs, CSS
-  `@import` and `url()` files, and `web/public/`. A script that is not a
-  chunk of the build (a web worker, a script imported as a URL) fails
-  the build rather than pass unseen.
+  `@import` and `url()` files, and `web/public/`. A web worker (also one
+  inlined into a chunk) and a script that is not a chunk of the build (a
+  script imported as a URL) fail the build rather than pass unseen.
   That is ours as built by the tools in the tool list. It keeps the SBOM
   accurate against honest tools and mistakes; it is no defence against a
   malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).

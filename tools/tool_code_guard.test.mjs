@@ -96,6 +96,14 @@ test("a package installed inside another is looked up by its own path; a folder 
   );
 });
 
+test("a web worker fails, also inlined: it is built apart, so the guard cannot see its modules", () => {
+  assert.deepEqual(
+    shippedProblems([`${root}/src/w.ts?worker&inline`, `${root}/src/w.ts?worker`, `${root}/src/s.ts?sharedworker`, `${root}/src/w.ts?worker_file&type=module`], root, lock).map((p) => p.slice(p.indexOf(": ") + 2)),
+    Array(4).fill("a web worker, built apart: the guard cannot see its modules"),
+  );
+  assert.deepEqual(shippedProblems([`${root}/src/networker.ts`, `${root}/src/x.ts?url`], root, lock), []);
+});
+
 test("files outside the sources and the packages fail", () => {
   assert.deepEqual(shippedProblems([`${root}/scripts/x.mjs`, "/elsewhere/y.js", `${root}/../tools/z.mjs`, root], root, lock), [
     "scripts/x.mjs: neither our sources nor a package",

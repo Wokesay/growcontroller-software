@@ -34,6 +34,12 @@ export function shippedProblems(ids, root, lock, path = nodePath) {
   const { isAbsolute, relative } = path;
   const problems = [];
   for (const raw of ids) {
+    // A web worker is built apart, even when inlined as a string in a
+    // chunk, so its modules never reach this check
+    if (/[?&](?:shared)?worker(?:_file)?(?:[&=]|$)/.test(raw)) {
+      problems.push(`${shown(raw)}: a web worker, built apart: the guard cannot see its modules`);
+      continue;
+    }
     const id = clean(raw);
     if (id.startsWith("\0") || !isAbsolute(id)) {
       const what = HELPERS.find(([re]) => re.test(id))?.[1] ?? TOOL;
