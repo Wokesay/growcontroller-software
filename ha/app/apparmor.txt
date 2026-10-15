@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The app's AppArmor profile (#80, docs/HOME_ASSISTANT.md). The Supervisor
+# loads it at install and update and renames the profile to the app's full
+# slug (<repository hash>_growcontroller); it takes the one line that starts
+# with "profile", so no other line may. Besides the basic system files of
+# abstractions/base, the app may read only its web app and /etc/hosts
+# (where the Supervisor puts its own address), write only its data folder,
+# and use only TCP over IPv4. It starts as root only to give the data
+# folder to its own account (chown; dac_override to enter it once handed
+# over) and to become that account (setuid, setgid); then no capability is
+# left. docker-init, which the Supervisor starts first, runs in this
+# profile too and stays root with these capabilities; it runs nothing but
+# the server and needs kill to pass the Supervisor's stop signal on to the
+# server's account. On a host without AppArmor the app runs without it.
+# tools/app.test.mjs checks the rules, and the smoke test in
+# .github/workflows/app.yml runs the image with them.
+#include <tunables/global>
+
+profile growcontroller flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability chown,
+  capability dac_override,
+  capability kill,
+  capability setgid,
+  capability setuid,
+
+  network inet stream,
+
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=crun,
+  signal (receive) peer=dockerd,
+  signal (send,receive) peer=*_growcontroller,
+
+  /sbin/docker-init ix,
+  /gc_ha_server ix,
+  /etc/hosts r,
+  /web/{,**} r,
+  /data/hub/{,**} rw,
+}

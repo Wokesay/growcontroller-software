@@ -169,7 +169,7 @@ test("each partition table fills its board's flash exactly, sizes on 4 KB, apps 
   assert.throws(() => layout("x", "nvs, data, nvs, , 6 MB\n"), /not a size/);
 });
 
-test("the factory data sit read-only in the gap before the first app, and the installer writes no image there (SD-071)", () => {
+test("the factory data sit read-only in the gap before the first app, and the installer writes no image there (SD-076)", () => {
   for (const b of Object.keys(boards)) {
     const parts = layout(b);
     const fctry = parts.find((p) => p.name === "fctry");
@@ -185,7 +185,7 @@ test("the factory data sit read-only in the gap before the first app, and the in
   assert.throws(() => layout("x", "fctry, data, nvs, , 0x4000, encrypted\n"), /not a flag/);
 });
 
-test("no partition ever moves: a device keeps its partition table for life (SD-071)", () => {
+test("no partition ever moves: a device keeps its partition table for life (SD-076)", () => {
   const K = 1024;
   const shipped = {
     n32r16v: [["nvs", 0x9000, 64 * K], ["otadata", 0x19000, 8 * K], ["phy_init", 0x1b000, 4 * K], ["fctry", 0x1c000, 16 * K],

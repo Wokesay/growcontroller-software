@@ -111,13 +111,28 @@ test("the server's --app mode and the image match the app", () => {
   // the image with nothing but their results.
   const stages = [...docker.matchAll(/^FROM (\S+)(?: AS (\w+))?$/gm)].map((m) => [m[1], m[2]]);
   assert.deepEqual(stages.map(([, name]) => name), ["web", "server", "licenses", undefined]);
-  const base = stages[0][0];
+  const base = stages[1][0];
   assert.match(base, /^alpine:[\d.]+@sha256:[0-9a-f]{64}$/, "pinned by digest");
-  for (const [from, name] of stages.slice(1, 3)) assert.equal(from, base, `${name}: the same base image`);
+  assert.equal(stages[2][0], base, "licenses: the same base image");
   assert.equal(stages[3][0], "scratch");
-  // The Supervisor's stand-in in the smoke test is that base image too, so
-  // Dependabot's update of the Dockerfile shows up here.
-  assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${base.replace(/[.]/g, "\\.")}$`, "m"));
+  // The web stage's npm checks the packages' signatures (SD-058): the Node
+  // CI runs (.nvmrc), on the same Alpine, pinned by digest (SD-071).
+  const literal = (s) => s.replace(/[.]/g, "\\.");
+  const pin = read(".nvmrc").trim();
+  const alpine = base.match(/^alpine:([\d.]+)@/)[1];
+  assert.match(stages[0][0], new RegExp(`^node:${literal(pin)}-alpine${literal(alpine)}@sha256:[0-9a-f]{64}$`), "web: the Node of .nvmrc on the same Alpine");
+  const webStage = docker.slice(docker.indexOf(" AS web"), docker.indexOf(" AS server"));
+  assert.doesNotMatch(webStage, /^RUN\b.*\bapk\b/m, "web: nothing from Alpine's packages; everything comes with the pinned image");
+  assert.doesNotMatch(webStage, /\bcorepack\b|\bnpm (?:i|install|up|update)\b[^\n]*(?:\s-g\b|--global)|^(?:ADD|COPY --from)/m, "web: nothing replaces the image's Node or npm");
+  // The digest, not the tag, decides what is pulled: before npm runs, the
+  // stage checks that its Node is the one of .nvmrc.
+  assert.match(read(".dockerignore"), /^!\.nvmrc$/m, ".nvmrc goes into the build");
+  const check = webStage.search(/^RUN v="\$\(tr -d '\\r\\n' < \.nvmrc\)"; test "\$\(node -v\)" = "v\$v" \|\| \{ .*; exit 1; \}$/m);
+  assert.ok(check > webStage.indexOf("COPY .nvmrc ./") && webStage.indexOf("COPY .nvmrc ./") > 0, "web: copies .nvmrc and checks node -v against it");
+  assert.ok(check < webStage.indexOf("npm ci"), "web: the check comes before npm ci");
+  // The Supervisor's stand-in in the smoke test is the server stage's
+  // Alpine base image, so Dependabot's update of the Dockerfile shows up here.
+  assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${literal(base)}$`, "m"));
   const server = docker.slice(docker.indexOf(" AS server"), docker.indexOf(" AS licenses"));
   // The core tests in the smoke test are built as this stage builds the
   // server: the same packages, the same options but the tests (#112).
@@ -138,6 +153,63 @@ test("the server's --app mode and the image match the app", () => {
     "--from=web /src/web/dist /web",
     "--from=licenses /out /licenses",
   ]);
+});
+
+test("the app's AppArmor profile allows only what the server needs, and the smoke test runs the image in it (#80)", () => {
+  const text = read("ha/app/apparmor.txt");
+  // The Supervisor takes the name from the one line that starts with
+  // "profile" and renames it to the app's full slug (<hash>_growcontroller).
+  assert.deepEqual([...text.matchAll(/^profile ([^ ]+).*$/gm)].map((m) => m[1]), [config.slug]);
+  assert.match(text, /^#include <tunables\/global>\n+profile growcontroller flags=\(attach_disconnected,mediate_deleted\) \{$/m);
+  const profile = text.slice(text.search(/^profile /m));
+  const rules = profile.slice(profile.indexOf("{") + 1, profile.lastIndexOf("}")).split("\n").map((l) => l.trim()).filter(Boolean);
+  // A new rule needs a review: it widens what a flaw in the web server can reach.
+  assert.deepEqual(rules, [
+    "#include <abstractions/base>",
+    // As root only to give /data/hub away and to leave root (ha/main.cpp)
+    "capability chown,",
+    "capability dac_override,",
+    // docker-init, still root, passes the Supervisor's SIGTERM on to 65532
+    "capability kill,",
+    "capability setgid,",
+    "capability setuid,",
+    // TCP over IPv4 (it listens on 0.0.0.0) to the Supervisor and from the
+    // browsers; no UDP: the Supervisor's name is in /etc/hosts
+    "network inet stream,",
+    "signal (receive) peer=unconfined,",
+    "signal (receive) peer=runc,",
+    "signal (receive) peer=crun,",
+    "signal (receive) peer=dockerd,",
+    "signal (send,receive) peer=*_growcontroller,",
+    // docker-init starts the server (the Supervisor's init: true)
+    "/sbin/docker-init ix,",
+    "/gc_ha_server ix,",
+    "/etc/hosts r,",
+    "/web/{,**} r,",
+    "/data/hub/{,**} rw,",
+  ]);
+  const main = read("ha/main.cpp");
+  assert.match(main, /if \(data\.empty\(\)\) data = app \? "\/data\/hub"/, "the folder the profile lets it write");
+  assert.match(main, /constexpr uid_t kAppUid = 65532;/);
+  assert.match(main, /constexpr gid_t kAppGid = 65532;/);
+  // The smoke test loads it renamed as the Supervisor does, starts the image
+  // as the Supervisor does (docker-init, the Supervisor's address in
+  // /etc/hosts) and fails on anything the profile refused.
+  const workflow = read(".github/workflows/app.yml");
+  const smoke = workflow.slice(workflow.indexOf("name: Smoke test"), workflow.indexOf("name: Core tests with the image's toolchain"));
+  assert.ok(smoke.includes(`sed 's/^profile growcontroller /profile 0000ci00_growcontroller /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"`));
+  assert.ok(smoke.includes(`sudo apparmor_parser -r -W "$RUNNER_TEMP/apparmor.txt"`));
+  assert.match(smoke, /docker run -d --name "\$1" --init --security-opt apparmor=0000ci00_growcontroller .*--add-host "supervisor:\$supervisor"/);
+  for (const run of ["start app gc-data", "start fresh gc-fresh", "confined app", "confined fresh"]) assert.ok(smoke.includes(run), run);
+  assert.match(main, /if \(host\.empty\(\)\) host = app \? "0\.0\.0\.0"/, "IPv4, as the profile allows");
+  assert.doesNotMatch(smoke, /--network-alias supervisor/, "the app finds the Supervisor in /etc/hosts, not by DNS");
+  assert.ok(smoke.includes(`grep -F 'profile="0000ci00_growcontroller"' > denied.txt`));
+  assert.ok(smoke.includes(`apparmor_parser -Q -K /apparmor.txt`), "the oldest parser reads it too");
+  assert.match(workflow, /^ {6}DEBIAN: debian:12@sha256:[0-9a-f]{64}$/m);
+  assert.match(workflow, /-e GC_HA_ROOT_TEST=1 "\$STANDIN"/, "the image's server runs the tests as root, never skipping them");
+  for (const want of ["Uid: 65532 65532 65532 65532", "Gid: 65532 65532 65532 65532", "CapEff: 0000000000000000", "NoNewPrivs: 1"]) {
+    assert.ok(smoke.includes(`'${want}'`), want);
+  }
 });
 
 test("Home Assistant finds exactly this one app in the repository", () => {

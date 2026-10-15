@@ -37,6 +37,7 @@ constexpr double kPhStartEffect = 5.0;    // pH je ml/L pH− (RAT-050: kleinste
 constexpr double kEcStartEffect = 0.275;  // mS/cm je ml/L Rezept (RAT-055)
 constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
+constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)
 constexpr Ms kMaxPhAge = 10 * kMinute;    // älter → keine Korrektur (RAT-043)
 
 std::string mmss(Ms ms) {
@@ -90,10 +91,12 @@ bool enabled(const Ctx& c, const std::string& fn) {
 void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
   st_.info = json::object();
+  wantsCirc_ = false;
   if (!enabled(c, "ec_control")) {
     st_.state = "off";
     st_.line = say("ec.off");
     reset();
+    cut_ = false;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ec_control");
@@ -139,6 +142,23 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
 
+  // A round a Stop cut waits for the circulation pump, then settles from when it runs (stopRound, SD-073)
+  if (pending()) {
+    if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
+      phase_ = Phase::Settling;
+      clean_ = false;  // its effect is not learned (RAT-057)
+      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+    } else {
+      wantsCirc_ = true;
+      if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
+      // A refusal the gateway knows shows at once (the circulation line names why); a pump that
+      // just does not come on after 2 min, as for a round waiting to dose (RAT-037, RAT-039)
+      const bool late = c.now - cutWaitSince_ > 2 * kMinute;
+      st_.state = !circOk || late ? "blocked" : "working";
+      st_.line = say(!circOk ? "ec.cut_circ_blocked" : late ? "ec.cut_no_circ" : "ec.wait_circ");
+      return;
+    }
+  }
   // Wirkung nur aus sauberen Gaben lernen: kein Zulauf, keine fremde Gabe dazwischen (RAT-057).
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ec-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
@@ -148,6 +168,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
                                      {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
+    cut_ = false;  // a cut round has settled: decide as after any settle time
     if (!ec.usable()) {
       st_.state = "blocked";
       st_.line = say("ec.invalid", {{"reason", ec.reason}});
@@ -285,7 +306,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
   if (p.state != DoseProgress::State::Done) {
     c.log.add(c.epoch, "block", "warn", say("ev.ec.aborted"), p.error);
     reset();
-    cooldownUntil_ = c.epoch + 15 * 60;
+    cooldownUntil_ = c.epoch + kAbortRestS;
     return;
   }
   if (queue_.empty()) {
@@ -295,6 +316,12 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
     env.truth.expectChange("tank.ec", settleUntil_ + kMinute);
     env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
   }
+}
+
+void EcController::stopRound() {
+  if (phase_ == Phase::Idle) return;
+  cut_ = true;
+  reset();
 }
 
 // ---------------------------------------------------------------- pH
@@ -307,6 +334,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.state = "off";
     st_.line = say("ph.off");
     reset();
+    cut_ = false;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ph_control");
@@ -352,6 +380,20 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
 
+  if (pending()) {  // as in EcController
+    if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
+      phase_ = Phase::Settling;
+      clean_ = false;
+      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+    } else {
+      pendingCirc_ = true;
+      if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
+      const bool late = c.now - cutWaitSince_ > 2 * kMinute;
+      st_.state = !circOk || late ? "blocked" : "working";
+      st_.line = say(!circOk ? "ph.cut_circ_blocked" : late ? "ph.cut_no_circ" : "ph.wait_circ");
+      return;
+    }
+  }
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ph-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
@@ -360,6 +402,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
                                      {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
+    cut_ = false;
     if (!phOk) {
       st_.state = "blocked";
       st_.line = say("ph.invalid", {{"reason", ph.reason}});
@@ -479,7 +522,7 @@ void PhController::onDoseFinished(const Ctx& c, const DoseProgress& p) {
   if (p.state != DoseProgress::State::Done) {
     c.log.add(c.epoch, "block", "warn", say("ev.ph.aborted"), p.error);
     reset();
-    cooldownUntil_ = c.epoch + 15 * 60;
+    cooldownUntil_ = c.epoch + kAbortRestS;
     return;
   }
   auto pv = effectiveParams(c.cat, c.cfg, "ph_control");
@@ -490,6 +533,12 @@ void PhController::onDoseFinished(const Ctx& c, const DoseProgress& p) {
   // Not announced: the dose is sized to move pH by at most 0.3 (RAT-050),
   // below the jump threshold of 1.0, so a jump while it settles locks the
   // reading (RAT-042, RAT-044)
+}
+
+void PhController::stopRound() {
+  if (phase_ == Phase::Idle) return;
+  cut_ = true;
+  reset();
 }
 
 // ---------------------------------------------------------------- Zulauf

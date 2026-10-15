@@ -2,7 +2,8 @@
 // gc_ha_server as a Home Assistant app (SD-034): --app refuses a mapping
 // file and a token file, takes the token only from SUPERVISOR_TOKEN and
 // writes nothing without it, is not switched on by an option's value, and
-// still honours --data, --host, --web and --port. The first password needs
+// still honours --data, --host, --web and --port. Started as root, it gives
+// up root before it opens its port (#80). The first password needs
 // the setup code the start prints (#79). Values that a stand-in Home
 // Assistant reports reach the hub's readings (#112). Runs the built
 // server (tools/ci.sh builds it first; the app image's own server in
@@ -10,7 +11,7 @@
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer as httpServer, get, request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -21,6 +22,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const bin = process.env.GC_HA_SERVER ?? join(root, "build", "gc_ha_server");
 const tmp = mkdtempSync(join(tmpdir(), "gc-ha-server-"));
+chmodSync(tmp, 0o755); // run as root, --app becomes 65532 (#80) and must still reach its folders
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 // The environment without either token, plus what a case sets.
@@ -197,6 +199,109 @@ async function standIn(states, clock) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return { url: `http://127.0.0.1:${server.address().port}`, seen, close: () => server.close() };
 }
+
+// As the Supervisor starts it: as root. The app job in
+// .github/workflows/app.yml runs this file as root with the image's binary
+// and sets GC_HA_ROOT_TEST, so there it cannot be skipped.
+const asRoot = skip || (process.env.GC_HA_ROOT_TEST ? false : process.platform !== "linux" ? "Linux only" : process.getuid() !== 0 ? "needs to run as root" : false);
+test("started as root, --app gives its data folder to 65532 and runs as it, without capabilities and new privileges (#80)", { skip: asRoot }, async () => {
+  assert.equal(process.getuid?.(), 0, "GC_HA_ROOT_TEST is set: this must run as root");
+  const parent = mkdtempSync(join(tmpdir(), "gc-ha-root-"));
+  try {
+    chmodSync(parent, 0o755); // as /data: the account the app becomes must reach its folder
+    // Root's own, outside the data folder: a link to them is given away
+    // itself, never what it points to, and the walk does not enter it
+    const outside = join(parent, "outside");
+    mkdirSync(outside, { mode: 0o700 });
+    writeFileSync(join(outside, "file"), "root's", { mode: 0o600 });
+    // A web folder the account may not read: no web app, not a crash at the start
+    const web = join(parent, "web");
+    mkdirSync(web, { mode: 0o700 });
+    writeFileSync(join(web, "index.html"), '<div id="app"></div>');
+    // The data folder as a version before #80 left it: root's; closed, as a
+    // run before could have left it
+    const data = join(parent, "hub");
+    mkdirSync(join(data, "deeper"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(data, "auth.json"), "{}", { mode: 0o600 });
+    writeFileSync(join(data, "deeper", "file"), "", { mode: 0o600 });
+    chmodSync(data, 0o000);
+    symlinkSync(join(outside, "file"), join(data, "link"));
+    symlinkSync(outside, join(data, "folder-link"));
+    const port = await freePort();
+    const child = spawn(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--web", web, "--port", String(port)], {
+      env: env({ SUPERVISOR_TOKEN: "test-token" }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (out += c));
+    const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+    try {
+      for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+      assert.ok(await info(port), out);
+      const status = Object.fromEntries(
+        readFileSync(`/proc/${child.pid}/status`, "utf8").split("\n").filter((l) => l.includes(":")).map((l) => l.split(/:\s*/, 2)),
+      );
+      assert.equal(status.Uid, "65532\t65532\t65532\t65532");
+      assert.equal(status.Gid, "65532\t65532\t65532\t65532");
+      assert.equal(status.Groups, "");
+      assert.equal(status.CapPrm, "0000000000000000");
+      assert.equal(status.CapEff, "0000000000000000");
+      assert.equal(status.NoNewPrivs, "1");
+      const page = await fetch(`http://127.0.0.1:${port}/`);
+      assert.match(await page.text(), /^growcontroller's web app cannot be read\./);
+      assert.match(out, new RegExp(`The web app in ${web} cannot be read; growcontroller runs without it\\. Detail: Permission denied`));
+    } finally {
+      child.kill("SIGTERM");
+    }
+    assert.deepEqual(await ended, { code: 0, signal: null }, out);
+    // The folder, private again, and what is in it are the account's, lstat:
+    // links themselves. The store keeps no subfolders: one is handed over,
+    // not entered
+    assert.equal(statSync(data).mode & 0o777, 0o700, "the data folder");
+    const entries = [data, ...readdirSync(data).map((f) => join(data, f))];
+    for (const f of ["auth.json", "deeper", "link", "folder-link"]) assert.ok(entries.includes(join(data, f)), f);
+    for (const p of entries) {
+      const st = lstatSync(p);
+      assert.deepEqual([st.uid, st.gid], [65532, 65532], p);
+    }
+    for (const p of [join(data, "deeper", "file"), outside, join(outside, "file"), web, join(web, "index.html")]) {
+      const st = statSync(p);
+      assert.deepEqual([st.uid, st.gid], [0, 0], `${p} is left alone`);
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("started as root, --app refuses a data folder that is a link or a file and ends, its data kept (#80)", { skip: asRoot }, async () => {
+  const parent = mkdtempSync(join(tmpdir(), "gc-ha-root-"));
+  try {
+    const target = join(parent, "elsewhere");
+    mkdirSync(target, { mode: 0o700 });
+    writeFileSync(join(target, "file"), "root's", { mode: 0o600 });
+    symlinkSync(target, join(parent, "hub"));
+    writeFileSync(join(parent, "a-file"), "root's", { mode: 0o600 });
+    for (const [data, why] of [
+      [join(parent, "hub"), /hub is a link/],
+      [join(parent, "hub") + "/", /hub is a link/], // a slash at the end would follow the link
+      [join(parent, "a-file"), /cannot create .*a-file/],
+    ]) {
+      const r = spawnSync(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--port", String(await freePort())], {
+        env: env({ SUPERVISOR_TOKEN: "test-token" }),
+        encoding: "utf8",
+        timeout: 15000,
+      });
+      assert.equal(r.status, 2, `${data}: ${r.stderr}`);
+      assert.match(r.stderr, /^growcontroller did not start: it could not give up its administrator rights \(root\)\. Detail: .*\.\nYour data is kept\. Start the app again\./m, data);
+      assert.match(r.stderr, why, data);
+      assert.doesNotMatch(r.stderr, /reinstall/i, "reinstalling deletes the app's data");
+      for (const p of [target, join(target, "file"), join(parent, "a-file")]) assert.equal(statSync(p).uid, 0, `${data}: ${p} is left alone`);
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
 
 test("values from Home Assistant reach the hub: a number, an unavailable sensor, a unit to convert (#112)", { skip, timeout: 60000 }, async () => {
   // Home Assistant's clock an hour ahead of this computer's, its values

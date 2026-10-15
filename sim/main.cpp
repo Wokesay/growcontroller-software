@@ -278,7 +278,14 @@ int main(int argc, char** argv) {
   // Web-App: Ordner (--web, Entwicklung) oder eingebettet (Download-Fassung),
   // jeweils mit Rückfall auf index.html (Single-Page-App).
   if (web.empty() && !GC_EMBEDDED_WEB) web = "web/dist";
-  const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html");
+  // A --web whose status cannot be read (no permission, a link loop) is no
+  // web app, not a crash at the start.
+  std::error_code webErr;
+  const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
+  if (webErr)
+    std::cerr << "The web app in " << web << " cannot be read; the simulator "
+              << (GC_EMBEDDED_WEB ? "serves its built-in one" : "runs without it") << ". Detail: " << webErr.message()
+              << ".\n";
   const bool haveWeb = haveDir || GC_EMBEDDED_WEB;
   if (haveDir) svr.set_mount_point("/", web);
   svr.Get(R"(/(?!api/).*)", [&](const httplib::Request& req, httplib::Response& res) {
@@ -336,7 +343,7 @@ int main(int argc, char** argv) {
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
-  if (!opts.dataDir.empty()) std::cout << "Daten: " << opts.dataDir << "\n";
+  if (!simulation.dataDir().empty()) std::cout << "Daten: " << simulation.dataDir() << "\n";
   if (!haveWeb) std::cout << "Hinweis: Web-App nicht gefunden unter " << web << "\n";
   std::cout << "Beenden: Strg+C oder dieses Fenster schließen.\n" << std::flush;
   if (open) openBrowser(url);

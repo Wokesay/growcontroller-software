@@ -273,8 +273,9 @@ export function StockList(p: { compact?: boolean }) {
     const low = ml !== null && ml < min;
     return { k, ml, cap, low };
   });
-  const lows = rows.filter((r) => r.low);
-  if (p.compact && !lows.length)
+  // An unknown stock is never counted as enough (RAT-015, #184): the short list names it
+  const shown = rows.filter((r) => r.low || r.ml === null);
+  if (p.compact && !shown.length)
     return (
       <p class="row">
         <Pill tone="ok">{t("widgets.stockOk", { n: rows.length })}</Pill>
@@ -283,18 +284,19 @@ export function StockList(p: { compact?: boolean }) {
     );
   return (
     <div class="list">
-      {(p.compact ? lows : rows).map(({ k, ml, cap, low }) => (
+      {(p.compact ? shown : rows).map(({ k, ml, cap, low }) => (
         <div class="item">
           <span class="swatch" style={`background:${k.color}`} />
           <div class="grow">
             <div class="title">{k.name}</div>
-            <div class={`bar ${low ? "low" : ""}`}>
+            <div class={`bar ${ml === null ? "unknown" : low ? "low" : ""}`}>
               <span style={`width:${cap && ml !== null ? Math.max(2, Math.min(100, (ml / cap) * 100)) : 0}%`} />
             </div>
           </div>
-          <span class="num small nowrap">{ml === null ? t("area.unknown") : `${num(ml, 0)} ml`}</span>
+          <span class={`num small nowrap ${ml === null ? "muted" : ""}`}>{ml === null ? t("area.unknown") : `${num(ml, 0)} ml`}</span>
         </div>
       ))}
+      {p.compact && shown.some((r) => r.ml === null) && <p class="muted small">{t("widgets.stockUnknownHint")}</p>}
     </div>
   );
 }

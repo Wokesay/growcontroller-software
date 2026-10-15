@@ -1008,6 +1008,173 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
   handDose();
 }
 
+TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pump running before the next decision, as after a restart (RAT-036, RAT-052, SD-073)") {
+  // While stopped nothing circulates, so time spent stopped mixes nothing in: after Resume the cut
+  // round first settles, counted from when circulation runs, for its settle time but at least 15 min
+  auto purpose = [](Client& c) {
+    const json d = c.state()["dosing"];
+    return d.is_null() ? std::string() : d["purpose"].get<std::string>();
+  };
+  {  // EC cut while its dose runs, a long Stop, a settle time above 15 min; pH waits meanwhile
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"settle_min", 20}}}});
+    c.ok("PATCH", "/api/v1/functions/circulation", {{"enabled", false}});  // only a round asks for the pump
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60 * 60 * 1000, 5000));  // the demo's mix
+    s.world().fill(40, 1.0, 6.3);  // EC low and pH high: both want to dose
+    REQUIRE(until(s, [&] {
+      return s.world().cap(kA)->state == 1 && s.world().cap(kA)->jobId.rfind("ec-", 0) == 0 && s.world().cap(kA)->elapsed > 1000;
+    }, 60 * 60 * 1000, 200));
+    const double stockBefore = c.state()["stock"]["teil-a"];
+    c.ok("POST", "/api/v1/stop");
+    CHECK(c.state()["stock"]["teil-a"].get<double>() < stockBefore);  // the cut part is booked (RAT-070)
+    s.step(20 * 60 * 1000);  // a long Stop
+    c.ok("POST", "/api/v1/resume");
+    REQUIRE(until(s, [&] { return s.world().circulating(); }, 30000));  // asked for by the cut round
+    s.step(5000);
+    REQUIRE(c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling");
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+    bool dosed = false, circOff = false, refilled = false;
+    for (int t = 0; t < 19 * 60; t += 5) {  // 19 of the 20 min after circulation starts
+      s.step(5000);
+      dosed = dosed || !purpose(c).empty();
+      circOff = circOff || !s.world().circulating();
+      refilled = refilled || c.state()["outputs"]["tank.inlet"] == true;
+    }
+    CHECK_FALSE(dosed);  // neither EC nor pH
+    CHECK_FALSE(circOff);
+    CHECK_FALSE(refilled);  // refill waits while the cut round settles (RAT-055)
+    CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling");
+    CHECK(until(s, [&] { return purpose(c) == "ec"; }, 4 * 60 * 1000));  // then it decides again
+  }
+  {  // pH cut while its dose settles: 15 min with circulation before the next pH dose
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60 * 60 * 1000, 5000));  // the demo's mix
+    s.world().fill(40, 1.2, 7.0);
+    const char* kD = "CAP-1F02D9";
+    REQUIRE(until(s, [&] { return s.world().cap(kD)->state == 2 && s.world().cap(kD)->jobId.rfind("ph-", 0) == 0; },
+                  60 * 60 * 1000, 1000));
+    s.step(2000);
+    REQUIRE(c.state()["controllers"]["ph"]["line"]["key"] == "ph.settling");
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+    REQUIRE(until(s, [&] { return s.world().circulating(); }, 30000));
+    bool dosed = false;
+    for (int t = 0; t < 14 * 60; t += 5) {
+      s.step(5000);
+      dosed = dosed || purpose(c) == "ph";
+    }
+    CHECK_FALSE(dosed);
+    CHECK(c.state()["controllers"]["ph"]["line"]["key"] == "ph.settling");
+    CHECK(until(s, [&] { return purpose(c) == "ph"; }, 4 * 60 * 1000));
+  }
+  {  // the circulation pump cannot run at Resume: refill is not held, the line says why, nothing doses;
+     // the settle time counts from when the pump runs
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    const std::string plug = circulateOnPlug(s, c);  // also switches refill off
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60 * 60 * 1000, 5000));  // the demo's mix
+    s.world().fill(40, 1.0, 5.9);
+    REQUIRE(until(s, [&] {
+      return s.world().cap(kA)->state == 1 && s.world().cap(kA)->jobId.rfind("ec-", 0) == 0 && s.world().cap(kA)->elapsed > 1000;
+    }, 60 * 60 * 1000, 200));
+    c.ok("POST", "/api/v1/stop");
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", plug}, {"fault", "offline"}});
+    }
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+    s.step(10000);  // the cut round now waits for the pump
+    REQUIRE(c.state()["controllers"]["ec"]["line"]["key"] == "ec.wait_circ");
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 60000));  // not held by the cut round
+    bool dosed = false;
+    for (int t = 0; t < 4 * 60; t += 5) {
+      s.step(5000);
+      dosed = dosed || !purpose(c).empty();
+    }
+    CHECK_FALSE(dosed);
+    CHECK(c.state()["controllers"]["ec"]["state"] == "blocked");
+    CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.cut_no_circ");
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", plug}, {"fault", "none"}});
+    }
+    REQUIRE(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));
+    for (int t = 0; t < 14 * 60; t += 5) {
+      s.step(5000);
+      dosed = dosed || !purpose(c).empty();
+    }
+    CHECK_FALSE(dosed);
+    CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling");
+    CHECK(until(s, [&] { return purpose(c) == "ec"; }, 5 * 60 * 1000));
+  }
+  {  // EC waits while a pH round the Stop cut waits for the pump and settles (RAT-057)
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60 * 60 * 1000, 5000));  // the demo's mix
+    const double target = c.state()["controllers"]["ec"]["info"]["target"];
+    s.world().fill(40, target, 7.0);  // EC on target, pH high: a pH round
+    const char* kD = "CAP-1F02D9";
+    REQUIRE(until(s, [&] { return s.world().cap(kD)->state == 2 && s.world().cap(kD)->jobId.rfind("ph-", 0) == 0; },
+                  60 * 60 * 1000, 1000));
+    s.step(2000);
+    REQUIRE(c.state()["controllers"]["ph"]["line"]["key"] == "ph.settling");
+    c.ok("POST", "/api/v1/stop");
+    s.world().fill(40, target - 0.45, 6.8);  // now EC wants a round; both steps stay below the jump thresholds
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+    bool ecDosed = false, waited = false;
+    for (int t = 0; t < 14 * 60; t += 5) {
+      s.step(5000);
+      ecDosed = ecDosed || purpose(c) == "ec";
+      waited = waited || c.state()["controllers"]["ec"]["line"]["key"] == "ec.wait_ph";
+    }
+    CHECK_FALSE(ecDosed);
+    CHECK(waited);
+  }
+  {  // the hub refuses the pump at Resume (level too low): "blocked" at once, refill is not held
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    c.ok("PATCH", "/api/v1/functions/circulation", {{"enabled", false}});  // only a round asks for the pump
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60 * 60 * 1000, 5000));  // the demo's mix
+    s.world().fill(40, 1.0, 6.3);
+    REQUIRE(until(s, [&] {
+      return s.world().cap(kA)->state == 1 && s.world().cap(kA)->jobId.rfind("ec-", 0) == 0 && s.world().cap(kA)->elapsed > 1000;
+    }, 60 * 60 * 1000, 200));
+    c.ok("POST", "/api/v1/stop");
+    s.world().fill(3.2, 1.0, 6.3);  // below the pump's minimum (3 L + 0.5 L)
+    s.step(20 * 60 * 1000);         // long enough for the level's jump lock to end
+    c.ok("POST", "/api/v1/resume");
+    s.step(10000);
+    json ec = c.state()["controllers"]["ec"];
+    CHECK(ec["state"] == "blocked");
+    CHECK(ec["line"]["key"] == "ec.cut_circ_blocked");
+    CHECK(c.state()["controllers"]["circulation"]["line"]["args"]["reason"]["key"] == "act.circ.low");  // why
+    bool dosed = false;
+    for (int t = 0; t < 3 * 60; t += 5) {  // past the 2 min a pump that does not come on gets
+      s.step(5000);
+      dosed = dosed || !purpose(c).empty();
+    }
+    CHECK_FALSE(dosed);
+    CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.cut_circ_blocked");
+    CHECK_FALSE(s.world().circulating());
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 60000));  // not held by the cut round
+    CHECK(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));            // the level is back
+    CHECK(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling"; }, 30000));
+  }
+}
+
 TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -1366,4 +1533,41 @@ TEST_CASE("Messages: pump calibration and emergency stop name their result and c
   const json stop = findEvents(c, "system").at(0);
   CHECK(stop["title"]["key"] == "ev.stop");
   CHECK(stop["text"]["args"]["who"]["key"] == "stop.app");
+}
+
+TEST_CASE("Scenario: an unknown stock is neither booked nor judged during a hand dose, and the mix plan takes it; once known, it is booked (RAT-015, RAT-071, #184)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  s.step(3000);
+  for (const char* id : {kDB, kA}) c.ok("POST", std::string("/api/v1/devices/") + id + "/accept", json::object());
+  c.ok("POST", "/api/v1/canisters", {{"name", "Teil A"}, {"pump", kA}, {"capacityMl", 1000}, {"stockMl", nullptr}});
+  c.ok("POST", "/api/v1/recipes", {{"name", "Nur A"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}}}});
+  c.ok("PUT", "/api/v1/tank", {{"capacityL", 60}});
+  calibrate(s, c, kA);
+  s.world().fill(20, 0.02, 7.0);
+  REQUIRE(c.state()["stock"]["teil-a"].is_null());
+  const auto dose = [&](double ml) {
+    REQUIRE(until(s, [&] { return c.state()["dosing"].is_null() && c.state()["job"].is_null(); }, 10 * 60 * 1000));
+    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", ml}});
+    REQUIRE(until(s, [&] { return c.state()["dosing"].is_null() && c.state()["job"].is_null(); }, 60000, 500));
+  };
+  dose(3);
+  // The dose goes in and is logged, but nothing is booked against a stock nobody knows
+  CHECK(c.state()["stock"]["teil-a"].is_null());
+  bool logged = false;
+  for (const auto& e : findEvents(c, "dose")) logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() == doctest::Approx(3).epsilon(0.1));
+  CHECK(logged);
+  for (const auto& e : findEvents(c, "tank")) CHECK(e["title"]["key"] != "ev.stock.below_zero");
+  s.step(60000);  // the watchdog evaluates again
+  const json wd = c.state()["watchdog"];
+  for (const auto& i : wd["items"]) CHECK(i["id"] != "stock.teil-a");
+  // The mix plan neither refuses nor counts it
+  const json plan = c.ok("POST", "/api/v1/mix/plan", {{"recipe", "nur-a"}, {"waterL", 20}});
+  CHECK(plan["ok"] == true);
+  for (const auto& e : plan.value("errors", json::array())) CHECK(e["key"].get<std::string>().rfind("mix.stock", 0) != 0);
+  // Once someone enters it, doses are booked again
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 1000}});
+  dose(3);
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(997).epsilon(0.002));
 }

@@ -600,9 +600,36 @@ time is no value.
   only `GET /api/states` (tested), but a flaw in its web server could give
   an attacker in the network control of Home Assistant. The image has no
   shell and the app no other rights (`tools/app.test.mjs` refuses any
-  other key in `config.yaml`). The server runs as root in the container
-  with Docker's default capabilities; dropping them and an AppArmor
-  profile are follow-ups (#80).
+  other key in `config.yaml`). The Supervisor starts the server as root,
+  behind its own docker-init. Before the server opens its port it gives
+  `/data/hub` and what is in it (a link itself, never what it points to;
+  a subfolder is handed over, not entered, since the store keeps none) to
+  an account of its own, 65532, and becomes that account for good: no
+  root, no capabilities, no new privileges; then it makes the folder
+  private (0700) again (#80). It does this at every start, since a restore
+  from a backup gives the files back to root. A `/data/hub` that is a link
+  is refused. If it
+  cannot, it says so in its log and ends, its data kept. It relies on
+  `/data` being open to other accounts for passing through (the
+  Supervisor creates it with the default mode, 0755 under the usual
+  umask); otherwise the start ends with
+  the message that the data folder cannot be written. Its AppArmor
+  profile (`ha/app/apparmor.txt`, which the Supervisor loads at install
+  and update) lets it read, besides the basic system files of
+  `abstractions/base`, only its web app and `/etc/hosts`, write only
+  `/data/hub` and use only TCP over IPv4 (it listens on 0.0.0.0); it gives
+  docker-init, which stays root with the profile's capabilities and runs
+  nothing but the server, `kill` to pass the stop signal on. On a host
+  without AppArmor the app runs without the profile. The Supervisor starts
+  every app without a seccomp filter, and docker-init stays root, out of
+  the server's reach. 65532 is a common account number for containers
+  without root (distroless images use it); on the same host such
+  containers share the kernel's per-account limits and keyring with the
+  server.
+  At every start the root pass also hands over a file hard-linked into
+  `/data/hub` from elsewhere in `/data`; the server cannot make such a
+  link (the profile has no link rule, and hosts usually protect hard
+  links to other accounts' files).
 - The session cookie is not tied to the port: the browser also sends it
   to Home Assistant and other apps under the same host name. It is
   HttpOnly and only valid for growcontroller.
@@ -610,6 +637,9 @@ time is no value.
   is restarted, while the app keeps answering (so its watchdog sees no
   fault), and the web app's hint speaks of a token file. A follow-up
   (#78).
+- The Supervisor takes `ha/app/apparmor.txt` from the repository too, at
+  install and update: from merging a change to it until the release, a
+  new install runs the previous image in the new profile.
 - The app store reads `ha/app/config.yaml` from `main`: between merging a
   new version and the release workflow's end, Home Assistant offers a
   version whose image is not there yet, and an install fails until it is.

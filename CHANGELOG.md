@@ -64,11 +64,12 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Product questions go to the product repository directly** (SD-069):
-  the software session writes each product question it meets, with
-  context, options and its recommendation, into a note of the product
-  repository as a pull request there, instead of handing it to the
-  project owner. Decisions (PD) are still made only there.
+- **Product questions are issues here** (#190, SD-072, from PD-226;
+  replaces SD-069): the software session files each product question it meets,
+  with its software basis, the options and its recommendation, as an
+  English issue labelled `product-question`. The product repository's
+  session picks it up and decides it there (PD). The software session no
+  longer accesses the product repository.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their
@@ -166,7 +167,7 @@ listed in every release under "Security".
   project runs a relay free of charge, and you can run your own. A
   direct way through a port forward is not offered. Whether an app comes
   into the stores is decided later.
-- **Partition tables: room for factory data** (SD-071): both boards get a
+- **Partition tables: room for factory data** (SD-076): both boards get a
   read-only 16 KB partition `fctry` before the first app, for the serial
   number and the setup network's key from the label of pre-flashed
   devices. Nothing else moves: flashing a board you already have keeps
@@ -174,7 +175,7 @@ listed in every release under "Security".
   writes it and a factory reset will keep it; erasing the whole flash
   wipes it.
 - **Plan: pre-flashed devices, setup without a cable, support period**
-  (SD-071): until a series with hardened firmware, you flash the DevKit
+  (SD-076): until a series with hardened firmware, you flash the DevKit
   yourself in the browser; later it can come pre-flashed. Wi-Fi is then
   set up through the ESP32-S3's own setup network with the key from the
   label; on a configured device it opens only when you hold BOOT for
@@ -240,6 +241,38 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator keeps a data folder it cannot read** (SD-074): when
+  `--data`, or the folder next to the program on a start without
+  arguments, could not be read (a folder it may not enter, for example
+  one an earlier start with `sudo` made, or a link that loops), it ended
+  at the start; started by a double click, its window just closed. When
+  only files in it could not be read (for example root's files after a
+  start with `sudo`), it started without its configuration and password
+  and later saved over them. Now it says "Data cannot be read (…).
+  Running in memory only." and runs in memory only. It reads, writes and
+  removes nothing in that folder, so data of an earlier start stays as
+  it was.
+- **After a Stop, an interrupted control round mixes in before the next decision**
+  (#180, SD-073): a Stop that cut an EC or pH round, while it dosed or
+  waited for the dose to mix in, only reset the controller. After Resume
+  it could start the next round right away, on a reading the cut dose had
+  not mixed into, since the circulation pump is off while stopped; too
+  much EC can only be undone by diluting. Now, as after a restart, the cut
+  round first waits for the circulation pump and then settles with it
+  running, for its settle time but at least 15 minutes, while the other
+  controller and refill wait. Refill is not held while the round waits for
+  the pump, which may need the level back; the line says why ("Blocked:
+  circulation pump not running – after the Stop, mixing comes first", or,
+  when the hub refuses the pump, "Blocked: circulation pump can't run –
+  after the Stop, mixing comes first") (RAT-036, RAT-052, RAT-004,
+  RAT-047).
+- **The simulator starts with a web app folder it cannot read**: when
+  `--web` pointed into a folder the simulator may not enter, or through a
+  link that loops, it ended at the start ("filesystem error: status").
+  Now such a folder counts as no web app: it says why, starts with the
+  embedded web app or the "not built" page, and the API answers
+  (`tools/sim_server.test.mjs`), as the Home Assistant server does since
+  #80.
 - **Editing a bottle out of its pair no longer blocks later saves**
   (#152): clearing or changing part A's pair label, or making it a pH
   bottle, left part B alone with the label, and the hub then refused
@@ -249,12 +282,51 @@ listed in every release under "Security".
   save, and the event log afterwards. With a new label, part A is that
   pair's first bottle until its partner joins: a recipe, also one from a
   template, may already hold it; other saves wait for the partner, as
-  before. An edit that would leave a recipe with only half of a pair (a
-  third bottle joining a pair the recipe holds two of) is now refused and
-  nothing is saved; the reason is still shown in German only (#148). The
-  hub now lets a recipe hold both bottles before the second gets the
-  label, so two bottles a recipe holds one of can be paired; the recipe
-  editor cannot add a bottle to an existing recipe yet (#159).
+  before. An edit that would leave a recipe with only half of a pair
+  (for example a third bottle joining a pair the recipe holds two of) is
+  refused and nothing is saved. The hub now lets a recipe hold both
+  bottles before the second gets the label, so two bottles can be paired
+  when a recipe holds only one of them: put the other in first.
+- **A bottle can go into an existing recipe** (#159): the recipe editor
+  listed only the recipe's own bottles, so a bottle added later could
+  only go into a new recipe. It now lists every nutrient bottle, the
+  recipe's own first: an amount puts one in, numbered in its row's place,
+  and clearing it takes it out. Only bottles with an amount get a number
+  and the order buttons, which pass over the others; each value stays
+  with its bottle when the order changes (before, a value could show in
+  the wrong row), and the focus moves with the row. Each amount field is
+  named for screen readers, and on a phone the rows no longer run past
+  the screen with long names. A long name without spaces now breaks in
+  the bottle list and as a recipe card's title too, instead of running
+  past the card.
+- **The recipe and bottle editors say before saving what the hub would
+  refuse** (#159), with the way out, in German and English, and Save
+  stays off until it is fixed: a pair only partly in a recipe (naming
+  the bottles missing), a recipe without a name or an amount, an amount
+  below 0, a bottle without a name, a pair label that would leave a
+  recipe with part of a pair, and a pH bottle that a recipe still holds.
+  A screen reader reads each change. Before, the hub refused after Save
+  with a German-only message.
+- **An unknown stock no longer turns "full" when a bottle is saved**
+  (#184): any save of a bottle whose stock was unknown (a new name, a
+  colour, a pump, a first size), for example after importing a backup
+  onto a new hub, set its stock to its size without a word. Its low-stock
+  and below-zero warnings then came late, and a mix check passed that the
+  bottle could not cover. The stock now stays unknown until an amount is
+  entered or "Bottle changed (full)" is confirmed (RAT-015); a new bottle
+  whose amount is left empty stays unknown too. The bottle editor and
+  the setup no longer fill in 1000 ml for a bottle without a size, a new
+  bottle's amount follows its size until the amount itself is changed,
+  and the overview no longer counts an unknown stock as enough. Where
+  the hub does not know a stock, the bottle list and the overview say
+  so ("unknown" instead of "?", a dashed bar) and how to enter it, and
+  the amount field's hint fits the bottle's state.
+- **A new bottle no longer takes over an old stock** (#161): importing a
+  backup without a bottle kept that bottle's stock, and a new bottle of
+  the same name created without a stock, as the setup wizard does, then
+  started with it instead of its size. An import now keeps only the
+  stock of the bottles the hub had and the file keeps, and a new bottle
+  starts with the stock entered, else its size, else unknown.
 - **A removed bottle's stock is saved at once** (#152): until the next
   regular save, a power cut brought it back, and a new bottle of the same
   name then showed the old stock.
@@ -502,17 +574,27 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The web build checks every module the bundler puts into the app**
+  (#190, PD-228, SD-075): the app's code is to come only from our
+  sources and the runtime packages of the lockfile, and the build
+  searched the output only for three markers of Vite.
+  Rolldown's runtime helpers or a build-time package leave no such marker
+  in minified code. The build now looks at every module of every chunk
+  and fails on one that is neither our source nor a runtime package of
+  the lockfile, and when it checked nothing. The app holds none today,
+  and it builds the same byte for byte as without the check.
 - **The signature check runs with a pinned npm, and says why it fails**
-  (#163, SD-070): the npm that checks the web app's packages against
-  their registry signatures (SD-058) came with whatever Node the runner
-  image had. Every job that sets up Node now runs the one named in
-  `.nvmrc`, raised by hand with a review and compared with Node's security
-  releases at every release. The app image still checks with Alpine's
-  Node and npm, and now prints their versions. When a job with the check
-  fails, a step that runs only then shows the end of npm's own log of the
-  check and asks npm again for its reasons; until now the output named
-  only the package, so a failure on 2026-10-14 that passed on re-run could
-  not be explained. The check itself is unchanged.
+  (#163, SD-070, SD-071): the npm that checks the web app's packages
+  against their registry signatures (SD-058) came with whatever Node the
+  runner image had, and in the Home Assistant app image with Alpine's.
+  Every job that sets up Node now runs the one named in `.nvmrc`, raised
+  by hand with a review and compared with Node's security releases at
+  every release; the app image runs the same Node from the official
+  `node` image, pinned by digest, and prints the versions. When a job
+  with the check fails, a step that runs only then shows the end of npm's
+  own log of the check and asks npm again for its reasons; until now the
+  output named only the package, so a failure on 2026-10-14 that passed
+  on re-run could not be explained. The check itself is unchanged.
 - **A Stop holds even when booking the running dose fails** (RAT-036):
   a Stop booked the running dose and ended the job before it switched the
   inlet, the circulation pump and the sockets off. An error while booking
@@ -531,7 +613,33 @@ Hardening, without a vulnerability behind it:
   browser left signed in, a cookie read off the unencrypted home network
   until HTTPS) stays valid as long as it is used at least every 12 hours;
   changing the password ends every session at once.
-
+- **The Home Assistant app no longer runs as root** (#80): the server ran
+  in its container with full administrator rights (root, with Docker's
+  default capabilities), and Home Assistant starts every app without a
+  seccomp filter, so a flaw in its web server would have given an attacker
+  root in the container. Now, at every start and before it opens its port,
+  it hands its data folder and what is in it to an account of its own
+  (user 65532; for a link, the link itself, never the file it points to; a
+  data folder that is a link is refused) and switches to that account for
+  good: no root, no capabilities, no new privileges; then it makes the
+  folder private again. Nothing to do after the update. If it cannot, the
+  app does not start and its log says why and what to do; your data is
+  kept. The app also brings an AppArmor profile (`ha/app/apparmor.txt`):
+  besides the basic system files every confined program may read, the
+  server reads only its web app and `/etc/hosts`, writes only its data
+  folder and uses only TCP over IPv4. CI now runs the app image the way
+  the Supervisor starts it, in that profile, also as a new install and
+  after a restart, fails if the profile refuses anything, and checks that
+  the profile loads with Debian 12's older AppArmor. Found on the way: a
+  web folder the server may not read stopped it at the start; now it
+  starts without the web app and says so in its log. Residual risk:
+  docker-init, which the Supervisor starts first, stays root next to the
+  server with the profile's capabilities (chown, dac_override, kill,
+  setgid, setuid); it runs nothing but the server, which can no longer
+  signal it. A host without AppArmor runs the app without the profile.
+  From the merge until the release, a new install gets the previous image
+  in the new profile, since Home Assistant takes the profile from the
+  repository.
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator
   packages, the release build, the Home Assistant app image),

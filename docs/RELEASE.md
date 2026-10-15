@@ -59,7 +59,8 @@ entry under `[Unreleased]`.
    off on that Home Assistant (off unless switched on). Compare `.nvmrc`
    with the newest Node 22 security release
    (`https://nodejs.org/dist/index.json`, `"security": true`) and raise it
-   in a pull request of its own if it is lower (SD-070). Tag right after
+   in a pull request of its own if it is lower, together with the app
+   image's `node` image (SD-070, SD-071). Tag right after
    the merge: Home
    Assistant's app store reads `config.yaml` from `main` and offers the
    new version before its image exists.
@@ -112,8 +113,11 @@ entry under `[Unreleased]`.
      Node runs the exact one named in `.nvmrc`, not whatever the runner
      image brings (SD-070). It is raised by hand in a pull request of its
      own, with a `security` review; step 1 "Prepare" compares it with the
-     newest Node 22 security release. The app image checks with Alpine's
-     Node and npm and prints their versions.
+     newest Node 22 security release. The app image checks with the same
+     Node, from the official `node` image pinned by digest, and prints the
+     versions: `tools/app.test.mjs` fails when the image's tag names
+     another Node than `.nvmrc`, the build when the Node it pulled is
+     another (SD-071).
    - When a job with the check fails, a step that runs only then
      (`tools/signatures_report.mjs`) shows the end of npm's own log of
      the check, the only record of the failed run (or that the check
@@ -171,6 +175,11 @@ entry under `[Unreleased]`.
        password and reads sensors;
      - another device guessing the password six times does not lock out
        a phone that signed in (SD-051);
+     - after the update from a version before #80 (the server ran as
+       root), the app starts and reads values, so it finds the Supervisor
+       in `/etc/hosts`; the host's log (Settings › System › Logs, Host)
+       has no `apparmor="DENIED"` for `*_growcontroller`; restoring the
+       app's backup and starting it again works;
      - a new backup holds the new version, and its entry for the app is
        not empty.
 
@@ -183,8 +192,14 @@ entry under `[Unreleased]`.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
-   - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
-     the statically linked compiler runtimes; the web app embedded in the
+   - The SBOMs list what ships, not the build tools (SD-075). The web
+     build fails when a module the bundler puts into the app is neither
+     our source, the page nor a runtime package of the lockfile; the web
+     SBOM is to list exactly those packages (today `npm sbom --omit dev`
+     leaves out `preact`, #201). Code the build tools
+     write into our own modules or the page is ours as built by them. The C++ SBOM
+     lists the header libraries from `cmake/deps.cmake`, not yet the
+     statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
      yet (#81): it holds the same server code, the web app, and musl and the
      GCC runtime from Alpine 3.24, whose exact package versions the image
@@ -193,12 +208,18 @@ entry under `[Unreleased]`.
      pinned: each build takes the current ones of Alpine 3.24 (supported
      until 2028-06). Security fixes for musl, the GCC runtime,
      cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
-     the app's base image (pinned by digest; `tools/app.test.mjs` keeps
-     the smoke test's stand-in on the same digest, so such an update
-     fails until both match) and `reuse` with its dependencies and build
-     backend (`tools/requirements-reuse*.txt`, installed with
-     `--require-hashes`, wheels only except `reuse` itself, which is built
-     from its hashed source without fetching anything else);
+     the app's base images (pinned by digest; `tools/app.test.mjs` keeps
+     the smoke test's stand-in on the Alpine digest and the web stage's
+     `node` image at `.nvmrc`'s Node on the same Alpine, SD-071: a new
+     digest of the `node` tag passes, a new Alpine digest fails until the
+     stand-in follows, a newer Node until `.nvmrc` follows, a newer
+     Alpine until the `node` tag and the stand-in follow; a new `node`
+     digest is merged only after a review like a raise of `.nvmrc`, as
+     what changed is not in the diff) and `reuse`
+     with its dependencies and build backend
+     (`tools/requirements-reuse*.txt`, installed with `--require-hashes`,
+     wheels only except `reuse` itself, which is built from its hashed
+     source without fetching anything else);
      it does not cover `cmake/deps.cmake`, the `espressif/idf` container
      (pinned by digest in `ci.yml`) and the `registry:2` service of the
      `check` job; they are updated by hand. `tools/workflows.test.mjs`
@@ -260,7 +281,7 @@ entry under `[Unreleased]`.
 
 ## Support and obligations (CRA, from 2027-12-11; reporting obligation since 2026-09-11)
 
-- **Support period (PD-182 to PD-185, SD-071):** security updates for 7
+- **Support period (PD-182 to PD-185, SD-076):** security updates for 7
   years from the delivery of each board with our firmware, also for boards
   delivered before 2027-12-11. Stated per delivery year, ending in
   December ("delivered 2028: security updates until at least 12/2035");

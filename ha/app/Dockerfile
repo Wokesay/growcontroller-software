@@ -9,15 +9,19 @@
 # the server's sources, so a bad build package cannot change the server.
 
 # The web app. The commit is for its source code link (AGPL-3.0 §13).
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS web
-RUN apk add --no-cache nodejs npm
+# Node and npm are the ones CI checks with (.nvmrc), from the official node
+# image on the same Alpine, pinned by digest (SD-071). The digest, not the
+# tag, decides what is pulled, so the stage checks its Node against .nvmrc.
+FROM node:22.23.3-alpine3.24@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS web
 WORKDIR /src
+COPY .nvmrc ./
+RUN v="$(tr -d '\r\n' < .nvmrc)"; test "$(node -v)" = "v$v" || { echo "The node image runs $(node -v), .nvmrc names $v: its digest is not of that tag (SD-071)"; exit 1; }
 COPY web/ web/
 ARG GC_SOURCE_REV
 RUN test -n "$GC_SOURCE_REV" || { echo "GC_SOURCE_REV is needed (AGPL-3.0 §13)"; exit 1; }
 # Registry signatures of the packages installed here (their musl builds
-# among them) before any of them runs (SD-058). Alpine's Node and npm check
-# them; their versions go to the build log (#163).
+# among them) before any of them runs (SD-058). The versions of the Node and
+# npm that check them go to the build log (#163).
 RUN node -v && npm -v
 RUN cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build
 

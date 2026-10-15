@@ -109,6 +109,19 @@ Supervisor and gets its access from it. No token is needed.
   why the port belongs in your own network only.
 - The image holds nothing but the growcontroller server, the web app and
   the license texts: no shell, no package manager.
+- The server starts with administrator rights (root) only to hand its
+  data folder to an account of its own. Before it opens its port it
+  switches to that account and cannot switch back: no root, no other
+  special right. Home Assistant also confines it with the app's AppArmor
+  profile (on hosts with AppArmor, such as Home Assistant OS): it reads
+  its web app, writes only its data folder and makes only TCP
+  connections.
+- If the server cannot give up root, it does not start: the web app does
+  not open, and the newest lines of the app's **Log** say why. Your data
+  is kept. Start the app again. If it still does not start, restore the
+  backup from before the update (see **Your data**) and report the log
+  lines at <https://github.com/Wokesay/growcontroller-software/issues>.
+  Do not uninstall the app to fix it: that deletes its data.
 
 ## Source code and license
 

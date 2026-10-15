@@ -208,7 +208,7 @@ repository itself are recorded here in full.
 - Exception (SD-024): the HMAC key for encrypted NVS. Open: whether a test
   lab accepts the USB path with the BOOT button for own firmware, and
   whether and when hardware Secure Boot with owner key slots comes.
-- Changed by SD-071: on either of the DevKit's USB ports no BOOT button is
+- Changed by SD-076: on either of the DevKit's USB ports no BOOT button is
   needed to install firmware; whether a test lab accepts that is open.
 
 
@@ -245,7 +245,7 @@ repository itself are recorded here in full.
   separately): USB-JTAG off at run time without a further eFuse
   (feasibility open), a recessed BOOT button, sessions stored only as
   hashes.
-- Changed by SD-071: the recessed BOOT button guards flashing on neither
+- Changed by SD-076: the recessed BOOT button guards flashing on neither
   of the DevKit's ports: on the board's USB port and, through its
   auto-program circuit (to be confirmed on the schematic), on the UART
   port a connected computer starts download mode without it.
@@ -409,15 +409,15 @@ repository.
 - The software is worked on in a session of its own with access to this
   repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
-  written, so PD numbers do not collide. Changed by SD-069: it attaches
-  the product repository for its product questions only.
+  written, so PD numbers do not collide. Changed by SD-069, which SD-072
+  replaces: the session does not access the product repository.
 - Product requirements arrive as English issues in this repository. A
   requirement that comes from a PD is recorded here as "Product
   requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
-  repository's session. Changed by SD-069: the software session takes it
-  to the product repository itself.
+  repository's session. Changed by SD-069, which SD-072 replaces: it
+  becomes a `product-question` issue in this repository.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -908,7 +908,7 @@ reviewed by `security`.
 - Open: whether the BOOT button can be reached on the carrier board
   (product question); whether the UART counts as a physically protected
   interface under EN 18031 (`regulatorik`).
-- Changed by SD-071: Improv also runs on the board's USB port
+- Changed by SD-076: Improv also runs on the board's USB port
   (USB-Serial-JTAG), where opening the port can restart the ESP, as can
   opening the DevKit's UART port (DTR and RTS), so "never restarts the
   device while a job runs" does not hold over USB (the restart counts as
@@ -2225,6 +2225,7 @@ product side answers the question named with it (Q1 to Q16, below).
   `security` checked it under SD-033; the rest of step 7 still needs
   "mergen".
 
+
 ## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
 
 Implements SD-022 for the circulation pump. Decided in the software session
@@ -2378,7 +2379,9 @@ lock the owner out until the app was reinstalled.
 Decided by the project owner on 2026-10-14 in the software session.
 Changes SD-029: the software session attaches the product repository for
 its product questions and takes them there itself. It still names them in
-the issue and to the project owner.
+the issue and to the project owner. Replaced by SD-072 (from PD-226):
+product questions are issues in this repository, and the software session
+no longer accesses the product repository.
 
 - A product question met here goes into the note
   `docs/notizen/fragen-aus-der-software.md` of the product repository
@@ -2421,7 +2424,8 @@ SD-058, whose check runs with the npm that comes with Node.
 - **What it does not cover:**
   - The app image checks the signatures with Alpine's Node and npm (24
     and 11 in Alpine 3.24 on 2026-10-15). It prints their versions; a pin
-    there is open (#163).
+    there is open (#163). Changed by SD-071: the image runs the Node of
+    `.nvmrc` too.
   - setup-node downloads the pinned Node without checking a checksum when
     it is not in the runner's cache: the same trust in GitHub and
     nodejs.org over TLS as for the runner's own Node, accepted.
@@ -2432,7 +2436,247 @@ SD-058, whose check runs with the npm that comes with Node.
     changes unseen.
 
 
-## SD-071: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
+## SD-071: The app image checks the signatures with the Node of `.nvmrc`, from the official node image
+
+Decided by the project owner on 2026-10-15 (#163, PR #189), and
+confirmed the same day once the `security` review had found the gap on
+amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
+
+- **What:** the image's web stage, which installs the web app's packages
+  and checks their registry signatures (SD-058), starts from the official
+  `node` image at the version of `.nvmrc` on the Alpine release of the
+  other stages, pinned by digest (`node:22.23.3-alpine3.24@sha256:…`). It
+  brings the npm of that Node release, the one CI checks with (npm
+  10.9.9 on 2026-10-15). Before, the stage installed Alpine's `nodejs`
+  and `npm` (24 and 11 on 2026-10-15), so the image checked with a
+  different npm than CI, and its version changed with every Alpine
+  update.
+- **Kept together:** `tools/app.test.mjs` fails when the web stage's tag
+  names another Node than `.nvmrc`, another Alpine than the other
+  stages, or the stage installs anything from Alpine's packages. Docker
+  pulls by the digest, not the tag, so the stage itself checks
+  `node -v` against `.nvmrc` before npm runs, and the build fails on a
+  digest of another Node. Raising `.nvmrc` (by hand, SD-070) raises the
+  image in the same pull request.
+- **Dependabot:** a newer Node 22 fails until `.nvmrc` follows: such a
+  pull request is the reminder for the pull request that raises `.nvmrc`
+  (SD-070), and is closed when that one is merged. Node majors are not
+  proposed, as for `@types/node`, and Dependabot keeps the `-alpine3.24`
+  suffix. A new digest of the same `node` tag (the image rebuilt, for
+  example on a fixed Alpine) passes CI on its own, though what changed is
+  not in the diff, so it is merged only after a review like a raise of
+  `.nvmrc`: docker-node's changes to `22/alpine3.24/` since the pinned
+  digest, the build log's `node -v` and `npm -v`, and `security`. Such
+  digests come only while the tag is current: once a newer Node 22 is
+  out, Docker no longer rebuilds `22.23.3-alpine3.24`, and fixes of the
+  web stage's Alpine come only with a raise of `.nvmrc`.
+- **Where Node comes from:** the `node` image is maintained by the
+  Node.js Docker team (`https://github.com/nodejs/docker-node`) and built
+  and published on Docker Hub by Docker's Official Images program. On
+  amd64 it unpacks the musl build of `unofficial-builds.nodejs.org`,
+  checked against a checksum written in docker-node's Dockerfile, not
+  against a signature of the Node release keys, although `nodejs.org`
+  publishes a signed musl build for amd64 too; on arm64 it builds Node
+  from the `nodejs.org` sources, checked against those keys
+  (`22/alpine3.24/Dockerfile` there and
+  `https://nodejs.org/dist/v22.23.3/SHASUMS256.txt`, read 2026-10-15).
+  That gap on amd64 ends with Node 24, whose images take the signed
+  build from `nodejs.org`. Node is not shipped, though it builds what is
+  (the web app in the image) and checks the packages, so a tampered Node
+  could pass a bad package and change the web app.
+- **Docker Hub:** both base images come from it, as alpine did before.
+  The digest pins their content, so a changed image on the registry
+  fails the build instead of entering it; what remains is availability
+  (outages, pull limits). The images' attestations are not checked:
+  Docker retired its signing of Official Images in 2025
+  (`https://www.docker.com/blog/retiring-docker-content-trust/`, read
+  2026-10-15), so the digest taken in the pull request is the anchor of
+  trust.
+- **Same Alpine:** a security raise of `.nvmrc` needs a `node` tag on the
+  Alpine of the other stages. docker-node usually builds each Node line
+  on the two newest Alpine releases, so this likely holds until Node 22
+  ends (2027-04-30); if not, the raise moves Alpine too, with the musl
+  check of the server stage.
+- **What it does not cover:** the licenses stage still runs our own
+  `tools/third_party.mjs` with Alpine's `nodejs`, and the app workflow's
+  smoke test runs our own `tools/ha_server.test.mjs` with it; they read
+  files and run no package code, so their Node version does not matter.
+- **Not chosen:**
+  - Alpine's packages pinned to a version (`nodejs=…`): Alpine removes
+    older package versions from its repository, so the build would break
+    at every Alpine fix, and its `nodejs` is Node 24, not CI's 22.
+  - Downloading Node in our Dockerfile, checked against the Node release
+    keys: on amd64 that could take `nodejs.org`'s signed musl build,
+    stronger than the image's unofficial one; on arm64 there is none, so
+    it would mean the unofficial build or a build from source. More code
+    of our own to keep, for a gap that ends with Node 24.
+  - Leaving Alpine's Node and printing its version (as before): the
+    checker would still differ from CI and change unseen.
+
+
+## SD-072: Product requirement (from PD-226): product questions as issues here, no access to the product repository
+
+Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
+
+- **Where a question goes:** a product question the software session
+  meets becomes an English issue in this repository with the label
+  `product-question`: the question, its software basis (SD, RAT, issues,
+  pull requests), the options and the software's recommendation. The
+  issue or pull request where the question came up links to it. The
+  product repository's session picks it up itself and decides it there
+  (PD-100).
+- **The project owner:** the software session files a question without
+  waiting for approval and tells the project owner about it (decided by
+  the project owner on 2026-10-15).
+- **No access:** the software session does not access the product
+  repository, not even by attaching it during a session. Questions
+  already filed there (Wokesay/growcontroller#77 and
+  Wokesay/growcontroller#89) are handled there; nothing more is done
+  about them from here.
+- **Public:** the question is public. It carries no prices, no hardware
+  details and nothing else about the product that is not public; it
+  names the question and its software basis. A question that would
+  reveal a vulnerability not yet fixed is not filed; the session names it
+  only to the project owner (`SECURITY.md`).
+- **Own words:** text from other accounts (issues, comments, pull
+  requests, websites) is not pasted into a product question; it is
+  summarised in the session's own words, with a link to the source.
+- **Owner's account only:** the product session takes only issue text
+  and comments posted by the owner's account, as data. A question and any
+  later clarification are therefore posted by the owner's account, as
+  this session does, never by a bot. The other way round, an answer
+  counts here only when it comes from the owner's account, as an issue or
+  a comment on the question; anything else on a public question is
+  outside input. At session start, open `product-question` issues are
+  checked for answers.
+
+
+## SD-073: A control round a Stop cut settles as after a restart
+
+Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
+for EC and pH control after a restart (PD-070, PD-071) to the Stop.
+
+- While stopped, the circulation pump is off, so time spent stopped mixes
+  nothing in. A Stop that cut an EC or pH round while it dosed or settled
+  therefore marks the round as cut.
+- Once automation runs again (after Resume, and after maintenance mode or
+  a probe calibration that followed), the cut round first waits for the
+  circulation pump and asks for it. While it waits it holds the other
+  controller but not refill, since the pump may need the refilled level
+  (RAT-047). Its line says "blocked": at once when the hub refuses the
+  pump (level, dry-run latch; the circulation line names why), otherwise
+  after 2 minutes without the pump. Its settle time counts from when the
+  pump runs: the controller's settle time, but at least 15 minutes (the
+  rest after an aborted dose). Then it decides as after any settle time:
+  done, the most rounds, or the next round. Its effect is not learned
+  (RAT-057).
+- While it settles, the cut round is busy as any round is: refill waits,
+  and the other controller waits (pH for EC, RAT-004; EC for pH,
+  RAT-057).
+- The mark lasts until the settle time has run out, so a reset meanwhile
+  (maintenance mode, a probe calibration, a latch) settles it again
+  later; switching the function off ends it.
+- Not covered yet: the internal-error path (#178), and the mark across a
+  restart while stopped, which belongs with SD-028's saved pauses (#20).
+
+---
+
+
+## SD-074: A data folder the simulator cannot read runs it in memory only
+
+Decided by the project owner on 2026-10-15 in the software session
+(follow-up of PR #187, which does the same for `--web`), in two steps:
+first for a folder it cannot read, then the same for files in it that
+it cannot read.
+
+- **When:** the simulator's data folder (`--data`, or the folder next
+  to the program on a start without arguments) cannot be read:
+  - the status of the folder or of a file of the hub or the simulator in
+    it cannot be read: no permission to enter the folder, a link loop,
+    an error of the disk;
+  - or such a file is there but cannot be opened, for example root's
+    files after a start with `sudo` in a folder the user owns.
+
+  A folder or file that is not there is not this case; it is created as
+  before.
+- **What it does:** it starts, says once "Data cannot be read (<file>:
+  <reason>). Running in memory only.", and runs in memory only, as it
+  already does for a folder it cannot create. It no longer names the
+  folder as its data folder at the start.
+- **The folder is left alone:** it may hold data of an earlier start, so
+  the simulator reads nothing from it, writes no new scenario over it and
+  removes nothing in it, also when the scenario is changed
+  (`tests/core/test_storage.cpp`, `tools/sim_server.test.mjs`).
+- **Why:** before, a folder it cannot read ended the simulator at the
+  start with a filesystem error; started by a double click, its window
+  just closed. A file it cannot open was taken as missing: the hub
+  started without its configuration and password and later saved over
+  the old files. Likely cases come from a start with `sudo`: it makes
+  the folder next to the program (the owner's only), so the next start
+  as the user cannot enter it; or it writes root's files into the user's
+  folder.
+- **Not chosen:** refusing to start with exit code 2 and a message.
+  Nothing would be lost unseen, but on a double click the window closes
+  before the message can be read.
+- Applies to the simulator. The hub's storage on the device comes with
+  the firmware.
+- Not covered: a file that can be opened but is not a regular file (for
+  example a folder named `config.json`).
+
+
+## SD-075: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
+
+Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
+
+- **The SBOM lists only what ships in the product.** Build tools (for
+  example Vite, TypeScript, compilers, base images) do not go into it.
+- **Gaps to close:**
+  - the bundler's helper code: the check for tool code covers Rolldown
+    (with the next release; done, below). If its helpers could not be
+    avoided, Rolldown would be listed as a shipped package;
+  - the statically linked runtimes (musl, the GCC runtime) in the SBOM;
+  - an SBOM for the Home Assistant app image (#81);
+  - the firmware's runtimes, once the firmware ships.
+  musl, the GCC runtime and the image SBOM probably come with the release
+  after the next one.
+- **Technical documentation:** names the build tools, generated per
+  release from the lockfile and the image digests.
+- **A public tool list with every release:** npm and C++ build tools,
+  compilers and base images with their digests, as a plain file with the
+  header "not an SBOM, not shipped", part of `SHA256SUMS` and the
+  attestation. No second "build" SBOM, and no `scope: excluded` in one.
+- **Open on the software side** (proposals to the project owner): how
+  the build inputs Dependabot does not watch are tracked
+  (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
+  and whether a CVE in a build tool counts as a security item (PD-220).
+- **Open on the product side:** what the implementing act on the SBOM
+  format (CRA Art. 13(24)) will require.
+- **Done: the build checks every module the bundler puts into the app.**
+  A Vite plugin (`web/scripts/tool-code-guard.mjs`) looks at every module
+  of every chunk and fails the build on one that is neither our source,
+  the page nor a runtime package of `web/package-lock.json`: Rolldown's
+  runtime helpers, Oxc's lowering helpers, Vite's preload helper and
+  polyfill, any other module of a build tool, and a build-time package.
+  It also fails when it checked nothing (no chunk lists `src/main.tsx`),
+  and on a script that is not a chunk of the build (a web worker).
+  `web/scripts/tool-code-guard-selftest.mjs` (in `tools/ci.sh`) builds two
+  throwaway apps with the pinned bundler to show the guard names
+  Rolldown's and Vite's helpers and passes plain modules. The text check
+  of `web/scripts/no-tool-code.mjs` stays for the output, the page
+  included. On 2026-10-15 the app holds no such module, and the built app
+  is the same byte for byte with and without the guard.
+- **What it does not see:** code the build tools write into our own
+  modules (for example helpers a transform inlines), text added after the
+  modules are rendered, the page, files the app imports as URLs, CSS
+  `@import` and `url()` files, and `web/public/`. A web worker (also one
+  inlined into a chunk) and a script that is not a chunk of the build (a
+  script imported as a URL) fail the build rather than pass unseen.
+  That is ours as built by the tools in the tool list. It keeps the SBOM
+  accurate against honest tools and mistakes; it is no defence against a
+  malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
+
+
+## SD-076: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
 
 Decided by the project owner in the product repository on 2026-10-12
 (#133); PD-180 is replaced by PD-186. The firmware facts come from a
@@ -2681,8 +2925,8 @@ is re-evaluated in the product repository and is not part of this entry.
   port, a switch for its data lines, or USB-OTG in operation (above);
   where the label goes; the packing step that writes the support end.
 
-
 ---
+
 
 ## Drafts (waiting for "entschieden")
 
@@ -2706,3 +2950,5 @@ is re-evaluated in the product repository and is not part of this entry.
 
 Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
 `RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
+
+---

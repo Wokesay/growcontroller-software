@@ -640,8 +640,10 @@ void Hub::tickImpl() {
   env.phBusy = ph_.busy();
   refill_.tick(c, env);
   env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
+  env.phBusy = ph_.busy() || ph_.pending();
   ec_.tick(c, env);
-  env.ecBusy = ec_.busy();
+  env.ecBusy = ec_.busy() || ec_.pending();
   env.lastEcDoseAt = ec_.lastDoseAt();
   ph_.tick(c, env);
   bool demand = ec_.wantsCirculation() || ph_.wantsCirculation() || (job_ && job_->circulation && userJobActive());
@@ -1224,6 +1226,7 @@ Result Hub::putCanister(const json& j) {
   for (auto& x : next.canisters)
     if (x.id == id) k = &x;
   const std::string oldPair = k ? k->pair : "";
+  const bool created = !k;
   if (!k) {
     std::string base = slug(jstr(j, "name", "kanister"));
     id = base;
@@ -1248,12 +1251,17 @@ Result Hub::putCanister(const json& j) {
     // A stock entered is never below zero; an unchanged one still saves, so a
     // bottle booked below zero can be renamed (SD-066)
     const double ml = j["stockMl"];
-    auto was = rt_.stockMl.find(id);
+    auto was = created ? rt_.stockMl.end() : rt_.stockMl.find(id);
     if ((!isNum(ml) || ml < 0) && !(was != rt_.stockMl.end() && was->second == ml)) return Result::fail(422, say("canister.stock"));
   }
   cfg_ = next;
+  // A new bottle starts with the stock entered; sent without one at all (the setup sets bottles up
+  // full) at its size; with one left empty, or without a size, unknown. Never with a stock left
+  // behind by a bottle of the same name (#161). An existing bottle keeps its stock, an unknown one
+  // too, even when it first gets a size: a size says nothing about how full it is (RAT-015, #184).
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
-  else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
+  else if (created && !j.contains("stockMl") && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
+  else if (created) rt_.stockMl.erase(id);
   stateDirty_ = true;
   saveConfig(unpaired.empty() ? say("ev.cfg.canister", {{"name", k->name}})
                               : say("ev.cfg.canister_unpairs", {{"name", k->name}, {"partner", unpaired}}));
@@ -1485,6 +1493,11 @@ Result Hub::importConfig(const json& j) {
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
+  // Only the stock of a bottle the hub had and the file keeps stays; a bottle new to the hub, now or
+  // later, never takes over one left behind (#161)
+  for (auto it = rt_.stockMl.begin(); it != rt_.stockMl.end();)
+    it = cfg_.canister(it->first) && next.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
+  stateDirty_ = true;
   cfg_ = next;
   if (net_)
     cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
@@ -2102,12 +2115,12 @@ Result Hub::stop(const Msg& who) {
     }
   }
   if (auto fin = doser_.takeFinished()) {
-    // Controller doses are not part of the user's job; the controllers are reset below.
+    // Controller doses are not part of the user's job; the controllers end their round below.
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  ec_.reset();
-  ph_.reset();
+  ec_.stopRound();
+  ph_.stopRound();
   if (job_) finishJob("aborted", say("job.emergency_stop"));
   saveState();
   if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
