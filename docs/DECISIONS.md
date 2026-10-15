@@ -2678,6 +2678,11 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   That is ours as built by the tools in the tool list. It keeps the SBOM
   accurate against honest tools and mistakes; it is no defence against a
   malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
+- **Done: the web SBOM lists exactly the packages the guard lets into
+  the app,** the runtime packages of the lockfile (every entry not marked
+  `dev`; `tools/sbom_web.mjs`, #201). `npm sbom --omit dev` left out
+  `preact`, which a build tool has as a peer, in 0.1.0-proto.2 to
+  proto.4.
 
 
 ## SD-076: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
