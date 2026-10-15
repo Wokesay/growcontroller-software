@@ -194,8 +194,10 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   // the editor is open is not undone by saving a new name (SD-066)
   const [stockOpened] = useState(v.stockMl);
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
-  // A new bottle starts full: its stock follows its size until the stock itself is changed
+  // A new bottle starts full: its stock follows its size until the stock itself is changed.
+  // The size it last followed keys the field, so typing in it never rebuilds it (#184).
   const [stockTouched, setStockTouched] = useState(false);
+  const [followed, setFollowed] = useState(v.capacityMl);
   // Leaving its pair takes the label from a partner left alone (#152), as removing does
   const oldPair = p.can?.pair ?? "";
   const others = oldPair && (v.kind === "nutrient" ? v.pair : "") !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === oldPair) : [];
@@ -286,7 +288,16 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           </Field>
         )}
         <Field label={t("recipes.bottleSize")}>
-          <NumberInput value={v.capacityMl} onValue={(x) => setV({ ...v, capacityMl: x, ...(!p.can && !stockTouched ? { stockMl: x } : {}) })} unit="ml" name="canister-size" />
+          <NumberInput
+            value={v.capacityMl}
+            onValue={(x) => {
+              const follow = !p.can && !stockTouched;
+              setV({ ...v, capacityMl: x, ...(follow ? { stockMl: x } : {}) });
+              if (follow) setFollowed(x);
+            }}
+            unit="ml"
+            name="canister-size"
+          />
         </Field>
         <Field
           label={t("recipes.stockNow")}
@@ -302,7 +313,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         >
           <NumberInput
             // While it follows the size, it shows each new size, also an empty one
-            key={!p.can && !stockTouched ? `size-${v.capacityMl}` : "own"}
+            key={!p.can ? `size-${followed}` : "own"}
             value={v.stockMl}
             onValue={(x) => {
               setStockTouched(true);
