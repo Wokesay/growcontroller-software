@@ -115,8 +115,9 @@ entry under `[Unreleased]`.
      own, with a `security` review; step 1 "Prepare" compares it with the
      newest Node 22 security release. The app image checks with the same
      Node, from the official `node` image pinned by digest, and prints the
-     versions; `tools/app.test.mjs` fails when it differs from `.nvmrc`
-     (SD-071).
+     versions: `tools/app.test.mjs` fails when the image's tag names
+     another Node than `.nvmrc`, the build when the Node it pulled is
+     another (SD-071).
    - When a job with the check fails, a step that runs only then
      (`tools/signatures_report.mjs`) shows the end of npm's own log of
      the check, the only record of the failed run (or that the check
@@ -197,13 +198,15 @@ entry under `[Unreleased]`.
      until 2028-06). Security fixes for musl, the GCC runtime,
      cpp-httplib and nlohmann/json are watched by hand. Dependabot updates
      the app's base images (pinned by digest; `tools/app.test.mjs` keeps
-     the smoke test's stand-in on the same Alpine digest, and the web
-     stage's `node` image at `.nvmrc`'s Node on the same Alpine, SD-071,
-     so such an update fails until all match) and `reuse` with its
-     dependencies and build backend (`tools/requirements-reuse*.txt`,
-     installed with `--require-hashes`, wheels only except `reuse`
-     itself, which is built from its hashed source without fetching
-     anything else);
+     the smoke test's stand-in on the Alpine digest and the web stage's
+     `node` image at `.nvmrc`'s Node on the same Alpine, SD-071: a new
+     digest of the `node` tag passes, a new Alpine digest fails until the
+     stand-in follows, a newer Node until `.nvmrc` follows, a newer
+     Alpine until the `node` tag and the stand-in follow) and `reuse`
+     with its dependencies and build backend
+     (`tools/requirements-reuse*.txt`, installed with `--require-hashes`,
+     wheels only except `reuse` itself, which is built from its hashed
+     source without fetching anything else);
      it does not cover `cmake/deps.cmake`, the `espressif/idf` container
      (pinned by digest in `ci.yml`) and the `registry:2` service of the
      `check` job; they are updated by hand. `tools/workflows.test.mjs`

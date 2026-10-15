@@ -30,10 +30,11 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
   # Base images of the Home Assistant app (SD-034, SD-071), pinned by
-  # digest. The node image carries the Node of .nvmrc on the same Alpine
-  # (tools/app.test.mjs): a newer Node or Alpine stays red until .nvmrc and
-  # the other image follow by hand (SD-070); a new digest of the same tag
-  # (an Alpine fix) goes through.
+  # digest. What tools/app.test.mjs lets through: a new digest of the node
+  # tag passes; a new alpine digest fails until the stand-in in app.yml
+  # follows; a newer Node fails until .nvmrc follows by hand (SD-070), in
+  # the pull request that raises it; a newer Alpine fails until the node
+  # tag and the stand-in follow. Node majors are not proposed.
   - package-ecosystem: docker
     directory: /ha/app
     schedule:

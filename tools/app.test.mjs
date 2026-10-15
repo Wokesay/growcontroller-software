@@ -117,15 +117,21 @@ test("the server's --app mode and the image match the app", () => {
   assert.equal(stages[3][0], "scratch");
   // The web stage's npm checks the packages' signatures (SD-058): the Node
   // CI runs (.nvmrc), on the same Alpine, pinned by digest (SD-071).
-  const escape = (s) => s.replace(/[.]/g, "\\.");
+  const literal = (s) => s.replace(/[.]/g, "\\.");
   const pin = read(".nvmrc").trim();
   const alpine = base.match(/^alpine:([\d.]+)@/)[1];
-  assert.match(stages[0][0], new RegExp(`^node:${escape(pin)}-alpine${escape(alpine)}@sha256:[0-9a-f]{64}$`), "web: the Node of .nvmrc on the same Alpine");
+  assert.match(stages[0][0], new RegExp(`^node:${literal(pin)}-alpine${literal(alpine)}@sha256:[0-9a-f]{64}$`), "web: the Node of .nvmrc on the same Alpine");
   const webStage = docker.slice(docker.indexOf(" AS web"), docker.indexOf(" AS server"));
-  assert.doesNotMatch(webStage, /apk add/, "web: no Node or npm from Alpine's packages");
-  // The Supervisor's stand-in in the smoke test is that base image too, so
-  // Dependabot's update of the Dockerfile shows up here.
-  assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${base.replace(/[.]/g, "\\.")}$`, "m"));
+  assert.doesNotMatch(webStage, /^RUN\b.*\bapk\b/m, "web: nothing from Alpine's packages; everything comes with the pinned image");
+  // The digest, not the tag, decides what is pulled: before npm runs, the
+  // stage checks that its Node is the one of .nvmrc.
+  assert.match(read(".dockerignore"), /^!\.nvmrc$/m, ".nvmrc goes into the build");
+  const check = webStage.search(/^RUN v="\$\(tr -d '\\r\\n' < \.nvmrc\)"; test "\$\(node -v\)" = "v\$v" \|\| \{ .*; exit 1; \}$/m);
+  assert.ok(check > webStage.indexOf("COPY .nvmrc ./") && webStage.indexOf("COPY .nvmrc ./") > 0, "web: copies .nvmrc and checks node -v against it");
+  assert.ok(check < webStage.indexOf("npm ci"), "web: the check comes before npm ci");
+  // The Supervisor's stand-in in the smoke test is the server stage's
+  // Alpine base image, so Dependabot's update of the Dockerfile shows up here.
+  assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${literal(base)}$`, "m"));
   const server = docker.slice(docker.indexOf(" AS server"), docker.indexOf(" AS licenses"));
   // The core tests in the smoke test are built as this stage builds the
   // server: the same packages, the same options but the tests (#112).

@@ -2405,7 +2405,7 @@ SD-058, whose check runs with the npm that comes with Node.
 - **What it does not cover:**
   - The app image checks the signatures with Alpine's Node and npm (24
     and 11 in Alpine 3.24 on 2026-10-15). It prints their versions; a pin
-    there is open (#163). Settled by SD-071: the image runs the Node of
+    there is open (#163). Changed by SD-071: the image runs the Node of
     `.nvmrc` too.
   - setup-node downloads the pinned Node without checking a checksum when
     it is not in the runner's cache: the same trust in GitHub and
@@ -2419,35 +2419,45 @@ SD-058, whose check runs with the npm that comes with Node.
 
 ## SD-071: The app image checks the signatures with the Node of `.nvmrc`, from the official node image
 
-Decided by the project owner on 2026-10-15 (#163). Completes SD-070 for
-the Home Assistant app image (SD-034).
+Decided by the project owner on 2026-10-15 (#163, PR #189). Completes
+SD-070 for the Home Assistant app image (SD-034).
 
 - **What:** the image's web stage, which installs the web app's packages
   and checks their registry signatures (SD-058), starts from the official
   `node` image at the version of `.nvmrc` on the Alpine release of the
-  other stages, pinned by digest
-  (`node:22.23.3-alpine3.24@sha256:…`). It brings the npm of that Node
-  release, the one CI checks with. Before, the stage installed Alpine's
-  `nodejs` and `npm` (24 and 11 on 2026-10-15), so the image checked with
-  a different npm than CI, and its version changed with every Alpine
+  other stages, pinned by digest (`node:22.23.3-alpine3.24@sha256:…`). It
+  brings the npm of that Node release, the one CI checks with (npm
+  10.9.9 on 2026-10-15). Before, the stage installed Alpine's `nodejs`
+  and `npm` (24 and 11 on 2026-10-15), so the image checked with a
+  different npm than CI, and its version changed with every Alpine
   update.
-- **Kept together by a test:** `tools/app.test.mjs` fails when the web
-  stage's Node differs from `.nvmrc`, its Alpine from the other stages',
-  or it installs Node or npm from Alpine's packages. So raising `.nvmrc`
-  (by hand, SD-070) raises the image in the same pull request.
-- **Dependabot:** proposes new digests of the same tag (the image rebuilt
-  on a fixed Alpine) and newer Node 22 releases; the latter stay red
-  until `.nvmrc` follows by hand. Node majors are ignored, as for
-  `@types/node`.
-- **Where Node comes from:** the image is a Docker Official Image,
-  built by the Node.js Docker team. On amd64 it unpacks the musl build of
-  `unofficial-builds.nodejs.org`, checked against a checksum in its
-  Dockerfile; on arm64 it builds Node from the `nodejs.org` sources,
-  checked against the Node release keys
-  (`https://github.com/nodejs/docker-node`, `22/alpine3.24/Dockerfile`,
-  read 2026-10-15). The digest pin means none of this changes without a
-  pull request. Only the build uses it: the
-  shipped image holds the web app's files, not Node.
+- **Kept together:** `tools/app.test.mjs` fails when the web stage's tag
+  names another Node than `.nvmrc`, another Alpine than the other
+  stages, or the stage installs anything from Alpine's packages. Docker
+  pulls by the digest, not the tag, so the stage itself checks
+  `node -v` against `.nvmrc` before npm runs, and the build fails on a
+  digest of another Node. Raising `.nvmrc` (by hand, SD-070) raises the
+  image in the same pull request.
+- **Dependabot:** a new digest of the same `node` tag (the image rebuilt,
+  for example on a fixed Alpine) passes. A newer Node 22 fails until
+  `.nvmrc` follows: such a pull request is the reminder for the pull
+  request that raises `.nvmrc` (SD-070), and is closed when that one is
+  merged. Node majors are not proposed, as for `@types/node`.
+- **Where Node comes from:** the `node` image is maintained by the
+  Node.js Docker team (`https://github.com/nodejs/docker-node`) and built
+  and published on Docker Hub by Docker's Official Images program. On
+  amd64 it unpacks the musl build of `unofficial-builds.nodejs.org`,
+  checked against a checksum written in docker-node's Dockerfile, not
+  against a signature of the Node release keys; on arm64 it builds Node
+  from the `nodejs.org` sources, checked against those keys
+  (`22/alpine3.24/Dockerfile` there, read 2026-10-15). The digest pin
+  means none of this changes without a pull request. Only the build uses
+  it: the shipped image holds the web app's files, not Node.
+- **Same Alpine:** a security raise of `.nvmrc` needs a `node` tag on the
+  Alpine of the other stages. docker-node usually builds each Node line
+  on the two newest Alpine releases, so this likely holds until Node 22 ends
+  (2027-04-30); if not, the raise moves Alpine too, with the musl check
+  of the server stage.
 - **What it does not cover:** the licenses stage still runs our own
   `tools/third_party.mjs` with Alpine's `nodejs`; it reads license files
   and runs no package code, so its Node version does not matter.
@@ -2456,7 +2466,8 @@ the Home Assistant app image (SD-034).
     older package versions from its repository, so the build would break
     at every Alpine fix, and its `nodejs` is Node 24, not CI's 22.
   - Downloading Node in our Dockerfile with a checksum: the same source
-    as the official image for musl, as more code of our own to keep.
+    as the official image's musl build, but more code of our own to keep
+    (and on arm64 a build from source).
   - Leaving Alpine's Node and printing its version (as before): the
     checker would still differ from CI and change unseen.
 

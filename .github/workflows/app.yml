@@ -36,7 +36,7 @@ jobs:
       ARCH: ${{ inputs.arch }}
       # Source code link (AGPL-3.0 §13): always the commit (a tag can move)
       GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
-      # The stand-in for the Supervisor: the build's own base image
+      # The stand-in for the Supervisor: the server stage's Alpine base image
       STANDIN: alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
