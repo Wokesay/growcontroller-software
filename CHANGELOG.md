@@ -219,6 +219,20 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **After a Stop, an interrupted control round mixes in before the next decision**
+  (#180, SD-071): a Stop that cut an EC or pH round, while it dosed or
+  waited for the dose to mix in, only reset the controller. After Resume
+  it could start the next round right away, on a reading the cut dose had
+  not mixed into, since the circulation pump is off while stopped; too
+  much EC can only be undone by diluting. Now, as after a restart, the cut
+  round first waits for the circulation pump and then settles with it
+  running, for its settle time but at least 15 minutes, while the other
+  controller and refill wait. Refill is not held while the round waits for
+  the pump, which may need the level back; the line says why ("Blocked:
+  circulation pump not running – after the Stop, mixing comes first", or,
+  when the hub refuses the pump, "Blocked: circulation pump can't run –
+  after the Stop, mixing comes first") (RAT-036, RAT-052, RAT-004,
+  RAT-047).
 - **Editing a bottle out of its pair no longer blocks later saves**
   (#152): clearing or changing part A's pair label, or making it a pH
   bottle, left part B alone with the label, and the hub then refused

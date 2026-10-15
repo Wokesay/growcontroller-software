@@ -46,14 +46,23 @@ class EcController {
  public:
   void tick(const Ctx& c, ControlEnv& env);
   void onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p);
+  // A Stop ended the round while it dosed or settled (RAT-036). Once automation runs again, the cut
+  // round waits for the circulation pump and then settles, as after a restart (SD-028, SD-071): no
+  // decision on a reading the cut dose has not mixed into (RAT-052). The mark survives reset()
+  // until the settle time has run out, and ends when the function is switched off.
+  void stopRound();
+  // The cut round waits for the circulation pump: it holds the other controller, but not refill,
+  // which the pump may need to bring the level back (RAT-047)
+  bool pending() const { return cut_ && phase_ == Phase::Idle; }
   void reset() {
     phase_ = Phase::Idle;
     queue_.clear();
     circWaitSince_ = 0;
+    cutWaitSince_ = 0;
   }
   const CtlStatus& status() const { return st_; }
   bool busy() const { return phase_ != Phase::Idle; }
-  bool wantsCirculation() const { return phase_ != Phase::Idle; }
+  bool wantsCirculation() const { return phase_ != Phase::Idle || wantsCirc_; }
   Epoch lastDoseAt() const { return lastDoseAt_; }
   // The wall clock stepped by `d`: keep the distance of the pauses.
   void shiftClock(Epoch d) {
@@ -66,8 +75,11 @@ class EcController {
   std::vector<DoseStep> queue_;
   int round_ = 0, noEffect_ = 0, seq_ = 0;
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
+  bool cut_ = false;        // a Stop cut the round: settle it once the circulation pump runs
+  bool wantsCirc_ = false;  // the cut round waits for the circulation pump
   double ecBefore_ = kNaN, mlRound_ = 0, startEc_ = kNaN, target_ = kNaN;
   Ms circWaitSince_ = 0;  // seit wann die Runde auf die Umwälzpumpe wartet
+  Ms cutWaitSince_ = 0;   // since when the cut round waits for the circulation pump
   Ms settleUntil_ = 0;
   Epoch lastDoseAt_ = 0, cooldownUntil_ = 0;
   CtlStatus st_;
@@ -77,7 +89,12 @@ class PhController {
  public:
   void tick(const Ctx& c, ControlEnv& env);
   void onDoseFinished(const Ctx& c, const DoseProgress& p);
-  void reset() { phase_ = Phase::Idle; }
+  void stopRound();  // as EcController::stopRound
+  bool pending() const { return cut_ && phase_ == Phase::Idle; }
+  void reset() {
+    phase_ = Phase::Idle;
+    cutWaitSince_ = 0;
+  }
   const CtlStatus& status() const { return st_; }
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle || pendingCirc_; }
@@ -89,6 +106,8 @@ class PhController {
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
   bool pendingCirc_ = false;
   bool clean_ = true;
+  bool cut_ = false;     // as in EcController
+  Ms cutWaitSince_ = 0;
   int doses_ = 0, noEffect_ = 0, seq_ = 0;
   double phBefore_ = kNaN, mlLast_ = 0, startPh_ = kNaN;
   Ms settleUntil_ = 0;

@@ -2439,3 +2439,32 @@ SD-058, whose check runs with the npm that comes with Node.
 
 Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
 `RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
+
+---
+
+## SD-071: A control round a Stop cut settles as after a restart
+
+Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
+for EC and pH control after a restart (PD-070, PD-071) to the Stop.
+
+- While stopped, the circulation pump is off, so time spent stopped mixes
+  nothing in. A Stop that cut an EC or pH round while it dosed or settled
+  therefore marks the round as cut.
+- Once automation runs again (after Resume, and after maintenance mode or
+  a probe calibration that followed), the cut round first waits for the
+  circulation pump and asks for it. While it waits it holds the other
+  controller but not refill, since the pump may need the refilled level
+  (RAT-047). Its line says "blocked": at once when the hub refuses the
+  pump (level, dry-run latch; the circulation line names why), otherwise
+  after 2 minutes without the pump. Its settle time counts from when the
+  pump runs: the controller's settle time, but at least 15 minutes (the
+  rest after an aborted dose). Then it decides as after any settle time: done, the most
+  rounds, or the next round. Its effect is not learned (RAT-057).
+- While it settles, the cut round is busy as any round is: refill waits,
+  and the other controller waits (pH for EC, RAT-004; EC for pH,
+  RAT-057).
+- The mark lasts until the settle time has run out, so a reset meanwhile
+  (maintenance mode, a probe calibration, a latch) settles it again
+  later; switching the function off ends it.
+- Not covered yet: the internal-error path (#178), and the mark across a
+  restart while stopped, which belongs with SD-028's saved pauses (#20).
