@@ -75,6 +75,7 @@ async function startsWith(web) {
     assert.equal(info?.status, 200, `/api/v1/info answers:\n${out}`);
     assert.equal(JSON.parse(info.body).platform?.simulated, true, info.body);
     assert.equal((await fetchStatus(port, "/"))?.status, 200, `the start page answers:\n${out}`);
+    assert.match(out, /The web app in .* cannot be read; the simulator (runs without it|serves its built-in one)\. Detail: /, "it says why");
   } finally {
     child.kill("SIGTERM");
   }

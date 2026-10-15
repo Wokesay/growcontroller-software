@@ -282,6 +282,10 @@ int main(int argc, char** argv) {
   // web app, not a crash at the start.
   std::error_code webErr;
   const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
+  if (webErr)
+    std::cerr << "The web app in " << web << " cannot be read; the simulator "
+              << (GC_EMBEDDED_WEB ? "serves its built-in one" : "runs without it") << ". Detail: " << webErr.message()
+              << ".\n";
   const bool haveWeb = haveDir || GC_EMBEDDED_WEB;
   if (haveDir) svr.set_mount_point("/", web);
   svr.Get(R"(/(?!api/).*)", [&](const httplib::Request& req, httplib::Response& res) {
