@@ -125,7 +125,8 @@ dedicated test or with a deviation · **○** open.
 | Rule | Rationale | Status | Implementation / test |
 |---|---|---|---|
 | Fill volume is computed; the sensor only checks and cuts off in an emergency | RAT-001, RAT-038 | ◐ | `RefillController` |
-| The emergency limit follows the valve, for every inlet path | RAT-032 | ✓ | gateway `enforce` |
+| A refill keeps the valve open at most `max_open_min` minus 1 min, so it never ends as a fault; what does not fit is named in its line and the log | RAT-038, RAT-031, SD-075 | ✓ | `RefillController` · test_scenarios "a refill fills what fits in the inlet's open time" (also with 40 s between ticks) |
+| The emergency limit follows the valve, for every inlet path | RAT-032 | ✓ | gateway `enforce` · test_scenarios "the inlet opened by hand still closes and latches after max_open_min" |
 | No automatic restart after a fault | RAT-031 | ✓ | latch `inlet.fault` · test_scenarios |
 | Level curve piecewise linear, strictly increasing | RAT-078 | ✓ | `Curve` · test_truth M10-4/5 |
 | Blind zone, rate check, follow-up correction | RAT-030, RAT-038 | ○ | open |

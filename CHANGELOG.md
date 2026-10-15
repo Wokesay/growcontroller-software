@@ -220,6 +220,15 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A large refill no longer latches the inlet** (#155, SD-075): a refill planned
+  longer than the valve may stay open ("Ventil höchstens offen", 15 min
+  by default) ran into that limit, which shut the inlet as a fault and
+  waited for a person, after every refill from a nearly empty tank. Now
+  one fill keeps the valve open at most a minute less than the limit.
+  Its line says how far it fills and that the target would take longer,
+  the log names the litres still missing, and the resting line keeps
+  saying it until the next fill. The limit itself is unchanged and still
+  closes the valve however it was opened.
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example

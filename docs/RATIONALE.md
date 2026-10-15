@@ -313,7 +313,7 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 - **Why:** If the overflow guard lives only inside the automatic refill routine, a valve opened any other way runs unsupervised, and the switching device's own auto-off may come too late to prevent an overflow.
 - **Evidence:** Calculated on the reference installation (2026): a valve opened by hand had no level supervision, only the device's 30 min auto-off. In 30 min the inlet delivered about 43 L, so a fill starting at 120 L would have overflowed the 150 L tank before the auto-off acted.
 - **Implemented in:** core/src/dosing.cpp (Actuators::enforce, Actuators::inhibit), docs/INVARIANTS.md
-- **Tests:** tests/core/test_net.cpp "Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu", "Zulauf: Grund weg, Rastung steht, Ventil klemmt offen → Hub schaltet weiter aus"
+- **Tests:** tests/core/test_net.cpp "Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu", "Zulauf: Grund weg, Rastung steht, Ventil klemmt offen → Hub schaltet weiter aus"; tests/core/test_scenarios.cpp "Scenario: the inlet opened by hand still closes and latches after max_open_min (RAT-031, RAT-032, #155)"
 
 
 ### RAT-033 – Narrow control band, wider alarm band
@@ -365,11 +365,11 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 
 ### RAT-038 – Refill stops by time, not by the lagging level reading
 
-- **Rule:** An automatic refill (RAT-001) closes the valve when the computed run time is up. The level reading does not stop a normal fill; it ends the fill early only if the level passes the target by more than 1 L. Without a valid inlet rate the refill is blocked, with no substitute value. A re-check after the run with limited corrective top-ups is still open.
+- **Rule:** An automatic refill (RAT-001) closes the valve when the computed run time is up. The level reading does not stop a normal fill; it ends the fill early only if the level passes the target by more than 1 L. Without a valid inlet rate the refill is blocked, with no substitute value. One fill keeps the valve open at most the allowed time minus 1 min (half the allowed time if that is shorter), so a planned fill never ends as a fault (RAT-031); what does not fit is named in the refill's line and in the log (#155, SD-075). A re-check after the run with limited corrective top-ups is still open.
 - **Why:** The level reading lags behind the real level because of smoothing and reporting intervals; stopping on it overfills, and stopping early to compensate cuts fills short. The inflow itself has no overrun once the valve closes.
-- **Evidence:** Measured on the reference installation (2026): inlet rate 1.44 L/min (later set to 1.54 L/min) with no overrun after closing, only a lagging level display; level-based stopping had overrun by 2–3 L per fill, and anticipatory stops ended fills too early. The reference re-checked the level 120 s after closing and allowed at most two corrective runs. The simulator uses 2 L/min.
+- **Evidence:** Measured on the reference installation (2026): inlet rate 1.44 L/min (later set to 1.54 L/min) with no overrun after closing, only a lagging level display; level-based stopping had overrun by 2–3 L per fill, and anticipatory stops ended fills too early. The reference re-checked the level 120 s after closing and allowed at most two corrective runs. The simulator uses 2 L/min. The 1 min margin below the allowed open time is an assumption (it covers late controller ticks), not measured.
 - **Implemented in:** core/src/control.cpp (RefillController), docs/INVARIANTS.md, docs/SIMULATOR.md
-- **Tests:** —
+- **Tests:** tests/core/test_scenarios.cpp "Scenario: a refill fills what fits in the inlet's open time, says what is missing, and latches nothing (#155)"
 
 
 ### RAT-039 – pH/EC safety: jump lock, hand-dose cap, no silent blocks

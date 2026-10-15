@@ -881,6 +881,72 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   CHECK(findEvents(c, "block").at(0)["text"]["key"] == "latch.inlet.fault");  // named as on the Release button
 }
 
+TEST_CASE("Scenario: a refill fills what fits in the inlet's open time, says what is missing, and latches nothing (#155)") {
+  // Demo: 60 L tank, inlet 2 L/min, the valve open at most 15 min, refill to 45 L. From 2.3 L that
+  // is 42.7 L or 21 min: planned so, the inlet's own limit cut it and latched (RAT-031).
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 600000));
+  s.world().fill(2.3, 1.3, 5.9);
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 15 * 60 * 1000, 5000));
+  // The line says, while it fills, how far this fill goes and why not to the target
+  const json line = c.state()["controllers"]["refill"]["line"];
+  CHECK(line["key"] == "refill.filling_part");
+  const double planned = line["args"]["to"].get<double>() - line["args"]["from"].get<double>();
+  CHECK(planned <= 28.0 + 1e-9);  // 14 min at 2 L/min: 1 min below the limit
+  CHECK(planned > 25.0);
+  CHECK(line["args"]["target"] == 45);
+  CHECK(line["args"]["min"] == 15);
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == false; }, 30 * 60 * 1000, 5000));
+  s.step(60000);
+  const json st = c.state();
+  CHECK_FALSE(st["latches"].contains("inlet.fault"));  // a planned fill is no fault
+  for (const auto& e : findEvents(c, "alarm")) CHECK(e["title"]["key"] != "ev.inlet.cutoff");
+  CHECK(s.world().tank.volumeL == doctest::Approx(2.3 + planned).epsilon(0.05));
+  json done;
+  for (const auto& e : findEvents(c, "tank"))
+    if (done.is_null() && e["title"]["key"] == "ev.refilled") done = e;
+  REQUIRE_FALSE(done.is_null());
+  CHECK(done["text"]["key"] == "ev.refilled.part");
+  CHECK(done["text"]["args"]["short"].get<double>() > 10.0);
+  CHECK(done["text"]["args"]["min"] == 15);
+  // Resting above the start level, the line keeps saying the tank is short of its target
+  CHECK(st["controllers"]["refill"]["line"]["key"] == "refill.ok_part");
+  // A later fill that fits goes to the target and says nothing of the limit
+  s.world().fill(28, 1.3, 5.9);
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 15 * 60 * 1000, 5000));
+  CHECK(c.state()["controllers"]["refill"]["line"]["key"] == "refill.filling");
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == false; }, 15 * 60 * 1000, 5000));
+  s.step(60000);
+  CHECK(c.state()["controllers"]["refill"]["line"]["key"] == "refill.ok");
+  CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
+  // With 40 s between ticks too (15 min is no multiple of it), the refill closes the valve before the limit does
+  s.world().fill(2.3, 1.3, 5.9);
+  s.fastForward(0.75, 40000);
+  CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
+  CHECK(s.world().tank.volumeL > 25.0);  // it did fill
+}
+
+TEST_CASE("Scenario: the inlet opened by hand still closes and latches after max_open_min (RAT-031, RAT-032, #155)") {
+  // The refill now plans within the limit; the limit itself stays for any other way the valve opens
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 600000));
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  s.world().fill(10, 1.3, 5.9);
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+  s.step(14 * 60 * 1000);
+  CHECK(c.state()["outputs"]["tank.inlet"] == true);
+  s.step(2 * 60 * 1000);
+  const json st = c.state();
+  CHECK(st["outputs"]["tank.inlet"] == false);
+  REQUIRE(st["latches"].contains("inlet.fault"));
+  CHECK(st["latches"]["inlet.fault"]["why"]["key"] == "why.open_too_long");
+  CHECK(st["latches"]["inlet.fault"]["why"]["args"]["min"] == 15);
+}
+
 TEST_CASE("Scenario: someone guessing the password cannot keep the owner from stopping a running mix (SD-051)") {
   sim::Simulation s(test::opts("neu"));
   Client phone{s, {}, "192.168.1.20"};  // set up from the owner's phone

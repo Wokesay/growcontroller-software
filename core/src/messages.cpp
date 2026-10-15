@@ -76,9 +76,11 @@ constexpr Entry kMessages[] = {
     {"refill.stopped", "Needs release: the inlet was shut off – see the events for why"},
     {"refill.done", "Resting: refill done"},
     {"refill.filling", "Filling: {from:1} → {target:1} L · {left} left"},
+    {"refill.filling_part", "Filling: {from:1} → {to:1} L · {left} left · {target:1} L would keep the valve open longer than {min:0}\u00a0min"},
     {"refill.latched", "Needs release: inlet shut off after a fault – check the inlet"},
     {"refill.level", "Blocked: level – {reason}"},
     {"refill.ok", "Resting: level {level:1} L"},
+    {"refill.ok_part", "Resting: level {level:1} L · the last refill stopped short of {target:1} L, the valve may stay open {min:0}\u00a0min"},
     {"refill.cooldown", "Waiting: pause after the last refill"},
     {"refill.inhibit", "Blocked: {reason}"},
     {"refill.flow", "Blocked: inlet flow rate not set – set it under Functions"},
@@ -366,6 +368,7 @@ constexpr Entry kMessages[] = {
     {"ev.ph.aborted", "pH correction interrupted"},
     {"ev.refilled", "Refilled"},
     {"ev.refilled.text", "Added {measured:1} L (planned {planned:1} L)"},
+    {"ev.refilled.part", "Added {measured:1} L (planned {planned:1} L), {short:1} L short of the target: the valve may stay open {min:0}\u00a0min"},
 
     // Events and messages of jobs: mixing, manual doses, calibration
     {"ev.mix.started", "Mix started"},

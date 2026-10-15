@@ -128,6 +128,9 @@ class RefillController {
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
   double startL_ = kNaN, plannedL_ = kNaN;
+  // Litres the last fill stopped short of the target, because the valve may stay open only
+  // max_open_min (#155); 0 when it went to the target
+  double shortL_ = 0;
   Epoch cooldownUntil_ = 0;
   CtlStatus st_;
 };

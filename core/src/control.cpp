@@ -578,16 +578,19 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       filling_ = false;
       cooldownUntil_ = c.epoch + 10 * 60;
       double added = level.usable() ? *level.value - startL_ : kNaN;
-      c.log.add(c.epoch, "tank", "info", say("ev.refilled"),
-                say("ev.refilled.text", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)}}),
-                {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}});
+      const Msg text = shortL_ > 0 ? say("ev.refilled.part", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)},
+                                                               {"short", shortL_}, {"min", numOrNull(p.num("max_open_min"))}})
+                                   : say("ev.refilled.text", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)}});
+      c.log.add(c.epoch, "tank", "info", say("ev.refilled"), text, {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}});
       st_.state = "idle";
       st_.line = say("refill.done");
       return;
     }
     st_.state = "working";
-    st_.line = say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(p.num("target_l"))},
-                                      {"left", mmss(plannedMs_ - (c.now - startedMs_))}});
+    const std::string left = mmss(plannedMs_ - (c.now - startedMs_));
+    st_.line = shortL_ > 0 ? say("refill.filling_part", {{"from", numOrNull(startL_)}, {"to", startL_ + plannedL_}, {"left", left},
+                                                         {"target", startL_ + plannedL_ + shortL_}, {"min", numOrNull(p.num("max_open_min"))}})
+                           : say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(p.num("target_l"))}, {"left", left}});
     return;
   }
   if (!automation(c, st_)) return;
@@ -605,7 +608,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   if (isNum(c.cfg.tank().capacityL)) target = std::min(target, c.cfg.tank().capacityL - 1.0);
   if (*level.value >= start) {
     st_.state = "idle";
-    st_.line = say("refill.ok", {{"level", *level.value}});
+    st_.line = shortL_ > 0 && *level.value < target - 0.5
+                   ? say("refill.ok_part", {{"level", *level.value}, {"target", target}, {"min", numOrNull(p.num("max_open_min"))}})
+                   : say("refill.ok", {{"level", *level.value}});
     return;
   }
   if (c.epoch < cooldownUntil_) {
@@ -635,6 +640,17 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("refill.near");
     return;
   }
+  // The valve may stay open max_open_min, the inlet's fault limit (RAT-031, RAT-032): a fill planned
+  // longer would end as a fault and need a person. It fills what fits, a minute below the limit so a
+  // late tick still closes it first, and says what is missing (#155, SD-075).
+  shortL_ = 0;
+  if (const double maxOpen = p.num("max_open_min"); isNum(maxOpen)) {
+    const double fits = flow * (maxOpen - std::min(1.0, maxOpen / 2));
+    if (plannedL_ > fits) {
+      shortL_ = plannedL_ - fits;
+      plannedL_ = fits;
+    }
+  }
   plannedMs_ = static_cast<Ms>(plannedL_ / flow * kMinute);
   Msg e;
   if (!env.act.setRole(c, "tank.inlet", true, say("who.refill"), e)) {
@@ -646,7 +662,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   startedMs_ = c.now;
   startL_ = *level.value;
   st_.state = "working";
-  st_.line = say("refill.start", {{"litres", numOrNull(plannedL_)}});
+  st_.line = shortL_ > 0 ? say("refill.filling_part", {{"from", startL_}, {"to", startL_ + plannedL_}, {"left", mmss(plannedMs_)},
+                                                       {"target", target}, {"min", p.num("max_open_min")}})
+                         : say("refill.start", {{"litres", numOrNull(plannedL_)}});
 }
 
 // ---------------------------------------------------------------- Umwälzen

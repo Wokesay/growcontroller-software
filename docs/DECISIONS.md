@@ -2630,3 +2630,49 @@ it cannot read.
   the firmware.
 - Not covered: a file that can be opened but is not a regular file (for
   example a folder named `config.json`).
+
+---
+
+## SD-075: A refill stays within the inlet's open time, checks its rise and fills in steps
+
+Decided by the project owner on 2026-10-15 in the software session
+(#155), on the proposal of `domain`.
+
+- **Problem:** a refill planned longer than the valve may stay open
+  (`max_open_min`, 15 min by default) ran into that limit. The limit is
+  the inlet's fault cut-off (RAT-031, RAT-032), so every refill from a
+  nearly empty tank latched the inlet and waited for a person. And no
+  refill checks whether the level rose: with an empty water supply, a
+  leak or a stuck valve, the inlet opens again after every pause for as
+  long as the level stays below the start level.
+- **A, within the open time (#155, first PR):** one fill keeps the
+  valve open at most `max_open_min` minus 1 min, or minus half of it if
+  that is shorter, so a late controller tick still closes it before the
+  limit. What does not fit is named in the refill's line, in the log
+  and in its resting line. The limit itself is unchanged and still
+  closes the valve however it was opened.
+- **B, check and steps (second PR, waits for the owner's "mergen": a new
+  trigger of the inlet latch):**
+  - After each fill, at the end of its pause, the measured rise is
+    compared with the planned amount. Below 50 % of it, the inlet is
+    latched with a reason of its own and stays so until a person
+    acknowledges it (RAT-031: a leak, an empty supply and a stuck valve
+    look the same). A fill too small for the level's uncertainty
+    (RAT-078) to judge is not judged; the bound comes with the
+    implementation.
+  - Otherwise the next step goes on toward the target, also above the
+    start level. The total is computed once, at the first step (RAT-001);
+    the steps only split it, and their number is fixed then.
+  - EC and pH wait while the steps run and settle (RAT-055, RAT-057).
+  - A restart between steps does not resume them (RAT-007).
+  - 50 % and the 1 min margin are assumptions, not measured (RAT-038).
+- **Why:** a planned fill must never look like a fault, or the latch no
+  longer means "cause unknown". A tank left short after a deep drop can
+  run short of the day's irrigations. RAT-038 already names a re-check
+  after the run with limited corrective top-ups as open; the reference
+  installation re-checked 120 s after closing and allowed at most two
+  corrective runs.
+- **Not chosen:**
+  - A alone: the tank stays short until it falls below the start level
+    again, and the gap with an empty supply or a leak stays.
+  - The check without steps: closes that gap, but the tank stays short.

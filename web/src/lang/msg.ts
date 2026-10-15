@@ -61,9 +61,11 @@ export const msgDe: Record<string, string> = {
   "refill.stopped": "Gerastet: Zulauf wurde abgeschaltet – Ereignisse prüfen",
   "refill.done": "Ruht: nachgefüllt",
   "refill.filling": "Füllt: {from:1} → {target:1} L · noch {left}",
+  "refill.filling_part": "Füllt: {from:1} → {to:1} L · noch {left} · bis {target:1} L wäre das Ventil länger als {min:0}\u00a0min offen",
   "refill.latched": "Gerastet: Zulauf nach einem Fehler gesperrt – prüfen, dann quittieren",
   "refill.level": "Gesperrt: Füllstand – {reason}",
   "refill.ok": "Ruht: Füllstand {level:1} L",
+  "refill.ok_part": "Ruht: Füllstand {level:1} L · zuletzt nicht bis {target:1} L gefüllt, das Ventil darf höchstens {min:0}\u00a0min offen sein",
   "refill.cooldown": "Wartet: Pause nach dem letzten Nachfüllen",
   "refill.inhibit": "Gesperrt: {reason}",
   "refill.flow": "Gesperrt: Zulaufrate fehlt",
@@ -347,6 +349,7 @@ export const msgDe: Record<string, string> = {
   "ev.ph.aborted": "pH-Korrektur abgebrochen",
   "ev.refilled": "Nachgefüllt",
   "ev.refilled.text": "+{measured:1} L gemessen, {planned:1} L berechnet",
+  "ev.refilled.part": "+{measured:1} L gemessen, {planned:1} L berechnet, {short:1} L fehlen bis zum Ziel: das Ventil darf höchstens {min:0}\u00a0min offen sein",
 
   // Events and messages of jobs: mixing, manual doses, calibration
   "ev.mix.started": "Mischlauf gestartet",
