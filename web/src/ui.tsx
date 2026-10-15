@@ -169,7 +169,7 @@ export function Field(p: { label: ComponentChildren; hint?: ComponentChildren; e
 // Decimal comma in German, decimal point in English (PD-035); typing accepts both.
 const shown = (v: number) => (lang.value === "de" ? String(v).replace(".", ",") : String(v));
 
-export function NumberInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; min?: number; max?: number; step?: number; placeholder?: string; id?: string; name?: string }) {
+export function NumberInput(p: { value: number | null | undefined; onValue: (v: number | null) => void; unit?: string; min?: number; max?: number; step?: number; placeholder?: string; id?: string; name?: string; ariaLabel?: string }) {
   const [text, setText] = useState(p.value === null || p.value === undefined ? "" : shown(p.value));
   useEffect(() => {
     const cur = parseFloat(text.replace(",", "."));
@@ -186,6 +186,7 @@ export function NumberInput(p: { value: number | null | undefined; onValue: (v: 
       inputMode="decimal"
       id={p.id}
       name={p.name}
+      aria-label={p.ariaLabel}
       value={text}
       placeholder={p.placeholder}
       onInput={(e) => {
