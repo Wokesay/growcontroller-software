@@ -110,7 +110,7 @@ export const millivoltsOf = (rawPh: number) => (7 - rawPh) * NERNST_MV_PER_PH;
 export type Catalog = {
   catalogVersion: number;
   capabilities: Record<string, { label: string; unit?: string; kind: string; decimals?: number }>;
-  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; shop?: string; text?: string; channels?: number; slots?: number }>;
+  deviceClasses: Record<string, { label: string; stage: number; attach: string; provides: string[]; calibrations?: string[]; externalCalibration?: boolean; shop?: string; text?: string; channels?: number; slots?: number }>;
   roles: Record<string, { label: string; capability: string; accepts?: string[]; profile?: string; maxOnS?: number; series?: boolean }>;
   functions: { id: string; label: string; stage: number; group: string; text: string; params?: ParamDef[] }[];
   templates: { recipes: RecipeTemplate[] };
@@ -118,7 +118,7 @@ export type Catalog = {
 
 export type Info = {
   product: string; version: string; api: number; catalogVersion: number; schemaVersion: number;
-  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean }; setupDone: boolean; hasPassword: boolean; name: string;
+  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean }; setupDone: boolean; hasPassword: boolean; setupCode?: boolean; name: string;
 };
 
 export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: Msg; text: Msg; data: Record<string, any> };

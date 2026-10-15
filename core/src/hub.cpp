@@ -6,6 +6,7 @@
 #include <cmath>
 #include <set>
 #include <sstream>
+#include <string_view>
 
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -220,8 +221,11 @@ void Hub::boot() {
   if (auto s = store_.read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
-    if (state == "running" || state == "waiting_user" || state == "mixing") {
-      const bool mix = jstr(j, "type") == "mix";
+    const bool mix = jstr(j, "type") == "mix";
+    // A mix cut off by the restart, or left failed, ends now: reported with what is in the tank, and
+    // the window against mixing twice counts from here, not from its start (RAT-003)
+    if (state == "running" || state == "waiting_user" || state == "mixing" || (mix && state == "failed")) {
+      if (mix) rt_.lastMixAt = std::max(rt_.lastMixAt, bootEpoch_);
       double idxNum = jnum(j, "index", 0);
       size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
       const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
@@ -373,34 +377,45 @@ void Hub::detectDevices() {
   for (const auto& d : devices_)
     if (d.online) online.insert(d.id);
   Epoch e = clock_.epoch();
+  // "Not responding" and "back" name a known device alike: its name, else
+  // its kind; an unknown device by its ID.
+  auto named = [&](const std::string& id, const DeviceCfg* known) -> json {
+    if (!known) return id;
+    if (!known->name.empty()) return known->name;
+    const DeviceClassDef* dc = cat_.deviceClass(known->cls);
+    return dc ? json(dc->label) : json(id);
+  };
   for (const auto& id : online)
     if (!seenOnline_.count(id)) {
+      const DeviceCfg* known = cfg_.device(id);
+      const bool wasLost = reportedLost_.erase(id) > 0;
+      if (known && !wasLost) continue;  // a start, however late it answers: not "back" (#115)
       const DeviceReport* d = nullptr;
       for (const auto& x : devices_)
         if (x.id == id) d = &x;
       const DeviceClassDef* dc = d ? cat_.deviceClass(d->cls) : nullptr;
-      const DeviceCfg* known = cfg_.device(id);
       Msg where = d && d->slot >= 0 ? say("where.slot", {{"n", d->slot + 1}})
                   : d && d->port > 0 ? say("where.port", {{"n", d->port}})
                   : dc && dc->attach == "net" ? say("where.net")
                   : dc && dc->attach == "ha"  ? say("where.ha")
                                               : say("where.hub");
-      json label = dc ? json(dc->label) : json(say("device.unnamed"));
+      // "label" also for "back": events stored before #115 carry the kind under it
+      const json label = known ? named(id, known) : dc ? json(dc->label) : json(say("device.unnamed"));
       Msg title = say(known ? "ev.device.back" : "ev.device.found", {{"label", label}});
       Msg text = say("ev.device.where", {{"where", where}});
-      // Pumpe nach Umstecken: sitzt sie noch auf demselben Kanister? (Vorschlag anwender)
+      // A pump back after it was gone while the hub runs: is it still on the same bottle?
       if (known && d && d->cls == "pump_cap")
         if (const CanisterCfg* k = cfg_.canisterByPump(id)) text = say("ev.device.where_pump", {{"where", where}, {"name", k->name}});
-      if (anyOnlineSinceStart_ || !known) log_.add(e, "device", "info", title, text, {{"device", id}});
+      log_.add(e, "device", "info", title, text, {{"device", id}});
     }
   for (const auto& id : seenOnline_)
     if (!online.count(id)) {
       const DeviceCfg* known = cfg_.device(id);
-      log_.add(e, "device", known ? "warn" : "info", say("ev.device.lost", {{"name", known && !known->name.empty() ? known->name : id}}),
-               say("ev.device.lost.text"), {{"device", id}});
+      log_.add(e, "device", known ? "warn" : "info", say("ev.device.lost", {{"name", named(id, known)}}), say("ev.device.lost.text"),
+               {{"device", id}});
+      reportedLost_.insert(id);
     }
   seenOnline_ = online;
-  if (!online.empty()) anyOnlineSinceStart_ = true;
 }
 
 double Hub::tankVolume() const {
@@ -513,6 +528,8 @@ void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
   if (rt_.lastMixAt > 0) rt_.lastMixAt += jump;
   if (maintenanceUntil_ > 0) maintenanceUntil_ = std::min(maintenanceUntil_ + jump, epoch + kMaxMaintenanceS);
   for (auto& [role, until] : rt_.jumpLocks) until = std::min(until + jump, epoch + kJumpHoldS);
+  for (auto& [latch, at] : rt_.selfReleased)
+    if (plausibleEpoch(at)) at = std::min(at + jump, epoch);  // never in the future; an implausible one counts as now (SD-067)
   ec_.shiftClock(jump);
   ph_.shiftClock(jump);
   refill_.shiftClock(jump);
@@ -569,7 +586,9 @@ void Hub::tickImpl() {
     }
 
   Ctx c = ctx();
+  const auto latchesBefore = rt_.latches;  // a latch set or released in this tick is saved at once (RAT-063)
   act_.enforce(c);
+  if (rt_.latches != latchesBefore) stateDirty_ = true;  // also when a later step of the tick throws
   for (auto it = testOff_.begin(); it != testOff_.end();) {
     if (now < it->second) {
       ++it;
@@ -590,7 +609,7 @@ void Hub::tickImpl() {
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
     if (id.rfind("ec-", 0) == 0) ec_.onDoseFinished(c, env, *fin);
-    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, env, *fin);
+    else if (id.rfind("ph-", 0) == 0) ph_.onDoseFinished(c, *fin);
     else onJobDose(c, *fin);
     stateDirty_ = true;
   }
@@ -628,6 +647,7 @@ void Hub::tickImpl() {
     for (const auto& [id, p] : pumps_) in.pumpFlow[id] = p.flowMlPerMin;
     watch_ = evaluate(in);  // Watchdog liest nur, er bekommt keine Aktoren
   }
+  if (rt_.latches != latchesBefore) stateDirty_ = true;
   if (stateDirty_ || epoch - lastStateSave_ >= 60) {
     lastStateSave_ = epoch;
     saveState();
@@ -668,6 +688,11 @@ Epoch Hub::now() const {
   return clock_.epoch();
 }
 
+std::string Hub::armSetupCode(Ms validFor) {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  return credentialsLost() ? std::string() : auth_.armSetupCode(clock_.nowMs(), validFor);
+}
+
 json Hub::info() const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   return {{"product", "growcontroller"},
@@ -678,6 +703,7 @@ json Hub::info() const {
           {"platform", platform_},
           {"setupDone", cfg_.system.setupDone},
           {"hasPassword", auth_.hasPassword()},
+          {"setupCode", auth_.setupCodeRequired()},  // the first password needs the code from the log (#79)
           {"name", cfg_.system.name}};
 }
 
@@ -1198,6 +1224,13 @@ Result Hub::putCanister(const json& j) {
   errs.erase(std::remove_if(errs.begin(), errs.end(), [](const Msg& m) { return m.key == "cfg.pair.single" || m.key == "cfg.recipe.pair"; }),
              errs.end());
   if (!errs.empty()) return errors(errs);
+  if (j.contains("stockMl") && j["stockMl"].is_number()) {
+    // A stock entered is never below zero; an unchanged one still saves, so a
+    // bottle booked below zero can be renamed (SD-066)
+    const double ml = j["stockMl"];
+    auto was = rt_.stockMl.find(id);
+    if ((!isNum(ml) || ml < 0) && !(was != rt_.stockMl.end() && was->second == ml)) return Result::fail(422, say("canister.stock"));
+  }
   cfg_ = next;
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
   else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
@@ -1213,10 +1246,21 @@ Result Hub::deleteCanister(const std::string& id) {
       if (s.canister == id) return Result::fail(409, "canister.used", "Wird im Rezept „" + r.name + "“ verwendet");
   auto it = std::find_if(cfg_.canisters.begin(), cfg_.canisters.end(), [&](const CanisterCfg& k) { return k.id == id; });
   if (it == cfg_.canisters.end()) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  std::string name = it->name;
+  const std::string name = it->name, pair = it->pair;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
-  saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  // A pair needs two: the one left behind is no longer paired, otherwise every later
+  // check of the whole configuration refuses it (#147)
+  std::vector<CanisterCfg*> rest;
+  if (!pair.empty())
+    for (auto& k : cfg_.canisters)
+      if (k.pair == pair) rest.push_back(&k);
+  if (rest.size() == 1) {
+    rest[0]->pair.clear();
+    saveConfig(say("ev.cfg.canister_removed_pair", {{"name", name}, {"partner", rest[0]->name}}));
+  } else {
+    saveConfig(say("ev.cfg.canister_removed", {{"name", name}}));
+  }
   return Result::ok();
 }
 
@@ -1224,7 +1268,7 @@ Result Hub::setStock(const std::string& id, double ml) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const CanisterCfg* k = cfg_.canister(id);
   if (!k) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  if (!isNum(ml) || ml < 0) return Result::fail(422, "canister.stock", "Vorrat ungültig");
+  if (!isNum(ml) || ml < 0) return Result::fail(422, say("canister.stock"));
   rt_.stockMl[id] = ml;
   stateDirty_ = true;
   log_.add(clock_.epoch(), "config", "info", say("ev.bottle_changed"), say("ev.bottle_changed.text", {{"name", k->name}, {"ml", ml}}));
@@ -1454,6 +1498,8 @@ Result Hub::mixPlan(const json& req) {
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
+  // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
+  if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
   if (stopped_) return Result::fail(409, "job.stopped", "Not-Halt aktiv – erst fortsetzen");
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
@@ -1462,8 +1508,9 @@ Result Hub::mixStart(const json& req) {
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
   if (!plan.ok) {
     json b = plan;
-    return Result::fail(422, plan.errors.empty() ? "mix.invalid" : plan.errors.front().key,
-                        plan.errors.empty() ? "Plan ungültig" : plan.errors.front().text, {{"plan", b}});
+    // the first error as the message it is, with its values (SD-032)
+    return Result::fail(422, plan.errors.empty() ? Msg{"mix.invalid", "Plan ungültig", json::object()} : plan.errors.front(),
+                        {{"plan", b}});
   }
   // Abgleich des Rezepts mit den wirklich vorhandenen Kanistern vor der ersten Gabe.
   Job j;
@@ -1541,9 +1588,21 @@ void Hub::finishJob(const std::string& state, Msg m) {
   j.state = state;
   j.message = std::move(m);
   j.finishedAt = clock_.epoch();
+  // The window against mixing twice counts from when the nutrients went in, not from the start:
+  // a guided mix stirred by hand can take longer than the window (RAT-003)
+  if (j.type == "mix") {
+    rt_.lastMixAt = std::max(rt_.lastMixAt, j.finishedAt);  // never earlier, even after a clock step
+    stateDirty_ = true;
+  }
   saveJob();
   lastJob_ = j;
   if (state == "done" || state == "aborted") job_.reset();
+}
+
+// A new job replaces a failed mix only after ending it as an abort, which reports what is in the
+// tank and starts the window against mixing twice (RAT-003); before, it was dropped without a trace.
+void Hub::endFailedMix() {
+  if (job_ && job_->type == "mix" && job_->state == "failed") jobAbort(job_->id);
 }
 
 void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
@@ -1687,6 +1746,7 @@ Result Hub::manualDose(const std::string& canister, double ml) {
   j.type = "manual";
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {
@@ -1718,6 +1778,7 @@ Result Hub::startCalibration(const std::string& pump, double seconds) {
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
   j.info = {{"pump", pump}, {"seconds", seconds}, {"previous", numOrNull(pit->second.flowMlPerMin)}};
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {
@@ -1774,6 +1835,7 @@ Result Hub::prime(const std::string& pump, double seconds) {
   j.type = "prime";
   j.startedAt = clock_.epoch();
   j.steps.push_back({s, "pending", 0});
+  endFailedMix();
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) {
@@ -1984,24 +2046,53 @@ Result Hub::ackLatch(const std::string& id) {
 
 Result Hub::stop(const Msg& who) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Not-Halt: aktive Abschaltkaskade, idempotent (RAT-036)
+  // Stop: an active, idempotent shutdown (RAT-036). It takes effect and everything goes off
+  // first, as on an internal error: booking the running dose can then neither keep an output on
+  // nor switch one on (the gateway refuses while stopped).
+  const bool first = !stopped_;
+  stopped_ = true;
+  rt_.stopped = true;
+  const Ms stopAt = clock_.nowMs();
+  act_.stopAll(cat_, cfg_, stopAt);
+  saveState();  // at once: a power loss while the dose is booked keeps the stop
   Ctx c = ctx();
-  if (doser_.busy()) doser_.abort(c, act_, say("abort.stop"));
+  c.now = stopAt;  // a run counts until the stop, not until the sockets were switched
+  // When booking the running dose fails, the order is dropped unbooked, so nothing of it runs or
+  // is booked later, and that is reported below.
+  std::optional<DoseOrder> unbooked;
+  json reason;
+  if (doser_.busy()) {
+    const DoseOrder order = *doser_.active();
+    auto drop = [&](json why) {
+      doser_.drop(act_);
+      unbooked = order;
+      reason = std::move(why);
+    };
+    try {
+      doser_.abort(c, act_, say("abort.stop"));
+    } catch (const std::exception& e) {
+      std::string why;
+      for (const char ch : std::string_view(e.what()).substr(0, 200))
+        why += (ch >= 0x20 && ch < 0x7f) ? ch : '?';  // a technical text: printable ASCII only
+      drop(why.empty() ? json(say("abort.internal")) : json(why));
+    } catch (...) {
+      drop(say("abort.internal"));
+    }
+  }
   if (auto fin = doser_.takeFinished()) {
-    // Regler-Gaben gehören nicht zum Nutzerauftrag; die Regler werden unten zurückgesetzt.
+    // Controller doses are not part of the user's job; the controllers are reset below.
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  act_.stopAll(cat_, cfg_, clock_.nowMs());
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", say("job.emergency_stop"));
-  const bool first = !stopped_;
-  // Saved before the slow socket writes, so a power loss meanwhile keeps the stop.
-  stopped_ = true;
-  rt_.stopped = true;
   saveState();
   if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
+  // Calibration and priming runs book no stock (RAT-070), so there is nothing to say for them
+  if (unbooked && unbooked->purpose != "calibration" && unbooked->purpose != "prime")
+    log_.add(clock_.epoch(), "system", "warn", say("ev.stop.unbooked"),
+             say("ev.stop.unbooked.text", {{"name", unbooked->step.name}, {"reason", reason}}), {{"canister", unbooked->step.canister}});
   saveEvents();
   // A manual emergency stop stops everything, also after a power loss
   // (PD-076). Written on every stop, so pressing it again retries a socket

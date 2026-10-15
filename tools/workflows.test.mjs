@@ -4,6 +4,7 @@
 // keeps both up to date. Node's types for the web app's tests are those of
 // the Node that CI runs (#101). The web app's packages are checked against
 // their registry signatures right after they are installed (#100, SD-058).
+// The inactive triage template starts only for people with a role (#29).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -226,4 +227,46 @@ test("the lockfile's packages are checked for a lost provenance before they are 
   const install = ci.findIndex((l) => /\bnpm ci\b/.test(l) && !/^\s*#/.test(l));
   assert.ok(check >= 0, "tools/ci.sh runs tools/check_provenance.mjs on a line of its own");
   assert.ok(install > check, "before npm ci");
+});
+
+test("the triage template starts only for people with a role, never for a pull request comment (#29)", () => {
+  const file = join(dir, "..", "..", "docs", "templates", "claude-triage.yml");
+  const text = readFileSync(file, "utf8");
+  const m = text.match(/\n\s+if: >-\n([\s\S]*?)\n\s+runs-on:/);
+  assert.ok(m, "the job has a folded if:");
+  const roles = `contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), `;
+  assert.equal(
+    m[1].trim().replace(/\s+/g, " "),
+    `(github.event_name == 'issues' && ${roles}github.event.issue.author_association)) || ` +
+      `(github.event_name == 'issue_comment' && !github.event.issue.pull_request && ` +
+      `contains(github.event.comment.body, '@claude') && ${roles}github.event.comment.author_association))`,
+  );
+  // Only new issues and new comments, never an edit
+  assert.match(text, /\n {2}issues:\n {4}types: \[opened\]\n {2}issue_comment:\n {4}types: \[created\]\n/);
+  // The workflow's own token, limited by permissions; never the app's token
+  assert.match(text, /\n {10}github_token: \$\{\{ secrets\.GITHUB_TOKEN \}\}\n/);
+  assert.doesNotMatch(text, /^\s*id-token:/m);
+  assert.match(text, /\npermissions:\n {2}contents: read\n {2}issues: write\njobs:\n/);
+  assert.equal((text.match(/^\s*permissions:/gm) ?? []).length, 1, "one permissions block, at the top");
+  assert.match(text, /\n {10}persist-credentials: false\n/);
+  // Its own API key and the workflow's token, nothing else; never Bash
+  assert.deepEqual([...new Set([...text.matchAll(/secrets\.(\w+)/g)].map((s) => s[1]))].sort(), ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]);
+  const tools = text.match(/claude_args:.*"([^"]*)"/);
+  assert.ok(tools, "the tools are named");
+  assert.doesNotMatch(tools[1], /bash/i);
+  // Only the checkout and Claude's action
+  assert.deepEqual(
+    [...text.matchAll(/^\s*(?:-\s+)?uses:\s*([^@\s]+)@/gm)].map((u) => u[1]),
+    ["actions/checkout", "anthropics/claude-code-action"],
+  );
+  // GitHub's own actions pinned like the workflows'; Dependabot does not see this file
+  let n = 0;
+  for (const line of text.split("\n")) {
+    const u = line.match(/^\s*(?:-\s+)?uses:\s*(actions\/\S+)(.*)$/);
+    if (!u) continue;
+    n++;
+    assert.match(u[1], /@[0-9a-f]{40}$/, u[1]);
+    assert.match(u[2], /^\s+# v\d+\.\d+\.\d+\s*$/, `${u[1]} needs a "# vX.Y.Z" comment`);
+  }
+  assert.ok(n >= 1, "the checkout is there");
 });

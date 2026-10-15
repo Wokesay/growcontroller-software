@@ -99,6 +99,8 @@ class Catalog {
   const FunctionDef* function(const std::string& id) const;
   // Geräteklassen, die eine Capability liefern (für "Was fehlt dir?").
   std::vector<const DeviceClassDef*> classesProviding(const std::string& cap) const;
+  // What GET /api/v1/catalog serves: the data plus what is set in code
+  json forApi() const;
 
   int version = 0;
   std::map<std::string, CapabilityDef> capabilities;
@@ -106,7 +108,7 @@ class Catalog {
   std::map<std::string, RoleDef> roles;
   std::vector<FunctionDef> functions;
   json templates;
-  json raw;  // unverändert für GET /api/v1/catalog
+  json raw;  // the catalog data as loaded
 };
 
 }  // namespace gc

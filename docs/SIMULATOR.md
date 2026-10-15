@@ -1,6 +1,6 @@
 # Simulator (digital twin)
 
-As of 2026-10-06. `sim/` replaces only the bus, devices, tank and clock.
+As of 2026-10-13. `sim/` replaces only the bus, devices, tank and clock.
 The core is the same code as on the hub.
 
 ## Starting
@@ -33,15 +33,18 @@ default password (EN 18031-1).
 | EC effect CalMag | 0.217 mS/cm per ml/L | RAT-080 |
 | pH− | −4.0 pH per ml/L × buffer factor 1.6/(0.6+EC); +1.04 mS/cm per ml/L | RAT-050 measured −5.0 (once, at EC 2.96), RAT-053; the buffer factor is an **assumption** |
 | pH drop from A/B | −0.12/−0.10 pH per ml/L | **Assumption** (based on an observation on the reference installation) |
-| Mixing | t63 26 s × V/20 L with circulation pump, 240 s without | RAT-052; without pump an **assumption** |
+| Mixing | t63 26 s with circulation pump, 240 s without, each × V/20 L (at least × 0.5) | RAT-052, measured at 20.4 L with circulation; the scaling with volume and the value without pump are **assumptions** |
 | pH dead time | 60 s | RAT-052 measured 80–99 s; shortened |
 | Noise | pH σ 0.006, EC σ 0.004, temperature σ 0.02, level 2 mV | RAT-082 (EC set larger here) |
 | Measurement interval | 5 s per head | as on the reference installation |
 | Flow rate of the caps | 42–53 ml/min, random per cap | RAT-054: 38–53 ml/min |
+| Run length of a cap | ends exactly at the requested time, with no overrun or stop volume | **Assumption**; real overrun is to be measured (SD-066 step 2) |
+| Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
+| Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
 | Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |
-| Time limit of the dosing block | 90 s; repeating the same job ID does not run twice | proposal by `firmware` |
+| Time limit of the dosing block | refuses a run requested over 90 s; repeating the same job ID does not run twice | proposal by `firmware` for the earlier dosing block; board v0.1 has no time limit in hardware (PD-160, SD-066) |
 | Level curve | non-linear at the bottom | as in RAT-078 |
 
 ## Fault buttons (simulator panel and `POST /api/v1/sim/…`)

@@ -27,6 +27,38 @@ std::string roleLabel(const Catalog& cat, const std::string& role) {
 
 constexpr double kInletHysteresisL = 0.5;  // EIN erst 0,5 L über der AUS-Grenze (RAT-078: 2,5/3 L)
 
+// A dry-run latch caused only by a low level releases itself (SD-022) once a usable level
+// has stayed at or above the minimum plus a margin for 5 min, and not again within an hour
+// of releasing itself (own rules, SD-067).
+constexpr double kDryMarginL = 0.5;
+constexpr double kDryMarginShare = 0.02;  // of the capacity, where that is larger
+constexpr Ms kDrySettle = 5 * kMinute;
+constexpr Epoch kDryRepeatS = 60 * 60;
+
+double dryReleaseLevel(const TankCfg& tank) {
+  return tank.minL + (isNum(tank.capacityL) ? std::max(kDryMarginL, kDryMarginShare * tank.capacityL) : kDryMarginL);
+}
+
+// Whether a stored dry-run latch releases itself: caused by a low level, with a minimum to
+// measure against, and nothing else stored with it. Any other key (a reason to hold, one
+// written by another version, damage) and a latch without a cause hold until acknowledged
+// (RAT-063, SD-067).
+bool selfReleasing(const json& l, const TankCfg& tank) {
+  if (!l.is_object() || !l.contains("cause") || l["cause"] != "level" || !isNum(tank.minL)) return false;
+  if (isNum(tank.capacityL) && dryReleaseLevel(tank) > tank.capacityL) return false;  // a level it can never reach
+  for (const auto& [k, v] : l.items())
+    if (k != "at" && k != "levelL" && k != "cause") return false;
+  return true;
+}
+
+// Why a dry-run latch from a low level holds this time: "off_failed", "repeat", "jump" (SD-067)
+std::string holdReason(const json& l) {
+  return l.is_object() && l.contains("hold") && l["hold"].is_string() ? l["hold"].get<std::string>() : "";
+}
+void holdLatch(json& l, const char* why) {
+  if (l.is_object() && !l.contains("hold")) l["hold"] = why;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------- Actuators
@@ -95,7 +127,14 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
   const bool levelBound = c.cfg.binding("tank.level") != nullptr;
   const auto& tank = c.cfg.tank();
   if (role == "tank.circulation") {
-    if (c.rt.latches.count("circulation.dry")) return say("act.circ.latched");
+    if (auto l = c.rt.latches.find("circulation.dry"); l != c.rt.latches.end()) {
+      if (levelBound && selfReleasing(l->second, tank)) return say("act.circ.latched_self", {{"back", dryReleaseLevel(tank)}});
+      const std::string why = holdReason(l->second);
+      if (why == "off_failed") return say("act.circ.latched_off");
+      if (why == "repeat") return say("act.circ.latched_repeat");
+      if (why == "jump") return say("act.circ.latched_jump");
+      return say("act.circ.latched");
+    }
     if (levelBound) {
       if (!level.usable()) return say("act.circ.level_invalid");
       if (isNum(tank.minL) && *level.value < tank.minL + kInletHysteresisL)
@@ -216,7 +255,7 @@ void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keep
 }
 
 bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& key, const std::string& type,
-                    const std::string& severity, const Msg& title, const Msg& text) {
+                    const std::string& severity, const Msg& title, const Msg& text, const Msg* failedText) {
   const Binding* b = c.cfg.binding(role);
   if (!b) return false;
   std::string e;
@@ -228,7 +267,7 @@ bool Actuators::cut(const Ctx& c, const std::string& role, const std::string& ke
       c.log.add(c.epoch, type, severity, title, text, {{"role", role}});
     } else {
       c.log.add(c.epoch, "block", "alarm", say("ev.off_unconfirmed", {{"label", roleLabel(c.cat, role)}}),
-                say("ev.off_failed.text", {{"reason", text}, {"error", e}}), {{"role", role}, {"device", b->device}});
+                say("ev.off_failed.text", {{"reason", failedText ? *failedText : text}, {"error", e}}), {{"role", role}, {"device", b->device}});
     }
   }
   if (!ok) it->second.failed = true;
@@ -241,6 +280,47 @@ void Actuators::rearm(const std::string& role, const std::string& key) {
 
 void Actuators::noteReported(const std::string& role, const std::string& key) {
   if (auto it = cuts_.find(role); it != cuts_.end()) it->second.keys.insert(key);
+}
+
+bool Actuators::dryLatchReleasesItself(const Ctx& c) const {
+  auto l = c.rt.latches.find("circulation.dry");
+  return l != c.rt.latches.end() && c.cfg.binding("tank.level") && selfReleasing(l->second, c.cfg.tank());
+}
+
+// SD-022 (#27): the level has to stay usable, at or above the release level and not above
+// the capacity for 5 min, outside maintenance mode (hands in the tank), with the pump read
+// as off; any other reading starts the wait again (SD-067).
+void Actuators::releaseDryLatch(const Ctx& c) {
+  // A self-release stored without a plausible time (before the clock was known, or damaged)
+  // counts as now once the clock is known: one more careful hour, then the guard ages out
+  if (auto last = c.rt.selfReleased.find("circulation.dry"); last != c.rt.selfReleased.end() && !plausibleEpoch(last->second) && plausibleEpoch(c.epoch))
+    last->second = c.epoch;
+  auto l = c.rt.latches.find("circulation.dry");
+  if (l == c.rt.latches.end()) {
+    dryBackSince_.reset();
+    dryOffSeen_ = false;
+    return;
+  }
+  // A jump of the level while latched has no explanation the hub knows (a sensor stuck high,
+  // condensation, a hose without maintenance mode): a person looks at the tank first
+  if (c.rt.jumpLocks.count("tank.level")) holdLatch(l->second, "jump");
+  const auto& level = c.truth.get("tank.level");
+  const auto& tank = c.cfg.tank();
+  const auto pump = roleState(c.cfg, "tank.circulation");
+  if (pump && !*pump) dryOffSeen_ = true;  // from now on, running again means it did not stay off
+  const bool back = selfReleasing(l->second, tank) && c.cfg.binding("tank.level") && level.usable() && *level.value >= dryReleaseLevel(tank) &&
+                    (!isNum(tank.capacityL) || *level.value <= tank.capacityL) && c.epoch >= c.maintenanceUntil && pump && !*pump;
+  if (!back) {
+    dryBackSince_.reset();
+    return;
+  }
+  if (!dryBackSince_) dryBackSince_ = c.now;
+  if (c.now - *dryBackSince_ < kDrySettle) return;
+  dryBackSince_.reset();
+  c.rt.latches.erase(l);
+  c.rt.selfReleased["circulation.dry"] = c.epoch;
+  c.log.add(c.epoch, "unblock", "info", say("ev.circ.dry.released"),
+            say("ev.circ.dry.released.text", {{"level", *level.value}, {"back", dryReleaseLevel(tank)}}), {{"role", "tank.circulation"}});
 }
 
 void Actuators::enforce(const Ctx& c) {
@@ -278,6 +358,7 @@ void Actuators::enforce(const Ctx& c) {
   // (Quelle: RAT-062, Testfälle M11-1/M11-2/M11-4). Läuft sie trotz
   // Rastung (Ausschalten gescheitert, Taster am Gerät), schaltet der Hub sie
   // erneut aus.
+  releaseDryLatch(c);
   auto circ = roleState(c.cfg, "tank.circulation");
   const bool dryLatched = c.rt.latches.count("circulation.dry") > 0;
   if (circ && *circ && (levelBound || dryLatched)) {
@@ -285,11 +366,32 @@ void Actuators::enforce(const Ctx& c) {
     bool ok = true, acted = true;
     if (low || dryLatched) {
       if (!dryLatched) {
-        c.rt.latches["circulation.dry"] = {{"at", c.epoch}, {"levelL", *level.value}};
+        // The cause is stored, so the latch can release itself once the tank is refilled
+        // (SD-022); low again within the hour after that, a person looks first (SD-067).
+        json latch = {{"at", c.epoch}, {"levelL", *level.value}, {"cause", "level"}};
+        auto last = c.rt.selfReleased.find("circulation.dry");
+        if (last != c.rt.selfReleased.end() && (!plausibleEpoch(last->second) || c.epoch - last->second < kDryRepeatS)) latch["hold"] = "repeat";
+        c.rt.latches["circulation.dry"] = latch;
         rearm("tank.circulation", "circulation.dry");  // neue Rastung, z. B. nach Quittierung: neu melden
       }
-      ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", say("ev.circ.dry"),
-               low ? say("ev.circ.dry.low", {{"level", *level.value}, {"min", tank.minL}}) : say("ev.circ.dry.latched"));
+      json& latch = c.rt.latches["circulation.dry"];
+      // Running again after it was read as off (a button on the device, a relay that does not
+      // hold): it may have run dry meanwhile, so a person looks (SD-067)
+      if (dryLatched && dryOffSeen_ && latch.is_object()) latch["hold"] = "off_failed";
+      const bool self = levelBound && selfReleasing(latch, tank);
+      // If switching off fails, the alarm asks for a person instead: the pump may be running dry
+      Msg text, failed;
+      if (low) {
+        const json args = {{"level", *level.value}, {"min", tank.minL}, {"back", dryReleaseLevel(tank)}};
+        const bool repeat = holdReason(latch) == "repeat";
+        text = say(self ? "ev.circ.dry.low_self" : repeat ? "ev.circ.dry.low_repeat" : "ev.circ.dry.low", args);
+        failed = say("ev.circ.dry.low", args);
+      } else {
+        text = self ? say("ev.circ.dry.latched_self", {{"back", dryReleaseLevel(tank)}}) : say("ev.circ.dry.latched");
+        failed = say("ev.circ.dry.latched");
+      }
+      ok = cut(c, "tank.circulation", "circulation.dry", "alarm", "alarm", say("ev.circ.dry"), text, &failed);
+      if (!ok && latch.is_object()) latch["hold"] = "off_failed";  // overrides another reason: check the pump first
     } else if (!level.usable()) {
       ok = cut(c, "tank.circulation", "circulation.level", "block", "warn", say("ev.circ.off"), say("ev.circ.off.text", {{"reason", level.reason}}));
     } else {
@@ -441,7 +543,16 @@ void Doser::book(const Ctx& c, Ms ms) {
   if (o.purpose == "calibration" || o.purpose == "prime") return;  // kein Verbrauch (RAT-070)
   // Vorrat je Lauf buchen, nicht erst am Ende (RAT-070): ein Abbruch fehlt sonst
   auto st = c.rt.stockMl.find(o.step.canister);
-  if (st != c.rt.stockMl.end() && isNum(st->second) && isNum(ml)) st->second = std::max(0.0, st->second - ml);
+  if (st == c.rt.stockMl.end() || !isNum(st->second) || !isNum(ml)) return;
+  // Booked as it went, also below zero: then the bottle ran dry, or the
+  // stock entered or the pump's calibration is wrong. Reported each time it
+  // falls below zero, never hidden as 0 (RAT-015, SD-066); a rounding
+  // difference alone does not count (kStockBelowZeroMl).
+  const bool wasCovered = st->second > kStockBelowZeroMl;
+  st->second -= ml;
+  if (wasCovered && st->second <= kStockBelowZeroMl)
+    c.log.add(c.epoch, "tank", "warn", say("ev.stock.below_zero"), say("ev.stock.below_zero.text", {{"name", o.step.name}}),
+              {{"canister", o.step.canister}, {"stockMl", st->second}});
 }
 
 void Doser::logOrder(const Ctx& c) {
@@ -534,6 +645,17 @@ void Doser::abort(const Ctx& c, Actuators& act, const Msg& reason) {
   logOrder(c);
   finished_ = progress_;
   active_.reset();
+}
+
+void Doser::drop(Actuators& act) {
+  if (active_) act.clearRun(active_->step.pump);
+  active_.reset();
+  running_ = false;
+  finished_.reset();
+  try {  // a repeat: the Stop switched the pumps off just before
+    act.stopPumps();
+  } catch (...) {
+  }
 }
 
 std::optional<DoseProgress> Doser::takeFinished() {

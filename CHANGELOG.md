@@ -64,6 +64,41 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Product questions go to the product repository directly** (SD-069):
+  the software session writes each product question it meets, with
+  context, options and its recommendation, into a note of the product
+  repository as a pull request there, instead of handing it to the
+  project owner. Decisions (PD) are still made only there.
+- **Triage template (not active) only for people with a role** (#29):
+  `docs/templates/claude-triage.yml` starts only for an issue opened by
+  the owner, a member or a collaborator, or for "@claude" in their
+  comment on an issue, not on a pull request. Anyone else's issue waits
+  until someone with a role, in practice the owner, comments "@claude".
+  It passes the workflow's own token, which its permissions limit, and
+  its checkout is pinned by commit SHA like the active workflows; a test
+  keeps all of this. `docs/WORKFLOW.md` lists what to do before
+  activating it.
+- **Release acceptance in two parts** (SD-065, `docs/RELEASE.md`): the
+  project owner tests what a release brings with the release branch's
+  server against a real Home Assistant before saying "mergen", and the
+  update with a backup made first, a fresh install, the restart, the
+  lockout per device and the backup with the published app right after
+  it is published. The app's documentation in Home Assistant and the
+  release notes ask you to back up the app before updating; if the
+  published app fails, a fixing release follows at once.
+- **The circulation pump's dry-run lock releases itself once the tank is
+  refilled** (SD-022, SD-067, #27). A lock set because the level fell below
+  the minimum while the pump ran now lifts by itself when a valid level has
+  stayed at or above the minimum plus a margin (the larger of 0.5 L and
+  2 % of the tank) for 5 minutes, and the event log says so. Maintenance
+  mode pauses this; the 5 minutes start when it ends. It still holds until
+  you tap "Release", and says why, if switching off was not confirmed or
+  the pump ran again after it was off, if the level was low again within
+  an hour of the last self-release, if the level jumped while locked, and
+  for a lock saved by an older version. Filling by hand? Start maintenance
+  mode first, or the jump holds the lock.
+  The inlet's emergency cut-off is unchanged. A lock set or released is
+  now saved at once.
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.
@@ -78,6 +113,21 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
+- **Plan: one dosing pump type with speed stages** (SD-066, #132): after
+  0.1.0-proto.5, as part of the work for the carrier board, growcontroller
+  will support one pump type that runs at several speeds, reports its
+  speed back and keeps its calibration on a chip in the module. Proposed:
+  a long dose of up to about 20 min runs as many short runs, and the
+  firmware's safety limit ends each run after at most 60 s, so if control
+  fails during a dose, at most one run's amount goes in. Board v0.1 has
+  no time cut-off for the pumps in hardware, which RAT-007 and RAT-018 now
+  say. The safety limits always count as if the pump ran at full speed,
+  and a slow speed is used only where that worst case stays within the
+  dose's limit. With a pump of about 200 ml/min this rules out automatic
+  pH dosing below about 56–139 L, depending on its shortest run, and with
+  the longer one also hand doses up to the default 5 ml, so a low-flow pump for pH− is
+  proposed. Some details are still to be decided. The simulator docs now
+  mark how mixing time grows with the tank as an assumption.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
   SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
   web app can be reached only in the home network (preselected), viewed
@@ -190,6 +240,70 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Removing one bottle of a pair no longer blocks every later save**
+  (#147): the other bottle kept its pair label on its own, and the hub
+  then refused saving a recipe, the tank, a zone or a function, binding a
+  role, importing a configuration or starting a grow ("Paar AB hat nur
+  einen Kanister") until the label was cleared by hand. Now the bottle left
+  behind is no longer paired; the removal dialog and the event say so. If
+  a bottle is already left with a pair label of its own, clear its "Pair"
+  field under Recipes › Bottles.
+- **Home Assistant: only plain numbers are values** (#71): a state such as
+  `0x6`, ` 6.2`, `+6.2` or `.5` was read as a number; now it gives no
+  value instead of a guess, and the device says why ("is no plain
+  number"). The setup now takes "calibrated outside the hub" from the hub
+  instead of guessing it from what a device measures. Text from Home
+  Assistant in names and faults is checked to be well-formed UTF-8 by the
+  adapter itself, too.
+- **Removing a bottle asks first** (#120): under Recipes › Bottles the
+  remove button took a bottle away at once, with its stock, and on a phone
+  it sits next to "Edit". Now "Remove bottle?" ("Kanister entfernen?")
+  names it and what follows (its stock goes; its pump, if it has one,
+  becomes free and stays calibrated if it was); only "Remove" removes it.
+  A bottle a recipe still uses says "Bottle still in use", names the
+  recipes and how to take it out (both bottles of a pair, since the hub
+  refuses half a pair) and, when exactly one recipe uses it, offers "Edit
+  recipe" (with several: "Got it"), instead of offering a removal the hub
+  refuses.
+- **Dialogs and the keyboard** (#105): a dialog now takes the focus when it
+  opens, Tab stays inside it (also a folded list's heading, and back in
+  when the focus has fallen out), the focus returns to the button that
+  opened it when that is known (after removing a bottle: to "+ Bottle"),
+  and a screen reader names it by its title; a confirmation (removing a
+  bottle, mixing a tank again) reads out its consequence.
+- **Durations and ages stay on one line** (#106): "vor 45 s" / "45 s ago"
+  and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
+  no longer break between the number and the unit; other numbers with
+  units (ml, ml/L) follow (#148).
+- **A stock below zero is reported** (RAT-015, RAT-071, SD-066): when more
+  was booked from a bottle than its stock, the hub set the stock to 0 and
+  showed "0 ml left – change the bottle soon", which hid that more had
+  been booked than entered and that doses after that went in short. Now
+  the stock stays below zero ("-2 ml by the hub's count – bottle empty?
+  Change it, or enter the amount left"; German "Rechnerisch -2 ml …"), the
+  event log says each time it falls below zero what to do (empty? change
+  it; otherwise enter the amount left under Recipes & bottles; calibrate
+  the pump again only if it keeps happening), and a mix says the stock is
+  used up. Entering the amount left or tapping "Bottle changed" clears it.
+  Less than half a millilitre below zero raises no alarm. An amount left
+  entered below zero is refused, and the bottle editor sends it only when
+  you changed it, so a dose booked while the editor is open is kept.
+- **A pH jump is caught while the hub's own pH dose settles** (RAT-042,
+  RAT-044): after its own pH dose, the hub took any pH change as expected
+  for the whole wait after the dose plus a minute (6 min by default), so a
+  disturbed probe did not lock the reading, and pH control then dosed pH−
+  on the wrong value. Now the reading locks, and pH control doses nothing
+  until the lock lifts after 15 min of calm. More under Security.
+- **Mixing twice is caught after a long mix too** (RAT-003): another mix
+  within 30 minutes needs your confirmation, because dosing again doubles
+  the nutrients. The 30 minutes counted from the start of the last mix, so
+  after a mix that took longer, for example a guided one stirred by hand or
+  a large tank, a second mix right after it started without asking. They
+  now count from when the last mix ended: finished, stopped, failed or cut
+  off by a restart. A mix that stopped part way can no longer be replaced
+  by a new one through the API; resume or end it first. A prime, a pump
+  calibration or a hand dose started meanwhile ends it and reports what is
+  in the tank, where before it dropped the mix without a trace.
 - **The hub checks the time zone:** it stored any text sent as the time
   zone, and only the app checked it. Now saving or importing one that is
   not a name like `Europe/Berlin` (starting with a letter; letters, digits,
@@ -251,12 +365,19 @@ listed in every release under "Security".
   pages of the menu in German and English, every setup step, and the Home
   Assistant app's introduction, devices, assignment and sign-of-life
   window with long sensor IDs.
-- **Event log: devices are "back" after a full outage** (#69): when every
-  device stopped answering at once, for example while Home Assistant
-  restarted, the log said "getrennt" (not responding) for each of them but
-  never "wieder da" (is back). Now each device you added logs that it is
-  back. After a start, the devices that answer first are still not logged
-  as back.
+- **Event log: a device is "back" only after it was gone** (#69, #115):
+  when every device stopped answering at once, for example while Home
+  Assistant restarted, the log said "getrennt" (not responding) for each
+  of them but never "wieder da" (is back). Now each device you added logs
+  that it is back. A start logs no "back", also for devices that answer
+  later than the first ones, such as Home Assistant's integrations
+  reconnecting one after another or the hub's bus devices. So a pump asks
+  whether it is still on its bottle only when it was unplugged and plugged
+  in again while the hub runs. "Back" now names the device as "not
+  responding" does: its name, else its kind (before, "not responding"
+  named a device without a name by its ID). In German, "getrennt" now
+  says what to check (cable, power or Wi-Fi), and the pump's question
+  names the bottle as English does.
 - **Calibrating a probe:** closing the window half way no longer leaves the
   calibration running on the hub, and opening it again starts at the first
   buffer instead of showing a step the hub did not have. The window now
@@ -275,7 +396,13 @@ nothing in the Home Assistant app reads a value to switch; the third needs
 a device in the home network, and a device already signed in kept its
 session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
 each with the password, and whoever has the password can already stop,
-switch or change it. No GHSA or CVE is issued.
+switch or change it; the fifth, like the first, concerns the hub's own
+probes; the sixth needs a device in the home network before the owner sets
+the first password, and the Home Assistant app switches nothing; the
+seventh needs a Linux x86-64 host with an AMD Zen 5 processor without
+AMD's fix, and even there a session token or salt is only partly
+predictable. No GHSA or CVE of our own is issued; the seventh follows from
+AMD's CVE-2025-62626.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -306,9 +433,66 @@ switch or change it. No GHSA or CVE is issued.
   using could be signed out and had to sign in again before it could reach
   "Stop". Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+- **A disturbed pH probe is no longer taken as the hub's own pH dose**
+  (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
+  until a minute after the dose's wait, against RAT-042, which keeps own pH
+  doses unannounced because they are sized to move pH by at most 0.3, far
+  below the 1.0 of a jump. A jump in that time became the new reference,
+  and pH control dosed on it. The jump lock now holds then as at any other
+  time. It can now also trip when an own dose moves pH far more than
+  planned, which stops pH control until 15 min of calm, the safe direction;
+  that dose's effect is then not learned, which a follow-up addresses. A
+  jump in the last minutes of another announcement (after a mix or hand
+  dose, the inlet, an EC round or a probe calibration) is still taken as
+  explained; that stays open.
+- **Nobody else can set the Home Assistant app's first password** (#79,
+  SD-068): until the owner set it, any device in the home network could
+  set it first, see the names of Home Assistant's sensors and the values of
+  those it could pick, and lock the owner out until the app was
+  reinstalled. The app now prints a one-time setup code to its log, which
+  only Home Assistant's administrators, and apps they gave that right, can
+  read, and the first password needs it. The code has 80 bits, is kept
+  in memory only and is used up by the password; a restart makes a new
+  one. Wrong codes lock nobody out and are logged at most once per 15
+  minutes.
+- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
+  CVE-2025-62626): the Home Assistant app and the simulator took the
+  random numbers for session tokens and password salts from
+  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
+  instruction first. AMD Zen 5 processors without AMD's fix can return
+  zeros there while reporting success, so on such a host part of a session
+  token could be zero and easier to guess. They now come from the
+  operating system (`getentropy()`), as does the setup code. Not affected:
+  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
+  microcode or BIOS fix. Nothing to do after the update: the restart ends
+  every old session, and salts need not be secret.
+
+A protective cut-off relaxed on purpose:
+
+- **A protective lock that releases itself, deliberately** (SD-067, #27):
+  the circulation pump's dry-run lock, when caused by a low level, now
+  lifts by itself after the tank is refilled (see Changed). This relaxes a
+  protective cut-off on purpose, as SD-022 asks. It stays locked until a
+  person releases it if switching off failed or the pump ran again, if the level was low again
+  within an hour of the last self-release, if the level jumped while
+  locked, and for a lock saved by an older version or with anything else
+  stored with it; the inlet, EC and pH locks never release themselves.
+  Residual risk: a level sensor that reads a refilled tank that is not
+  can release the lock while the tank is still low; a jump of more than
+  20 L in 5 minutes holds it, a slow drift, a small tank, a wrong reading
+  during a refill or right after a restart do not (SD-067).
 
 Hardening, without a vulnerability behind it:
 
+- **A Stop holds even when booking the running dose fails** (RAT-036):
+  a Stop booked the running dose and ended the job before it switched the
+  inlet, the circulation pump and the sockets off. An error while booking
+  left them on and the Stop unsaved, and the app showed an internal error.
+  Now the Stop takes effect, everything goes off and the Stop is saved
+  first; the gateway refuses any start meanwhile. A dose that cannot be
+  booked is dropped, so nothing of it runs or is booked later, and the log
+  says "Emergency stop: dose not fully counted" with the bottle, what to
+  check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
   page in use; now a page in use renews it (`GET /auth/session` sends it

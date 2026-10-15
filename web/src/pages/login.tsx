@@ -11,6 +11,8 @@ import { Banner, Field } from "../ui";
 
 export function Login() {
   const first = !info.value?.hasPassword;
+  const needsCode = first && !!info.value?.setupCode;  // only who can read the hub's log sets the first password (#79)
+  const [code, setCode] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export function Login() {
     if (first && pw !== pw2) return setErr(t("login.mismatch"));
     setBusy(true);
     try {
-      await post(first ? "/auth/setup" : "/auth/login", { password: pw });
+      await post(first ? "/auth/setup" : "/auth/login", needsCode ? { password: pw, code } : { password: pw });
       await afterLogin();
     } catch (x) {
       setErr(errorText(x));
@@ -57,6 +59,11 @@ export function Login() {
               <h2>{t("setup.start.h")}</h2>
               <p class="muted">{t("login.firstText")}</p>
             </div>
+            {needsCode && (
+              <Field label={t("login.code")} hint={info.value?.platform.kind === "home-assistant" && <span class="muted">{t("login.codeHintHa")}</span>}>
+                <input class="input" style="font-family:var(--mono)" type="text" autoComplete="one-time-code" autoCapitalize="characters" autoCorrect="off" spellcheck={false} value={code} onInput={(e) => setCode((e.target as HTMLInputElement).value)} required name="code" />
+              </Field>
+            )}
             <Field label={t("login.newPassword")} hint={t("login.minLength")}>
               <input class="input" type="password" autoComplete="new-password" value={pw} onInput={(e) => setPw((e.target as HTMLInputElement).value)} required minLength={8} name="password" />
             </Field>

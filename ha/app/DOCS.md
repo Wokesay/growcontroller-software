@@ -52,11 +52,14 @@ the sensors from it and shows them with growcontroller's checks.
    Assistant's IP address or `homeassistant.local`; other names (your own
    domain, Home Assistant Cloud) are refused, which protects against
    websites that try to reach devices in your network.
-5. **Set a password for growcontroller right away.** It is
-   growcontroller's own login, separate from Home Assistant's. Until it is
-   set, anyone in your network who opens the page first could set it. If
-   the page asks you to sign in although you never set a password,
-   someone else did: uninstall the app and install it again.
+5. **Set a password for growcontroller.** It is growcontroller's own
+   login, separate from Home Assistant's. The page first asks for a
+   **setup code**: open Settings → Apps → growcontroller → **Log** and take
+   the newest line "Setup code for the first password: …" (upper or lower
+   case, dashes optional). Only Home Assistant's administrators, and apps
+   they gave that right, can read the log, so nobody else in your network
+   can set the password first. Do not share the code. It works once; every
+   restart of the app makes a new one.
 6. A short introduction opens: name, language and colour scheme, one
    sensor per measurement, and per area whether the app is to do it
    automatically one day or it stays outside the control (in Home
@@ -77,8 +80,17 @@ Supervisor and gets its access from it. No token is needed.
 - growcontroller keeps its data (configuration, history, events, the hash
   of its password) in the app's own folder. Home Assistant's backups
   include it.
-- Uninstalling the app may delete that folder; keep a backup if you want
-  it later.
+- Uninstalling the app deletes that folder; keep a backup if you want it
+  later.
+- Before you update the app, make a backup of it. Home Assistant offers
+  this in the update dialog; check that it is switched on. The app is
+  experimental, and a new version can have faults.
+- If a new version does not work, restore that backup under **Settings →
+  System → Backups**. What changed since the backup is lost. Installing
+  the app again does not help: it installs the same new version. Keep
+  automatic updates for the app off (they are off unless you switched
+  them on); otherwise Home Assistant can install the faulty version again
+  after the restore.
 
 ## Security
 

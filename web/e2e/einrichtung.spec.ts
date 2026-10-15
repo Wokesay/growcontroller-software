@@ -137,20 +137,56 @@ test("Setup: a pH calibrated outside the hub needs nothing here and is no missin
   await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
     const res = await route.fetch();
     const cat = await res.json();
-    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"] };
+    // Offering a calibration too, it still shows once, as calibrated elsewhere, never as a probe to calibrate here
+    cat.deviceClasses.ha_ph = { label: "pH aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.ph"], calibrations: ["ph"], externalCalibration: true };
+    // Looks the same but the hub does not say so: the setup does not guess (#71)
+    cat.deviceClasses.ph_unsaid = { label: "pH ohne Angabe", stage: 0, attach: "ha", provides: ["measure.ph"], externalCalibration: false };
+    // Calibrated elsewhere too, but a temperature needs no calibration at all, as in the hub
+    cat.deviceClasses.ha_water_temp = { label: "Wassertemperatur aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.water_temp"], externalCalibration: true };
     await route.fulfill({ response: res, json: cat });
   });
   await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") return route.continue();
     const res = await route.fetch();
     const cfg = await res.json();
-    cfg.devices = [...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")), { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" }];
+    cfg.devices = [
+      ...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")),
+      { id: "ha.sensor.grow_ph", class: "ha_ph", name: "pH aus Home Assistant" },
+      { id: "ha.sensor.other_ph", class: "ph_unsaid", name: "pH ohne Angabe" },
+      { id: "ha.sensor.water", class: "ha_water_temp", name: "Wassertemperatur aus Home Assistant" },
+    ];
     await route.fulfill({ response: res, json: cfg });
   });
   await login(page);
   await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByTestId("external-probe")).toHaveCount(1);
   await expect(page.getByTestId("external-probe")).toHaveText("pH aus Home Assistant: wird außerhalb des Hubs kalibriert – hier nichts zu tun.");
+  await expect(page.getByText("pH-Sonde (Puffer 7 und 4)")).toHaveCount(0);
   await expect(page.getByText(/Keine pH\/EC-Sonde/)).toHaveCount(0);
+});
+
+test("Setup: a temperature from Home Assistant is no probe; without pH, EC or level the hint to measure pH by hand shows (#71)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await page.route(/\/api\/v1\/catalog(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const cat = await res.json();
+    cat.deviceClasses.ha_water_temp = { label: "Wassertemperatur aus Home Assistant", stage: 0, attach: "ha", provides: ["measure.water_temp"], externalCalibration: true };
+    await route.fulfill({ response: res, json: cat });
+  });
+  await page.route(/\/api\/v1\/config(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const cfg = await res.json();
+    cfg.devices = [
+      ...cfg.devices.filter((d: { class: string }) => !d.class.startsWith("head_")),
+      { id: "ha.sensor.water", class: "ha_water_temp", name: "Wassertemperatur aus Home Assistant" },
+    ];
+    await route.fulfill({ response: res, json: cfg });
+  });
+  await login(page);
+  await page.goto("/#/einrichtung?s=4");
+  await expect(page.getByText("Keine pH/EC-Sonde und kein Füllstandssensor erkannt – pH misst du dann von Hand.")).toBeVisible();
+  await expect(page.getByTestId("external-probe")).toHaveCount(0);
 });
 
 test("Read-only trial (Home Assistant): after the password a short introduction opens, not the setup for dosing hardware (SD-037)", async ({ page, request }) => {
@@ -223,6 +259,47 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
   await expect(page.getByTestId("welcome-skip")).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Home Assistant app: the first password needs the setup code from the app's log; a wrong one is named (#79)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  await page.goto("/");
+  await expect(page.locator("input[name=password2]")).toBeVisible();
+  await expect(page.locator("input[name=code]")).toHaveCount(0);  // the simulator asks for none
+  // gc_ha_server prints a code at the start and asks for it; here the simulator's answers are changed to look like that
+  await asHomeAssistant(page, "ok");
+  const printed = "K7QF-M2XP-9WTB-H4NC";
+  const sent: { password?: string; code?: string }[] = [];
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    info.platform = { kind: "home-assistant", simulated: false, readOnly: true };
+    info.setupCode = !info.hasPassword;
+    await route.fulfill({ response: res, json: info });
+  });
+  await page.route(/\/api\/v1\/auth\/setup$/, async (route) => {
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    if ((body.code ?? "").replace(/[\s-]/g, "").toUpperCase() !== printed.replaceAll("-", ""))
+      return route.fulfill({ status: 403, json: { error: { key: "auth.code", text: "Setup code missing or wrong" } } });
+    return route.continue({ postData: JSON.stringify({ password: body.password }) });
+  });
+  await page.reload();
+  const code = page.getByLabel("Einrichtungscode");
+  await expect(code).toBeVisible();
+  await expect(page.getByText("Einstellungen › Apps › growcontroller › Protokoll, in der neuesten Zeile", { exact: false })).toBeVisible();
+  await code.fill("2222-2222-2222-2222");
+  await page.locator("input[name=password]").fill("mein-passwort");
+  await page.locator("input[name=password2]").fill("mein-passwort");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page.getByText("Einrichtungscode fehlt oder stimmt nicht")).toBeVisible();
+  await expect(page).not.toHaveURL(/#\/willkommen/);
+  // Typed as it is read off the log: lower case, spaces between the groups
+  await code.fill(" k7qf m2xp 9wtb h4nc ");
+  await page.getByRole("button", { name: "Passwort festlegen" }).click();
+  await expect(page).toHaveURL(/#\/willkommen/);
+  expect(sent.map((b) => b.code)).toEqual(["2222-2222-2222-2222", " k7qf m2xp 9wtb h4nc "]);
+  expect(sent.every((b) => b.password === "mein-passwort")).toBe(true);
 });
 
 test("Read-only trial (Home Assistant): the introduction can be skipped; nothing is chosen then", async ({ page, request }) => {
@@ -408,6 +485,13 @@ test("Home Assistant: a sensor the hub does not suggest can be chosen from the o
   await expect(others.getByRole("button", { name: /Selbstbau Feuchte/ })).toBeEnabled();
   const not = page.getByTestId("ha-others-not");
   await expect(not.locator("summary")).toHaveText("Passt nicht zu Luftfeuchte (3) – mit Grund");
+  // Tab reaches the folded list inside the dialog (#105)
+  let reached = false;
+  for (let i = 0; i < 30 && !reached; i++) {
+    await page.keyboard.press("Tab");
+    reached = await not.locator("summary").evaluate((el) => el === document.activeElement);
+  }
+  expect(reached).toBe(true);
   await expect(not.getByRole("button", { name: /Handy Akku/ })).not.toBeVisible();
   await not.locator("summary").click();
   await expect(not.getByRole("button", { name: /Handy Akku/ })).toBeDisabled();
@@ -733,6 +817,7 @@ test("Home Assistant: a sensor gets a sign of life; its age then counts from the
   await expect(row.locator(".age")).toHaveClass(/age-fresh/);
   ageMs = 45000;
   await expect(row.locator(".age")).toHaveText("gemessen vor 45 s", { timeout: 10000 });
+  expect(await row.locator(".age").textContent()).toBe("gemessen vor 45\u00a0s");  // number and unit stay on one line (#106)
   await expect(row.locator(".age")).toHaveClass(/age-late/);
   await expect(row.locator(".age")).toHaveAttribute("title", "über 30 s alt");
   // In whole seconds rounded half up: 30.499 s is still green, 30.5 s is yellow, 60 s red

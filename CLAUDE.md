@@ -18,8 +18,9 @@ Product, hardware and business live in the private product repository
 - **Unclear what is meant** → ask.
 - Claude talks to the project owner in German, short, and ends each
   answer with the next 2–3 steps. Everything written to this repository
-  and to GitHub is English (PD-034): docs, code, commits, PRs, issues,
-  releases.
+  and its GitHub pages is English (PD-034): docs, code, commits, PRs,
+  issues, releases. Notes for the product repository are German, like
+  that repository (SD-069).
 
 ## Decisions and tasks for the project owner
 
@@ -41,20 +42,25 @@ Product, hardware and business live in the private product repository
 - At the end of each work phase: a complete list of all open items with
   their status.
 
-## Product decisions (PD-100, SD-029)
+## Product decisions (PD-100, SD-029, SD-069)
 
-- The software is worked on in a session of its own with access to this
-  repository only. The product repository's session works on hardware and
-  product and is the only place where product decisions (PD-xxx) are
-  written, so PD numbers do not collide. This session does not access the
-  product repository.
+- The software is worked on in a session of its own. The product
+  repository's session works on hardware and product and is the only
+  place where product decisions (PD-xxx) are written, so PD numbers do not
+  collide.
 - Product requirements arrive as English issues in this repository.
   When a requirement comes from a PD, Claude records it as an SD
   "Product requirement (from PD-xxx)" (as SD-028 does for #20).
 - When Claude runs into a product question, it names the question in the
-  issue and to the project owner and does not write a PD. The project
-  owner takes it to the product repository's session, where it is
-  decided and recorded.
+  issue and to the project owner, and does not decide it.
+- Claude takes the question to the product repository
+  `Wokesay/growcontroller` itself (SD-069). It opens a pull request to
+  `docs/notizen/fragen-aus-der-software.md` there, in German, with
+  context, options and a recommendation.
+- Claude writes nothing else there: no PD, no other file, no merge. The
+  product repository's session decides and records it.
+- Claude attaches the product repository only for this, and only with the
+  project owner's approval of the access.
 - Claude assigns SD and RAT IDs in this repository. The private mapping of RAT IDs
   to their sources is kept in the product repository.
 - Several sessions work in parallel, so a new SD or RAT ID is final only on

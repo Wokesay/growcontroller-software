@@ -18,7 +18,8 @@ export function num(v: number | null | undefined, decimals = 1): string {
     f = new Intl.NumberFormat(locale(), { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     nf.set(key, f);
   }
-  return f.format(v);
+  // -0.3 rounds to "-0", which is no value of its own; drop the sign then
+  return f.format(v).replace(/^[-\u2212](0(?:[.,]0+)?)$/, "$1");
 }
 
 // A plain number in the language of the page (5,8 / 5.8), with as many
@@ -37,13 +38,15 @@ export function ago(seconds: number | null | undefined): string {
   return t("common.daysAgo", { n: Math.round(seconds / 86400) });
 }
 
+// Number and unit are joined by a no-break space, so a line never breaks between them (#106)
 export function duration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s} s`;
+  const nb = "\u00a0";
+  if (s < 60) return `${s}${nb}s`;
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (m < 60) return r ? `${m} min ${r} s` : `${m} min`;
-  return `${Math.floor(m / 60)} h ${m % 60} min`;
+  if (m < 60) return r ? `${m}${nb}min ${r}${nb}s` : `${m}${nb}min`;
+  return `${Math.floor(m / 60)}${nb}h ${m % 60}${nb}min`;
 }
 
 const dtfs = new Map<string, Intl.DateTimeFormat>();

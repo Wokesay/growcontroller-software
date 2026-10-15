@@ -56,9 +56,11 @@ the add-on store (SD-034):
    it by Home Assistant's IP address or `homeassistant.local`: any other
    name (a bare `homeassistant`, an own domain, the Home Assistant Cloud
    address) is refused, the protection against DNS rebinding below.
-4. **Set the password right away:** until then anyone in the network who
-   opens the page first can set it. Then choose the sensors in Devices ›
-   Assignment (step 6 below).
+4. **Set the password:** the page first asks for the setup code, in the
+   newest line "Setup code for the first password: …" of the app's **Log**
+   tab (Settings → Apps → growcontroller → Log), so nobody else in the
+   network can set it first (#79, SD-068). Then choose the sensors in
+   Devices › Assignment (step 6 below).
 
 Nothing is configured and no token is made: `gc_ha_server --app` reaches
 Home Assistant at `http://supervisor/core` with the Supervisor's token
@@ -429,7 +431,13 @@ time is no value.
   catalog data, so the catalog cannot loosen a check (R7). The sensor truth
   shows such pH, EC and level values but keeps them unusable for control;
   the resolver says so instead of asking for a calibration, and the hub
-  refuses its own calibration for such devices.
+  refuses its own calibration for such devices. `GET /api/v1/catalog`
+  states the mark for every class, so the setup shows such a device as
+  calibrated elsewhere without guessing it (#71).
+- A state is a value only as a plain decimal number (`6.2`, `-0.5`,
+  `1e-05`); a space, a leading plus, a comma, hex or `inf` gives no value
+  and the fault "is no plain number", never a guess (RAT-006, #71). Text from Home Assistant in a name or a fault keeps
+  only printable, well-formed UTF-8.
 - A raw signal has a class of its own, `ha_ph_raw` (SD-041): it offers the
   pH calibration and is not marked `externalCalibration`, also set in code.
   The bus turns the voltage into the hub's raw pH scale (`kNernstMvPerPh`);
@@ -579,12 +587,13 @@ time is no value.
 - **The app's web app is plain HTTP on port 8099 of the Home Assistant
   host,** reachable by every device in your network (and, with a router
   that opens the host over IPv6, from outside); the growcontroller
-  password travels in the clear there. Until the password is set, whoever
-  in the network comes first sets it; the app's documentation says to set
-  it right away. Clearing the port hides the web app from the network,
-  not from Home Assistant's internal network. Home Assistant's ingress
-  (its own login and HTTPS) would need the web app to work below a path;
-  that is a follow-up, like a one-time setup code in the app's log (#79).
+  password travels in the clear there. The first password needs the
+  one-time setup code the app prints to its log, which only Home
+  Assistant's administrators read, so nobody else in the network can set
+  it first (#79, SD-068). Clearing the port hides the web app from the
+  network, not from Home Assistant's internal network. Home Assistant's
+  ingress (its own login and HTTPS) would need the web app to work below a
+  path; that is a follow-up.
 - **The Supervisor's token is not read-only:** Home Assistant has no
   read-only access for apps; the Supervisor passes every call except its
   own API on to Home Assistant as its administrator. growcontroller sends
@@ -597,9 +606,6 @@ time is no value.
 - The session cookie is not tied to the port: the browser also sends it
   to Home Assistant and other apps under the same host name. It is
   HttpOnly and only valid for growcontroller.
-- When the app starts while Home Assistant's integrations are still
-  connecting, sensors whose devices answer later than the first ones are
-  logged as "back", though nothing said they were gone.
 - If the Supervisor ever refuses the token, reading stops until the app
   is restarted, while the app keeps answering (so its watchdog sees no
   fault), and the web app's hint speaks of a token file. A follow-up

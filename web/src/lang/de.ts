@@ -58,10 +58,11 @@ export const deBase = {
   "login.source": "Quellcode (AGPL-3.0-or-later)",
   "common.step": "Schritt {n} von {total}",
   "common.justNow": "gerade eben",
-  "common.secondsAgo": "vor {n} s",
-  "common.minutesAgo": "vor {n} min",
-  "common.hoursAgo": "vor {n} h",
-  "common.daysAgo": "vor {n} Tagen",
+  // Number and unit joined by a no-break space (#106)
+  "common.secondsAgo": "vor {n}\u00a0s",
+  "common.minutesAgo": "vor {n}\u00a0min",
+  "common.hoursAgo": "vor {n}\u00a0h",
+  "common.daysAgo": "vor {n}\u00a0Tagen",
   "common.language": "Sprache",
 
   // Navigation

@@ -141,8 +141,12 @@ ApiResponse Api::route(const ApiRequest& req) {
     if (hub_.credentialsLost())
       return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
     const Auth before = hub_.auth();
-    Msg e = hub_.auth().setInitialPassword(jstr(body, "password"));
-    if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : 422, e.key, e.text);
+    const Ms now = clock_.nowMs();
+    Msg e = hub_.auth().setInitialPassword(jstr(body, "password"), jstr(body, "code"), now);
+    const bool wrongCode = hub_.auth().wrongSetupCodes() > before.wrongSetupCodes();
+    if (wrongCode && hub_.auth().logWrongSetupCode(now))
+      hub_.logEvent("auth", "warn", say("ev.auth.code_wrong"), say("ev.auth.code_wrong.text", {{"count", hub_.auth().wrongSetupCodes()}}));
+    if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : wrongCode ? 403 : 422, e.key, e.text);
     // auth.json first, on disk; only then the lock against a second setup (#68).
     // Not saved: nothing is set, so setup stays possible once the card takes it.
     if (!hub_.saveAuth()) {
@@ -150,9 +154,11 @@ ApiResponse Api::route(const ApiRequest& req) {
       return fromResult(Result::fail(500, say("store.failed")));
     }
     hub_.markPasswordSet();
-    hub_.logEvent("auth", "info", say("ev.auth.password_set"), say("ev.auth.first_setup"));
+    const std::int64_t wrong = hub_.auth().wrongSetupCodes();
+    hub_.logEvent("auth", wrong > 0 ? "warn" : "info", say("ev.auth.password_set"),
+                  wrong > 0 ? say("ev.auth.first_setup_wrong", {{"count", wrong}}) : say("ev.auth.first_setup"));
     Msg err;
-    auto tok = hub_.auth().login(jstr(body, "password"), clock_.nowMs(), err, req.client);
+    auto tok = hub_.auth().login(jstr(body, "password"), now, err, req.client);
     ApiResponse r = jsonResp(200, {{"ok", true}});
     if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS));
     return r;
@@ -206,7 +212,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     return r;
   }
   if (is("POST", {"config", "import"})) return fromResult(hub_.importConfig(body));
-  if (is("GET", {"catalog"})) return jsonResp(200, hub_.catalog().raw);
+  if (is("GET", {"catalog"})) return jsonResp(200, hub_.catalog().forApi());
   if (is("GET", {"changelog"})) {
     ApiResponse r;
     r.contentType = "text/markdown; charset=utf-8";

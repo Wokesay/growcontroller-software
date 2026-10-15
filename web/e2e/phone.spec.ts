@@ -155,6 +155,20 @@ test("The setup fits the phone's screen in every step; its footer leaves the sim
   }
 });
 
+test("The Home Assistant app's first-password page with its setup code fits the phone's screen (#79)", async ({ page, request }) => {
+  await scenario(request, "neu");
+  // gc_ha_server asks for a code; here the simulator's answer is changed to look like that
+  await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const info = await res.json();
+    await route.fulfill({ response: res, json: { ...info, platform: { kind: "home-assistant", simulated: false, readOnly: true }, setupCode: true } });
+  });
+  await page.goto("/");
+  await expect(page.locator("input[name=code]")).toBeVisible();
+  await page.locator("input[name=code]").fill("K7QF-M2XP-9WTB-H4NC");
+  await fits(page, "first password with the setup code");
+});
+
 test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", async ({ page, request }) => {
   await scenario(request, "demo");
   await page.goto("/");
@@ -177,6 +191,15 @@ test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", as
   await expect(page.getByRole("dialog").locator("input").first()).toBeVisible();
   await check("bottle dialog");
   expect(await offScreen(page), "bottle dialog").toEqual([]);
+  // The question before removing a bottle, and the answer for one a recipe still uses (#120)
+  await page.keyboard.press("Escape");
+  await page.locator(".rtable tbody tr").filter({ hasText: "pH−" }).getByRole("button", { name: "„pH−“ entfernen" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Kanister entfernen?" })).toBeVisible();
+  expect(await offScreen(page), "remove dialog").toEqual([]);
+  await page.keyboard.press("Escape");
+  await page.locator(".rtable tbody tr").filter({ hasText: "Teil A" }).getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Kanister wird noch gebraucht" })).toBeVisible();
+  expect(await offScreen(page), "bottle in use dialog").toEqual([]);
 });
 
 // A device that sends nothing is one problem (#107); it names its sign of

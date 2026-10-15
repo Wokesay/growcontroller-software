@@ -63,6 +63,9 @@ class Hub {
   // Passwort war gesetzt, auth.json fehlt aber: kein Setup über das Netz.
   bool credentialsLost() const { return cfg_.system.passwordSet && !auth_.hasPassword(); }
   void markPasswordSet();
+  // The platform shows the code to its owner alone (#79); "" when a password
+  // is set or its credentials are lost (setup is refused then anyway).
+  std::string armSetupCode(Ms validFor = 0);
   Auth& auth() { return auth_; }
   IUpdater* updater() { return updater_; }
 
@@ -157,6 +160,7 @@ class Hub {
   void finishJob(const std::string& state, Msg m);
   json jobJson() const;  // {job, lastJob}: job ist leer, wenn der Auftrag gerade fertig wurde
   double tankVolume() const;
+  void endFailedMix();
   bool userJobActive() const { return job_ && (job_->state == "running" || job_->state == "waiting_user" || job_->state == "mixing"); }
   std::string newId(const std::string& prefix);
   void detectDevices();
@@ -200,10 +204,10 @@ class Hub {
   std::vector<PortReport> ports_;
   PumpMap pumps_;
   std::set<std::string> seenOnline_;
-  // The first devices seen after a start are not "back"; devices that answer
-  // after them are, and so is every device after all were offline at once
-  // (Home Assistant restarting).
-  bool anyOnlineSinceStart_ = false;
+  // Devices logged as not responding since the start. Only they are "back"
+  // when they answer again, so a start logs no "back", however the devices
+  // come up one after another (#115).
+  std::set<std::string> reportedLost_;
 
   std::optional<Job> job_;
   std::optional<Job> lastJob_;

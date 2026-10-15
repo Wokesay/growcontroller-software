@@ -6,9 +6,16 @@ UI can do, an integration can do as well.
 
 ## Access
 
-- `GET /info` is public: version, platform, whether a password is set.
-- `POST /auth/setup {password}` sets the initial password, exactly once
-  (otherwise 409). At least 8 characters.
+- `GET /info` is public: version, platform, whether a password is set and
+  whether the first password needs a setup code (`setupCode`, #79).
+- `POST /auth/setup {password, code}` sets the initial password, exactly
+  once (otherwise 409). Where the platform armed a setup code (the Home
+  Assistant app prints it to its log, SD-068), `code` from the JSON body
+  must match it, in any case and with or without dashes, or the answer is
+  403 `auth.code`, the same for a missing and a wrong code; wrong codes
+  lock nobody out and are logged at most once per 15 min. Then at least 8
+  characters (422). The checks run in this order, so nothing is hashed
+  before the code is right; with lost credentials the answer is 423.
 - `POST /auth/login {password}` sets the cookie `gc_session` (HttpOnly,
   SameSite=Strict). After 5 failed attempts the answer is 429 with a wait
   time (30 s, doubling up to 15 min). The count is per client (SD-051): an
@@ -53,10 +60,10 @@ UI can do, an integration can do as well.
 
 | Method | Path | Content |
 |---|---|---|
-| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock, cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
+| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock (ml per bottle, `null` when unknown, below zero when more was booked than entered, SD-066), cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
-| GET | `/catalog` | catalog of the firmware |
+| GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
 | GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
 | GET | `/events?type&from&to&limit` | events, newest first |
 | GET | `/export.csv?series&from&to` | CSV |
@@ -76,7 +83,7 @@ UI can do, an integration can do as well.
 | POST | `/roles/{rolle}/switch` `{on}` | manual operation, with all locks (otherwise 409 with the reason) |
 | PUT | `/tank` | name, usable volume, minimum level, water, volume without a level head |
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
-| POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock |
+| POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
 | POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |

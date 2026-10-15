@@ -218,7 +218,8 @@ repository itself are recorded here in full.
   itself once a valid level is back above the minimum level plus a margin;
   the release is reported.
 - Dry run, emergency limit and latches with an unknown cause still hold
-  until acknowledged (RAT-051, RAT-062, RAT-063). Not implemented yet.
+  until acknowledged (RAT-051, RAT-062, RAT-063). Implemented for the
+  circulation pump with SD-067 (#27); the inlet waits for a product answer.
 
 
 ## SD-023: Product requirement (from PD-045): who merges
@@ -408,13 +409,15 @@ repository.
 - The software is worked on in a session of its own with access to this
   repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
-  written, so PD numbers do not collide.
+  written, so PD numbers do not collide. Changed by SD-069: it attaches
+  the product repository for its product questions only.
 - Product requirements arrive as English issues in this repository. A
   requirement that comes from a PD is recorded here as "Product
   requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
-  repository's session.
+  repository's session. Changed by SD-069: the software session takes it
+  to the product repository itself.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -1373,6 +1376,9 @@ customer and a grower.
   polish block and then M1; the other software session does not touch
   these topics. SD numbers are
   taken right before the pull request opens, after a look at `main`.
+- Changed by SD-065: the project owner's test comes in two parts, before
+  "mergen" with the release branch's server and after the tag with the
+  published app.
 
 
 ## SD-056: Menu grouped by topic; pages without automation say "manual"
@@ -1928,6 +1934,467 @@ question at a time: `ux` asked during the polish for 0.1.0-proto.5
   the wall loses its session while still showing live values); a session
   kept for a fixed 30 days on a device (signing in again each month, and a
   lost phone stays signed in that long).
+
+
+## SD-065: The owner's acceptance test of a release with the Home Assistant app comes in two parts
+
+Decided by the project owner on 2026-10-13 in the software session.
+`release` found that SD-055's test "before the tag" cannot be done in
+full: the app image is published only for a `v*` tag (`release.yml`),
+and Home Assistant cannot build it itself, since `ha/app/Dockerfile`
+needs the whole repository.
+
+- **Part one, before "mergen" of the release pull request:** the release
+  branch's server runs against the project owner's real Home Assistant
+  with a token, as `docs/HOME_ASSISTANT.md` describes. The owner checks
+  the password, the sensors, a restart with the same data folder, and
+  what the release brings; the release pull request lists these checks.
+  For 0.1.0-proto.5: a sign of life, a raw pH calibration (swapped
+  buffers refused with the reason) and the phone (the app opens at
+  100 %). Automatic updates of the app stay off on the owner's Home
+  Assistant (they are off unless switched on), so part two's update is a
+  deliberate one, with a backup made first.
+- **The risk between the parts:** from the merge on, `config.yaml` on
+  `main` offers the new version to every installed app (SD-034), before
+  part two has passed. The app's documentation, which Home Assistant
+  shows (`ha/app/DOCS.md`), and the release notes therefore ask users to
+  make a backup of the app before updating.
+- **Part two, right after `publish`:** `docker buildx imagetools inspect`
+  lists both architectures; a backup of the previous version first, then
+  the update from the store keeps password, sensors and history; a fresh
+  install on a second host; a restart keeps the data; another device
+  guessing the password does not lock out the phone, which also shows
+  that the app sees each device's own address through Home Assistant's
+  port mapping (SD-051); a new backup holds the new version, and its
+  entry for the app is not empty.
+- **If part two fails:** a fixing release (the next `-proto.N`) follows at
+  once, and the release notes and an issue tell users to keep automatic
+  updates off until then. Users who made a backup before updating restore
+  it and lose what they changed since; a restore pulls the backed-up
+  version's image again, so a published image is never deleted. A
+  reinstall is no way back: `main` already carries the failed version,
+  and removing the app deletes its data.
+- Changes SD-055's "before the tag".
+- Not chosen: a test image published before the tag under its own name (a
+  second way to publish, to be reviewed by `security`); the whole test
+  only after the tag.
+
+
+## SD-066: Product requirement (from PD-187 to PD-190): one dosing pump type with speed stages, feedback and an ID chip
+
+Recorded on 2026-10-13 from #132 (SD-029). The project owner decided in
+the software session to plan it now and build it after 0.1.0-proto.5 as
+part of M1, simulator first. `domain` checked the requirement against
+`RATIONALE.md` and `INVARIANTS.md`. The issue holds the full behaviour.
+This entry says how the software fits it to the existing rules. Where a
+point reads a product decision, it is the software's proposal until the
+product side answers the question named with it (Q1 to Q16, below).
+
+- **The requirement in short:** one 12 V peristaltic pump type with a
+  built-in driver, a speed signal and speed feedback as pulses, about
+  20:1 (the first candidate about 10:1), doses from about 0.5 ml to 4 L
+  and the shortest dose about 2.5 s; 10 pump ports; an ID chip in each
+  module with identity, calibration, product and tubing counter; the
+  module sits on the nutrient container; third-party 12 V pumps run
+  on/off at full speed without feedback or chip. Booking stays as PD-147
+  says: a fixed end, booked before the start, an interrupted run counts
+  as run; the feedback only checks.
+- **A long dose is a job of short runs** (proposed until Q4 is answered).
+  "Up to about 20 min" applies to a dose as a job. Each run keeps its
+  fixed end of at most 60 s (`kHardMaxRunS`) and the pause after it, as
+  mixing already does (RAT-055). If control stops sequencing a dose
+  midway (it loses the job's state, or a stop command does not reach the
+  output), the run's fixed end stops the running run and no further run
+  starts: at most one run goes in (about 200 ml at 200 ml/min), not the
+  whole dose. If the whole firmware hangs, the board watchdog cuts the
+  pumps (#94). A dropped connection to the app is not such a case: the
+  job runs to its end (PD-161). All of this holds only while the per-run
+  cap works, and on board v0.1 it runs in the same firmware (PD-160): a
+  firmware that keeps running but does not end a run, or an output stage
+  stuck on, has no cut-off in hardware. Against a stuck output stage the
+  new pump has a second stop path, the speed signal at standstill (to be
+  confirmed on samples, as some drivers run at full speed without a
+  signal), and the current check below switches the group off; a
+  third-party pump has only the current check. Control rounds keep their
+  6 partial runs (RAT-055); a slower stage means more runs. Not chosen:
+  one run of up to 20 min, which would change RAT-007, RAT-018 and
+  RAT-055 and could put 4 L into the tank on one failed end.
+- **Two separate bookings** (proposed until Q5 is answered). The safety
+  budget is booked at the 100 % rate times the planned run time before
+  the run starts, and an interrupted run counts in full (PD-147). Stock,
+  consumption and mix progress are booked at the stage's rate times the
+  actual run time (RAT-040, RAT-070). Before the first run, the worst
+  case of the whole job (every run and every part of a pair at the
+  100 % rate) must fit the budget, so the budget never cuts a pair after
+  part A (RAT-054). Budget and minimum pause survive a restart, a Stop
+  and a clock step (SD-028). Not chosen: one booking for both, which
+  would take up to the stage ratio (10–20 times) too much off the stock,
+  or break the catch-up of a pair (RAT-054).
+- **Saving bookings during a long job** (proposed until Q16 is
+  answered). SD-045 says a write waits for the job's end, because a
+  flash write can hold up the sign of life while a pump runs. A job of
+  20 min would then save nothing until its end. Proposed: each run's
+  booking is saved in the pause before it, with no pump running, so a
+  restart mid-job knows what went in (RAT-003, RAT-054). This would
+  change SD-045 for this case. If the answer is no: the whole job's
+  worst case is booked once before the first run, the result is saved at
+  the job's end, and after a restart mid-job the progress and the stock
+  are unknown (RAT-015): reported, the stock left for the user to
+  confirm, and neither resumed nor caught up without the user.
+- **A slow stage only within the dose's upper bound.** The worst case is
+  the duration times the 100 % rate. A lower stage only lasts longer, so
+  if the highest stage that reaches the minimum run time fails, every
+  stage fails: the dose is refused with the reason, never dosed outside
+  the bound. Proposed bounds (Q1): for pH the RAT-050 cap, which keeps
+  own pH doses within 0.3 pH, the reason they stay unannounced (RAT-042);
+  for an EC round the largest EC step (RAT-056), shared across the parts;
+  for a hand dose the hand-dose cap (RAT-039). **A mix part has no bound
+  today** apart from 200 runs per step: if its bound were the planned
+  amount, no slow stage could ever be used for a mix. Its bound is open
+  (Q1), for example the planned amount plus one EC step (RAT-056) or the
+  alarm margin (RAT-033).
+- **What the bound means for small tanks,** at a 100 % rate of about
+  200 ml/min and the start effect for pH (RAT-050):
+  - Automatic pH dosing is refused below about 56 L with a minimum run
+    time of 1.0 s, and below about 139 L with 2.5 s, the shortest dose
+    #132 names. pH control cannot learn a weaker effect without dosing,
+    so below that size it never starts. Today's pumps (42–53 ml/min)
+    work from about 12–15 L. What decides it is the 100 % rate of the
+    module, not the number of stages (Q2).
+  - With 2.5 s, a hand dose at the default cap of 5 ml is never possible
+    (5 ml at full speed lasts 1.5 s; any slower stage has a worst case
+    of at least 8.3 ml), an EC round with three parts fails below about
+    7–10 L, and a 5 L mix that needs 5 ml of a part is refused unless
+    the mix bound allows more. A default cap above 5 ml would change
+    RAT-039 (product repository).
+- **Calibration per stage.** Until Q6 is answered, only calibrated
+  stages are used, and never beyond the support points (#132). Without
+  a rate at 100 % there is no dose at any stage (R5, RAT-015, PD-015).
+  Today's single calibration value counts as one stage at 100 %, so
+  existing setups keep working. Setup calibrates only the stages the
+  tank size needs; when one pump of a pair is recalibrated, it offers the
+  partner too (RAT-054). Runs before any calibration (prime, calibration
+  run, test run) are capped by a ceiling per pump type in code; a value
+  from the chip can only tighten it (R7, Q7).
+- **The dose ends by the timer** (PD-147); ending it by revolution count
+  is not decided (Q13). The feedback checks every run. #132 asks: no
+  pulses stop the dose (whether it also latches is Q11), clearly too fast
+  stops the dose, any other deviation is reported. `domain` adds: pulses
+  at speed 0 or clearly too fast latch the pump until the user
+  acknowledges it (RAT-062); after any deviation the round counts as not
+  clean (RAT-057); a run stopped for no pulses counts in full for the
+  budget, and stock and progress take its actual time, as for any
+  interrupted run (RAT-070). The volume from revolutions is compared
+  with the stock booking and only reported. These checks get rows in
+  `INVARIANTS.md` with step 5, citing this entry.
+- **Speed signal at standstill** at boot, on Stop, on an internal error
+  and before every release (R6, RAT-007, RAT-036, PD-077); the firmware
+  sets it before it switches 12 V on. If the board watchdog trips (#94),
+  the firmware may be hung: the board cuts 12 V and, as #132 says, sets
+  the speed signal to standstill itself.
+- **Prime** is capped in ml at the 100 % rate (hose volume plus a
+  margin) instead of the 20 s today, which is 67 ml at 200 ml/min. It is
+  not consumption only where it goes into a cup or fills the tubing
+  (RAT-040, RAT-070). Whether the outlet points into the tank, and
+  whether prime reduces the stock, is Q9; whatever goes into the tank is
+  a dose and stays within that dose's bound (RAT-039, RAT-050).
+- **Stock.** A stock driven below 0 is reported (RAT-015); today the hub
+  stops it at 0 without a report, which step 7 changes. A short part of a
+  pair blocks the whole mix (RAT-054). Whether a short stock warns or
+  blocks, and for which jobs, is Q10.
+- **Current check.** #94 measures the current of the pump group. Current
+  while no pump is switched on switches the group off and latches it
+  until the user acknowledges it (RAT-062), for every pump type.
+- **Third-party pumps** get a device ID of their own per port, so roles
+  still bind to a device ID, never to a port. Their budget uses the
+  calibrated rate times a margin (Q8). Two residual risks for setup to
+  name: a third-party pump moved to another port is driven for that
+  port's role and doses its own liquid in its place, which nothing can
+  detect; and the chip stores the product set at setup but cannot tell
+  which container the module sits on, so a nutrient module put on the
+  pH− container doses acid at the recipe's ml/L. Step 7 asks for the
+  liquid at each container change.
+- **Three-way valve** (#50: it waits while dosing or filling runs).
+  Proposed (Q15): it may move in a pause between runs, and the pause is
+  lengthened to the valve's travel time plus twice the 0.2 s start offset
+  of #50. Otherwise watering waits for the whole mix, about 35–45 min for
+  1,000 L at 200 ml/min, depending on the recipe. Watering would then
+  draw from a tank in the middle of a mix (part A without B, not yet
+  mixed in, before the pH step), which Q15 asks about too.
+- **Settle time in large tanks.** #132 covers mixes up to 1,000 L. In
+  the simulator's mixing model a 1,000 L tank is only about 17 % mixed
+  after the 4 min settle time, so an EC correction would overdose, which
+  cannot be undone (RAT-012). Until a settle time from volume and
+  circulation is measured (RAT-052, product repository), mixing to the
+  target and EC and pH rounds wait at least the model's time to
+  tolerance at that volume with RAT-058's margin, marked as an
+  assumption; configuration can only lengthen it (R7). The expected
+  duration includes all waits.
+- **RAT-007 and RAT-018** name a 90 s cut-off in the dosing block. Board
+  v0.1 has none (PD-160, SD-045). Both entries say so now; the
+  simulator's 90 s check stays for the earlier dosing block only.
+- **Built in steps** (M1, after proto.5, each its own PR with tests):
+  1. Calibration table and stage picker as pure functions in the core,
+     backwards compatible.
+  2. Simulator: speed and pulses on the bus, the board v0.1 pump twin
+     with 10 ports and its faults; existing scenarios stay on today's
+     pump profile. The new bus method for the speed signal joins the R1
+     check in `tools/arch_check.sh`, with a test case.
+  3. Planning uses the picker: mix, EC and pH rounds, hand doses, and an
+     expected duration that includes pauses, waits and settle time.
+  4. Safety limits in a core module that only decides: `Actuators` calls
+     it, and it never calls the bus (R1). It holds 60 s per run; a
+     ceiling per job, counted in pumping time, from the dose's upper
+     bound at the 100 % rate and never below the longest valid job
+     (RAT-018), as the job's fixed end (SD-045); the budget at the 100 %
+     rate; the minimum pause; and the stock at the actual time.
+  5. Feedback checks, latches and the speed signal at standstill.
+  6. ID chip and third-party pumps with the current check.
+  7. Container change: prime in ml, remaining volume, liquid check,
+     tubing counter with the reminder to both pumps of a pair, stock
+     below 0 reported.
+  8. App: stage table from the tank size, expected duration, "Which pump
+     is running?", with `ux`.
+
+  Steps 3 to 7 change when doses are refused, the gateway or protective
+  cut-offs: they need `security` and the project owner's "mergen"
+  (SD-033).
+- **Simulator numbers** for the new pump will be listed as assumptions in
+  `SIMULATOR.md` with step 2, until the samples are measured: the 100 %
+  rate itself (about 200 ml/min, derived from #132), the stage table,
+  rate and spread per pump and stage, start and stop volume, minimum
+  stable speed, pulses per revolution, currents, detection times and
+  tube wear. A 100 % rate of 200 ml/min would make the demo tank
+  (31–40 L) unable to dose pH, which is why existing scenarios keep
+  today's profile.
+- **Open for the product side** (taken there by the project owner,
+  SD-029):
+  - Q1 What is a dose's upper bound per purpose, and for a mix part?
+    Proposed: the existing caps, and for a mix part one of the options
+    above.
+  - Q2 Does pH− (and later pH+) use the same pump? Then automatic pH
+    needs at least about 56 L or 139 L. Proposed: a low-flow module
+    (10–20 ml/min, usable from about 3–6 L at 1.0 s, 7–14 L at 2.5 s).
+  - Q3 Minimum run time of the new pump: 1.0 s or 2.5 s? With 2.5 s the
+    default hand-dose cap needs to change (RAT-039).
+  - Q4 Does "up to about 20 min" mean per run or per job? Proposed: per
+    job.
+  - Q5 Does PD-147's booking cover stock and mix progress too, or only
+    the safety budget? Proposed: only the budget.
+  - Q6 Calibration runs last 10–60 s, doses as little as 1–3.5 s, where
+    start and stop volume dominate. How are short doses calibrated? May
+    stages between support points be filled in, for example from ml per
+    revolution?
+  - Q7 Which ceiling per type applies before any calibration? It lives
+    in code; a value from the chip can only tighten it.
+  - Q8 Budget values and time window: from the tank capacity? What
+    margin for third-party pumps?
+  - Q9 Where does the outlet point during prime and the test run, tank
+    or cup? Does prime reduce the stock?
+  - Q10 Short stock: warn or block? For mixes only, or also EC and pH
+    rounds and hand doses?
+  - Q11 Does "no pulses" latch the pump until acknowledged?
+  - Q12 Tubing counter: what it counts, at which threshold, and stored
+    on the chip (write wear) or on the board?
+  - Q13 May a dose end by revolution count? That would change PD-147.
+  - Q14 Mixing outside the tank, for example in 5 L buckets (open in
+    SD-057).
+  - Q15 May the three-way valve move in a pause between runs, and may
+    watering draw from a tank in the middle of a mix?
+  - Q16 May a booking be saved in the pause between two runs of a job,
+    which changes SD-045's "the write waits for the job's end"?
+- **RAT entries the product side may change later,** depending on the
+  answers: RAT-039 (the hand-dose default, if Q3 is 2.5 s), RAT-040 and
+  RAT-070 (if prime reduces the stock, Q9), RAT-055 (if Q4 is per run),
+  RAT-052 (once settle times are measured). No RAT rule changes with
+  this entry; RAT-007 and RAT-018 only say now what PD-160 decided
+  instead of "still open".
+- **2026-10-14, ahead of step 7:** at the project owner's request, before
+  0.1.0-proto.5, the hub keeps a stock booked below zero and reports it
+  each time it falls below zero, instead of stopping it at 0 without a
+  report. Below zero means at or below -0.5 ml (`kStockBelowZeroMl`), so it
+  shows as at least -1 ml and a rounding difference under 0.5 ml raises no
+  alarm. A stock the user enters is never below zero; an unchanged one
+  still saves, so such a bottle can be renamed, and the bottle editor
+  sends the amount left only when it was changed there. The texts lead
+  with the bottle: if it is empty, change it; otherwise enter the amount
+  left; calibrate the pump again only if it keeps happening. A mix sees
+  the stock as used up. This changes no dose refusal, switching or
+  cut-off, and a mix is refused exactly when it was refused before; the
+  only new refusal is an amount entered below zero (an input check).
+  `security` checked it under SD-033; the rest of step 7 still needs
+  "mergen".
+
+## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
+
+Implements SD-022 for the circulation pump. Decided in the software session
+on 2026-10-13 after the `domain` and `security` reviews. The margin, the
+wait and the reasons to hold are own rules, not from a source.
+
+- **Which latch:** the circulation pump's latch `circulation.dry`. It is
+  set only when a usable level falls below the minimum while the pump runs
+  (RAT-062), so its cause is a low level; it now stores that
+  (`cause: "level"`). Its texts say "dry run" because that is what it
+  prevents. "Dry run" in SD-022 ("dry run … still holds") is read as a dry
+  run detected from the pump itself (current draw, RAT-049, PD-031); such
+  a latch will get a cause of its own and hold. This reading follows RAT-051
+  (the reference installation's level-type dry-run lock released itself);
+  if PD-044 meant otherwise, that is a product question.
+- **The inlet is unchanged:** none of its latch reasons is a low level (an
+  invalid level is an unknown cause, the capacity reached is the emergency
+  limit, "open too long" is an unknown cause), so all of them keep holding
+  (RAT-031). Which inlet latch PD-044 means is a product question, asked
+  in #27.
+- **Release:** a valid level has to stay at or above the minimum plus
+  max(0.5 L, 2 % of the capacity), and not above the capacity, for 5 min
+  (60 L tank, minimum 3 L: 4.2 L), with the pump read as off (an unknown
+  state, a plug that does not answer, waits). Any other reading starts the
+  wait again, and so does a restart. Not in maintenance mode (hands in the
+  tank); after it ends, the 5 min start then. Where the release level lies
+  above the capacity, the latch never releases itself and says so. The
+  release is an event with the level ("Dry-run lock released itself"); the
+  circulation controller then decides whether the pump runs. While such a
+  latch stands, the controller shows "blocked", not "needs release"; the
+  Release button stays. During an emergency stop the latch may release
+  itself too; the pump starts only after Resume, a person's act.
+  - The margin is at least the switch-on hysteresis of 0.5 L (RAT-078) and
+    grows with the tank above 25 L, whose level sensor moves more in
+    litres (10 L: 0.5 L, 60 L: 1.2 L, 200 L: 4 L).
+  - 5 min let a refill settle, waves and a moving sensor pass, and still
+    let mixing resume soon.
+- **Holds until acknowledged** (stored as `hold`, the reason named in the
+  texts):
+  - `off_failed`: switching off was not confirmed, or the pump ran again
+    after it had been read as off (a button on the device, a relay that
+    does not hold), so it may have run dry; the "Off not confirmed" alarm
+    asks for a person. This reason replaces any other: check the pump
+    first;
+  - `repeat`: the level was low again within 60 min of the last
+    self-release: something keeps draining the tank or the sensor flutters.
+    The time of the last self-release is kept in the runtime state
+    (`selfReleased`), survives a restart and keeps its distance across a
+    clock jump. One stored before the clock was known, or damaged, counts
+    as the moment the clock is known: one more careful hour, then it ages
+    out; the other latches are kept;
+  - `jump`: the level jumped while latched (RAT-042) without an inlet run
+    or maintenance mode to explain it, for example a sensor stuck high,
+    condensation, or a hose without maintenance mode (one tap then, with
+    the person at the tank);
+  - a latch without a stored cause (saved by an older version), with any
+    other key (written by another version) or damaged (RAT-063);
+  - all other latches: `inlet.fault`, `ec.no_effect`, `ph.no_effect`, the
+    planned heater cut-off; jump locks lift by their own rule (RAT-042).
+- **Texts say which kind it is:** a latch that releases itself says from
+  which level ("the lock releases itself once the level has stayed at
+  4.2 L or more for 5 min") and asks for maintenance mode when filling by
+  hand; one that holds says why and what to check; without a level sensor
+  it says to tap "Release". The texts speak of dry-run protection, since
+  the pump was switched off before it ran dry. Acknowledging stays
+  possible at any time.
+- **Saved at once:** a latch set or released by the hub, any latch, is
+  saved in that tick, also when a later step of the tick fails; an
+  acknowledgement within a second (RAT-063).
+- **Residual risks, accepted with "mergen":** a level sensor that reads a
+  refilled tank that is not can restart the pump, which then may run dry
+  until the level reads low again or, later, the current draw shows it
+  (PD-031). Before SD-022 a person looked at the tank. The `jump` hold
+  only sees a change of more than 20 L within 5 min (RAT-042, catalog),
+  so it does not see:
+  - a sensor that drifts high slowly or sticks without such a jump; in a
+    tank under about 20 L between its minimum and its capacity no stuck
+    reading is a jump at all;
+  - a wrong reading while the inlet is open and for 5 min after it, since
+    a refill explains a change;
+  - a wrong first reading after a restart, since the jump check starts
+    without a reference.
+  The level has no standstill check, and its plausible range is 0–1000 L.
+  The repeat guard catches a second low reading within the hour. A
+  restart in maintenance mode ends it (#154), so the 5 min can then start
+  with hands in the tank. A jump threshold that scales with the tank is a
+  follow-up (#154).
+- **Operating patterns:** in NFT or RDWC, drain-back after the cut can
+  raise the tank by more than the margin: one self-release, one more cut
+  at the minimum, then `repeat` holds. In ebb and flow with floods more
+  than an hour apart, each flood that drains the tank below the minimum
+  gives an alarm that clears itself without asking a person; that is what
+  SD-022 asks for.
+- This changes a protective cut-off in the actuator gateway, so the merge
+  waits for the project owner's "mergen" (SD-023, SD-033).
+
+
+## SD-068: The Home Assistant app's first password needs a setup code from its log
+
+Decided by the project owner on 2026-10-13 in the software session (#79,
+option 1 of the issue); the details come from a review by `security`.
+Until now anyone in the home network who opened the app's page first could
+set its password, see the names and values of Home Assistant's sensors and
+lock the owner out until the app was reinstalled.
+
+- **The code:** at every start without a password, `gc_ha_server` makes a
+  setup code and prints it to its output, which as an app is the app's log
+  in Home Assistant, readable by its administrators only (and by apps they
+  gave the Supervisor role `manager` or `admin`, which are as privileged). 16 characters of
+  32 (no 0, 1, I or O; 80 bits), in groups of four. The first password
+  needs it; it is typed in any case, with dashes or spaces.
+- **Kept in memory only,** never in a file, the event log, the state or the
+  diagnostic package; used up by the password; a new start makes a new
+  one and voids the old. No time limit for the app; the core takes one,
+  which SD-044's setup token for the ESP (15 min) will use.
+- **No lockout for wrong codes:** 80 bits leave nothing to guess (rate
+  limiting is asked for below 64 bits, NIST SP 800-63B revision 3,
+  §5.1.2.2; not checked against revision 4), and a
+  count shared by every device that never signed in (SD-051) would let
+  anyone in the network block the owner's setup. Wrong codes are counted;
+  the event log gets the first one and then at most one entry per 15 min
+  with the count, and the setup's entry names the count, so a loop cannot
+  fill the log (SD-051).
+- **The order of the checks:** a password already set (409), then the
+  code (403 `auth.code`, the same for a missing and a wrong one, from the
+  JSON body only), then the password's strength (422); no password is
+  hashed before the code is right.
+- `GET /info` says `setupCode: true` while one is needed, so the setup
+  page asks for it and says where it is.
+- No code while the credentials are lost (setup answers 423 then).
+- **Random numbers** for the code, salts and session tokens come from
+  `getentropy()` (on Windows the system's generator), not from
+  `std::random_device`: libstdc++ tries RDSEED first and takes the zero
+  that a Zen 5 processor without its fix reports as success (AMD-SB-7055).
+- The simulator asks for no code: it listens on 127.0.0.1 unless told
+  otherwise, its data is simulated and it switches nothing real; started
+  with `--host 0.0.0.0`, whoever comes first sets its password, and the
+  demo has a fixed one. The ESP gets SD-044's token; until it is built,
+  whoever comes first sets the ESP's password.
+- Not chosen: Home Assistant's ingress now (its login and HTTPS, but the
+  web app would have to work below a path); it stays the follow-up before
+  the app leaves `stage: experimental`. A lockout for wrong codes (see
+  above).
+- Open for the product session (PD-100): whether a code of 80 bits without
+  a rate limit meets EN 18031-1 AUM-6, and whether the app's log counts as
+  a channel only the owner reaches.
+
+
+## SD-069: The software session takes its product questions to the product repository itself
+
+Decided by the project owner on 2026-10-14 in the software session.
+Changes SD-029: the software session attaches the product repository for
+its product questions and takes them there itself. It still names them in
+the issue and to the project owner.
+
+- A product question met here goes into the note
+  `docs/notizen/fragen-aus-der-software.md` of the product repository
+  `Wokesay/growcontroller`, as a pull request there, in German like that
+  repository: per question the context, the options and the software's
+  recommendation, with references to SD, RAT and pull requests of this
+  repository.
+- The software session writes nothing else there: no PD, no other file,
+  no merge. The product repository's session decides, records the PD
+  (PD-100), and sends what it means for the software as an English issue
+  to this repository, as before.
+- The session attaches the product repository only for this, with the
+  project owner's approval of the access.
+- First use: three questions in Wokesay/growcontroller#77 (the setup
+  code and EN 18031-1, build tools in the SBOM, CRA Art. 14 and
+  advisories).
 
 
 ## SD-070: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period

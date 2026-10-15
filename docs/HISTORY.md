@@ -89,7 +89,7 @@ and text, plus data.
 | `alarm` | dry run, inlet emergency cut-off, control without effect |
 | `tank` | inlet open/closed, refilled (calculated/measured) |
 | `calibration` | pump calibrated, probe calibrated |
-| `device` | detected, disconnected, back again ("Is it still on Part A?") |
+| `device` | detected, not responding, back again only after it was not responding while the hub runs (a pump asks: "Is it still on the bottle 'Part A'?", #115) |
 | `config` | every change with its revision |
 | `auth` | login, failed attempt, password change (security-relevant logging, CRA Annex I 2(l)) |
 | `system`, `grow`, `measure` | start, emergency stop, maintenance mode, updates; cultivation run, phase, harvest; manual measurement |

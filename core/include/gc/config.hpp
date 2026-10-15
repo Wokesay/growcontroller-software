@@ -208,15 +208,20 @@ class ParamView {
 };
 ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn);
 
+// At or below this, a canister's stock counts as booked below zero: it shows
+// as at least -1 ml, and a rounding difference under 0.5 ml raises no alarm (SD-066).
+constexpr double kStockBelowZeroMl = -0.5;
+
 // Laufzeitzustand, getrennt gespeichert. Überlebt Neustarts (Rastungen und
 // Sprungsperren bleiben, Quelle: RAT-044, RAT-063).
 struct RuntimeState {
-  std::map<std::string, double> stockMl;  // Kanister → Vorrat; fehlt = unbekannt
+  std::map<std::string, double> stockMl;  // canister → stock in ml; missing = unknown; may be below zero (SD-066)
   double tankVolumeL = kNaN;               // ohne Füllstandskopf: aus Mischläufen
-  Epoch lastMixAt = 0;
+  Epoch lastMixAt = 0;  // start of the running mix, then the end of the last one (RAT-003)
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
   double ecEffect = kNaN;  // gelernte Wirkung Rezept (mS/cm je ml/L Summe)
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund
+  std::map<std::string, Epoch> selfReleased;  // latch → when it last released itself (SD-022)
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis
   std::map<std::string, double> manual;    // Handmessungen, z. B. "ph"
   Epoch manualAt = 0;

@@ -30,6 +30,57 @@ TEST_CASE("API: Ersteinrichtung setzt das Passwort genau einmal") {
   CHECK(other.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}}).first == 409);
 }
 
+TEST_CASE("API: with a setup code armed, the first password needs it, and info says so (#79)") {
+  sim::Simulation s(test::opts("neu"));
+  std::string code;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    code = s.hub().armSetupCode();
+  }
+  Client someone{s, {}, "192.168.1.66"};
+  CHECK(someone.call("GET", "/api/v1/info").second["setupCode"] == true);
+  auto refused = someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}});
+  CHECK(refused.first == 403);
+  CHECK(refused.second["error"]["key"] == "auth.code");
+  CHECK(someone.call("POST", "/api/v1/auth/setup?code=" + code, {{"password", "uebernahme-123"}}).first == 403);  // from the body only
+  for (int i = 0; i < 48; ++i)
+    CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", "2222-2222-2222-2222"}}).first == 403);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", 42}}).first == 403);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", nullptr}}).first == 403);
+  CHECK(someone.token.empty());
+  Client owner{s, {}, "192.168.1.20"};
+  CHECK(owner.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}, {"code", code}}).first == 200);  // no lockout in the way
+  CHECK(owner.call("GET", "/api/v1/state").first == 200);
+  CHECK(owner.call("GET", "/api/v1/info").second["setupCode"] == false);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}, {"code", code}}).first == 409);  // used up
+  // The owner learns of the tries: the first wrong code, not one entry per try, and the count at the setup
+  const gc::json events = owner.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  int wrong = 0;
+  bool summary = false;
+  for (const auto& e : events) {
+    const std::string title = e["title"].is_object() ? e["title"].value("key", std::string()) : "";
+    wrong += title == "ev.auth.code_wrong";
+    if (title == "ev.auth.password_set" && e["text"].is_object())
+      summary = e["text"].value("key", std::string()) == "ev.auth.first_setup_wrong" && e["text"]["args"]["count"] == 52;
+  }
+  CHECK(wrong == 1);
+  CHECK(summary);
+  // The code is in none of what the hub gives out
+  std::string bare;
+  for (char ch : code) if (ch != '-') bare += ch;
+  for (const char* path : {"/api/v1/info", "/api/v1/auth/session", "/api/v1/state", "/api/v1/config", "/api/v1/config/export", "/api/v1/diagnostics", "/api/v1/events?limit=2000"}) {
+    const std::string out = owner.ok("GET", path).dump();
+    CHECK_MESSAGE(out.find(bare) == std::string::npos, path);
+    CHECK_MESSAGE(out.find(code) == std::string::npos, path);
+  }
+}
+
+TEST_CASE("API: without an armed setup code, info asks for none (#79)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  CHECK(c.call("GET", "/api/v1/info").second["setupCode"] == false);
+}
+
 TEST_CASE("API: Fehlversuche führen zur Sperre (429), Abmelden beendet die Sitzung") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -280,6 +331,7 @@ TEST_CASE("API: Passwort verloren → keine Ersteinrichtung über das Netz (EN 1
   gc::Hub h(cat, bus, store, clk, rng);
   h.boot();
   CHECK(h.credentialsLost());
+  CHECK(h.armSetupCode().empty());  // no code for a setup that cannot happen (#79)
   CHECK(setup(h) == 423);
 }
 
@@ -428,6 +480,19 @@ TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übe
   }
   // Über die API direkt: Rezept mit demselben Kanister zweimal
   CHECK(c.call("POST", "/api/v1/recipes", {{"name", "Doppelt"}, {"steps", {{{"canister", m}, {"mlPerL", 1}}, {{"canister", m}, {"mlPerL", 1}}}}}).first == 422);
+}
+
+TEST_CASE("API: a stock entered is never below zero (SD-066)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  auto id = c.ok("POST", "/api/v1/canisters", {{"name", "Eins"}, {"kind", "nutrient"}, {"pump", ""}, {"capacityMl", 1000}, {"stockMl", 3}})["id"];
+  auto [code, err] = c.call("POST", "/api/v1/canisters", {{"id", id}, {"name", "Eins"}, {"stockMl", -5}});
+  CHECK(code == 422);
+  CHECK(err["error"]["key"] == "canister.stock");
+  CHECK(err["error"]["text"] == "The amount left can't be below 0 ml. Enter what is in the bottle.");
+  CHECK(c.state()["stock"][id.get<std::string>()] == 3);
+  CHECK(c.call("POST", "/api/v1/canisters/" + id.get<std::string>() + "/stock", {{"ml", -1}}).first == 422);
 }
 
 TEST_CASE("System: abgelehnte Änderung lässt alles unverändert") {
@@ -606,4 +671,78 @@ TEST_CASE("System: the choice per area goes along with an export and an import, 
   file["system"].erase("control");
   c.ok("POST", "/api/v1/config/import", file);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["control"] == gc::json::object());
+}
+
+namespace {
+gc::json canisterById(Client& c, const std::string& id) {
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& k : cfg["canisters"])
+    if (k["id"] == id) return k;
+  return nullptr;
+}
+void deleteRecipes(Client& c) {
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& r : cfg["recipes"]) c.ok("DELETE", "/api/v1/recipes/" + r["id"].get<std::string>());
+}
+}  // namespace
+
+TEST_CASE("Bottles: a bottle a recipe uses is refused removal; configuration and stock stay as they were") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const gc::json before = canisterById(c, "calmag");
+  const gc::json stock = c.state()["stock"]["calmag"];
+  auto [code, body] = c.call("DELETE", "/api/v1/canisters/calmag");
+  CHECK(code == 409);
+  CHECK(body["error"]["key"] == "canister.used");
+  CHECK(canisterById(c, "calmag") == before);
+  CHECK(c.state()["stock"]["calmag"] == stock);
+}
+
+TEST_CASE("Bottles: removing one bottle of a pair leaves its partner unpaired, so later saves still work (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  deleteRecipes(c);
+  const gc::json partner = canisterById(c, "teil-b");
+  const gc::json stockB = c.state()["stock"]["teil-b"];
+  REQUIRE(partner["pair"] == "AB");
+  c.ok("DELETE", "/api/v1/canisters/teil-a");
+  CHECK(canisterById(c, "teil-b")["pair"] == "");
+  // Only the label goes: the partner keeps its pump and stock; the removed bottle's stock is gone
+  CHECK(canisterById(c, "teil-b")["pump"] == partner["pump"]);
+  CHECK(c.state()["stock"]["teil-b"] == stockB);
+  CHECK_FALSE(c.state()["stock"].contains("teil-a"));
+  // The event names the partner that is no longer paired
+  const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
+  CHECK(ev["title"]["key"] == "ev.cfg.canister_removed_pair");
+  CHECK(ev["title"]["args"]["partner"] == "Teil B");
+  // A save the hub checks as a whole still works
+  c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "teil-b"}, {"mlPerL", 1.0}}}}});
+}
+
+TEST_CASE("Bottles: removing one bottle of a pair of three leaves the other two a pair (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  deleteRecipes(c);
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", "AB"}});
+  c.ok("DELETE", "/api/v1/canisters/teil-a");
+  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
+  CHECK(canisterById(c, "calmag")["pair"] == "AB");
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+}
+
+TEST_CASE("Bottles: removing a bottle without a pair, or one whose label is already alone, unpairs nothing (#147)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("DELETE", "/api/v1/canisters/ph");  // no pair: CalMag, also without one, is not anyone's partner
+  CHECK(canisterById(c, "calmag")["pair"] == "");
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+  const std::string solo = c.ok("POST", "/api/v1/canisters", {{"name", "Solo"}, {"kind", "nutrient"}, {"pair", "XY"}})["id"];
+  c.ok("DELETE", "/api/v1/canisters/" + solo);  // a label with no partner left
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
+  CHECK(canisterById(c, "teil-a")["pair"] == "AB");
+  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
 }

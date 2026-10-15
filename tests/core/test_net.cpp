@@ -687,6 +687,20 @@ TEST_CASE("Umwälzpumpe: späterer Trockenlauf meldet neu, Rastung hält die Pum
   s.step(5000);
   CHECK(countEvents(c, "ev.off_unconfirmed", "Umwälzpumpe") == 2);
   CHECK(countEvents(c, "ev.off_confirmed", "Umwälzpumpe") == 1);
+  // Switching off was not confirmed: the alarm asks for a person, and the latch does not
+  // release itself (SD-022, SD-067)
+  const json events = c.ok("GET", "/api/v1/events?limit=200")["events"];
+  json unconfirmed;
+  for (const auto& e : events)
+    if (unconfirmed.is_null() && sameEvent(e, "ev.off_unconfirmed", "Umwälzpumpe")) unconfirmed = e;  // the newest: the dry run
+  REQUIRE(unconfirmed.is_object());
+  CHECK(unconfirmed["text"]["args"]["reason"]["key"] == "ev.circ.dry.low");
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+  CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  auto [refusedCode, refused] = c.call("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  CHECK(refusedCode == 409);
+  CHECK(refused["error"]["key"] == "act.circ.latched_off");  // why it needs a person
 }
 
 TEST_CASE("Umzuordnen: alter Ausgang nicht erreichbar → „Aus nicht bestätigt“ im Protokoll") {
@@ -750,6 +764,59 @@ TEST_CASE("Zulauf klemmt: nach Pegelausfall meldet die Notgrenze neu") {
   CHECK(capacity);
   // Rastungsgrund bleibt eingefroren (RAT-062)
   CHECK(c.state()["latches"]["inlet.fault"]["why"]["key"] == "why.level_invalid");
+}
+
+TEST_CASE("Circulation pump switched on at the plug while latched: the latch no longer releases itself (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 60000));
+  s.step(5000);
+  REQUIRE_FALSE(outlet(s, id, 0).on);
+  CHECK_FALSE(c.state()["latches"]["circulation.dry"].contains("hold"));  // off for sure: it would release itself
+  outlet(s, id, 0).on = true;  // pressed at the plug: it may run dry until the hub sees it
+  s.step(5000);
+  CHECK_FALSE(outlet(s, id, 0).on);
+  CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "off_failed");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 10.0}});  // below the jump threshold: only the plug holds it
+  }
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+}
+
+TEST_CASE("Circulation pump on a plug that does not answer: no self-release until it reads as off (SD-067)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  auto id = addPlug(s, c, "shelly_plug", {{{"load", "circulation"}, {"watts", 18}}});
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  c.ok("POST", "/api/v1/roles/tank.circulation/switch", {{"on", true}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 2.0}});
+  }
+  REQUIRE(until(s, [&] { return c.state()["latches"].contains("circulation.dry"); }, 60000));
+  s.step(5000);
+  fault(s, id, "offline");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("water", {{"volumeL", 10.0}});
+  }
+  s.step(15 * 60 * 1000);
+  CHECK(c.state()["latches"].contains("circulation.dry"));
+  fault(s, id, "none");
+  REQUIRE(until(s, [&] { return !c.state()["latches"].contains("circulation.dry"); }, 7 * 60 * 1000));
 }
 
 TEST_CASE("Umwälzpumpe klemmt: neuer Trockenlauf nach Quittierung meldet neu") {

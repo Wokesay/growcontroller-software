@@ -249,32 +249,128 @@ function Portal(p: { children: ComponentChildren }) {
   return null;
 }
 
-export function Modal(p: { title: ComponentChildren; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren; wide?: boolean }) {
-  // Escape calls the current onClose, not the one from the first render. The key is
+// What Tab can reach; a <details> is reached by its <summary>
+const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), details > summary:first-of-type, [tabindex]:not([tabindex="-1"])';
+let modalIds = 0;
+// Open dialogs. The topmost is the last in the page: each one sits at the end of <body>
+// in its own host (Portal), a dialog opened from another one after it.
+const dialogs: HTMLElement[] = [];
+const topmost = () => dialogs.reduce<HTMLElement | undefined>((a, b) => (!a || a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? b : a), undefined);
+// The element that last had the focus. A button that disables itself while its click
+// runs (Button) loses the focus to <body> before a dialog it opens after an answer
+// from the hub can see it.
+let lastFocused: HTMLElement | null = null;
+document.addEventListener("focusin", (e) => (lastFocused = e.target as HTMLElement), true);
+
+// A dialog (#105): focus moves into it when it opens, Tab and Shift+Tab stay
+// inside, focus returns to what opened it when it closes, and its title names it.
+// With a message it is a confirmation (role alertdialog): a screen reader reads
+// the message with the title. returnFocus names where the focus goes when what
+// opened the dialog is gone (a removed row's button).
+export function Modal(p: {
+  title: ComponentChildren;
+  onClose: () => void;
+  children?: ComponentChildren;
+  message?: ComponentChildren;
+  footer?: ComponentChildren;
+  wide?: boolean;
+  returnFocus?: () => HTMLElement | null;
+}) {
+  // Escape calls the current onClose, not the one from the first render. The keys are
   // listened for as soon as the window is in the page, not only after the next frame.
   const onClose = useRef(p.onClose);
   onClose.current = p.onClose;
+  const returnFocus = useRef(p.returnFocus);
+  returnFocus.current = p.returnFocus;
+  const box = useRef<HTMLDivElement>(null);
+  const [titleId] = useState(() => `modal-title-${++modalIds}`);
+  // What opened the dialog, taken before the dialog takes the focus: the focused
+  // element, or a button that disabled itself. Safari and Firefox on a Mac do not focus
+  // a clicked button, so <body> with an enabled last element means "unknown", not that one.
+  const [opener] = useState(() => {
+    const at = document.activeElement as HTMLElement | null;
+    if (at && at !== document.body) return at;
+    return lastFocused?.isConnected && lastFocused.matches(":disabled") ? lastFocused : null;
+  });
   useLayoutEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose.current();
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    const el = box.current!;
+    dialogs.push(el);
+    const keys = (e: KeyboardEvent) => {
+      if (topmost() !== el) return;
+      if (e.key === "Escape") onClose.current();
+      else if (e.key === "Tab") trap(el, e);
+    };
+    window.addEventListener("keydown", keys);
+    return () => {
+      window.removeEventListener("keydown", keys);
+      dialogs.splice(dialogs.indexOf(el), 1);
+      // Back to what opened the dialog once the page has settled (a route change may
+      // remove it), else to the fallback; never out of a dialog that is open now.
+      const fallback = returnFocus.current;
+      queueMicrotask(() => {
+        const to = opener?.isConnected ? opener : fallback?.();
+        const top = topmost();
+        if (to && (!top || top.contains(to))) to.focus({ preventScroll: true });
+      });
+    };
   }, []);
+  useEffect(() => {
+    const el = box.current;
+    // The dialog itself takes the focus, so a screen reader names it by its title and a
+    // phone opens no keyboard; Tab goes on to its first control. A part of the dialog
+    // that took the focus itself keeps it (a retry button).
+    if (el && !el.contains(document.activeElement)) el.focus();
+  }, []);
+  const message = p.message !== undefined;
   return (
     <Portal>
       <div class="overlay" onClick={(e) => e.target === e.currentTarget && p.onClose()}>
-        <div class={`modal ${p.wide ? "wide" : ""}`} role="dialog" aria-modal="true">
+        <div
+          class={`modal ${p.wide ? "wide" : ""}`}
+          role={message ? "alertdialog" : "dialog"}
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={message ? `${titleId}-text` : undefined}
+          tabIndex={-1}
+          ref={box}
+        >
           <div class="row-between">
-            <h2>{p.title}</h2>
+            <h2 id={titleId}>{p.title}</h2>
             <button class="btn ghost sm" onClick={p.onClose} aria-label={t("common.close")}>
               <X size={18} />
             </button>
           </div>
+          {message && <p id={`${titleId}-text`}>{p.message}</p>}
           {p.children}
           {p.footer && <div class="modal-foot">{p.footer}</div>}
         </div>
       </div>
     </Portal>
   );
+}
+
+// Keeps Tab inside the dialog: from the last control to the first and back, and into
+// the dialog when the focus has left it (a control that disabled itself drops it to <body>).
+// What Tab skips does not count: hidden, tabindex below 0, inside a closed <details>.
+function trap(box: HTMLElement, e: KeyboardEvent) {
+  const all = Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (f) => f.getClientRects().length > 0 && !f.matches('[tabindex^="-"]') && !f.closest("details:not([open]) > :not(summary)"),
+  );
+  const at = document.activeElement;
+  const first = all[0], last = all[all.length - 1];
+  if (!all.length) {
+    e.preventDefault();
+    box.focus();
+  } else if (!box.contains(at)) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  } else if (e.shiftKey && (at === first || at === box)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && at === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 export function Toasts() {
