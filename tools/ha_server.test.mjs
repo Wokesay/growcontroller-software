@@ -6,7 +6,8 @@
 // up root before it opens its port (#80). The first password needs
 // the setup code the start prints (#79). Values that a stand-in Home
 // Assistant reports reach the hub's readings (#112), with the session
-// taken from the one cookie named exactly gc_session. Runs the built
+// taken from the one cookie named exactly gc_session. A --config it cannot
+// read or a number out of range ends with a message, not a crash (#213). Runs the built
 // server (tools/ci.sh builds it first; the app image's own server in
 // .github/workflows/app.yml).
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
@@ -98,6 +99,38 @@ test("--app takes the token only from SUPERVISOR_TOKEN and writes nothing withou
   assert.equal(r.status, 2);
   assert.match(r.stderr, /No token/);
   assert.ok(!existsSync(data));
+});
+
+test("a --config it cannot read ends with a message, not a crash (#213)", { skip }, () => {
+  // its status cannot be read (a link to itself; also a folder it may not enter)
+  const dir = mkdtempSync(join(tmp, "config-"));
+  symlinkSync("loop", join(dir, "loop"));
+  const r = run(["--config", join(dir, "loop", "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.match(r.stderr, /ha\.json: cannot be read \(.+\)\n/);
+  assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --config that is there but cannot be opened says so, not that it holds no mapping (#213)", { skip }, (t) => {
+  const dir = mkdtempSync(join(tmp, "config-"));
+  writeFileSync(join(dir, "ha.json"), JSON.stringify({ url: "http://127.0.0.1:9" }));
+  chmodSync(join(dir, "ha.json"), 0o000);
+  try {
+    readFileSync(join(dir, "ha.json"));
+    return t.skip("this process reads any file");
+  } catch {}
+  const r = run(["--config", join(dir, "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.match(r.stderr, /ha\.json: cannot be read \(.+\)\n/);
+  assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a number option out of range names the range (#213)", { skip }, () => {
+  for (const [option, value] of [["--port", "70000"], ["--every", "0"], ["--port", "x"]]) {
+    const r = run(["--config", "x.json", option, value], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    assert.ok(r.stderr.split("\n").includes(`${option} must be a whole number from 1 to 65535, not "${value}"`), r.stderr);
+  }
 });
 
 test("an option's value --app does not switch to the app", { skip }, () => {

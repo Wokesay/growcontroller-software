@@ -16,6 +16,7 @@
 #endif
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -111,7 +112,13 @@ int main(int argc, char** argv) {
     auto exe = std::filesystem::absolute(argv[0], ec);
     opts.scenario = "demo";
     opts.password = "demo-passwort";
-    opts.dataDir = ((ec ? std::filesystem::current_path() : exe.parent_path()) / "growcontroller-daten").lexically_normal().string();
+    // Without the program's folder the working folder; without both, memory only (#213)
+    std::error_code cwdErr;
+    const std::filesystem::path base = ec ? std::filesystem::current_path(cwdErr) : exe.parent_path();
+    if (cwdErr)
+      std::cerr << "No folder for the data (" << cwdErr.message() << "). Running in memory only.\n";
+    else
+      opts.dataDir = (base / "growcontroller-daten").lexically_normal().string();
     open = true;
   }
   for (int i = 1; i < argc; ++i) {
@@ -123,14 +130,36 @@ int main(int argc, char** argv) {
       }
       return argv[++i];
     };
-    if (a == "--port") port = std::stoi(next());
+    // A value that is no number, or out of range, ends with a message (#213).
+    // strtod and strtol read the C locale: nothing here sets another.
+    auto number = [&](double lowest, double highest) {
+      const std::string v = next();
+      char* end = nullptr;
+      const double n = std::strtod(v.c_str(), &end);
+      if (v.empty() || *end != '\0' || !std::isfinite(n) || n < lowest || n > highest) {
+        std::cerr << a << " must be a number from " << lowest << " to " << highest << ", not \"" << v << "\"\n";
+        std::exit(2);
+      }
+      return n;
+    };
+    auto wholeNumber = [&](long lowest, long highest) {  // as gc_ha_server reads its numbers
+      const std::string v = next();
+      char* end = nullptr;
+      const long n = std::strtol(v.c_str(), &end, 10);
+      if (v.empty() || *end != '\0' || n < lowest || n > highest) {
+        std::cerr << a << " must be a whole number from " << lowest << " to " << highest << ", not \"" << v << "\"\n";
+        std::exit(2);
+      }
+      return static_cast<int>(n);
+    };
+    if (a == "--port") port = wholeNumber(1, 65535);
     else if (a == "--host") host = next();
     else if (a == "--scenario") opts.scenario = next();
     else if (a == "--data") opts.dataDir = next();
     else if (a == "--web") web = next();
-    else if (a == "--speed") speed = std::stod(next());
+    else if (a == "--speed") speed = number(0, sim::Simulation::kMaxSpeed);
     else if (a == "--password") opts.password = next();
-    else if (a == "--prefill") opts.prefillHours = std::stod(next());
+    else if (a == "--prefill") opts.prefillHours = number(0, sim::Simulation::kMaxPrefillH);
     else if (a == "--allow-reset") allowReset = true;
     else if (a == "--open") open = true;
     else if (a == "--help" || a == "-h") {
@@ -156,7 +185,7 @@ int main(int argc, char** argv) {
   // Programm auf 0.0.0.0 und finge dessen Anfragen ab).
   std::unique_ptr<httplib::Server> server;
   int bound = -1;
-  for (int p = port; p < port + 10 && bound < 0; ++p) {
+  for (int p = port; p < port + 10 && p <= 65535 && bound < 0; ++p) {
     auto s = std::make_unique<httplib::Server>();
     s->set_socket_options([](socket_t sock) {
 #if defined(_WIN32)
@@ -337,7 +366,7 @@ int main(int argc, char** argv) {
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
-  if (!simulation.dataDir().empty()) std::cout << "Daten: " << simulation.dataDir() << "\n";
+  if (simulation.storage().persistent()) std::cout << "Daten: " << simulation.dataDir() << "\n";
   if (!haveWeb) std::cout << "Hinweis: Web-App nicht gefunden unter " << web << "\n";
   std::cout << "Beenden: Strg+C oder dieses Fenster schließen.\n" << std::flush;
   if (open) openBrowser(url);

@@ -49,6 +49,8 @@ class FileStorage : public gc::IStorage {
   bool append(const std::string& name, const std::string& data) override;
   std::vector<std::string> hold(bool on);
   std::uint64_t bytesWritten() const;  // bytes handed to the disk
+  // It saves to its folder: one is given and, as far as a write has shown, it can be created.
+  bool persistent() const;
 
  private:
   bool onDisk() const { return !dir_.empty() && !noFolder_; }
@@ -99,9 +101,12 @@ class Simulation {
   FileStorage& storage() { return *store_; }
   std::recursive_mutex& mutex() { return mtx_; }
   const std::string& scenario() const { return opts_.scenario; }
-  // The data folder in use; empty: none given, or one it cannot read (SD-074).
+  // The data folder given; empty: none, or one it cannot read (SD-074).
+  // Whether it saves there: storage().persistent().
   const std::string& dataDir() const { return opts_.dataDir; }
   double speed = 1.0;
+  static constexpr double kMaxSpeed = 600;     // time-lapse, for --speed and the panel
+  static constexpr double kMaxPrefillH = 1000; // hours of history computed ahead (--prefill)
   std::string demoPassword() const { return opts_.password; }
 
  private:
