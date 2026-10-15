@@ -640,8 +640,10 @@ void Hub::tickImpl() {
   env.phBusy = ph_.busy();
   refill_.tick(c, env);
   env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
+  env.phBusy = ph_.busy() || ph_.pending();
   ec_.tick(c, env);
-  env.ecBusy = ec_.busy();
+  env.ecBusy = ec_.busy() || ec_.pending();
   env.lastEcDoseAt = ec_.lastDoseAt();
   ph_.tick(c, env);
   bool demand = ec_.wantsCirculation() || ph_.wantsCirculation() || (job_ && job_->circulation && userJobActive());
@@ -2113,12 +2115,12 @@ Result Hub::stop(const Msg& who) {
     }
   }
   if (auto fin = doser_.takeFinished()) {
-    // Controller doses are not part of the user's job; the controllers are reset below.
+    // Controller doses are not part of the user's job; the controllers end their round below.
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  ec_.reset();
-  ph_.reset();
+  ec_.stopRound();
+  ph_.stopRound();
   if (job_) finishJob("aborted", say("job.emergency_stop"));
   saveState();
   if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
