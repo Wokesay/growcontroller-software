@@ -623,7 +623,7 @@ void Hub::tickImpl() {
   env.volumeL = tankVolume();
   env.lastEcDoseAt = ec_.lastDoseAt();
   env.circulationOn = act_.roleState(cfg_, "tank.circulation").value_or(false);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding();
   env.calibrating = !probeSessions_.empty();
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
@@ -639,7 +639,7 @@ void Hub::tickImpl() {
   env.ecBusy = ec_.busy();
   env.phBusy = ph_.busy();
   refill_.tick(c, env);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding();
   // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
   env.phBusy = ph_.busy() || ph_.pending();
   ec_.tick(c, env);

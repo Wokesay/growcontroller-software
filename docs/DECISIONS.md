@@ -2645,27 +2645,50 @@ Decided by the project owner on 2026-10-15 in the software session
   refill checks whether the level rose: with an empty water supply, a
   leak or a stuck valve, the inlet opens again after every pause for as
   long as the level stays below the start level.
-- **A, within the open time (#155, first PR):** one fill keeps the
-  valve open at most `max_open_min` minus 1 min, or minus half of it if
-  that is shorter, so a late controller tick still closes it before the
-  limit. What does not fit is named in the refill's line, in the log
-  and in its resting line. The limit itself is unchanged and still
-  closes the valve however it was opened.
-- **B, check and steps (second PR, waits for the owner's "mergen": a new
-  trigger of the inlet latch):**
-  - After each fill, at the end of its pause, the measured rise is
-    compared with the planned amount. Below 50 % of it, the inlet is
-    latched with a reason of its own and stays so until a person
-    acknowledges it (RAT-031: a leak, an empty supply and a stuck valve
-    look the same). A fill too small for the level's uncertainty
-    (RAT-078) to judge is not judged; the bound comes with the
-    implementation.
-  - Otherwise the next step goes on toward the target, also above the
-    start level. The total is computed once, at the first step (RAT-001);
-    the steps only split it, and their number is fixed then.
-  - EC and pH wait while the steps run and settle (RAT-055, RAT-057).
-  - A restart between steps does not resume them (RAT-007).
-  - 50 % and the 1 min margin are assumptions, not measured (RAT-038).
+- **Within the open time:** one fill keeps the valve open at most
+  `max_open_min` minus 1 min, or minus half of it if that is shorter, so
+  a late controller tick still closes it before the limit. The limit
+  itself is unchanged and still closes the valve however it was opened.
+  An inlet that adds less than 0.5 L in that time blocks the refill with
+  a line naming the rate and the open time.
+- **In steps:** what does not fit follows in steps after a 10 min pause,
+  also above the start level, each named in the refill's line. The total
+  is computed once, at the first step (RAT-001); the steps only split it,
+  their number is fixed then, and a step never plans more than is left,
+  fits, or reaches the target. A step ends the refill early when the
+  level passes the target by 1 L (RAT-038). The steps end on Stop,
+  maintenance mode, the function switched off, a block other than the
+  pause, a latch, or a change of the target, the rate or the open time.
+  A restart between steps does not resume them (RAT-007). The refill
+  does not take over an inlet opened by hand.
+- **The rise is checked:** at the end of each fill's pause, on a level
+  read after the valve closed (or the last one, if none comes within
+  another 10 min: a sensor that reports only on a change sends nothing
+  while it is stuck), the level must have risen by at least
+  half of what flowed in by the set rate while the valve was open.
+  Otherwise the inlet is latched with a reason of its own and an alarm
+  that names what to check, the set rate included; it stays so until a
+  person releases it (RAT-031: a leak, an empty supply, a stuck valve and
+  a level sensor that does not follow look the same).
+  - Not judged, and the steps end, with an event saying why: the
+    irrigation pump ran, or its state was not known, between the fill's
+    opening and the check (it draws from the tank; no estimate, R5); no
+    valid level at the check; the level sensor calibrated meanwhile.
+  - A fill smaller than 4 L, or than twice the volume at the level
+    curve's first point, is too small for the level's uncertainty
+    (RAT-030, RAT-078) to judge alone. It is added to the next fill if
+    that starts right after the check, and the sum is judged.
+  - 50 %, 4 L and the 1 min margin are assumptions, not measured
+    (RAT-038).
+- **EC and pH wait** from the first opening of a refill until its last
+  fill is checked (RAT-055, RAT-057): a round in a tank half filled would
+  be diluted by the next step.
+- **One pull request:** the cap alone would have widened a gap. Before
+  it, a large plan from a level reading wrongly low (a stuck sensor, one
+  out of the water) ran into the open-time latch after its first fill; a
+  capped fill would repeat every pause instead. The rise check closes
+  that, so both go to `main` together, after the owner's "mergen" (a new
+  trigger of the inlet latch).
 - **Why:** a planned fill must never look like a fault, or the latch no
   longer means "cause unknown". A tank left short after a deep drop can
   run short of the day's irrigations. RAT-038 already names a re-check
@@ -2673,6 +2696,10 @@ Decided by the project owner on 2026-10-15 in the software session
   installation re-checked 120 s after closing and allowed at most two
   corrective runs.
 - **Not chosen:**
-  - A alone: the tank stays short until it falls below the start level
-    again, and the gap with an empty supply or a leak stays.
+  - The cap alone: the tank stays short until it falls below the start
+    level again, and the gap with an empty supply, a leak or a stuck level
+    sensor widens (see above).
   - The check without steps: closes that gap, but the tank stays short.
+  - Judging 2 min after closing, as the reference did: the level reading
+    lags 1.5–2 min behind (RAT-038), and without irrigation the tank loses
+    little in 10 min.

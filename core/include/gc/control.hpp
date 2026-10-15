@@ -8,6 +8,7 @@
 // Vorschlag anwender; Quelle: RAT-037, RAT-039, RAT-046).
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -120,17 +121,36 @@ class RefillController {
   void tick(const Ctx& c, ControlEnv& env);
   const CtlStatus& status() const { return st_; }
   bool filling() const { return filling_; }
+  // From the first opening of a refill until the rise of its last fill is checked, EC and pH wait:
+  // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-075)
+  bool holding() const { return filling_ || check_.has_value() || step_ < steps_; }
   void shiftClock(Epoch d) {
     if (cooldownUntil_ > 0) cooldownUntil_ += d;
   }
 
  private:
+  // A fill whose rise is checked at the end of its pause (SD-075)
+  struct Check {
+    Ms closedMs = 0;            // the level must be read after the valve closed
+    double startL = kNaN;       // level when it opened
+    double expectedL = 0;       // what flowed in while it was open, by the set rate
+    bool irrigation = false;    // the irrigation pump ran, or its state was not known: not judged
+    json curve;                 // the level curve it was planned with: another one is not judged
+  };
+  void endSteps();
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
   double startL_ = kNaN, plannedL_ = kNaN;
-  // Litres the last fill stopped short of the target, because the valve may stay open only
-  // max_open_min (#155); 0 when it went to the target
-  double shortL_ = 0;
+  // The refill as planned at its first fill: target, rate and open time, then step by step the
+  // litres left and the fixed number of steps; the total is computed once (RAT-001, SD-075)
+  double targetL_ = kNaN, flow_ = kNaN, maxOpen_ = kNaN, leftL_ = 0;
+  int step_ = 0, steps_ = 0;
+  bool irrigation_ = false;
+  json curve_;
+  std::optional<Check> check_;
+  // Fills too small to judge alone, back to back, judged together (SD-075)
+  double chainStartL_ = kNaN, chainExpectedL_ = 0;
+  Ms chainAt_ = -1;
   Epoch cooldownUntil_ = 0;
   CtlStatus st_;
 };

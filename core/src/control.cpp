@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "gc/messages.hpp"
 
@@ -543,6 +544,44 @@ void PhController::stopRound() {
 
 // ---------------------------------------------------------------- Zulauf
 
+namespace {
+
+// The level curve the hub reads the tank with; a fill checked against another one is not judged (SD-075)
+json levelCurve(const Ctx& c) {
+  const Binding* b = c.cfg.binding("tank.level");
+  if (!b) return nullptr;
+  auto dev = c.cfg.calibrations.find(b->device);
+  if (dev == c.cfg.calibrations.end()) return nullptr;
+  auto curve = dev->second.find("tank_curve");
+  return curve == dev->second.end() ? json(nullptr) : curve->second;
+}
+
+// The least planned amount whose rise is judged on its own (SD-075): the level reads 0.5–1 L off,
+// and flat below the curve's first point (RAT-030, RAT-078). An assumption, not measured.
+double judgeBound(const Ctx& c) {
+  const json curve = levelCurve(c);
+  double first = 0;
+  if (curve.is_object() && curve.contains("points") && curve["points"].is_array() && !curve["points"].empty()) {
+    const json& pt = curve["points"][0];
+    if (pt.is_array() && pt.size() == 2 && pt[1].is_number()) first = pt[1].get<double>();
+  }
+  return std::max(4.0, 2.0 * first);
+}
+
+// The irrigation pump draws from the tank: on, or in a state not known, it spoils the rise (SD-075)
+bool irrigationMayRun(const Ctx& c, const ControlEnv& env) {
+  if (!c.cfg.binding("zone.irrigation_pump")) return false;
+  const auto on = env.act.roleState(c.cfg, "zone.irrigation_pump");
+  return !on || *on;
+}
+
+}  // namespace
+
+void RefillController::endSteps() {
+  steps_ = step_;
+  leftL_ = 0;
+}
+
 void RefillController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
   if (!enabled(c, "refill")) {
@@ -553,6 +592,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       env.act.setRole(c, "tank.inlet", false, say("who.refill_off"), e);
       filling_ = false;
     }
+    endSteps();
+    check_.reset();
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "refill");
@@ -561,56 +602,128 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   auto inh = env.act.inhibit(c, "tank.inlet");
   st_.checks.push_back({!inh, inh ? *inh : say("check.inlet_free")});
   auto open = env.act.roleState(c.cfg, "tank.inlet");
+  if ((filling_ || check_) && irrigationMayRun(c, env)) {
+    if (filling_) irrigation_ = true;
+    if (check_) check_->irrigation = true;
+  }
 
   if (filling_) {
     // Menge wird gerechnet, der Sensor ist nur Prüfung und Notabschaltung (RAT-001).
-    bool done = c.now - startedMs_ >= plannedMs_;
-    bool sensorStop = level.usable() && *level.value >= p.num("target_l") + 1.0;
+    const bool done = c.now - startedMs_ >= plannedMs_;
+    const bool sensorStop = level.usable() && *level.value >= targetL_ + 1.0;
     if (!open || !*open) {
       filling_ = false;  // vom Gateway abgeschaltet (Notgrenze, Zeitlimit, Not-Halt)
+      endSteps();
       st_.state = "latched";
       st_.line = say("refill.stopped");
       return;
     }
-    if (done || sensorStop || !automation(c, st_)) {
+    const bool automatic = automation(c, st_);
+    if (done || sensorStop || !automatic) {
       Msg e;
       env.act.setRole(c, "tank.inlet", false, say("who.refill_done"), e);
       filling_ = false;
       cooldownUntil_ = c.epoch + 10 * 60;
-      double added = level.usable() ? *level.value - startL_ : kNaN;
-      const Msg text = shortL_ > 0 ? say("ev.refilled.part", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)},
-                                                               {"short", shortL_}, {"min", numOrNull(p.num("max_open_min"))}})
-                                   : say("ev.refilled.text", {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)}});
-      c.log.add(c.epoch, "tank", "info", say("ev.refilled"), text, {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}});
+      const double added = level.usable() ? *level.value - startL_ : kNaN;
+      const json args = {{"measured", numOrNull(added)}, {"planned", numOrNull(plannedL_)}, {"step", step_}, {"steps", steps_}};
+      c.log.add(c.epoch, "tank", "info", say("ev.refilled"), say(steps_ > 1 ? "ev.refilled.step" : "ev.refilled.text", args),
+                {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}, {"step", step_}, {"steps", steps_}});
+      // Its rise is checked at the end of the pause, against what flowed while the valve was open (SD-075).
+      // A person who stopped it or works at the tank ends the refill: nothing more is judged or filled.
+      if (automatic) {
+        const double expected = done ? plannedL_ : std::min(plannedL_, flow_ * static_cast<double>(c.now - startedMs_) / kMinute);
+        check_ = Check{c.now, startL_, expected, irrigation_, curve_};
+      }
+      if (sensorStop || !automatic) endSteps();
       st_.state = "idle";
       st_.line = say("refill.done");
       return;
     }
     st_.state = "working";
     const std::string left = mmss(plannedMs_ - (c.now - startedMs_));
-    st_.line = shortL_ > 0 ? say("refill.filling_part", {{"from", numOrNull(startL_)}, {"to", startL_ + plannedL_}, {"left", left},
-                                                         {"target", startL_ + plannedL_ + shortL_}, {"min", numOrNull(p.num("max_open_min"))}})
-                           : say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(p.num("target_l"))}, {"left", left}});
+    st_.line = steps_ > 1 ? say("refill.filling_step", {{"step", step_}, {"steps", steps_}, {"from", startL_}, {"to", startL_ + plannedL_},
+                                                         {"left", left}, {"target", targetL_}, {"min", numOrNull(maxOpen_)}})
+                          : say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(targetL_)}, {"left", left}});
     return;
   }
-  if (!automation(c, st_)) return;
+  if (!automation(c, st_)) {
+    endSteps();
+    check_.reset();
+    return;
+  }
   if (c.rt.latches.count("inlet.fault")) {
+    endSteps();
+    check_.reset();
     st_.state = "latched";
     st_.line = say("refill.latched");
     return;
   }
+
+  // At the end of the pause: did the level rise by at least half of what flowed in? If not, a leak, an
+  // empty supply, a stuck valve or a level sensor that does not follow look the same: the inlet waits
+  // for a person (RAT-031, SD-075). A fill too small to judge is added to the next one back to back.
+  if (check_) {
+    const bool more = step_ < steps_;
+    if (c.epoch < cooldownUntil_) {
+      st_.state = "waiting";
+      const std::string left = mmss((cooldownUntil_ - c.epoch) * 1000);
+      st_.line = more ? say("refill.check_step", {{"next", step_ + 1}, {"steps", steps_}, {"left", left}}) : say("refill.check", {{"left", left}});
+      return;
+    }
+    std::optional<Msg> unjudged;
+    if (check_->irrigation) unjudged = say("refill.unjudged.irrigation");
+    else if (!level.usable()) unjudged = say("refill.unjudged.level", {{"reason", level.reason}});
+    else if (env.calibrating || levelCurve(c) != check_->curve) unjudged = say("refill.unjudged.curve");
+    else if (level.ts <= check_->closedMs && c.epoch < cooldownUntil_ + 10 * 60) {
+      // A sensor that reports only on a change sends nothing while it is stuck: after 10 min more the
+      // last reading counts, so EC and pH do not wait for ever and a stuck level still latches
+      st_.state = "waiting";
+      st_.line = say("refill.check_wait");
+      return;
+    }
+    if (unjudged) {
+      c.log.add(c.epoch, "tank", "warn", say("ev.refill.unjudged"), *unjudged);
+      endSteps();
+    } else {
+      const bool chained = isNum(chainStartL_);
+      const double from = chained ? chainStartL_ : check_->startL;
+      const double expected = check_->expectedL + (chained ? chainExpectedL_ : 0.0);
+      const double rise = *level.value - from;
+      if (expected < judgeBound(c)) {
+        chainStartL_ = from;
+        chainExpectedL_ = expected;
+        chainAt_ = c.now;
+      } else if (rise < 0.5 * expected) {
+        const json args = {{"rise", rise}, {"expected", expected}, {"flow", numOrNull(flow_)}};
+        c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", say("why.refill_no_rise", args)}};
+        c.log.add(c.epoch, "alarm", "alarm", say("ev.refill.no_rise"), say("ev.refill.no_rise.text", args), args);
+        check_.reset();
+        endSteps();
+        chainStartL_ = kNaN;
+        st_.state = "latched";
+        st_.line = say("refill.latched");
+        return;
+      } else {
+        chainStartL_ = kNaN;
+      }
+    }
+    check_.reset();
+  }
+
   if (!level.usable()) {
+    endSteps();
     st_.state = "blocked";
     st_.line = say("refill.level", {{"reason", level.reason}});
     return;
   }
-  double start = p.num("start_below_l"), target = p.num("target_l"), flow = p.num("flow_l_per_min");
+  double start = p.num("start_below_l"), target = p.num("target_l"), flow = p.num("flow_l_per_min"), maxOpen = p.num("max_open_min");
   if (isNum(c.cfg.tank().capacityL)) target = std::min(target, c.cfg.tank().capacityL - 1.0);
-  if (*level.value >= start) {
+  // The next step goes on toward the target, also above the start level, with the settings it was planned with
+  if (step_ < steps_ && (target != targetL_ || flow != flow_ || !(maxOpen == maxOpen_ || (!isNum(maxOpen) && !isNum(maxOpen_))))) endSteps();
+  const bool stepping = step_ < steps_;
+  if (!stepping && !(*level.value < start)) {
     st_.state = "idle";
-    st_.line = shortL_ > 0 && *level.value < target - 0.5
-                   ? say("refill.ok_part", {{"level", *level.value}, {"target", target}, {"min", numOrNull(p.num("max_open_min"))}})
-                   : say("refill.ok", {{"level", *level.value}});
+    st_.line = say("refill.ok", {{"level", *level.value}});
     return;
   }
   if (c.epoch < cooldownUntil_) {
@@ -619,13 +732,32 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   if (inh) {
+    endSteps();
     st_.state = "blocked";
     st_.line = say("refill.inhibit", {{"reason", *inh}});
     return;
   }
   if (!isNum(flow) || flow <= 0) {
+    endSteps();
     st_.state = "blocked";
     st_.line = say("refill.flow");  // kein Ersatzwert (RAT-038)
+    return;
+  }
+  // The valve may stay open max_open_min, the inlet's fault limit (RAT-031, RAT-032): a fill planned
+  // longer would end as a fault. One fill keeps it open a minute less (half as long, if that is
+  // shorter), so a late tick still closes it first; the rest comes in steps (#155, SD-075).
+  const double fits = isNum(maxOpen) ? flow * (maxOpen - std::min(1.0, maxOpen / 2)) : std::numeric_limits<double>::infinity();
+  if (fits < 0.5) {
+    endSteps();
+    st_.state = "blocked";
+    st_.line = say("refill.too_slow", {{"flow", flow}, {"min", maxOpen}});
+    return;
+  }
+  if (open && *open) {
+    // Opened by hand: the refill does not take over a valve whose open time it did not start (#155)
+    endSteps();
+    st_.state = "waiting";
+    st_.line = say("refill.open_by_hand");
     return;
   }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
@@ -634,37 +766,52 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("refill.dosing");
     return;
   }
-  plannedL_ = target - *level.value;
-  if (plannedL_ < 0.5) {
+  const double gap = target - *level.value;
+  double planned = 0, left = 0;
+  int step = 1, steps = 1;
+  if (stepping) {
+    planned = std::min({leftL_, fits, gap});
+    step = step_ + 1;
+    steps = steps_;
+    left = step < steps ? leftL_ - planned : 0;
+  } else {
+    planned = std::min(gap, fits);
+    steps = gap > fits ? static_cast<int>(std::ceil(gap / fits)) : 1;
+    left = gap - planned;
+  }
+  if (!(planned >= 0.5)) {
+    endSteps();
     st_.state = "idle";
     st_.line = say("refill.near");
     return;
   }
-  // The valve may stay open max_open_min, the inlet's fault limit (RAT-031, RAT-032): a fill planned
-  // longer would end as a fault and need a person. It fills what fits, a minute below the limit so a
-  // late tick still closes it first, and says what is missing (#155, SD-075).
-  shortL_ = 0;
-  if (const double maxOpen = p.num("max_open_min"); isNum(maxOpen)) {
-    const double fits = flow * (maxOpen - std::min(1.0, maxOpen / 2));
-    if (plannedL_ > fits) {
-      shortL_ = plannedL_ - fits;
-      plannedL_ = fits;
-    }
-  }
-  plannedMs_ = static_cast<Ms>(plannedL_ / flow * kMinute);
   Msg e;
   if (!env.act.setRole(c, "tank.inlet", true, say("who.refill"), e)) {
+    endSteps();
     st_.state = "blocked";
     st_.line = say("refill.open", {{"reason", e}});
     return;
   }
+  if (chainAt_ != c.now) chainStartL_ = kNaN;  // only a fill right after the last check adds to it
+  if (!stepping) {
+    targetL_ = target;
+    flow_ = flow;
+    maxOpen_ = maxOpen;
+  }
   filling_ = true;
   startedMs_ = c.now;
   startL_ = *level.value;
+  plannedL_ = planned;
+  plannedMs_ = static_cast<Ms>(planned / flow * kMinute);
+  step_ = step;
+  steps_ = steps;
+  leftL_ = left;
+  irrigation_ = irrigationMayRun(c, env);
+  curve_ = levelCurve(c);
   st_.state = "working";
-  st_.line = shortL_ > 0 ? say("refill.filling_part", {{"from", startL_}, {"to", startL_ + plannedL_}, {"left", mmss(plannedMs_)},
-                                                       {"target", target}, {"min", p.num("max_open_min")}})
-                         : say("refill.start", {{"litres", numOrNull(plannedL_)}});
+  st_.line = steps > 1 ? say("refill.filling_step", {{"step", step}, {"steps", steps}, {"from", startL_}, {"to", startL_ + planned},
+                                                      {"left", mmss(plannedMs_)}, {"target", targetL_}, {"min", numOrNull(maxOpen_)}})
+                       : say("refill.start", {{"litres", planned}});
 }
 
 // ---------------------------------------------------------------- Umwälzen

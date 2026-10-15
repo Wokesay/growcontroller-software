@@ -557,6 +557,7 @@ json Simulation::control(const std::string& action, const json& b) {
         d->fault.clear();
         d->frozenPh = world_.rawPh(d);
         d->frozenEc = world_.rawEc(d);
+        d->frozenLevel = world_.rawLevelV(d);
       }
       d->fault = f == "none" ? "" : f;
     } else {

@@ -220,15 +220,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
-- **A large refill no longer latches the inlet** (#155, SD-075): a refill planned
-  longer than the valve may stay open ("Ventil höchstens offen", 15 min
-  by default) ran into that limit, which shut the inlet as a fault and
-  waited for a person, after every refill from a nearly empty tank. Now
-  one fill keeps the valve open at most a minute less than the limit.
-  Its line says how far it fills and that the target would take longer,
-  the log names the litres still missing, and the resting line keeps
-  saying it until the next fill. The limit itself is unchanged and still
-  closes the valve however it was opened.
+- **A large refill no longer latches the inlet** (#155, SD-075): a
+  refill planned longer than the valve may stay open ("Ventil höchstens
+  offen", 15 min by default) ran into that limit, which shut the inlet as
+  a fault and waited for a person, after every refill from a nearly empty
+  tank. Now one fill keeps the valve open at most a minute less than the
+  limit, and the rest follows in steps with a 10 min pause between them,
+  each step named in the refill's line ("Füllt Etappe 1 von 2 …"). EC and
+  pH wait from the first opening until the last step is checked. The
+  limit itself is unchanged and still closes the valve however it was
+  opened. The refill no longer takes over an inlet opened by hand.
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
@@ -544,6 +545,19 @@ AMD's CVE-2025-62626.
   aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
   microcode or BIOS fix. Nothing to do after the update: the restart ends
   every old session, and salts need not be secret.
+
+A protective cut-off added:
+
+- **A refill after which the level did not rise latches the inlet**
+  (#155, SD-075, RAT-031): no refill checked that water arrived. With an
+  empty supply, a leak, a stuck valve or a level sensor that does not
+  follow, the inlet opened again after every pause for as long as the
+  level read below the start level. Now, at the end of each fill's pause,
+  the level must have risen by at least half of what flowed in by the set
+  rate; otherwise the inlet is shut and waits until a person releases it,
+  and the event names what to check, the set inlet rate included. A fill
+  the irrigation pump overlapped is not judged and its further steps are
+  left out; small fills back to back are judged together.
 
 A protective cut-off relaxed on purpose:
 
