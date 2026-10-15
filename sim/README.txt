@@ -21,8 +21,9 @@ Your browser opens http://127.0.0.1:8080 (8081 … if the port is busy).
 Demo password: demo-passwort
 
 Data is stored in the folder "growcontroller-daten" next to the program.
-Delete the folder to start the demo over. If the folder cannot be read or
-written, the demo runs in memory only and leaves the folder as it is.
+Delete the folder to start the demo over. If the folder cannot be created,
+or it or a file in it cannot be read, the demo runs in memory only and
+leaves the folder as it is.
 Stop: close the window or press Ctrl+C.
 
 More options: growcontroller-simulator --help
@@ -54,9 +55,9 @@ Starten:
 
 Der Browser öffnet http://127.0.0.1:8080. Passwort der Demo: demo-passwort
 Die Daten liegen im Ordner „growcontroller-daten“ neben dem Programm;
-Ordner löschen = Demo von vorn. Lässt sich der Ordner nicht lesen oder
-beschreiben, läuft die Demo nur im Speicher und lässt den Ordner, wie er
-ist. Beenden: Fenster schließen oder Strg+C.
+Ordner löschen = Demo von vorn. Lässt sich der Ordner nicht anlegen oder
+er oder eine Datei darin nicht lesen, läuft die Demo nur im Speicher und
+lässt den Ordner, wie er ist. Beenden: Fenster schließen oder Strg+C.
 Sprache: Deutsch oder Englisch, wählbar in der App unter Einstellungen.
 Lizenz: freie Software unter der GNU Affero General Public License,
 Version 3 oder später (LICENSE.txt). Quellcode:

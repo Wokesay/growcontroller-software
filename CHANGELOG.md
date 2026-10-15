@@ -220,14 +220,17 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
-- **The simulator starts with a data folder it cannot read** (SD-073):
-  when `--data`, or the folder next to the program on a start without
+- **The simulator keeps a data folder it cannot read** (SD-073): when
+  `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
   one an earlier start with `sudo` made, or a link that loops), it ended
-  at the start; started by a double click, its window just closed. Now it
-  says "Data cannot be read (…). Running in memory only." and runs in
-  memory only. It reads, writes and removes nothing in that folder, so
-  data of an earlier start stays as it was.
+  at the start; started by a double click, its window just closed. When
+  only files in it could not be read (for example root's files after a
+  start with `sudo`), it started without its configuration and password
+  and later saved over them. Now it says "Data cannot be read (…).
+  Running in memory only." and runs in memory only. It reads, writes and
+  removes nothing in that folder, so data of an earlier start stays as
+  it was.
 - **The simulator starts with a web app folder it cannot read**: when
   `--web` pointed into a folder the simulator may not enter, or through a
   link that loops, it ended at the start ("filesystem error: status").

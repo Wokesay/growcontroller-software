@@ -9,8 +9,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <optional>
 #include <random>
 #include <sstream>
+#include <vector>
 
 #ifdef _WIN32
 #include <io.h>
@@ -31,6 +34,11 @@ using gc::json;
 // ------------------------------------------------------------------ Ablage
 
 namespace {
+
+// The hub's files in the data folder (core/src/hub.cpp); the simulator adds
+// world.json.
+constexpr const char* kHubFiles[] = {"config.json", "auth.json",   "state.json",  "job.json",
+                                     "events.json", "events.log",  "history.bin", "history.log"};
 
 std::error_code lastError() { return {errno ? errno : EIO, std::generic_category()}; }
 
@@ -153,7 +161,7 @@ bool FileStorage::ready() {
   fs::remove(fs::path(dir_) / ".write-test", ec);
   used_ = true;  // from here a folder that goes away is a failed write, not memory only
 #ifndef _WIN32
-  for (const char* f : {"auth.json", "config.json", "state.json", "job.json", "events.json", "events.log", "history.bin", "history.log"})
+  for (const char* f : kHubFiles)
     if (fs::exists(fs::path(dir_) / f, ec)) fs::permissions(fs::path(dir_) / f, fs::perms::owner_read | fs::perms::owner_write, ec);
 #endif
   return true;
@@ -231,6 +239,27 @@ gc::Epoch realNow() {
   return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+// Why the data in this folder cannot be read, if it cannot: the status of
+// one of its files fails (a folder it may not enter, a link loop), or a file
+// there cannot be opened (e.g. root's after a start with sudo).
+std::optional<std::string> unreadable(const fs::path& dir) {
+  std::vector<std::string> names(std::begin(kHubFiles), std::end(kHubFiles));
+  names.push_back("world.json");
+  for (const auto& name : names) {
+    const fs::path p = dir / name;
+    std::error_code ec;
+    if (!fs::exists(p, ec)) {
+      if (ec) return p.string() + ": " + ec.message();
+      continue;  // not there
+    }
+    errno = 0;
+    std::ifstream f(p, std::ios::binary);
+    const int err = errno;
+    if (!f) return p.string() + ": " + (err ? std::generic_category().message(err) : "cannot be opened");
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 void randomBytes(std::uint8_t* p, size_t n) {
@@ -253,15 +282,14 @@ void randomBytes(std::uint8_t* p, size_t n) {
 Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::builtin()) {
   bool fresh = true;
   if (!opts_.dataDir.empty()) {
-    std::error_code ec;
-    if (fs::exists(fs::path(opts_.dataDir) / "config.json", ec)) {
-      fresh = false;
-    } else if (ec) {
-      // A folder (or its config.json) whose status cannot be read (no
-      // permission, a link loop) may hold data: said once, then memory only,
-      // never a new scenario over it (SD-073).
-      std::cerr << "Data cannot be read (" << opts_.dataDir << ": " << ec.message() << "). Running in memory only.\n";
+    if (auto why = unreadable(opts_.dataDir)) {
+      // It may hold data: said once, then memory only, so nothing is read,
+      // written or removed there (SD-073).
+      std::cerr << "Data cannot be read (" << *why << "). Running in memory only.\n";
       opts_.dataDir.clear();
+    } else {
+      std::error_code ec;
+      fresh = !fs::exists(fs::path(opts_.dataDir) / "config.json", ec);
     }
   }
   build(fresh);

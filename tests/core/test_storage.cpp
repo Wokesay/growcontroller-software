@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -394,6 +395,59 @@ TEST_CASE("Storage: a data folder it cannot read runs the simulator in memory on
     CHECK(left == std::vector<std::string>{link.filename().string()});
     CHECK(fs::is_symlink(link));
   }
+}
+
+TEST_CASE("Storage: a hub file the simulator cannot read runs it in memory only, and every file stays as it was (SD-073)") {
+  // E.g. root's files after a start with sudo, in a folder it can read: a
+  // start would boot without them and later save over them.
+  TempDir dir;
+  { sim::Simulation first(onCard(dir)); }  // a finished run leaves its files
+  const fs::path locked = dir.path / "state.json";
+  REQUIRE(fs::exists(locked));
+  const auto files = [&] {
+    std::map<std::string, std::string> all;
+    for (const auto& f : fs::directory_iterator(dir.path)) all[f.path().filename().string()] = onDisk(f.path());
+    return all;
+  };
+  const auto before = files();
+  fs::permissions(locked, fs::perms::none);
+  if (std::ifstream(locked)) {
+    fs::permissions(locked, fs::perms::owner_read | fs::perms::owner_write);
+    MESSAGE("not checked: this process reads any file (root or equivalent)");
+    return;
+  }
+  fs::permissions(locked, fs::perms::owner_read | fs::perms::owner_write);
+  // Each file the hub or the simulator reads, one at a time (one the run
+  // did not leave is put there): a name the check leaves out fails here.
+  for (const char* name : {"config.json", "auth.json", "state.json", "job.json", "events.json", "events.log",
+                           "history.bin", "history.log", "world.json"}) {
+    const std::string shown = name;  // the name, not its address
+    CAPTURE(shown);
+    const fs::path p = dir.path / name;
+    const bool placed = !fs::exists(p);
+    if (placed) std::ofstream(p) << "{}";
+    const auto with = files();
+    fs::permissions(p, fs::perms::none);
+    CHECK(sim::Simulation(onCard(dir, 1790100000)).dataDir().empty());
+    fs::permissions(p, fs::perms::owner_read | fs::perms::owner_write);
+    CHECK(files() == with);
+    if (placed) fs::remove(p);
+  }
+  REQUIRE(files() == before);
+  // the whole way once: a restart, a scenario change, the end
+  fs::permissions(locked, fs::perms::none);
+  std::unique_ptr<sim::Simulation> made;
+  REQUIRE_NOTHROW(made = std::make_unique<sim::Simulation>(onCard(dir, 1790100000)));
+  sim::Simulation& s = *made;
+  CHECK(s.dataDir().empty());
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.fastForward(1);
+  s.reboot();
+  s.loadScenario("neu");
+  made.reset();
+  fs::permissions(locked, fs::perms::owner_read | fs::perms::owner_write);
+  CHECK(files() == before);
 }
 
 TEST_CASE("Storage: a first setup that failed does not keep the alarm once the card takes files again (#68)") {

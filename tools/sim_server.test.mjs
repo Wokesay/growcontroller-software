@@ -146,6 +146,24 @@ test("--data through a link to itself: memory only, and the link stays (SD-073)"
   assert.ok(lstatSync(loop).isSymbolicLink());
 });
 
+test("--data holding a file it cannot read: memory only, and every file stays as it was (SD-073)", { skip, timeout: 120000 }, async (t) => {
+  // e.g. root's files after a start with sudo, in a folder it can read
+  const data = mkdtempSync(join(tmp, "data-"));
+  for (const f of ["config.json", "state.json"]) writeFileSync(join(data, f), '{"kept":true}');
+  chmodSync(join(data, "state.json"), 0o000);
+  try {
+    readFileSync(join(data, "state.json"));
+    return t.skip("this process reads any file");
+  } catch {}
+  const out = await startsWith(["--data", data]);
+  dataSaysWhy(out);
+  assert.match(out, /state\.json: /, "names the file");
+  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+  chmodSync(join(data, "state.json"), 0o600);
+  assert.deepEqual(readdirSync(data).sort(), ["config.json", "state.json"]);
+  for (const f of ["config.json", "state.json"]) assert.equal(readFileSync(join(data, f), "utf8"), '{"kept":true}', f);
+});
+
 test("--data it can use is named as its data folder, and nothing is said about it", { skip, timeout: 120000 }, async () => {
   // what the cases above rule out
   const data = join(mkdtempSync(join(tmp, "data-")), "data");

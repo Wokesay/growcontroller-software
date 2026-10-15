@@ -2538,14 +2538,21 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
 ## SD-073: A data folder the simulator cannot read runs it in memory only
 
 Decided by the project owner on 2026-10-15 in the software session
-(follow-up of PR #187, which does the same for `--web`).
+(follow-up of PR #187, which does the same for `--web`), in two steps:
+first for a folder it cannot read, then the same for files in it that
+it cannot read.
 
-- **When:** the status of the simulator's data folder (`--data`, or the
-  folder next to the program on a start without arguments), or of the
-  `config.json` in it, cannot be read: no permission to enter it, a link
-  loop, an error of the disk. A folder that is not there is not this
-  case; it is created as before.
-- **What it does:** it starts, says once "Data cannot be read (<folder>:
+- **When:** the simulator's data folder (`--data`, or the folder next
+  to the program on a start without arguments) cannot be read:
+  - the status of the folder or of a file of the hub or the simulator in
+    it cannot be read: no permission to enter the folder, a link loop,
+    an error of the disk;
+  - or such a file is there but cannot be opened, for example root's
+    files after a start with `sudo` in a folder the user owns.
+
+  A folder or file that is not there is not this case; it is created as
+  before.
+- **What it does:** it starts, says once "Data cannot be read (<file>:
   <reason>). Running in memory only.", and runs in memory only, as it
   already does for a folder it cannot create. It no longer names the
   folder as its data folder at the start.
@@ -2553,16 +2560,21 @@ Decided by the project owner on 2026-10-15 in the software session
   the simulator reads nothing from it, writes no new scenario over it and
   removes nothing in it, also when the scenario is changed
   (`tests/core/test_storage.cpp`, `tools/sim_server.test.mjs`).
-- **Why:** before, the simulator ended at the start with a filesystem
-  error; started by a double click, its window just closed. A likely
-  case: the folder next to the program was made by a start with `sudo`
-  (new folders are the owner's only), and the next start as the user
-  cannot enter it.
+- **Why:** before, a folder it cannot read ended the simulator at the
+  start with a filesystem error; started by a double click, its window
+  just closed. A file it cannot open was taken as missing: the hub
+  started without its configuration and password and later saved over
+  the old files. Likely cases come from a start with `sudo`: it makes
+  the folder next to the program (the owner's only), so the next start
+  as the user cannot enter it; or it writes root's files into the user's
+  folder.
 - **Not chosen:** refusing to start with exit code 2 and a message.
   Nothing would be lost unseen, but on a double click the window closes
   before the message can be read.
 - Applies to the simulator. The hub's storage on the device comes with
   the firmware.
+- Not covered: a file that can be opened but is not a regular file (for
+  example a folder named `config.json`).
 
 ---
 
