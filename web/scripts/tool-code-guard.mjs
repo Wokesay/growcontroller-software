@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The modules the bundler puts into the app are our sources and the runtime
-// packages of web/package-lock.json, which the web SBOM is to list, none of a
+// packages of web/package-lock.json, which the web SBOM lists, none of a
 // build tool (PD-228, SD-075). Rolldown, Oxc and Vite add modules of their own when the code
 // needs them: Rolldown its runtime helpers (CommonJS interop and namespace
 // objects), Oxc its syntax-lowering helpers, Vite its preload helper and
