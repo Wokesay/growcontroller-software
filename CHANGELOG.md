@@ -247,6 +247,20 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator and the Home Assistant server no longer end at the start
+  on a bad path or value** (#213): `gc_ha_server --config` with a file it
+  cannot read (below a folder it may not enter, a link that loops, no
+  permission) now says so and exits 2, instead of crashing or saying the
+  file holds no mapping. In `gc_sim_server`, a `--port`, `--speed` or
+  `--prefill` that is no number now says so and exits 2 instead of
+  crashing, and one out of range (port 1–65535, time-lapse 0–600 as in the
+  simulator panel, history ahead 0–1000 h) is refused instead of taken;
+  both servers name the range. A start without arguments that finds
+  neither its own folder nor the working folder runs in memory only and
+  says so. A data folder it cannot create is no longer named as its data
+  folder. The port search stops at 65535. The download's smoke test also
+  starts it plainly with a data folder it cannot read (SD-074) and with no
+  folder for the data, on macOS and Linux (#214).
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
