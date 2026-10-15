@@ -2533,6 +2533,42 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   outside input. At session start, open `product-question` issues are
   checked for answers.
 
+
+## SD-073: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
+
+Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
+
+- **The SBOM lists only what ships in the product.** Build tools (Vite,
+  Rolldown, TypeScript, compilers, base images) do not go into it.
+- **Gaps to close:**
+  - the bundler's helper code: the check for tool code covers Rolldown
+    (with the next release; done, below). If its helpers could not be
+    avoided, Rolldown would be listed as a shipped package;
+  - the statically linked runtimes (musl, the GCC runtime) in the SBOM;
+  - an SBOM for the Home Assistant app image (#81);
+  - the firmware's runtimes, once the firmware ships.
+  musl, the GCC runtime and the image SBOM probably come with the release
+  after the next one.
+- **Technical documentation:** names the build tools, generated per
+  release from the lockfile and the image digests.
+- **A public tool list with every release:** npm and C++ build tools,
+  compilers and base images with their digests, as a plain file with the
+  header "not an SBOM, not shipped", part of `SHA256SUMS` and the
+  attestation. No second "build" SBOM, and no `scope: excluded` in one.
+- **Open on the software side** (proposals to the project owner): how
+  the build inputs Dependabot does not watch are tracked
+  (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
+  and whether a CVE in a build tool counts as a security item (PD-220).
+- **Done: the build knows every module of the app.** A Vite plugin
+  (`web/scripts/tool-modules.mjs`) looks at every module of every chunk
+  and fails the build on one that is neither our source, the page nor a
+  runtime package of `web/package-lock.json`: Rolldown's runtime helpers,
+  Vite's preload helper and polyfill, any other module of a build tool,
+  and a build-time package. The minified output does not show this, so
+  the text check of `web/scripts/no-tool-code.mjs` could not; it stays
+  for the page. On 2026-10-15 the app holds no such module, and the
+  bundle is unchanged.
+
 ---
 
 ## Drafts (waiting for "entschieden")

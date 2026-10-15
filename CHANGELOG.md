@@ -495,6 +495,14 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The web build knows every module it ships** (#190, PD-228, SD-073):
+  the web SBOM lists the app's runtime packages, and the build checked
+  only the output's text for code of Vite. Minified, that text no longer
+  shows Rolldown's runtime helpers or a build-time package that slipped
+  in. The build now looks at every module of every chunk and fails on one
+  that is neither our source nor a runtime package of the lockfile. The
+  app holds none today; its bundle is unchanged.
+
 - **The signature check runs with a pinned npm, and says why it fails**
   (#163, SD-070, SD-071): the npm that checks the web app's packages
   against their registry signatures (SD-058) came with whatever Node the
