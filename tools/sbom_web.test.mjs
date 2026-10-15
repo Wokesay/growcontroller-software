@@ -24,8 +24,9 @@ const lock = {
     // a dev dependency that a runtime package has as an optional peer:
     // installed by `npm ci --omit=dev`, so runtime
     "node_modules/y": { version: "2.0.0", devOptional: true },
-    // a runtime binary for another platform, not installed here
+    // runtime binaries for another platform, not installed here
     "node_modules/z-win32": { version: "1.0.0", optional: true },
+    "node_modules/w-win32": { version: "1.0.0", devOptional: true },
     "node_modules/@preact/signals/node_modules/preact": { version: "10.0.0" },
     "node_modules/local": { resolved: "../local", link: true },
   },
@@ -66,6 +67,7 @@ test("the runtime packages of the lockfile: everything not dev, devOptional incl
     "node_modules/@preact/signals",
     "node_modules/y",
     "node_modules/z-win32",
+    "node_modules/w-win32",
     "node_modules/@preact/signals/node_modules/preact",
   ]);
   assert.throws(() => runtimePackages({ lockfileVersion: 1, dependencies: {} }), /lockfile version 2 or later/);
@@ -116,7 +118,7 @@ test("on the real lockfile: npm's SBOM filtered is exactly the packages the tool
   assert.equal(r.status, 0, r.stderr);
   const realLock = JSON.parse(readFileSync(join(root, "web", "package-lock.json"), "utf8"));
   const sbom = webSbom(JSON.parse(r.stdout), realLock);
-  assert.deepEqual(kept(sbom).sort(), [...runtimePackages(realLock).keys()].filter((p) => !realLock.packages[p].optional).sort());
+  assert.deepEqual(kept(sbom).sort(), [...runtimePackages(realLock).keys()].filter((p) => !realLock.packages[p].optional && !realLock.packages[p].devOptional).sort());
   assert.ok(kept(sbom).includes("node_modules/preact"));
   // One notion of runtime package: the guard passes a file of a package
   // exactly when the SBOM lists it
@@ -137,17 +139,20 @@ test("run as a step, it reads npm's SBOM from stdin and writes the web SBOM", ()
   const bad = spawnSync(process.execPath, [join(root, "tools", "sbom_web.mjs"), join(root, "web", "package-lock.json")], { input: "", encoding: "utf8" });
   assert.notEqual(bad.status, 0, "no input is no SBOM");
   assert.equal(bad.stdout, "");
-});
-
-test("an error in the step is never a silent empty SBOM", () => {
-  const src = readFileSync(join(root, "tools", "sbom_web.mjs"), "utf8");
-  assert.doesNotMatch(src.slice(src.indexOf("function isMain")), /catch/, "isMain does not swallow errors");
+  // An error inside the filter fails the step and writes nothing
+  const full = JSON.parse(npm.stdout);
+  const withoutPreact = { ...full, components: full.components.filter((c) => !c.properties.some((p) => p.value === "node_modules/preact")) };
+  const missing = spawnSync(process.execPath, [join(root, "tools", "sbom_web.mjs"), join(root, "web", "package-lock.json")], { input: JSON.stringify(withoutPreact), encoding: "utf8" });
+  assert.notEqual(missing.status, 0);
+  assert.equal(missing.stdout, "");
+  assert.match(missing.stderr, /preact@[\d.]+ \(node_modules\/preact\) is a runtime package/);
 });
 
 test("the release and `npm run sbom` build the web SBOM with it, from the installed packages, not with --omit", () => {
   const release = readFileSync(join(root, ".github", "workflows", "release.yml"), "utf8");
   assert.match(release, /\n {10}\(cd web && npm sbom --sbom-format cyclonedx\) \| node tools\/sbom_web\.mjs web\/package-lock\.json > out\/dist\/sbom-web\.cdx\.json\n/);
   assert.doesNotMatch(release, /--omit\b/);
+  assert.equal(release.match(/> out\/dist\/sbom-web\.cdx\.json/g)?.length, 1, "one line writes the web SBOM");
   assert.match(release, /^ {6}- tools\/sbom_web\.mjs$/m, "a change to it runs the release dry run");
   const scripts = JSON.parse(readFileSync(join(root, "web", "package.json"), "utf8")).scripts;
   assert.equal(scripts.sbom, "npm sbom --sbom-format cyclonedx | node ../tools/sbom_web.mjs package-lock.json > ../build/sbom-web.cdx.json");

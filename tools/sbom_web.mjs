@@ -50,7 +50,7 @@ export function webSbom(full, lock) {
     seenPaths.add(path);
     components.push(c);
   }
-  const missing = [...runtime].filter(([path]) => !seenPaths.has(path) && !lock.packages[path].optional);
+  const missing = [...runtime].filter(([path]) => !seenPaths.has(path) && !lock.packages[path].optional && !lock.packages[path].devOptional);
   if (missing.length) throw new Error(missing.map(([path, id]) => `${id} (${path}) is a runtime package of web/package-lock.json but not in npm's SBOM`).join("\n"));
   refs.add(full.metadata?.component?.["bom-ref"]);
   const dependencies = (full.dependencies ?? [])
