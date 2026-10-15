@@ -6,8 +6,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
 #include <sstream>
+#include <vector>
 
 #include "client.hpp"
 
@@ -360,6 +362,38 @@ TEST_CASE("Storage: after a full card, a clean shutdown right after space return
   c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   CHECK(before["series"][0]["t"].size() > 30);
   CHECK(c2.ok("GET", "/api/v1/history?series=tank.ph&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30))["series"] == before["series"]);
+}
+
+TEST_CASE("Storage: a data folder it cannot read runs the simulator in memory only and is left alone (SD-073)") {
+  // The status of the folder or of its config.json cannot be read (here a
+  // link to itself; also a folder it may not enter): it may hold data, so
+  // nothing is read, written or removed there.
+  for (const bool folder : {true, false}) {
+    CAPTURE(folder);
+    TempDir dir;
+    // the folder itself is the link, or a folder it could write holds a config.json it cannot read
+    const fs::path link = dir.path / (folder ? "loop" : "config.json");
+    fs::create_symlink(link.filename(), link);
+    sim::Options o = test::opts("demo");
+    o.dataDir = (folder ? link : dir.path).string();
+    std::unique_ptr<sim::Simulation> made;
+    REQUIRE_NOTHROW(made = std::make_unique<sim::Simulation>(o));
+    sim::Simulation& s = *made;
+    CHECK(s.dataDir().empty());
+    test::Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.fastForward(1);
+    s.reboot();
+    test::Client after{s};
+    after.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    CHECK(after.ok("GET", "/api/v1/history?series=tank.ph")["series"][0]["t"].size() > 100);
+    s.loadScenario("neu");
+    made.reset();
+    std::vector<std::string> left;
+    for (const auto& f : fs::directory_iterator(dir.path)) left.push_back(f.path().filename().string());
+    CHECK(left == std::vector<std::string>{link.filename().string()});
+    CHECK(fs::is_symlink(link));
+  }
 }
 
 TEST_CASE("Storage: a first setup that failed does not keep the alarm once the card takes files again (#68)") {

@@ -252,7 +252,18 @@ void randomBytes(std::uint8_t* p, size_t n) {
 
 Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::builtin()) {
   bool fresh = true;
-  if (!opts_.dataDir.empty() && fs::exists(fs::path(opts_.dataDir) / "config.json")) fresh = false;
+  if (!opts_.dataDir.empty()) {
+    std::error_code ec;
+    if (fs::exists(fs::path(opts_.dataDir) / "config.json", ec)) {
+      fresh = false;
+    } else if (ec) {
+      // A folder (or its config.json) whose status cannot be read (no
+      // permission, a link loop) may hold data: said once, then memory only,
+      // never a new scenario over it (SD-073).
+      std::cerr << "Data cannot be read (" << opts_.dataDir << ": " << ec.message() << "). Running in memory only.\n";
+      opts_.dataDir.clear();
+    }
+  }
   build(fresh);
 }
 

@@ -2535,6 +2535,37 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
 
 ---
 
+## SD-073: A data folder the simulator cannot read runs it in memory only
+
+Decided by the project owner on 2026-10-15 in the software session
+(follow-up of PR #187, which does the same for `--web`).
+
+- **When:** the status of the simulator's data folder (`--data`, or the
+  folder next to the program on a start without arguments), or of the
+  `config.json` in it, cannot be read: no permission to enter it, a link
+  loop, an error of the disk. A folder that is not there is not this
+  case; it is created as before.
+- **What it does:** it starts, says once "Data cannot be read (<folder>:
+  <reason>). Running in memory only.", and runs in memory only, as it
+  already does for a folder it cannot create. It no longer names the
+  folder as its data folder at the start.
+- **The folder is left alone:** it may hold data of an earlier start, so
+  the simulator reads nothing from it, writes no new scenario over it and
+  removes nothing in it, also when the scenario is changed
+  (`tests/core/test_storage.cpp`, `tools/sim_server.test.mjs`).
+- **Why:** before, the simulator ended at the start with a filesystem
+  error; started by a double click, its window just closed. A likely
+  case: the folder next to the program was made by a start with `sudo`
+  (new folders are the owner's only), and the next start as the user
+  cannot enter it.
+- **Not chosen:** refusing to start with exit code 2 and a message.
+  Nothing would be lost unseen, but on a double click the window closes
+  before the message can be read.
+- Applies to the simulator. The hub's storage on the device comes with
+  the firmware.
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |

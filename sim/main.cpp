@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
-  if (!opts.dataDir.empty()) std::cout << "Daten: " << opts.dataDir << "\n";
+  if (!simulation.dataDir().empty()) std::cout << "Daten: " << simulation.dataDir() << "\n";
   if (!haveWeb) std::cout << "Hinweis: Web-App nicht gefunden unter " << web << "\n";
   std::cout << "Beenden: Strg+C oder dieses Fenster schließen.\n" << std::flush;
   if (open) openBrowser(url);
