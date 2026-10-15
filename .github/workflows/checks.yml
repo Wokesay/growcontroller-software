@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Quick checks on every PR and push to main, also for docs-only changes
-# (PD-059): architecture rules, change filter, action pins, C++ SBOM,
+# (PD-059): architecture rules, change filter, action pins, C++ and web SBOM,
 # licenses (reuse lint), dependency licenses. The full CI (ci.yml) skips
 # its heavy jobs for docs-only changes (SD-030).
 name: Quick checks
@@ -40,7 +40,7 @@ jobs:
       - name: Architecture rules
         run: tools/arch_check.sh
       - name: CI and release scripts, workflow pins
-        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/tool_code_guard.test.mjs
+        run: node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/tool_code_guard.test.mjs tools/sbom_web.test.mjs
       - name: Text keys of the web app
         run: node --test tools/i18n_keys.test.mjs
       - name: Licenses (REUSE, npm dependencies)

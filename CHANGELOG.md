@@ -85,6 +85,14 @@ listed in every release under "Security".
   afterwards every session and token ends and Home Assistant must be
   paired again. Before you pass a device on, use the factory reset.
   Built in a later change.
+- **Sessions claim an issue before working on it** (SD-078): parallel
+  sessions had picked up the same issue. Before a session starts, it
+  fetches the issue again and leaves it alone if a live claim or an open
+  pull request covers it. Otherwise it claims it with a comment naming
+  the session and its branch and the label `in-progress`; of two claims
+  the first comment wins. A multi-part issue is claimed per part, a claim
+  with an open pull request never goes stale, and any other claim quiet
+  for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
 - **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
   from PD-225; replaces SD-068's setup code for the app). From
   0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
@@ -277,6 +285,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The web SBOM lists preact** (#201, SD-075): the release built
+  `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
+  package a build tool depends on, peers included, so it left out
+  `preact`, the app's core library. The web SBOMs of 0.1.0-proto.2 to
+  proto.4 lack `preact` 10.29.8 (`pkg:npm/preact@10.29.8`, MIT); no
+  advisory known on 2026-10-15 affects that version. The SBOM now lists exactly the runtime packages of
+  `web/package-lock.json`, the packages the build lets into the app, as
+  npm describes them, and a test fails when it differs from them.
 - **The simulator and the Home Assistant server no longer end at the start
   on a bad path or value** (#213): `gc_ha_server --config` with a file it
   cannot read (below a folder it may not enter, a link that loops, no

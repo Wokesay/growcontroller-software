@@ -2678,6 +2678,11 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   That is ours as built by the tools in the tool list. It keeps the SBOM
   accurate against honest tools and mistakes; it is no defence against a
   malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
+- **Done: the web SBOM lists exactly the packages the guard lets into
+  the app,** the runtime packages of the lockfile (every entry not marked
+  `dev`; `tools/sbom_web.mjs`, #201). `npm sbom --omit dev` left out
+  `preact`, which a build tool has as a peer, in 0.1.0-proto.2 to
+  proto.4.
 
 
 ## SD-076: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
@@ -3327,3 +3332,90 @@ Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
 `RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
 
 ---
+
+## SD-078: A session claims an issue before it works on it
+
+Decided by the project owner on 2026-10-15 in the software session, after
+parallel sessions had picked up the same issue. All sessions post as the
+owner's account, so assigning an issue cannot tell them apart. The claim
+is therefore a comment that names its session, and the label
+`in-progress` shows that at least one claim is live.
+
+- **Words:** a session's *link* is its Claude-Session URL, the one in its
+  commit trailers. A claim belongs to its branch: only that session
+  pushes to it. A *linked pull request* is an open pull request, draft or
+  not, whose description says "Closes #N", "Fixes #N", "Resolves #N" or
+  "Part of #N".
+- **Live claim:** a "Claimed by", "Taken over by" or "Continued by"
+  comment from the owner's account, posted after the issue was last
+  opened or reopened. It ends with a later "Withdrawn", "Released" or
+  "Taken over by" comment that names its branch (and its part, if it has
+  one), or when its pull request is merged or closed. Every comment of
+  this rule therefore names its link and its branch. Comments from other
+  accounts never count.
+- **Taken or free:** an issue, or a part of it, is taken if a live claim
+  or a linked pull request covers it. A "Part of #N" pull request that
+  names no part covers the whole issue. While any part is taken, a
+  session claims only free parts. A session decides by reading the
+  comments and the linked pull requests, not by the label alone.
+- **When to claim:** when a session starts work towards a change, after
+  the owner's go-ahead where one is needed. Reading or assessing an issue
+  needs no claim. The claim itself needs no further approval.
+- **Claim:** the session fetches the issue and its comments again,
+  comments "Claimed by <link>, branch `<branch>`" (plus ", part: <item or
+  heading>" for a part) and adds `in-progress`. Then it reads the
+  comments again. If a live claim on another branch for the same issue or
+  part is listed before its own, it comments "Withdrawn: <link>, branch
+  `<branch>`" and does not touch the label: the first comment wins.
+- **Several parts:** an issue made of independent parts (a checklist or
+  sections) is claimed per part, naming the issue's own item or heading.
+  There the label only says that some part is taken.
+- **While working:** the session opens its draft pull request with its
+  first commit, with "Closes #N", or "Part of #N, part: <item or
+  heading>". Before each push and before merging it fetches the issue
+  again. If its claim was taken over, or a live claim on another branch
+  now shows before its own (a comment that arrived late), it stops and
+  tells the owner.
+- **Waiting:** a claim with a linked pull request is never stale; it ends
+  when that pull request is merged or closed. A claim without one that
+  waits for the owner or for a product answer comments "Waiting for
+  <what>: <link>, branch `<branch>`" and is not stale while it waits.
+- **Stale:** any other live claim with no push to its branch and no
+  comment naming its branch for 24 hours may be taken over: "Taken over
+  by <link>, branch `<branch>`, from <old link>, branch `<old branch>`,
+  quiet since <UTC time, ISO 8601>." The new session continues on the old
+  branch or starts afresh and says which, then reads the comments again
+  as for a claim, so of two takeovers the first comment wins.
+- **Same work, new session:** a session that goes on with its own
+  earlier work on a claim's branch, for example after a restart in a new
+  container, comments "Continued by <link>, branch `<branch>`" and keeps
+  the claim. Continuing another session's branch, or taking over a live
+  claim at once, needs the owner's word ("Taken over by <link> … on the
+  owner's request").
+- **End:** the session that merges a pull request with "Closes #N"
+  removes `in-progress` right after the merge. After a "Part of #N" merge
+  it comments "Released: <link>, branch `<branch>`, part: <part>: merged
+  in #<PR>". Work that stops otherwise ends with "Released: <link>, branch
+  `<branch>`: <reason, where the work stands>". In each case the session
+  removes the label if no other live claim is left.
+- **The owner asks for a taken issue:** the session tells him who holds
+  it and takes it over only on his word.
+- **What it does not cover:** `product-question` issues, which the
+  product repository's session answers (SD-072). Work that follows an
+  answer gets a regular issue, which is claimed. Work the owner asks for
+  directly in a session needs no issue; if it touches an open issue, that
+  issue is claimed.
+- **Work begun before this decision:** right after this decision is
+  merged, the merging session records each open pull request that names
+  an issue as that issue's claim: a comment "Claimed by <the pull
+  request's session link>, branch `<its branch>`" naming the pull
+  request, and the label. This also covers a pull request whose
+  description names the issue without "Closes" or "Part of".
+- `CLAUDE.md` has the short form; `docs/WORKFLOW.md` §3 shows it in the
+  flow of a change.
+- **Not chosen:** a GitHub project board (more for the owner to keep up,
+  and the same race when two sessions move a card); only an early draft
+  pull request (it needs a commit first, and it does not cover work
+  without code). SD-061 rejected reserving SD numbers through issues;
+  here the issue is the work item itself, and the comment order settles
+  a race.
