@@ -16,7 +16,9 @@ COPY web/ web/
 ARG GC_SOURCE_REV
 RUN test -n "$GC_SOURCE_REV" || { echo "GC_SOURCE_REV is needed (AGPL-3.0 §13)"; exit 1; }
 # Registry signatures of the packages installed here (their musl builds
-# among them) before any of them runs (SD-058)
+# among them) before any of them runs (SD-058). Alpine's Node and npm check
+# them; their versions go to the build log (#163).
+RUN node -v && npm -v
 RUN cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build
 
 # The server, without node. The release (= VERSION and the version in

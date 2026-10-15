@@ -24,8 +24,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
-    # Node's types follow the Node that CI runs (node-version in the
-    # workflows), not the newest Node (tools/workflows.test.mjs)
+    # Node's types follow the Node that CI runs (.nvmrc, SD-070), not the
+    # newest Node (tools/workflows.test.mjs)
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]

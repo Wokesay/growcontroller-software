@@ -716,7 +716,7 @@ TEST_CASE("Bottles: removing one bottle of a pair leaves its partner unpaired, s
   // The event names the partner that is no longer paired
   const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
   CHECK(ev["title"]["key"] == "ev.cfg.canister_removed_pair");
-  CHECK(ev["title"]["args"]["partner"] == "Teil B");
+  CHECK(ev["title"]["args"].value("partner", "") == "Teil B");
   // A save the hub checks as a whole still works
   c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "teil-b"}, {"mlPerL", 1.0}}}}});
 }
@@ -745,4 +745,88 @@ TEST_CASE("Bottles: removing a bottle without a pair, or one whose label is alre
   CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
   CHECK(canisterById(c, "teil-a")["pair"] == "AB");
   CHECK(canisterById(c, "teil-b")["pair"] == "AB");
+}
+
+TEST_CASE("Bottles: editing one bottle out of a pair leaves its partner unpaired, and recipes still save (#152)") {
+  for (const gc::json& edit : {gc::json{{"id", "teil-a"}, {"pair", ""}}, gc::json{{"id", "teil-a"}, {"pair", "XY"}}, gc::json{{"id", "teil-a"}, {"kind", "ph_down"}, {"pair", ""}}}) {
+    CAPTURE(edit.dump());
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    deleteRecipes(c);
+    c.ok("POST", "/api/v1/canisters", edit);
+    CHECK(canisterById(c, "teil-b")["pair"] == "");
+    const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
+    CHECK(ev["title"]["key"] == "ev.cfg.canister_unpairs");
+    CHECK(ev["title"]["args"].value("partner", "") == "Teil B");
+    // Moved into a new pair, Teil A is that pair's first bottle and may stand alone until its partner comes;
+    // a recipe may hold it already. A pH bottle is in no recipe.
+    gc::json steps = gc::json::array({gc::json{{"canister", "teil-b"}, {"mlPerL", 1.0}}});
+    if (edit.value("kind", "nutrient") == "nutrient") steps.push_back({{"canister", "teil-a"}, {"mlPerL", 1.0}});
+    c.ok("POST", "/api/v1/recipes", {{"name", "Weiter"}, {"steps", steps}});
+  }
+}
+
+TEST_CASE("Bottles: an edit that would leave a recipe with half a pair is refused; a first partner may stand alone (#152)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // A bottle no recipe uses joins pair AB, while the recipes hold only Teil A and Teil B of it
+  const std::string extra = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom C"}, {"kind", "nutrient"}})["id"];
+  const gc::json before = canisterById(c, extra);
+  auto [code, body] = c.call("POST", "/api/v1/canisters", {{"id", extra}, {"pair", "AB"}});
+  CHECK(code == 422);
+  CHECK(body["errors"].at(0)["key"] == "cfg.recipe.pair");
+  CHECK(canisterById(c, extra) == before);
+  // CalMag is in both recipes: with it, pair AB stays whole in them
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", "AB"}});
+  c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", ""}});
+  // A new bottle with a new pair label may stand alone until its partner comes next; saved again, it keeps it
+  const std::string bloom = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom A"}, {"kind", "nutrient"}, {"pair", "CD"}})["id"];
+  c.ok("POST", "/api/v1/canisters", {{"id", bloom}, {"name", "Bloom A1"}});
+  CHECK(canisterById(c, bloom)["pair"] == "CD");
+  CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister");
+  c.ok("POST", "/api/v1/canisters", {{"name", "Bloom B"}, {"kind", "nutrient"}, {"pair", "CD"}});
+  c.ok("POST", "/api/v1/recipes", {{"name", "Weiter"}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 1.0}}}}});
+}
+
+TEST_CASE("Bottles: two bottles a recipe holds one of pair up in either order, the recipe first (#152)") {
+  for (const bool inRecipeFirst : {true, false}) {
+    CAPTURE(inRecipeFirst);
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    const std::string a = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom A"}, {"kind", "nutrient"}})["id"];
+    const std::string b = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom B"}, {"kind", "nutrient"}})["id"];
+    const std::string r = c.ok("POST", "/api/v1/recipes", {{"name", "Bloom"}, {"steps", {{{"canister", a}, {"mlPerL", 1.0}}}}})["id"];
+    // The first label stands alone; the second would leave the recipe with half of pair CD
+    c.ok("POST", "/api/v1/canisters", {{"id", inRecipeFirst ? a : b}, {"pair", "CD"}});
+    auto [code, body] = c.call("POST", "/api/v1/canisters", {{"id", inRecipeFirst ? b : a}, {"pair", "CD"}});
+    CHECK(code == 422);
+    CHECK(body["errors"].at(0)["key"] == "cfg.recipe.pair");
+    // The way out the refusal names: the recipe takes the other bottle first, then the pair is whole
+    c.ok("POST", "/api/v1/recipes", {{"id", r}, {"steps", {{{"canister", a}, {"mlPerL", 1.0}}, {{"canister", b}, {"mlPerL", 1.0}}}}});
+    c.ok("POST", "/api/v1/canisters", {{"id", inRecipeFirst ? b : a}, {"pair", "CD"}});
+    CHECK(canisterById(c, a)["pair"] == "CD");
+    CHECK(canisterById(c, b)["pair"] == "CD");
+  }
+}
+
+TEST_CASE("Templates: a template pairs its parts while another bottle waits for its partner, and leaves no part alone with a label (#152)") {
+  for (const bool partTaken : {false, true}) {
+    CAPTURE(partTaken);
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    deleteRecipes(c);
+    c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"pair", ""}});  // Teil B goes out of the pair with it
+    const std::string solo = c.ok("POST", "/api/v1/canisters", {{"name", "Solo"}, {"kind", "nutrient"}, {"pair", "XY"}})["id"];
+    if (partTaken)
+      for (const char* id : {"teil-a", "calmag"}) c.ok("POST", "/api/v1/canisters", {{"id", id}, {"pair", "CM"}});
+    c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}});
+    // A part whose bottle has a pair already keeps it, and its partner gets no label of its own
+    CHECK(canisterById(c, "teil-a")["pair"] == std::string(partTaken ? "CM" : "AB"));
+    CHECK(canisterById(c, "teil-b")["pair"] == std::string(partTaken ? "" : "AB"));
+    CHECK(canisterById(c, solo)["pair"] == "XY");
+  }
 }

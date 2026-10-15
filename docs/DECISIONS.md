@@ -2397,6 +2397,41 @@ the issue and to the project owner.
   advisories).
 
 
+## SD-070: CI runs one pinned Node; it is raised by hand and checked at every release
+
+Decided by the project owner on 2026-10-15 (#163, PR #183). Adds to
+SD-058, whose check runs with the npm that comes with Node.
+
+- **The pin:** `.nvmrc` names one exact Node version, today 22.23.3, the
+  newest of Node 22. Every job that sets up Node reads it
+  (`tools/workflows.test.mjs`). Before, `node-version: 22` took whatever
+  the runner image had, so the npm that checks the signatures changed
+  without review, and a failure could not be reproduced.
+- **Raising it:** by hand, in a pull request of its own, with a `security`
+  review. Dependabot does not read `.nvmrc`.
+- **When:** at every release, in step 1 "Prepare" (`docs/RELEASE.md`):
+  `.nvmrc` is compared with the newest Node 22 security release
+  (`https://nodejs.org/dist/index.json`, `"security": true`) and raised
+  if it is lower. Until the next release CI may run on a Node without the
+  newest patch. Node is not shipped, though it builds what is (the web
+  app in the firmware, the packages and the release), so that risk is
+  small.
+- **Node 22 ends on 2027-04-30:** the move to the next LTS, together with
+  the `@types/node` major, comes before then.
+- **What it does not cover:**
+  - The app image checks the signatures with Alpine's Node and npm (24
+    and 11 in Alpine 3.24 on 2026-10-15). It prints their versions; a pin
+    there is open (#163).
+  - setup-node downloads the pinned Node without checking a checksum when
+    it is not in the runner's cache: the same trust in GitHub and
+    nodejs.org over TLS as for the runner's own Node, accepted.
+- **Not chosen:**
+  - A monthly reminder to check the pin: more pull requests and a
+    standing scheduled job, for a tool that is not shipped.
+  - No pin, as before: patches come by themselves, but the checker
+    changes unseen.
+
+
 ## SD-071: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
 
 Decided by the project owner in the product repository on 2026-10-12

@@ -138,6 +138,7 @@ nutrient solution". This comes straight from the resolver.
 | Cap after replugging | while the hub runs: event "Pump A not responding", then "Pump A is back" with "Pump 2 on the dosing block. Is it still on the bottle 'Part A'?". A start logs neither, also for devices that answer later, so a pump that first answers after a start asks nothing; Devices shows it offline until it answers (#115) |
 | Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |
 | Bottle refilled without telling the hub, run dry, or stock entered too low | the stock goes below zero by the count and stays there; one event says what to do (empty? change it; otherwise enter the amount left; recalibrate only if it keeps happening), the monitoring stays red and a mix is refused until the amount left is entered or "Bottle changed" is tapped (SD-066) |
+| Bottle edited out of its pair | the bottle editor says before saving "After you save, "Part B" is no longer paired." (read out with Save), the event log afterwards; an edit that would leave a recipe with half a pair is refused and nothing is saved (#152) |
 
 ## 6. Notifications (concept, not implemented yet)
 

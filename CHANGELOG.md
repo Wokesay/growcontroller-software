@@ -240,6 +240,24 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Editing a bottle out of its pair no longer blocks later saves**
+  (#152): clearing or changing part A's pair label, or making it a pH
+  bottle, left part B alone with the label, and the hub then refused
+  saving a recipe, the tank, a zone or a function until the label was
+  cleared by hand, as removing a bottle did before #147. Now the bottle
+  left behind is no longer paired; the bottle editor says so before you
+  save, and the event log afterwards. With a new label, part A is that
+  pair's first bottle until its partner joins: a recipe, also one from a
+  template, may already hold it; other saves wait for the partner, as
+  before. An edit that would leave a recipe with only half of a pair (a
+  third bottle joining a pair the recipe holds two of) is now refused and
+  nothing is saved; the reason is still shown in German only (#148). The
+  hub now lets a recipe hold both bottles before the second gets the
+  label, so two bottles a recipe holds one of can be paired; the recipe
+  editor cannot add a bottle to an existing recipe yet (#159).
+- **A removed bottle's stock is saved at once** (#152): until the next
+  regular save, a power cut brought it back, and a new bottle of the same
+  name then showed the old stock.
 - **Removing one bottle of a pair no longer blocks every later save**
   (#147): the other bottle kept its pair label on its own, and the hub
   then refused saving a recipe, the tank, a zone or a function, binding a
@@ -484,6 +502,17 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The signature check runs with a pinned npm, and says why it fails**
+  (#163, SD-070): the npm that checks the web app's packages against
+  their registry signatures (SD-058) came with whatever Node the runner
+  image had. Every job that sets up Node now runs the one named in
+  `.nvmrc`, raised by hand with a review and compared with Node's security
+  releases at every release. The app image still checks with Alpine's
+  Node and npm, and now prints their versions. When a job with the check
+  fails, a step that runs only then shows the end of npm's own log of the
+  check and asks npm again for its reasons; until now the output named
+  only the package, so a failure on 2026-10-14 that passed on re-run could
+  not be explained. The check itself is unchanged.
 - **A Stop holds even when booking the running dose fails** (RAT-036):
   a Stop booked the running dose and ended the job before it switched the
   inlet, the circulation pump and the sockets off. An error while booking
