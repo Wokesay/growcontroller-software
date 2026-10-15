@@ -5,6 +5,7 @@
 // The HTTP part follows the simulator's server (sim/main.cpp).
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
@@ -23,8 +24,6 @@
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#include <cerrno>
 #endif
 
 #include "gc/api.hpp"
@@ -173,7 +172,7 @@ int main(int argc, char** argv) {
       char* end = nullptr;
       const long n = std::strtol(v.c_str(), &end, 10);
       if (v.empty() || *end != '\0' || n <= 0 || n > 65535) {
-        std::cerr << a << ": not a number: " << v << "\n";
+        std::cerr << a << " must be a whole number from 1 to 65535, not \"" << v << "\"\n";
         std::exit(2);
       }
       return static_cast<int>(n);
@@ -209,9 +208,22 @@ int main(int argc, char** argv) {
     usage();
     return 2;
   }
-  if (!app && !std::filesystem::exists(config)) {
-    std::cerr << config << ": file not found\n";
+  std::error_code configErr;  // a file it may not read is an error to name, not a crash at the start (#213)
+  if (!app && !std::filesystem::exists(config, configErr)) {
+    if (configErr)
+      std::cerr << config << ": cannot be read (" << configErr.message() << ")\n";
+    else
+      std::cerr << config << ": file not found\n";
     return 2;
+  }
+  if (!app) {
+    errno = 0;
+    std::ifstream probe(config);  // there but not opened (no permission): say so, not "no JSON object"
+    const int err = errno;
+    if (!probe) {
+      std::cerr << config << ": cannot be read (" << (err ? std::generic_category().message(err) : "cannot be opened") << ")\n";
+      return 2;
+    }
   }
   std::string err;
   const auto mapping = ha::parseMapping(app ? gc::json{{"url", "http://supervisor/core"}} : gc::json::parse(readFile(config), nullptr, false), err);
