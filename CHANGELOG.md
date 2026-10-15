@@ -64,12 +64,50 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
+  button, its question, the banner, Monitoring, the event log and every
+  message call the function "Stop", in German "Stopp" or "Alles stoppen",
+  never "emergency stop" or "Not-Halt". Examples: "Stop everything?" /
+  "Alles stoppen?", "Stop active." / "Stopp aktiv.", "Stop cleared" /
+  "Stopp aufgehoben". The Home Assistant app's documentation says the
+  same. The message keys stay, so on a German page events saved before
+  show the new words too; on an English page they keep the old ones. A
+  mix refused during a Stop now says so in both languages; for API
+  clients its error key is `act.stopped` instead of `job.stopped`.
+- **Sessions claim an issue before working on it** (SD-078): parallel
+  sessions had picked up the same issue. Before a session starts, it
+  fetches the issue again and leaves it alone if a live claim or an open
+  pull request covers it. Otherwise it claims it with a comment naming
+  the session and its branch and the label `in-progress`; of two claims
+  the first comment wins. A multi-part issue is claimed per part, a claim
+  with an open pull request never goes stale, and any other claim quiet
+  for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
+- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
+  from PD-225; replaces SD-068's setup code for the app). From
+  0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
+  Assistant's login, and the setup code goes away. Port 8099 is closed by
+  default. A bookmark to it works again once the port is opened in the
+  app's network settings and the app has a password for direct access
+  (set by a Home Assistant administrator in the app; a password from
+  0.1.0-proto.4 is kept); without one, port 8099 only says where the app
+  is now. The ESP keeps its own login. Built in a later change.
 - **Product questions are issues here** (#190, SD-072, from PD-226;
   replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an
   English issue labelled `product-question`. The product repository's
   session picks it up and decides it there (PD). The software session no
   longer accesses the product repository.
+- **A security advisory for every fixed vulnerability** (#190, SD-079,
+  from PD-220): a flaw that someone without the needed rights can
+  trigger gets a GitHub Security Advisory, with a CVE from GitHub or the
+  CVE of the component it comes from. It is published with the release
+  that fixes it; if that release takes longer than 30 days after the fix
+  is on `main`, it is published anyway, with a workaround. The Security
+  section names per item the affected versions, impact, severity and
+  remedy (`SECURITY.md`, `docs/RELEASE.md`). At the latest from the
+  first device offered or lent, actively exploited vulnerabilities and
+  severe incidents are reported under CRA Art. 14; until then we do so
+  voluntarily.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their
@@ -167,6 +205,27 @@ listed in every release under "Security".
   project runs a relay free of charge, and you can run your own. A
   direct way through a port forward is not offered. Whether an app comes
   into the stores is decided later.
+- **Partition tables: room for factory data** (SD-076): both boards get a
+  read-only 16 KB partition `fctry` before the first app, for the serial
+  number and the setup network's key from the label of pre-flashed
+  devices. Nothing else moves: flashing a board you already have keeps
+  its settings and data, unless you choose to erase. The installer never
+  writes it and a factory reset will keep it; erasing the whole flash
+  wipes it.
+- **Plan: pre-flashed devices, setup without a cable, support period**
+  (SD-076): until a series with hardened firmware, you flash the DevKit
+  yourself in the browser; later it can come pre-flashed. Wi-Fi is then
+  set up through the ESP32-S3's own setup network with the key from the
+  label; on a configured device it opens only when you hold BOOT for
+  3 s, for at most 10 min. Holding BOOT for 10 s resets the device to
+  factory state: settings, calibration values, passwords, Wi-Fi and
+  history are erased, the label's key stays. A pre-flashed device asks for
+  its first password in the home network within 15 min after it joins.
+  Every board with our firmware gets security updates for 7 years from
+  its delivery, until December (delivered 2028: until at least 12/2035);
+  `SECURITY.md` says so, and the web app will show the date. Any
+  computer on a USB port of the DevKit can install other firmware
+  without a button press, so unplug USB in operation.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
@@ -187,15 +246,21 @@ listed in every release under "Security".
   and EC from Home Assistant, the combined history view and the stop menu
   wait until the ESP foundation stands.
 - Build tools of the web app: TypeScript 7.0.2 for the type check and
-  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  Playwright 1.64.0 for the end-to-end tests (proposed by Dependabot). The
   app itself does not change.
-- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
-  visible changes.
-- Build tool of the web app: Vite 8.3.2 (proposed by Dependabot). It needs
+- The web app runs on Preact 11.0.1 with the icons of lucide-preact
+  1.53.0 (proposed by Dependabot). Nothing visible changes.
+- Build tool of the web app: Vite 8.3.3 (proposed by Dependabot); 8.3.3
+  closes three advisories of Vite's development server
+  (GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg, GHSA-9jrq-w75r-8gcw), which our
+  builds and tests never run. It needs
   lightningcss, which is under MPL-2.0; the license check now allows
   MPL-2.0 for lightningcss as a build tool, which is never shipped
   (SD-046). The code of the app does not change; Vite 8 bundles it with
   Rolldown, so the built files differ.
+- CI and release workflows: `actions/upload-artifact` 7.0.2,
+  `actions/download-artifact` 8.0.2 and `actions/setup-node` 7.1.0, pinned
+  by commit SHA as before (proposed by Dependabot).
 - **Home Assistant app on Alpine 3.24** (proposed by Dependabot): the
   server in the app is now linked against musl 1.2.6 and the runtime of
   GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
@@ -235,6 +300,28 @@ listed in every release under "Security".
   The limit itself is unchanged and still closes a valve the hub opened.
   The refill no longer takes over an inlet opened by hand, and says that
   such a valve locks after the limit.
+- **The web SBOM lists preact** (#201, SD-075): the release built
+  `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
+  package a build tool depends on, peers included, so it left out
+  `preact`, the app's core library. The web SBOMs of 0.1.0-proto.2 to
+  proto.4 lack `preact` 10.29.8 (`pkg:npm/preact@10.29.8`, MIT); no
+  advisory known on 2026-10-15 affects that version. The SBOM now lists exactly the runtime packages of
+  `web/package-lock.json`, the packages the build lets into the app, as
+  npm describes them, and a test fails when it differs from them.
+- **The simulator and the Home Assistant server no longer end at the start
+  on a bad path or value** (#213): `gc_ha_server --config` with a file it
+  cannot read (below a folder it may not enter, a link that loops, no
+  permission) now says so and exits 2, instead of crashing or saying the
+  file holds no mapping. In `gc_sim_server`, a `--port`, `--speed` or
+  `--prefill` that is no number now says so and exits 2 instead of
+  crashing, and one out of range (port 1–65535, time-lapse 0–600 as in the
+  simulator panel, history ahead 0–1000 h) is refused instead of taken;
+  both servers name the range. A start without arguments that finds
+  neither its own folder nor the working folder runs in memory only and
+  says so. A data folder it cannot create is no longer named as its data
+  folder. The port search stops at 65535. The download's smoke test also
+  starts it plainly with a data folder it cannot read (SD-074) and with no
+  folder for the data, on macOS and Linux (#214).
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
@@ -473,37 +560,45 @@ listed in every release under "Security".
   and the build now fails if code of Vite shows up in the app again.
 
 ### Security
-Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
-Severity: low. The first concerns the hub's own probes, which only the
-simulator has so far; the second needed the password for an import, and
-nothing in the Home Assistant app reads a value to switch; the third needs
-a device in the home network, and a device already signed in kept its
-session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
-each with the password, and whoever has the password can already stop,
-switch or change it; the fifth, like the first, concerns the hub's own
-probes; the sixth needs a device in the home network before the owner sets
-the first password, and the Home Assistant app switches nothing; the
-seventh needs a Linux x86-64 host with an AMD Zen 5 processor without
-AMD's fix, and even there a session token or salt is only partly
-predictable. No GHSA or CVE of our own is issued; the seventh follows from
-AMD's CVE-2025-62626.
+Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4),
+fixed in this release. Each item names its affected versions, impact,
+severity and remedy (SD-079). Four are vulnerabilities: someone without
+the needed rights, a device in the network or a crafted file, could
+trigger them. Each gets a GitHub Security Advisory (GHSA), published
+with this release; we request a CVE from GitHub for the three of our own,
+and the fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
+fixes: normal use, a faulty probe or someone with the password triggers
+them, so they get no advisory.
 
-- **An abandoned probe calibration no longer keeps jump checks off:** a
-  calibration window closed without saving left the calibration open on
-  the hub until a restart; meanwhile jumps of that probe were taken as the
-  calibration (RAT-042). A calibration now ends when its window closes and
-  with its device; one left for 30 min without a step no longer explains
-  jumps, while pH and EC control keep waiting until it is saved or
-  cancelled, since the probe may still be in a buffer.
-- **An import could show a pH calibrated in Home Assistant as checked**
-  (SD-041): a device whose reported class differs from the configured one
-  now has no value, and an import gives a calibration only to a class that
-  offers it.
+Vulnerabilities, each with an advisory:
+
+- **Nobody else can set the Home Assistant app's first password** (#79,
+  SD-068): until the owner set it, any device in the home network could
+  set it first, see the names of Home Assistant's sensors and the values of
+  those it could pick, change the app's settings, and lock the owner out
+  until the app was reinstalled. The app now prints a one-time setup code to its log, which
+  only Home Assistant's administrators, and apps they gave that right, can
+  read, and the first password needs it. The code has 80 bits, is kept
+  in memory only and is used up by the password; a restart makes a new
+  one. Wrong codes lock nobody out and are logged at most once per 15
+  minutes.
+  - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: needs a device in the home network before the owner sets the
+    first password; the Home Assistant app switches nothing.
+  - Severity: medium, CVSS 3.1 6.4
+    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`), CWE-1188.
+  - Remedy: update to 0.1.0-proto.5. The update keeps a password that is
+    already set: if you did not set it yourself, reinstall the app or
+    restore a backup made before that password was set, then set the
+    password or update at once. On an older version, set the password
+    right after installing.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
-  a device in the network that sent a wrong password every 15 minutes kept
-  every other one from signing in, the owner's phone included, and so from
-  "Stop" unless it was still signed in. Now a device that has signed in
+  a device in the network that, after about ten wrong passwords, sent one
+  every 15 minutes kept every other one from signing in, the owner's phone
+  included, and in the simulator from "Stop" unless it was still signed
+  in. Now a device that has signed in
   since the hub last started has its own count, so guessing from another
   address no longer locks it out; all devices that never signed in share
   one count, so guessing from many of them stays as slow as from one. The
@@ -512,11 +607,84 @@ AMD's CVE-2025-62626.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: needs a device in the home network (for the simulator only
+    when it was started with `--host`); a device already signed in kept
+    its session and, in the simulator, "Stop".
+  - Severity: medium, CVSS 3.1 4.3
+    (`CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`), CWE-645.
+  - Remedy: update to 0.1.0-proto.5. Until then, keep the devices you
+    need signed in; "Sign-in failed" in the event log shows when someone
+    guesses, not from which device, so look for an unknown device in your
+    router's list of connected devices.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
+  CVE-2025-62626): the Home Assistant app and the simulator took the
+  random numbers for session tokens and password salts from
+  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
+  instruction first. AMD Zen 5 processors without AMD's fix can return
+  zeros there while reporting success, so on such a host part of a session
+  token could be zero and easier to guess. They now come from the
+  operating system (`getentropy()`), as does the setup code. Not affected:
+  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
+  microcode or BIOS fix. Nothing to do after the update: the restart ends
+  every old session, and salts need not be secret.
+  - Affected: the Home Assistant app on amd64 and the simulator on Linux
+    x86-64, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: needs a Linux x86-64 host with an AMD Zen 5 processor without
+    AMD's fix (for the simulator also a start with `--host`), and even
+    there a session token or salt is only partly predictable.
+  - Severity: medium, CVSS 3.1 4.2
+    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-331.
+  - Remedy: update to 0.1.0-proto.5. Until then, install AMD's microcode
+    or BIOS fix.
+  - Advisory: a GHSA, published with this release; no CVE of its own, it
+    refers to CVE-2025-62626.
+- **An import could show a pH calibrated in Home Assistant as checked**
+  (SD-041): a crafted backup could give a Home Assistant pH sensor the
+  class of the hub's own pH probe, with a calibration; its values then
+  showed as checked by the hub ("Valid", without "Calibrated elsewhere")
+  and counted as usable until the app restarted. Now a device whose
+  reported class differs from the configured one has no value, and an
+  import gives a calibration only to a class that offers it.
+  - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: a crafted backup; the owner must import it, which needs the
+    password, and the Home Assistant app cannot switch anything.
+  - Severity: low, CVSS 3.1 3.3
+    (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-807.
+  - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
+    made yourself.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+
+Safety and robustness fixes, no vulnerability:
+
+- **An abandoned probe calibration no longer keeps jump checks off:** a
+  calibration window closed without saving left the calibration open on
+  the hub until a restart; meanwhile jumps of that probe were taken as the
+  calibration (RAT-042). A calibration now ends when its window closes and
+  with its device; one left for 30 min without a step no longer explains
+  jumps, while pH and EC control keep waiting until it is saved or
+  cancelled, since the probe may still be in a buffer.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4; in the Home
+    Assistant app only through a crafted import.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5. Until then, restart the simulator
+    after a calibration you did not finish.
 - **A new sign-in ends the session used longest ago:** with 16 sessions
   open, a 17th sign-in ended a random one of them, so the phone someone was
-  using could be signed out and had to sign in again before it could reach
-  "Stop". Now the session used longest ago ends. Found through a test of the
+  using could be signed out and had to sign in again before it could
+  reach "Stop" in the simulator. Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: needs 16 other sign-ins within 12 hours, each with the
+    password, and whoever has the password can already stop, switch or
+    change it.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 - **A disturbed pH probe is no longer taken as the hub's own pH dose**
   (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
   until a minute after the dose's wait, against RAT-042, which keeps own pH
@@ -529,27 +697,11 @@ AMD's CVE-2025-62626.
   jump in the last minutes of another announcement (after a mix or hand
   dose, the inlet, an EC round or a probe calibration) is still taken as
   explained; that stays open.
-- **Nobody else can set the Home Assistant app's first password** (#79,
-  SD-068): until the owner set it, any device in the home network could
-  set it first, see the names of Home Assistant's sensors and the values of
-  those it could pick, and lock the owner out until the app was
-  reinstalled. The app now prints a one-time setup code to its log, which
-  only Home Assistant's administrators, and apps they gave that right, can
-  read, and the first password needs it. The code has 80 bits, is kept
-  in memory only and is used up by the password; a restart makes a new
-  one. Wrong codes lock nobody out and are logged at most once per 15
-  minutes.
-- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
-  CVE-2025-62626): the Home Assistant app and the simulator took the
-  random numbers for session tokens and password salts from
-  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
-  instruction first. AMD Zen 5 processors without AMD's fix can return
-  zeros there while reporting success, so on such a host part of a session
-  token could be zero and easier to guess. They now come from the
-  operating system (`getentropy()`), as does the setup code. Not affected:
-  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
-  microcode or BIOS fix. Nothing to do after the update: the restart ends
-  every old session, and salts need not be secret.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far; there, pH control dosed twice on the jumped reading.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 
 A protective cut-off added:
 
@@ -605,6 +757,33 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **Three security fixes are guarded against coming back** (#234); each
+  check fails when its fix is taken out:
+  - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED
+    and RDRAND instructions in our own code of the core, the simulator,
+    the Home Assistant server and the firmware. The one exception is the
+    Windows branch of `sim::randomBytes`. `std::random_device` tries
+    RDSEED first on Linux x86-64 (AMD-SB-7055). On the code of
+    0.1.0-proto.4 the check names both places that used it. The test of
+    `sim::randomBytes` now also checks that it fills the buffer to the
+    end.
+  - A scenario test leaves a calibration of the hub's own pH probe open
+    for 45 min. A jump must then lock the reading, and pH control must
+    not dose on it (RAT-042). So far the test of that fix covered only a
+    probe from Home Assistant.
+  - A test imports a backup that gives a pH calibrated in Home Assistant
+    the class of the hub's own pH head, with a calibration. That was the
+    way in up to 0.1.0-proto.4. The reading must stay without a value,
+    and the app must not offer a calibration for it (RAT-025, SD-041).
+- **The web build checks every module the bundler puts into the app**
+  (#190, PD-228, SD-075): the app's code is to come only from our
+  sources and the runtime packages of the lockfile, and the build
+  searched the output only for three markers of Vite.
+  Rolldown's runtime helpers or a build-time package leave no such marker
+  in minified code. The build now looks at every module of every chunk
+  and fails on one that is neither our source nor a runtime package of
+  the lockfile, and when it checked nothing. The app holds none today,
+  and it builds the same byte for byte as without the check.
 - **The signature check runs with a pinned npm, and says why it fails**
   (#163, SD-070, SD-071): the npm that checks the web app's packages
   against their registry signatures (SD-058) came with whatever Node the
@@ -624,7 +803,7 @@ Hardening, without a vulnerability behind it:
   Now the Stop takes effect, everything goes off and the Stop is saved
   first; the gateway refuses any start meanwhile. A dose that cannot be
   booked is dropped, so nothing of it runs or is booked later, and the log
-  says "Emergency stop: dose not fully counted" with the bottle, what to
+  says "Stop: dose not fully counted" with the bottle, what to
   check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a

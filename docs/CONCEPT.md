@@ -90,7 +90,7 @@ UI and API always match, and a rollback takes the UI along.
 **Rules** (checked by machine in `tools/arch_check.sh` where possible):
 
 - **R1:** Only the actuator gateway calls pumps and outputs. Manual doses
-  and the emergency stop go through it too.
+  and the Stop go through it too.
 - **R2:** The watchdog sees only the read model and the configuration
   (`readmodel.hpp`). It has no path to actuators. Rationale: RAT-074.
 - **R3:** Locks read the sensor truth, never the watchdog's assessment.
@@ -103,12 +103,12 @@ UI and API always match, and a rollback takes the UI along.
   RAT-007, RAT-028, RAT-044, RAT-063. PD-020 replaces the part for state
   functions (fans, light, irrigation): fan sockets come back on after a
   power loss and keep their state (PD-050, SD-028); light and irrigation
-  are open. An emergency stop survives a restart and keeps the fans off
+  are open. A Stop survives a restart and keeps the fans off
   too until someone resumes (PD-076); an internal error keeps the fans
   running (PD-077).
 - **R7:** The catalog can only tighten safety. The minimum lives in the
   gateway: calibration value, run time limits, one run at a time,
-  emergency stop, dry run, emergency limit of the inlet.
+  Stop, dry run, emergency limit of the inlet.
 - **R8:** One event loop with an injected clock. This makes tests
   deterministic and time-lapse in the simulator possible.
 
@@ -137,7 +137,7 @@ UI and API always match, and a rollback takes the UI along.
 - **Everywhere:**
   - Watchdog: OK, problem or neutral, always with a reason.
   - Control line with checklist ("Why is it (not) dosing right now?").
-  - Emergency stop, maintenance mode, cultivation run with phases as
+  - Stop, maintenance mode, cultivation run with phases as
     parameter sets, harvest as an event.
   - History in 3 tiers, event log, CSV export, backup and import of the
     configuration.

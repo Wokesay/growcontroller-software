@@ -176,6 +176,11 @@ std::vector<std::string> FileStorage::hold(bool on) {
   return holds_ > 0 && --holds_ == 0 ? release() : std::vector<std::string>();
 }
 
+bool FileStorage::persistent() const {
+  std::lock_guard<std::mutex> l(m_);
+  return onDisk();
+}
+
 std::uint64_t FileStorage::bytesWritten() const {
   std::lock_guard<std::mutex> l(m_);
   return written_;
@@ -520,7 +525,7 @@ json Simulation::control(const std::string& action, const json& b) {
   auto err = [](const std::string& t) { return json{{"error", {{"key", "sim"}, {"text", t}}}}; };
   if (action == "speed") {
     double s = gc::jnum(b, "speed", 1);
-    if (s < 0 || s > 600) return err("Zeitraffer 0–600");
+    if (s < 0 || s > kMaxSpeed) return err("Zeitraffer 0–600");
     speed = s;
   } else if (action == "plug") {
     if (!world_.plug(b.value("port", 0), b.value("class", std::string()))) return err("Port belegt oder ungültig");

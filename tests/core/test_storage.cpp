@@ -51,6 +51,7 @@ sim::Options onCard(const TempDir& d, gc::Epoch start = 1790000000) {
 TEST_CASE("Storage: password, configuration and STOP are on disk when the call returns (#68)") {
   TempDir dir;
   sim::Simulation s(onCard(dir));
+  CHECK(s.storage().persistent());  // named as its data folder (#213)
   test::Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   const std::string authBefore = onDisk(dir.path / "auth.json");
@@ -327,6 +328,7 @@ TEST_CASE("Storage: a simulator in memory only keeps everything through a fast-f
       o.dataDir = (dir.path / "file" / "data").string();
     }
     sim::Simulation s(o);
+    CHECK_FALSE(s.storage().persistent());  // not named as a data folder (#213)
     test::Client c{s};
     c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
     s.fastForward(1);

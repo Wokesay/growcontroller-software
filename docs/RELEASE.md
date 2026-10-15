@@ -1,6 +1,6 @@
 # Versions, changelog, releases, updates
 
-As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
+As of 2026-10-15. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 (agents of the product repository). An assessment, not legal advice.
 
 ## Versions
@@ -38,11 +38,21 @@ As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 sections **Added, Changed, Fixed, Removed, Security**. Every PR adds an
 entry under `[Unreleased]`.
 
-- **"Security"** names the affected versions, severity, fix version and
-  GHSA or CVE ID.
-- **For the app**, every release gets a three-line summary:
-  "New / Fixed / Please note" (`kunde`). The full changelog is embedded in
-  the firmware (`GET /api/v1/changelog`) and readable in the app.
+- **"Security"** comes in blocks (SD-079): vulnerabilities, each with an
+  advisory; safety and robustness fixes, no vulnerability; a protective
+  cut-off relaxed on purpose, where there is one; hardening, without a
+  vulnerability behind it. In the first two, each item names what it is,
+  the affected versions, the impact, the severity, the remedy (CRA
+  Annex I, Part II (4)) and, for a vulnerability, its GHSA and CVE IDs.
+- **For the app**, every release gets a short summary: "New / Fixed /
+  Please note" (`kunde`), and "Security" whenever the release fixes a
+  vulnerability, in plain words with its severity (the app shows it from
+  the update manifest's `sicherheit` list). The full changelog is
+  embedded in the firmware (`GET /api/v1/changelog`) and readable in the
+  app. The Home Assistant app's own `ha/app/CHANGELOG.md`, which Home
+  Assistant shows from `main` in its update dialog, gets the release's
+  section in the release pull request, security items first with their
+  advisories (SD-079).
 
 ## Release process
 
@@ -56,11 +66,18 @@ entry under `[Unreleased]`.
    Assistant (`docs/HOME_ASSISTANT.md`) for the password, the sensors, a
    restart with the same data folder and the checks the pull request
    lists for what the release brings; automatic updates of the app stay
-   off on that Home Assistant (off unless switched on). Compare `.nvmrc`
+   off on that Home Assistant (off unless switched on). On Windows the
+   project owner also starts the release branch's simulator package (an
+   artifact of its CI run) once by double click with a
+   `growcontroller-daten` next to it that it may not read (Properties ›
+   Security › deny Read): it opens, says "Data cannot be read" and leaves
+   the folder as it is (SD-074). The package test does this on macOS and
+   Linux (#214). Compare `.nvmrc`
    with the newest Node 22 security release
    (`https://nodejs.org/dist/index.json`, `"security": true`) and raise it
    in a pull request of its own if it is lower, together with the app
-   image's `node` image (SD-070, SD-071). Tag right after
+   image's `node` image (SD-070, SD-071). For a fixed vulnerability,
+   follow the advisory steps below (SD-079). Tag right after
    the merge: Home
    Assistant's app store reads `config.yaml` from `main` and offers the
    new version before its image exists.
@@ -183,17 +200,28 @@ entry under `[Unreleased]`.
      - a new backup holds the new version, and its entry for the app is
        not empty.
 
-     If part two fails, a fixing release follows at once; the release
-     notes and an issue tell users to keep automatic updates off until
-     then, and users who made a backup before updating restore it. A
-     reinstall is no way back: `main` carries the failed version.
+     Once part two passes, the release's advisories are published
+     (below). If part two fails, a fixing release follows at once; the
+     release notes and an issue tell users to keep automatic updates off
+     until then, and users who made a backup before updating restore it.
+     A reinstall is no way back: `main` carries the failed version.
    - **Never delete a published app image** (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`):
      restoring a backup of the app pulls that version's image again.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
-   - The C++ SBOM lists the header libraries from `cmake/deps.cmake`, not
-     the statically linked compiler runtimes; the web app embedded in the
+   - The SBOMs list what ships, not the build tools (SD-075). The web
+     build fails when a module the bundler puts into the app is neither
+     our source, the page nor a runtime package of the lockfile, and the
+     web SBOM lists exactly those packages (`tools/sbom_web.mjs`, #201;
+     `npm sbom --omit dev` left out `preact`, which a build tool has as a
+     peer). It is built from the packages `npm ci` installed, and fails
+     the step when npm and the lockfile disagree; as `npm sbom` checks
+     the edges of every package, a broken peer of a build tool fails it
+     too. Code the build tools write into our own modules or the page
+     is ours as built by them. The C++ SBOM
+     lists the header libraries from `cmake/deps.cmake`, not yet the
+     statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
      yet (#81): it holds the same server code, the web app, and musl and the
      GCC runtime from Alpine 3.24, whose exact package versions the image
@@ -236,6 +264,46 @@ entry under `[Unreleased]`.
    findings (V). Development needs no release step; it is built per commit
    (PD-036).
 
+### Security advisories (SD-079)
+
+A fixed vulnerability, a flaw that someone without the needed rights can
+trigger, gets a GitHub Security Advisory (GHSA). Other security items
+stand only in the changelog.
+
+- **With the fix:** a draft advisory, kept private (Security ›
+  Advisories › New draft security advisory): ecosystem "Other", the
+  affected versions, the CVSS 3.1 vector, the CWE, and a description
+  with the impact, the fix and the workaround.
+- **CVE:** for a flaw of our own, the project owner requests a CVE in
+  the draft at the start of step 1, at least 3 working days before the
+  release pull request is merged, since the tag follows the merge at
+  once; GitHub's review takes about 72 hours. If GitHub has not assigned
+  it by then, the release is tagged anyway and the ID is added when it
+  comes, so a security fix is not held back. A flaw of a component (a library, the processor)
+  gets no CVE of its own; the advisory names the component's CVE.
+- **Before the tag (step 1):** each fix's regression test runs against
+  the published tags of the affected range (adapted where it calls code
+  a tag does not have), and the drafts and the changelog get the
+  confirmed range and the GHSA and CVE IDs, and the advisory's
+  publication date where it came out before the release. An item no
+  published version has leaves the vulnerability block without an
+  advisory. Check product question #200: if it says safety and
+  robustness fixes are vulnerabilities, they get advisories too.
+- **After part two of the acceptance (step 2):** set "patched versions"
+  to the release and publish the advisories.
+- **At the latest:** 30 days after the fix is on `main` (for the items
+  of 0.1.0-proto.5: 2026-11-14, SD-079), the advisory is published even
+  if the release has not passed part two of its acceptance, with "fixed
+  in the next release" and the workaround. The CVE is requested at least
+  3 working days before the advisory is published, whichever comes
+  first: the tag or that date.
+- **A CVE in a build tool** gets an advisory only if the tool's code
+  ships, or if the CVE could have changed a published artifact; then the
+  artifacts are checked, and it may be a severe incident (CRA Art. 14).
+  Otherwise the tool is updated and listed under Security › "Hardening,
+  without a vulnerability behind it" with the CVE or GHSA and "no
+  published version affected".
+
 ## Updates on the hub (concept, a mock-up in the simulator)
 
 - **Two app partitions** (A/B) with `otadata`. The new version starts as
@@ -275,12 +343,19 @@ entry under `[Unreleased]`.
 
 ## Support and obligations (CRA, from 2027-12-11; reporting obligation since 2026-09-11)
 
-- **Support period:** at least 5 years (lower bound). It is stated at
-  purchase as month and year. Every security update stays available for at
-  least 10 years (Art. 13).
-- **Reporting actively exploited vulnerabilities:** 24 h / 72 h / 14 days
-  via the ENISA platform (Art. 14). This needs a deputy who can meet the
-  24-hour deadline.
+- **Support period (PD-182 to PD-185, SD-076):** security updates for 7
+  years from the delivery of each board with our firmware, also for boards
+  delivered before 2027-12-11. Stated per delivery year, ending in
+  December ("delivered 2028: security updates until at least 12/2035");
+  the web app shows the end date and a notice once it has passed (Art.
+  13(19)). Every security update stays available for at least 10 years
+  (Art. 13).
+- **Reporting actively exploited vulnerabilities:** 24 h / 72 h from
+  learning of it, a final report 14 days after a fix or mitigation is
+  available, via the ENISA platform (Art. 14); severe incidents affecting
+  security 24 h / 72 h, a final report one month after the notification.
+  At the latest from the first device offered or
+  lent (SD-079). This needs a deputy who can meet the 24-hour deadline.
 - **SBOM** belongs in the technical documentation; publishing it is not
   mandatory.
 - **Exit plan at project end:** release the keys or offer an owner unlock;

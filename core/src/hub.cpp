@@ -205,7 +205,7 @@ void Hub::boot() {
       }
     }
     if (broken) {
-      // Whether an emergency stop was active is unknown: keep everything
+      // Whether a Stop was active is unknown: keep everything
       // stopped until someone resumes (fail-safe, PD-076).
       writeFile("state.broken.json", *stateRaw);
       rt_ = RuntimeState{};
@@ -232,7 +232,7 @@ void Hub::boot() {
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
   // Fans keep their state: their sockets come back on after a power loss
   // (PD-050), and after a restart of the hub alone they keep running.
-  // An emergency stop survives the restart and stops the fans too (PD-076).
+  // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
   if (stopped_)
@@ -454,7 +454,7 @@ void Hub::tick() {
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
     // Dosierung abbrechen, einmal laut melden. Fans keep running (PD-077),
-    // except during an emergency stop (PD-076).
+    // except during a Stop (PD-076).
     act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
     try {
       Ctx c = ctx();
@@ -1086,7 +1086,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   const RoleDef* rd = cat_.role(role);
   // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
   if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
-    // During an emergency stop a fan socket stays off after a power loss too (PD-076).
+    // During a Stop a fan socket stays off after a power loss too (PD-076).
     const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
@@ -1156,8 +1156,8 @@ void Hub::releaseSocket(const RoleDef& rd, const Binding& b) {
              {{"device", b.device}, {"channel", b.channel}});
 }
 
-// Fan sockets come back on after a power loss, except during an emergency
-// stop (PD-050, PD-076). Written and read back; a failure is reported.
+// Fan sockets come back on after a power loss, except during a Stop
+// (PD-050, PD-076). Written and read back; a failure is reported.
 void Hub::setFanSockets(bool comeBackOn) {
   if (!net_) return;
   cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
@@ -1543,7 +1543,7 @@ Result Hub::mixStart(const json& req) {
   // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
-  if (stopped_) return Result::fail(409, "job.stopped", "Not-Halt aktiv – erst fortsetzen");
+  if (stopped_) return Result::fail(409, say("act.stopped"));
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
@@ -2136,7 +2136,7 @@ Result Hub::stop(const Msg& who) {
     log_.add(clock_.epoch(), "system", "warn", say("ev.stop.unbooked"),
              say("ev.stop.unbooked.text", {{"name", unbooked->step.name}, {"reason", reason}}), {{"canister", unbooked->step.canister}});
   saveEvents();
-  // A manual emergency stop stops everything, also after a power loss
+  // A Stop by hand stops everything, also after a power loss
   // (PD-076). Written on every stop, so pressing it again retries a socket
   // that did not take the setting.
   setFanSockets(false);

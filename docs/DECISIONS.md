@@ -208,6 +208,8 @@ repository itself are recorded here in full.
 - Exception (SD-024): the HMAC key for encrypted NVS. Open: whether a test
   lab accepts the USB path with the BOOT button for own firmware, and
   whether and when hardware Secure Boot with owner key slots comes.
+- Changed by SD-076: on either of the DevKit's USB ports no BOOT button is
+  needed to install firmware; whether a test lab accepts that is open.
 
 
 ## SD-022: Product requirement (from PD-044): a pure level latch releases itself
@@ -243,6 +245,10 @@ repository itself are recorded here in full.
   separately): USB-JTAG off at run time without a further eFuse
   (feasibility open), a recessed BOOT button, sessions stored only as
   hashes.
+- Changed by SD-076: the recessed BOOT button guards flashing on neither
+  of the DevKit's ports: on the board's USB port and, through its
+  auto-program circuit (to be confirmed on the schematic), on the UART
+  port a connected computer starts download mode without it.
 
 
 ## SD-025: Product requirement (from PD-048 to PD-053): limits after a power loss
@@ -539,7 +545,8 @@ Assistant way is still a product question.
   needs a review (`tools/app.test.mjs`).
 - The web app is served on port 8099 of the Home Assistant host, plain
   HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
-  a follow-up.
+  a follow-up. Changed by SD-077 (from PD-225): from 0.1.0-proto.5 on the
+  app runs behind Ingress, and port 8099 is closed by default.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
   tag (SD-023, SD-027).
@@ -902,6 +909,17 @@ reviewed by `security`.
 - Open: whether the BOOT button can be reached on the carrier board
   (product question); whether the UART counts as a physically protected
   interface under EN 18031 (`regulatorik`).
+- Changed by SD-076: Improv also runs on the board's USB port
+  (USB-Serial-JTAG), where opening the port can restart the ESP, as can
+  opening the DevKit's UART port (DTR and RTS), so "never restarts the
+  device while a job runs" does not hold over USB (the restart counts as
+  a power loss); the
+  BOOT button can be reached (PD-175) and is held 3 s for the setup
+  network; pre-flashed devices get the key at production, on the label
+  (random per device, so not the "fixed key" SD-044 rules out, though a
+  factory reset brings it back),
+  have the setup network open while no Wi-Fi is configured and set the
+  first password in a 15-min window instead of with the token.
 
 
 ## SD-045: Product requirement (from PD-145 to PD-174): control and safety on the ESP32-S3 on carrier board v0.1
@@ -2312,7 +2330,10 @@ Decided by the project owner on 2026-10-13 in the software session (#79,
 option 1 of the issue); the details come from a review by `security`.
 Until now anyone in the home network who opened the app's page first could
 set its password, see the names and values of Home Assistant's sensors and
-lock the owner out until the app was reinstalled.
+lock the owner out until the app was reinstalled. The setup code of the
+Home Assistant app is replaced by SD-077 (from PD-225): the app moves
+behind Home Assistant's Ingress. The rest stays, its rule on random
+numbers included.
 
 - **The code:** at every start without a password, `gc_ha_server` makes a
   setup code and prints it to its output, which as an app is the app's log
@@ -2533,32 +2554,6 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   outside input. At session start, open `product-question` issues are
   checked for answers.
 
----
-
-## Drafts (waiting for "entschieden")
-
-| # | Draft | Core | Needs PD |
-|---|---|---|---|
-| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
-| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
-| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
-| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
-| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
-| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
-| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
-| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
-| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
-| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
-| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
-| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
-| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
-| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
-| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
-
-Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
-`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
-
----
 
 ## SD-073: A control round a Stop cut settles as after a restart
 
@@ -2589,6 +2584,7 @@ for EC and pH control after a restart (PD-070, PD-071) to the Stop.
   restart while stopped, which belongs with SD-028's saved pauses (#20).
 
 ---
+
 
 ## SD-074: A data folder the simulator cannot read runs it in memory only
 
@@ -2631,7 +2627,649 @@ it cannot read.
 - Not covered: a file that can be opened but is not a regular file (for
   example a folder named `config.json`).
 
----
+
+## SD-075: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
+
+Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
+
+- **The SBOM lists only what ships in the product.** Build tools (for
+  example Vite, TypeScript, compilers, base images) do not go into it.
+- **Gaps to close:**
+  - the bundler's helper code: the check for tool code covers Rolldown
+    (with the next release; done, below). If its helpers could not be
+    avoided, Rolldown would be listed as a shipped package;
+  - the statically linked runtimes (musl, the GCC runtime) in the SBOM;
+  - an SBOM for the Home Assistant app image (#81);
+  - the firmware's runtimes, once the firmware ships.
+  musl, the GCC runtime and the image SBOM probably come with the release
+  after the next one.
+- **Technical documentation:** names the build tools, generated per
+  release from the lockfile and the image digests.
+- **A public tool list with every release:** npm and C++ build tools,
+  compilers and base images with their digests, as a plain file with the
+  header "not an SBOM, not shipped", part of `SHA256SUMS` and the
+  attestation. No second "build" SBOM, and no `scope: excluded` in one.
+- **Decided on the software side** (proposals to the project owner,
+  decided on 2026-10-15, SD-079 points 5 and 6): how the build inputs
+  Dependabot does not watch are tracked (`cmake/deps.cmake`, the ESP-IDF
+  image, the unpinned Alpine packages), and whether a CVE in a build tool
+  counts as a security item (PD-220).
+- **Open on the product side:** what the implementing act on the SBOM
+  format (CRA Art. 13(24)) will require.
+- **Done: the build checks every module the bundler puts into the app.**
+  A Vite plugin (`web/scripts/tool-code-guard.mjs`) looks at every module
+  of every chunk and fails the build on one that is neither our source,
+  the page nor a runtime package of `web/package-lock.json`: Rolldown's
+  runtime helpers, Oxc's lowering helpers, Vite's preload helper and
+  polyfill, any other module of a build tool, and a build-time package.
+  It also fails when it checked nothing (no chunk lists `src/main.tsx`),
+  and on a script that is not a chunk of the build (a web worker).
+  `web/scripts/tool-code-guard-selftest.mjs` (in `tools/ci.sh`) builds two
+  throwaway apps with the pinned bundler to show the guard names
+  Rolldown's and Vite's helpers and passes plain modules. The text check
+  of `web/scripts/no-tool-code.mjs` stays for the output, the page
+  included. On 2026-10-15 the app holds no such module, and the built app
+  is the same byte for byte with and without the guard.
+- **What it does not see:** code the build tools write into our own
+  modules (for example helpers a transform inlines), text added after the
+  modules are rendered, the page, files the app imports as URLs, CSS
+  `@import` and `url()` files, and `web/public/`. A web worker (also one
+  inlined into a chunk) and a script that is not a chunk of the build (a
+  script imported as a URL) fail the build rather than pass unseen.
+  That is ours as built by the tools in the tool list. It keeps the SBOM
+  accurate against honest tools and mistakes; it is no defence against a
+  malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
+- **Done: the web SBOM lists exactly the packages the guard lets into
+  the app,** the runtime packages of the lockfile (every entry not marked
+  `dev`; `tools/sbom_web.mjs`, #201). `npm sbom --omit dev` left out
+  `preact`, which a build tool has as a peer, in 0.1.0-proto.2 to
+  proto.4.
+
+
+## SD-076: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
+
+Decided by the project owner in the product repository on 2026-10-12
+(#133); PD-180 is replaced by PD-186. The firmware facts come from a
+review by `security` (sources in #133); the BOOT button and the factory
+data were decided by the project owner on 2026-10-13 in the software
+session. Changes SD-044 and SD-024 where said below. Firmware protection
+on the DevKit (signed updates, encrypted secrets, eFuse, USB at run time)
+is re-evaluated in the product repository and is not part of this entry.
+
+- **Two kinds of device (PD-179):**
+  - *Self-flashed*, until the series with hardened firmware: the customer
+    flashes the DevKit in the browser over USB, on the DevKit or through
+    the board's USB port (PD-148, PD-175). SD-044's setup over USB with
+    the one-time token stays. After flashing, the flash page shows the
+    link to the web app and starts a short function test of the board,
+    only over the USB connection that just flashed it or after login,
+    never by a request over the network without login; it switches
+    outputs only through `Actuators` as jobs with a fixed end (R1) and
+    doses nothing, as no calibration value exists yet (PD-015); which
+    outputs it tests is set with M1.
+  - *Pre-flashed*, from that series on: the DevKit ships flashed, packed
+    loose with the board. The project is then the manufacturer of a radio
+    device: an EN 18031-1 and -2 self-assessment for every firmware
+    version shipped to these devices. Before the first one ships, the
+    list in `SECURITY_MODEL.md` ("Before the first device goes to third
+    parties") applies, as amended by this entry; PD-179 does not relax it
+    or its timing.
+- **Improv over the board's USB port** (changes SD-044, which named the
+  DevKit's UART port): the board's port is the ESP's own USB
+  (USB-Serial-JTAG). Improv runs there as in ESPHome's ESP32-S3 builds;
+  at run time the firmware cuts JTAG off with the bridge bit
+  (`USB_JTAG_BRIDGE_EN`) and keeps the serial port. Both are still to be
+  proven on a sample with our pinned ESP Web Tools; if Improv fails right
+  after the install, "Connect" and "Configure Wi-Fi" again. The DevKit's
+  UART port keeps working where it can be reached.
+- **Residual risk of USB:** any computer connected to the board's port
+  can reset the ESP into download mode and flash other firmware without a
+  button press; on the ESP32-S3 only an eFuse stops this for good, which
+  PD-022 and SD-024 exclude. The DevKit's UART port has the
+  auto-program circuit of Espressif's development boards (DTR and RTS
+  drive EN and GPIO0; to be confirmed on the DevKitC-1's schematic), so
+  the same holds there. Such firmware can keep the board watchdog fed and
+  use the HMAC key. So:
+  - the docs say to unplug USB, on either port, in operation;
+  - the firmware notices a USB host and shows a message as long as one is
+    connected;
+  - opening the port can restart the ESP; a restart by the USB host
+    (`ESP_RST_USB`) counts as a power loss: everything off except what
+    comes back after a power loss (fans, PD-050), reported (R6).
+    SD-044's "never restarts while a job runs" cannot hold on this port;
+  - SD-024's recessed BOOT button guards flashing on neither DevKit
+    port, only on a serial connection without that circuit;
+  - an alternative for the open product question on the port: switch the
+    USB port to USB-OTG once the app runs. A host can then no longer
+    reset the ESP or reach JTAG in operation, but flashing needs a BOOT
+    press, the window during boot stays, Improv on that port stops once
+    the app runs (the self-flashed setup path), and the DevKit's UART
+    port stays a way to flash without a button where it can be reached
+    (to be proven on a sample).
+- **Setup network** (PD-181, PD-186; changes SD-044):
+  - the only way to set up Wi-Fi without a cable; no setup over
+    Bluetooth;
+  - WPA2 with a random key per device of at least 80 bits. Pre-flashed
+    devices get it at production, in the factory data (below), printed on
+    the label. Self-flashed devices make it at the first start and show
+    it after login, as in SD-044;
+  - on a pre-flashed device, open without a button press while no Wi-Fi
+    is configured (out of the box, after a factory reset). Whether it
+    gets a time limit there is open for the product session; the
+    software proposes 60 min after each power-on. A self-flashed device
+    is set up over USB;
+  - on a configured device only after BOOT is held for 3 s, for at most
+    10 min, one client, closed after setup. No fallback access point:
+    losing Wi-Fi or a restart opens no setup path;
+  - it sets only the Wi-Fi credentials; it never sets or resets a
+    password and never returns a stored secret (SD-044).
+  - New: the user can change the Wi-Fi in the web app, logged in and only
+    from the home network, under SD-044's rules for storing (no actuator
+    switched, stored only when no job runs).
+  - Whether the BOOT press and the setup network apply to self-flashed
+    devices before the series is open for the product session; the
+    software supports it with SD-044's key shown after login.
+- **BOOT button** (decided by the project owner on 2026-10-13):
+  - held at power-on: ROM download mode, in hardware; the firmware never
+    sees it;
+  - held 3 s in operation: opens the setup network. On a pre-flashed
+    device without a password it also starts a new 15-min password
+    window: at once if the device is in the home network, otherwise when
+    it joins it. PD-192 names pre-flashed devices only; a self-flashed
+    one gets a new token from a new Improv session over USB (SD-044). A
+    password that is set is never touched;
+  - held 10 s to 30 s: factory reset (below); held longer than 30 s:
+    nothing, reported as a stuck button, so a button that sticks never
+    erases the device;
+  - the action happens when the button is released; while it is held,
+    an LED shows which one it would be (pattern with M1 and `ux`), so
+    holding for 10 s never opens the setup network on the way;
+  - a restart ends what a press started (the setup network, a window
+    waiting for the home network), so nothing is open after a power cut.
+  - The 30 s limit, the action on release and the end at a restart came
+    from the reviews and were confirmed by the project owner on
+    2026-10-13.
+  - Not chosen: separate gestures for the setup network and the password
+    window (harder to remember, more mistakes); no upper limit for the
+    factory reset (a stuck button would reset the device when it comes
+    free).
+- **First password on a pre-flashed device** (PD-191, PD-192; changes
+  SD-044 for these devices; self-flashed devices keep the token):
+  - mandatory, cannot be skipped; set in the home network within 15 min
+    from the device's first join to it; no second code on the label;
+  - after the window, setting it is locked until BOOT is held for 3 s.
+    PD-192 also names a restart. The ESP32-S3 cannot tell a press on
+    RESET from a power cut (both report power-on, and nothing documented
+    on the chip survives the one but not the other; to be confirmed on a
+    sample), so a restart would reopen the window after every power cut,
+    with nobody at the device. Open for the product session; until it
+    decides, a restart never reopens the window. The software also
+    proposes that a restart ends a window that is still open
+    (fail-closed), so a power cut in the first 15 min needs a BOOT press;
+    this changes PD-191's first window and is open for the product
+    session too. "Window used" is stored when the window opens, not when
+    the password is set;
+  - fail-closed: the password hash, the lock against a second setup and
+    "window used" are kept in encrypted NVS, and a "set up" marker in
+    `storage` as well. If one of the two is lost and the other is not,
+    the device reports lost credentials (423) and needs a factory reset;
+    it never behaves like a new device. The firmware never erases NVS or
+    formats `storage` by itself but reports it: today `main.cpp` erases
+    NVS when it finds no free pages or a new NVS version, and `storage`
+    is formatted when mounting fails, which deletes `auth.json` and the
+    `passwordSet` marker together. Without NVS there is no Wi-Fi, so the
+    LED reports it and the way out is BOOT held for 10 s; a rollback past
+    an ESP-IDF update that changed the NVS format also ends there.
+    Residual risk: if both are lost, the device is as out of the box
+    (setup network open with the label key, a new window);
+  - the open window is shown on the setup network's last page (the
+    address and the deadline), by a blinking LED and by a countdown on
+    the first-password page; after it the page says "hold BOOT for 3 s";
+  - for 60 min after the password is set, the login page shows when it
+    was set ("Not you? Hold BOOT for 10 s"); after login the web app and
+    the event log also show from which address.
+  - Residual risk, named in the docs: within the window anyone in the
+    home network (guests, another device, a compromised device) can set
+    the password first and lock the owner out; the way back is a factory
+    reset with BOOT, no computer needed. HTTPS (M2) with a certificate per
+    device is trusted on first use, so an active attacker in the home
+    network can still read the first password.
+  - Proposed by `security` for the product session: bind the first
+    password to the label key, so the setup network's form sets password
+    and Wi-Fi together while no password exists, and the window in the
+    home network goes away.
+- **Factory data and factory reset** (decided by the project owner on
+  2026-10-13):
+  - a read-only partition `fctry` (data, NVS, 16 KB) at 0x1C000 on both
+    boards, in the gap before the first app; nothing else moves. It is in
+    the partition tables now, as OTA cannot change a partition table, and
+    the installer never writes it (tested);
+  - content: format version, serial number, board (checked against the
+    flash size), SSID, setup key, production month, and the end of the
+    support period if it is written at packing (below). Plain, not
+    encrypted: the key is on the label anyway, and encrypting it at
+    production would need production to make the HMAC key, against
+    SD-024's "nobody can read it out". The `readonly` flag only stops
+    ESP-IDF's partition functions: own firmware can read it, and esptool
+    over USB or raw flash access can overwrite it (PD-022). Production
+    keeps no copy and no hash of the key;
+  - the factory reset in the firmware switches everything off through
+    `Actuators` first (R1), marks the reset in NVS, erases `history` and
+    `storage`, then the rest of the user NVS last (CRA Annex I(2)(m)),
+    and keeps `fctry` and the app: the device is as delivered, label key
+    included. A device that starts with the mark finishes the reset
+    before anything else and reports it: a named exception to R6's "not
+    resumed", allowed because it switches nothing. It erases in steps and
+    keeps sending the sign of life to the board watchdog (SD-045), and
+    skips what is already erased, so a watchdog reset cannot loop it.
+    Triggers: BOOT held for 10 s to 30 s, and the web app, logged in,
+    only from the home network, after asking for the password again;
+  - the flash page offers no whole-chip erase, or only with a warning
+    that the label's key is lost: ESP Web Tools' erase (the checkbox when
+    installing, and "Erase User Data" once Improv runs) is a whole-chip
+    erase and no manifest option turns it off, so our pinned copy needs a
+    change. After a whole-chip erase the device behaves like a
+    self-flashed one (Improv with the token, a new key after login); the
+    label no longer applies;
+  - secrets the device makes itself (SD-044's key on a self-flashed
+    device, session keys) come from the hardware RNG with its entropy
+    source on (`bootloader_random_enable()` while the radio is off); the
+    label key comes from the operating system's cryptographic random
+    generator on the provisioning PC;
+  - production needs from this repository, with the series: the
+    partition tables (done); a provisioning tool (pinned
+    `nvs_partition_gen` and esptool) that checks board and table, makes
+    the key, writes only `fctry`, reads it back and tests joining the
+    setup network; firmware that reads `fctry` and handles a blank or
+    broken one; a specification of key and label (proposed: 20 characters
+    from 31 unambiguous lowercase letters and digits, about 99 bits, in
+    groups of 5); a label template (SSID, key, Wi-Fi QR code, the address
+    after setup, serial, board, source link);
+  - residual risks, named in the docs: a photo of the label (the key can
+    be changed in the web app, until a factory reset brings the label's
+    key back); the key passes the production PC and the printer (an
+    offline PC, no key database); after a resale the seller knows the
+    key, so the buyer resets the device and changes it; a whole-chip
+    erase loses `fctry`.
+- **Bluetooth** (PD-153, PD-186): only a passive observer for sensors the
+  user adds; no advertising, no connections, no pairing, no setup; off
+  while no such sensor is set. When Bluetooth comes, NimBLE is built
+  with the observer role only and `tools/arch_check.sh` checks it (NimBLE
+  turns on all roles by default).
+- **Support period** (PD-182 to PD-185): 7 years from the delivery of
+  each board, also for boards delivered before 2027-12-11, ending in
+  December (`SECURITY.md`,
+  `RELEASE.md`); the web app shows the end date and a notice once it has
+  passed (Art. 13(19)). The device does not know its delivery date; the
+  end date is written into `fctry` at packing or the web app says "see
+  the delivery note", never a guessed date (open for the product
+  session). The second reporting channel follows before devices are
+  offered (PD-185, `SECURITY.md`).
+- **ESP-IDF and a successor DevKit over the 7 years:** Espressif supports
+  each minor ESP-IDF release for 30 months (12 months service, 18 months
+  security and severe fixes only); a newer one comes in as a normal
+  release with the full test run on both boards, about once a year and
+  always before the one in use ends (source:
+  https://raw.githubusercontent.com/espressif/esp-idf/master/SUPPORT_POLICY.md,
+  retrieved 2026-10-13). The partition tables are fixed for the life of a
+  device, so each app must fit its `ota_0`. A successor DevKit gets a
+  board profile of its own (PD-162); boards already delivered keep their
+  builds from the same source for their 7 years.
+- **If the project stops** before a support period ends, `RELEASE.md`'s
+  exit plan applies: release the keys or offer an owner unlock, and tell
+  users and market surveillance in advance (Art. 13(23), PD-005). As no
+  device locks out its owner's firmware (PD-022), anyone can keep
+  building it from the published source.
+- Open for `regulatorik`: whether "whoever is first in the home network
+  sets the password" passes EN 18031-1 (AUM); whether a key printed on
+  the device needs protected storage (SSM); whether a test lab accepts
+  flashing over USB without a button and JTAG on during boot; whether a
+  whole-chip erase by the owner conflicts with "reset to the original
+  state" (CRA Annex I(2)); whether pre-releases count for the
+  self-assessment per firmware version.
+- Open for the product session: the time limit before the first setup;
+  whether a restart reopens the password window, and whether it ends one
+  that is still open; binding the first
+  password to the label key; a neutral SSID (a name like
+  "growcontroller-xxxx" tells neighbours what is there); placing the USB
+  port, a switch for its data lines, or USB-OTG in operation (above);
+  where the label goes; the packing step that writes the support end.
+
+
+## SD-077: Product requirement (from PD-225): the Home Assistant app behind Ingress; a password of its own only for direct access
+
+Recorded on 2026-10-15 from #190, section 2 (SD-029). It does SD-034's
+follow-up (Ingress). PD-225 left to the software, to propose before
+building it, how the app signs users in behind Ingress and what applies
+on port 8099; the project owner decided both on 2026-10-15 in the
+software session, after reviews by `security`. If the product session
+decides otherwise, its decision applies. Replaces SD-068's setup code
+for the app, and with it SD-068's plan to keep the code until the app
+leaves `stage: experimental`.
+
+- **Product requirement (PD-225):** from the next prototype release
+  (0.1.0-proto.5) on, the whole web app of the Home Assistant app runs
+  behind Home Assistant's Ingress, with Home Assistant's login. Port 8099
+  is closed by default. The setup code in the log goes away.
+- **Through Home Assistant (Ingress): Home Assistant's login only,** no
+  password of the app's own there. Only Home Assistant's administrators
+  may open it (`panel_admin`, left at its default): the Supervisor
+  refuses other users from version 2026.10.2 on; before that it only hid
+  the panel from them. The event log names the Home Assistant user who
+  made a change.
+- **Direct (port 8099, a bookmark): a password of its own.** Without one,
+  port 8099 shows only a notice that growcontroller opens in Home
+  Assistant's sidebar, with the link to the source code, and no API. With
+  one, it asks for it as today (the lockout per device of SD-051, the
+  sessions of SD-064). Home Assistant's login does not count there: the
+  direct address is often another one than Home Assistant's own, and
+  Home Assistant's session is not visible to the app outside Ingress.
+  Users of 0.1.0-proto.4 keep their password for direct access.
+- **What building it keeps:**
+  - **Two listeners.** Ingress gets a port of its own in the container
+    (`ingress_port`, not 8099, which is Home Assistant's default for
+    it), never listed under `ports`. It answers only connections whose
+    socket peer is the Supervisor, 172.30.32.2, never an address from a
+    header. It takes the user only from exactly one `X-Remote-User-Id`
+    in the Supervisor's spelling; a request with none, two, or a copy
+    spelt otherwise is refused, so it fails closed. Only `/info` answers
+    there without a user, for the Supervisor's watchdog. No password,
+    session or token of the app counts there, and it keeps no lockout
+    count. Its origin check compares `Sec-Fetch-Site`, not a host name.
+  - **Port 8099 takes nothing from Home Assistant:** it never reads the
+    Supervisor's user headers or `X-Ingress-Path`, whoever sends them.
+    Only its own session counts there, and that session counts nowhere
+    else. Its host and origin checks stay as today. The window onto the
+    ESP's web app (SD-050) is never served there.
+  - **The password for direct access** is set, changed and removed only
+    through Ingress; port 8099 offers none of these, signed in or not,
+    not even with the old password. Through Ingress no old password is
+    asked, and it also works when the password file was lost (where
+    setup over the network answers 423 today). Each of them ends every
+    session of port 8099 and forgets its known clients (SD-051, SD-064). Removing it turns port 8099 into the notice
+    at once; it never reopens a first password over the network. The
+    settings show whether a password is set; the event log names who set,
+    changed or removed it. The page says the password travels in plain
+    text on port 8099 and must not be the Home Assistant password.
+  - **User names** from Home Assistant are text users choose: they are
+    kept to printable, well-formed UTF-8 like other text from Home
+    Assistant (#71), always shown as text, and left out of the diagnostic
+    package, which may go to public GitHub.
+  - `tools/app.test.mjs` keeps `panel_admin` at its default, the Ingress
+    port out of `ports`, and 8099 closed by default; the new keys get
+    SD-034's review.
+- **Port 8099 closed by default,** as PD-225 says, for a new install and
+  for an update where the app's network settings were never saved:
+  direct access is a deliberate choice in two steps, a password in the
+  app and the port opened in the app's network settings. A bookmark from
+  0.1.0-proto.4 works again after that; the release notes and
+  `ha/app/DOCS.md` say so.
+- **The ESP keeps its own login** (SD-044, SD-076); this entry does
+  not change it.
+- **Not chosen:**
+  - a password of its own also behind Ingress, or only for imports and
+    calibration: little gain, since an administrator of Home Assistant
+    reaches the app's data through backups and file access anyway, one
+    lockout shared by everyone, since all requests come from the
+    Supervisor, and two logins;
+  - only a notice on port 8099, without a direct login (`security`'s
+    recommendation): no access from a bookmark without Home Assistant;
+  - port 8099 open by default: an old bookmark would keep working, but a
+    login page with a password in plain text would be on the network by
+    default, against PD-225.
+- **The setup code never ships:** it came after 0.1.0-proto.4, and
+  0.1.0-proto.5 brings Ingress. So the count of wrong codes in the event
+  log, which PD-225 asks for while the code is in a release, is not
+  needed.
+- **Before the release:** a review by `security` of the switch (an XSS
+  flaw on Home Assistant's origin reaches an administrator's session of
+  Home Assistant; framing; only the Supervisor on the Ingress listener;
+  the origin check behind Ingress; the host check; the sessions of port
+  8099), the reasoning in `docs/SECURITY_MODEL.md`, including why the app
+  is protected more strictly than the ESP with its first-password window
+  (SD-076, #190), and the product side's
+  decision on remote access through Ingress, which #190 asks for before
+  this release.
+- **Residual risks,** for the docs:
+  - the web app runs on Home Assistant's origin: an XSS flaw in it
+    reaches the session of the Home Assistant user who opened it, and
+    anything else running there (other apps' panels, cards added to Home
+    Assistant's frontend) can use the app through Ingress as that user,
+    the password for direct access included;
+  - HTTPS only where Home Assistant uses it;
+  - Home Assistant bans an address after failed sign-ins only when a
+    limit is set in its HTTP settings (by default there is none), and has
+    no lockout per user;
+  - whoever may open the panel (above) reaches the app wherever Home
+    Assistant is reachable, through its remote access too, until remote
+    access is decided;
+  - port 8099 sends its password and session in plain text, as today;
+    closing the port hides it from the network, not from Home Assistant
+    and the other apps on the host;
+  - a password kept from 0.1.0-proto.4 may have been set by whoever came
+    first in the network (SD-068). A port mapping saved in the app's
+    network settings before the update stays, so for those users port
+    8099 and that password work at once. The settings reached through
+    Ingress say that a password is set and offer to change or remove it,
+    and the release notes advise doing so.
+- **Open on the product side:** remote access through Ingress (named in
+  #190); the legal points for this app (authentication behind Home
+  Assistant's login, plain text on the direct port, user names as
+  personal data, whether EN 18031-1 applies) in #220 (SD-072).
+- **Merging:** a security rule; the pull requests that record and build
+  it wait for the project owner's "mergen".
+- Sources (retrieved 2026-10-15): only 172.30.32.2 and `ingress_port`
+  (default 8099):
+  <https://raw.githubusercontent.com/home-assistant/developers.home-assistant/master/docs/apps/presentation.md>;
+  `panel_admin` enforced from Supervisor 2026.10.2:
+  <https://github.com/home-assistant/supervisor/pull/7308>,
+  <https://github.com/home-assistant/supervisor/releases>; no ban limit
+  by default (`login_attempts_threshold` defaults to
+  `NO_LOGIN_ATTEMPT_THRESHOLD`, which is -1):
+  <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/__init__.py>,
+  <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/const.py>;
+  a saved port mapping overrides the default:
+  <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/apps/app.py>.
+
+
+## SD-078: A session claims an issue before it works on it
+
+Decided by the project owner on 2026-10-15 in the software session, after
+parallel sessions had picked up the same issue. All sessions post as the
+owner's account, so assigning an issue cannot tell them apart. The claim
+is therefore a comment that names its session, and the label
+`in-progress` shows that at least one claim is live.
+
+- **Words:** a session's *link* is its Claude-Session URL, the one in its
+  commit trailers. A claim belongs to its branch: only that session
+  pushes to it. A *linked pull request* is an open pull request, draft or
+  not, whose description says "Closes #N", "Fixes #N", "Resolves #N" or
+  "Part of #N".
+- **Live claim:** a "Claimed by", "Taken over by" or "Continued by"
+  comment from the owner's account, posted after the issue was last
+  opened or reopened. It ends with a later "Withdrawn", "Released" or
+  "Taken over by" comment that names its branch (and its part, if it has
+  one), or when its pull request is merged or closed. Every comment of
+  this rule therefore names its link and its branch. Comments from other
+  accounts never count.
+- **Taken or free:** an issue, or a part of it, is taken if a live claim
+  or a linked pull request covers it. A "Part of #N" pull request that
+  names no part covers the whole issue. While any part is taken, a
+  session claims only free parts. A session decides by reading the
+  comments and the linked pull requests, not by the label alone.
+- **When to claim:** when a session starts work towards a change, after
+  the owner's go-ahead where one is needed. Reading or assessing an issue
+  needs no claim. The claim itself needs no further approval.
+- **Claim:** the session fetches the issue and its comments again,
+  comments "Claimed by <link>, branch `<branch>`" (plus ", part: <item or
+  heading>" for a part) and adds `in-progress`. Then it reads the
+  comments again. If a live claim on another branch for the same issue or
+  part is listed before its own, it comments "Withdrawn: <link>, branch
+  `<branch>`" and does not touch the label: the first comment wins.
+- **Several parts:** an issue made of independent parts (a checklist or
+  sections) is claimed per part, naming the issue's own item or heading.
+  There the label only says that some part is taken.
+- **While working:** the session opens its draft pull request with its
+  first commit, with "Closes #N", or "Part of #N, part: <item or
+  heading>". Before each push and before merging it fetches the issue
+  again. If its claim was taken over, or a live claim on another branch
+  now shows before its own (a comment that arrived late), it stops and
+  tells the owner.
+- **Waiting:** a claim with a linked pull request is never stale; it ends
+  when that pull request is merged or closed. A claim without one that
+  waits for the owner or for a product answer comments "Waiting for
+  <what>: <link>, branch `<branch>`" and is not stale while it waits.
+- **Stale:** any other live claim with no push to its branch and no
+  comment naming its branch for 24 hours may be taken over: "Taken over
+  by <link>, branch `<branch>`, from <old link>, branch `<old branch>`,
+  quiet since <UTC time, ISO 8601>." The new session continues on the old
+  branch or starts afresh and says which, then reads the comments again
+  as for a claim, so of two takeovers the first comment wins.
+- **Same work, new session:** a session that goes on with its own
+  earlier work on a claim's branch, for example after a restart in a new
+  container, comments "Continued by <link>, branch `<branch>`" and keeps
+  the claim. Continuing another session's branch, or taking over a live
+  claim at once, needs the owner's word ("Taken over by <link> … on the
+  owner's request").
+- **End:** the session that merges a pull request with "Closes #N"
+  removes `in-progress` right after the merge. After a "Part of #N" merge
+  it comments "Released: <link>, branch `<branch>`, part: <part>: merged
+  in #<PR>". Work that stops otherwise ends with "Released: <link>, branch
+  `<branch>`: <reason, where the work stands>". In each case the session
+  removes the label if no other live claim is left.
+- **The owner asks for a taken issue:** the session tells him who holds
+  it and takes it over only on his word.
+- **What it does not cover:** `product-question` issues, which the
+  product repository's session answers (SD-072). Work that follows an
+  answer gets a regular issue, which is claimed. Work the owner asks for
+  directly in a session needs no issue; if it touches an open issue, that
+  issue is claimed.
+- **Work begun before this decision:** right after this decision is
+  merged, the merging session records each open pull request that names
+  an issue as that issue's claim: a comment "Claimed by <the pull
+  request's session link>, branch `<its branch>`" naming the pull
+  request, and the label. This also covers a pull request whose
+  description names the issue without "Closes" or "Part of".
+- `CLAUDE.md` has the short form; `docs/WORKFLOW.md` §3 shows it in the
+  flow of a change.
+- **Not chosen:** a GitHub project board (more for the owner to keep up,
+  and the same race when two sessions move a card); only an early draft
+  pull request (it needs a commit first, and it does not cover work
+  without code). SD-061 rejected reserving SD numbers through issues;
+  here the issue is the work item itself, and the comment order settles
+  a race.
+
+
+## SD-079: Product requirement (from PD-220): a GitHub advisory for every exploitable security item
+
+Recorded on 2026-10-15 from #190, section 1 (SD-029); the software side's
+proposals decided by the project owner on 2026-10-15 in the software
+session, after `security`'s proposals.
+
+- **The requirement:** every fixed security item gets its own GitHub
+  Security Advisory (GHSA) in this repository, not only an entry in the
+  release notes; this includes the seven items of the next release, which
+  affect 0.1.0-proto.2 to 0.1.0-proto.4. Point 1 below limits this to
+  vulnerabilities until product question #200 is answered; if #200 says
+  the other items are vulnerabilities too, they get advisories as well. The release notes give per item
+  what it is, the affected versions, the impact, the severity and the
+  remedy, the form of CRA Annex I, Part II (4). The severity is rated per
+  item. The changelog no longer says that no GHSA or CVE of our own is
+  issued.
+- **Reporting (CRA Art. 14, the product side's assumption):** at the
+  latest from the first offer or the first device lent, actively
+  exploited vulnerabilities and severe incidents are reported to the
+  coordinating CSIRT and ENISA (an early warning within 24 hours, a
+  notification within 72 hours, a final report within 14 days of a fix or
+  mitigation for a vulnerability and within a month of the notification
+  for an incident), and users are informed. None of the
+  seven items is reportable. `SECURITY.md` keeps the voluntary commitment
+  to report until then.
+
+The software side's proposals, as decided:
+
+1. **Which items get an advisory:** a vulnerability, that is a flaw that
+   someone without the needed rights can trigger: a device in the
+   network, a crafted file or another input. A fix in the Security
+   section that normal use, a faulty probe or someone with the password
+   triggers gets no advisory; it is listed there with the same fields, in
+   a block "Safety and robustness fixes, no vulnerability". Product
+   question #200 asks whether such defects are vulnerabilities under the
+   CRA; until it is answered, this split applies.
+2. **When advisories are published:** the drafts are kept private until
+   the release with the fix passes part two of its acceptance (SD-065),
+   then published. If that release takes longer than 30 days after the
+   fix is on `main`, the advisory is published anyway, with "fixed in the
+   next release" and the workaround; for the items of 0.1.0-proto.5 the
+   date is 2026-11-14, 30 days after this decision. Home Assistant's
+   ingress (PD-225, #190 section 2) does not hold up the security fixes: if needed,
+   0.1.0-proto.5 ships without it.
+3. **CVEs:** for each vulnerability of our own we request a CVE from
+   GitHub, which is a CVE Numbering Authority. The project owner requests it in the
+   advisory form at least 3 working days before the tag; GitHub's review
+   takes about 72 hours. A flaw that comes from a component (a library,
+   the processor) gets no CVE of its own; its advisory names the
+   component's CVE.
+4. **Telling users:** the Home Assistant app gets `ha/app/CHANGELOG.md`,
+   with a section per release that lists the security items first, with
+   their GHSA links; Home Assistant shows it in the update dialog. The
+   app's `DOCS.md` gets a section "Security updates". The web app's
+   settings get a fixed link "Security advisories" to this repository's
+   advisories, with no network call. Later the firmware marks an update
+   with its severity and GHSA link.
+5. **Components Dependabot does not watch** (PD-228, SD-075): a weekly
+   scheduled job, without write rights and without secrets, checks
+   OSV.dev for cpp-httplib and nlohmann/json, and Alpine's security
+   database (secdb) for the packages in the last app image; a failed run
+   mails the project owner. Inputs used only to build (doctest,
+   `registry:2`, and the ESP-IDF image until the firmware ships) stay
+   checked by hand at every release. Once the firmware ships, ESP-IDF's
+   libraries ship in it and join the weekly job. Before the first
+   firmware release, ESP-IDF moves to a current v5.4.x or newer.
+6. **A CVE in a build tool** (PD-228, SD-075; for example Vite,
+   TypeScript, a compiler) is a security item with an advisory of its own
+   only if the tool's code ships (then it is a component), or if the CVE
+   could have changed a published artifact: then the artifacts are
+   checked, and it may be a severe incident under CRA Art. 14. Otherwise
+   the tool is updated and listed under Security › "Hardening, without a
+   vulnerability behind it", with the CVE or GHSA and "no published
+   version affected".
+
+- **The items of 0.1.0-proto.5** (`security`'s ratings, CVSS 3.1; the
+  product side's estimate for A and C was the same):
+  - A. Any device in the home network could set the Home Assistant
+    app's first password (#79, SD-068): 6.4 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`, CWE-1188. A CVE from GitHub.
+  - B. A crafted backup could make a pH calibrated in Home Assistant
+    count as checked by the hub (SD-041): 3.3 low,
+    `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`, CWE-807. A CVE from GitHub.
+  - C. A device guessing the password locked every other device out of
+    signing in (SD-051): 4.3 medium,
+    `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`, CWE-645. A CVE from GitHub.
+  - D. Session tokens partly predictable on AMD Zen 5 hosts without
+    AMD's fix (RDSEED, SD-068): 4.2 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`, CWE-331. No CVE of its own; it
+    refers to CVE-2025-62626 (AMD-SB-7055).
+  - No advisory: two defects in the sensor truth's jump check (RAT-042),
+    in the simulator only, triggered by normal use or a faulty probe; a
+    session ended at random, which needs the password.
+
+  All four: affected up to 0.1.0-proto.4 (published: proto.2 to
+  proto.4), patched in 0.1.0-proto.5. `qa` confirmed the range on
+  2026-10-15 with each fix's test, or one adapted to the older code,
+  against builds of v0.1.0-proto.2 and v0.1.0-proto.4 (proto.3 changed
+  none of them; RDSEED by the code): all seven items of the Security
+  section affect proto.2 to proto.4. Later items get the same check
+  before they are published.
+- **Open:** product question #200 (point 1); on the product side, what
+  counts as the first offer, which CSIRT coordinates (probably the BSI),
+  and a lawyer's view of Art. 14.
+- **Where:** in this pull request the changelog's Security section (its
+  blocks, the fields per item), `SECURITY.md` (advisories, what triggers
+  reporting, severe incidents) and `docs/RELEASE.md` (the advisory
+  steps). In later pull requests `ha/app/CHANGELOG.md`, the section in
+  `ha/app/DOCS.md`, the link in the web app and the weekly job.
+
 
 ## SD-080: A refill stays within the inlet's open time, checks its rise and fills in steps
 
@@ -2794,3 +3432,28 @@ Decided by the project owner on 2026-10-15 in the software session
   - Judging 2 min after closing, as the reference did: the level reading
     lags 1.5–2 min behind (RAT-038), and without irrigation the tank loses
     little in 10 min.
+
+---
+
+## Drafts (waiting for "entschieden")
+
+| # | Draft | Core | Needs PD |
+|---|---|---|---|
+| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
+| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
+| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
+| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
+| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
+| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
+| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
+| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
+| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
+| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
+| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
+| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
+| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
+| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
+| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
+
+Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
+`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.

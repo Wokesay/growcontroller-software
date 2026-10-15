@@ -320,6 +320,43 @@ TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereigni
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
 
+// #234: the regression test of the fix covers a Home Assistant probe; this one
+// is the hub's own, as in every published version up to 0.1.0-proto.4
+TEST_CASE("Scenario: a calibration of the hub's own pH probe left open stops explaining jumps after 30 min (RAT-042)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "start"}});
+  // The window was closed without "cancel" (a lost tab). 45 min: idle after
+  // 30 min, plus the 10 min its last announcement still runs, plus margin
+  s.step(45 * 60 * 1000);
+  constexpr gc::Ms kPoll = 5000;
+  gc::Ms quiet = 0;
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    bool calm = st["job"].is_null() && st["outputs"]["tank.inlet"] == false && st["controllers"]["refill"]["state"] != "working";
+    quiet = calm ? quiet + kPoll : 0;
+    return quiet > 11 * gc::kMinute;  // nothing else explains a jump now
+  }, 8 * 3600 * 1000, kPoll));
+  auto st = c.state();
+  REQUIRE(st["probeCalibration"]["PHEC-3F2A91:ph"]["idle"] == true);
+  CHECK(st["controllers"]["ph"]["line"]["key"] == "ctl.calibrating");  // still open: pH control keeps waiting
+  const auto before = st["eventId"].get<std::uint64_t>();
+  s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "jump"}});
+  s.step(60000);
+  st = c.state();
+  CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
+  CHECK_FALSE(st["readings"]["tank.ph"]["usable"].get<bool>());
+  // Cancelled now, pH control finds the jump instead of dosing on it
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "cancel"}});
+  s.step(10 * 60 * 1000);
+  st = c.state();
+  CHECK(st["controllers"]["ph"]["state"] == "blocked");
+  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump");
+  for (const auto& e : findEvents(c, "dose"))
+    if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+}
+
 TEST_CASE("Scenario: a pH jump while the hub's own pH dose settles still locks the reading (RAT-042, RAT-044)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
@@ -816,7 +853,7 @@ TEST_CASE("Scenario: a clock step keeps the hour of the repeat guard (SD-067)") 
   CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "repeat");
 }
 
-TEST_CASE("Scenario: during an emergency stop the latch may release itself; the pump starts only after Resume (SD-067)") {
+TEST_CASE("Scenario: during a Stop the latch may release itself; the pump starts only after Resume (SD-067)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   circulateAlways(s, c);
@@ -1503,7 +1540,7 @@ TEST_CASE("Scenario: someone guessing the password cannot keep the owner from st
   CHECK(phone.state()["stopped"] == true);
 }
 
-TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen") {
+TEST_CASE("Scenario: a Stop switches everything off and holds automation until Resume") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -1518,6 +1555,11 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(code != 200);
   CHECK(refused["error"]["key"] == "job.start_failed");
   CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
+  // a mix is refused too, with a message in the page's language (SD-045: "Stop", never "emergency stop")
+  auto [mixCode, mix] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
+  CHECK(mixCode == 409);
+  CHECK(mix["error"]["key"] == "act.stopped");
+  CHECK(mix["error"]["text"] == "Stop active – tap Resume first");
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
 }
@@ -2096,7 +2138,7 @@ TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
   CHECK(r["value"].is_number());
 }
 
-TEST_CASE("Messages: pump calibration and emergency stop name their result and cause (SD-032)") {
+TEST_CASE("Messages: pump calibration and the Stop name their result and cause (SD-032)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   s.world().cap(kB)->storedFlow = 0;  // a chip that reports 0: no previous rate, not "clearly different" (R5)

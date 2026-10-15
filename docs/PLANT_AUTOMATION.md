@@ -88,7 +88,7 @@ electricians. The software supports them anyway.
   - profile `versorgen` (supply) for devices with their own thermostat
     (Rationale: RAT-069);
   - discovery via mDNS and Digest on the device, "Off not confirmed" with
-    retry on emergency stop (implemented for protective cut-offs), watchdog
+    retry on a Stop (implemented for protective cut-offs), watchdog
     via power ("should be off, draws > 2 W");
   - the button and the app on the Shelly bypass the locks: treat "on
     without a command from the hub" as manual mode (an unacknowledged latch
@@ -144,9 +144,9 @@ Fixed in code (R7):
   recalculate only once time and sensor truth are trusted. Without a
   trusted time the light stays off (refinement of R6). PD-020 replaces the
   part of R6 for state functions; implementation open.
-- Emergency stop switches everything off, including the fans. Goal:
+- The Stop switches everything off, including the fans. Goal:
   unreachable outputs show "Off not confirmed", and the hub repeats the
-  command (open for the emergency stop, implemented for protective
+  command (open for the Stop, implemented for protective
   cut-offs).
 
 The watchdog also assesses:
@@ -217,7 +217,7 @@ cannot dilute.
     follow).
   - On the phone: Overview · Tank · Phases · History · More.
 - **Overview by urgency:**
-  1. banner (emergency stop, maintenance mode, disconnected);
+  1. banner (Stop, maintenance mode, disconnected);
   2. status line;
   3. cultivation run;
   4. "Running now";
