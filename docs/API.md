@@ -35,9 +35,9 @@ UI can do, an integration can do as well.
   after 12 hours without a request, on a restart and on a password change;
   with 16 sessions, a 17th sign-in ends the one used longest ago.
 - Everything else requires a session, otherwise 401. A header
-  `Authorization: Bearer <token>` comes first, even an empty one; without
-  it the session comes from the cookie named exactly `gc_session`, and
-  only when the request carries exactly one cookie of that name.
+  `Authorization: Bearer <token>` comes first; without it the session
+  comes from the cookie named exactly `gc_session`, and only when the
+  `Cookie` header holds exactly one cookie of that name.
 - Security headers on the server: CSP `default-src 'self'`,
   `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
 - **Origin:** the `Host` header must be an IP, `localhost` or a name in the

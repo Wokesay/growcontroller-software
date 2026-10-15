@@ -192,5 +192,23 @@ test("the session comes from the one cookie named exactly gc_session", { skip, t
     assert.equal(await state(`x${cookie}`), 401);
     assert.equal(await state(`note=${cookie}`), 401);
     assert.equal(await state(`${cookie}; ${cookie}`), 401);
+    // a bearer header comes first
+    const token = cookie.slice("gc_session=".length);
+    const bearer = async (h) => (await fetch(`${base}/api/v1/state`, { headers: h })).status;
+    assert.equal(await bearer({ Authorization: `Bearer ${token}` }), 200);
+    assert.equal(await bearer({ Authorization: `Bearer ${token}`, Cookie: "gc_session=other" }), 200);
+    // the live stream takes its session the same way
+    const stream = async (c) => {
+      const ac = new AbortController();
+      const r = await fetch(`${base}/api/v1/events/stream`, { headers: { Cookie: c }, signal: ac.signal });
+      ac.abort();
+      return r.status;
+    };
+    assert.equal(await stream(`theme=dark; ${cookie}`), 200);
+    assert.equal(await stream(`${cookie}; ${cookie}`), 401);
+    // with two of them the session is not renewed
+    const session = await fetch(`${base}/api/v1/auth/session`, { headers: { Cookie: `${cookie}; ${cookie}` } });
+    assert.equal((await session.json()).authenticated, false);
+    assert.equal(session.headers.get("set-cookie"), null);
   });
 });

@@ -30,9 +30,8 @@ bool hostAllowed(const std::string& hostHeader, const std::string& extraHost = "
 bool writeAllowed(const std::string& method, const std::string& secFetchSite, const std::string& origin,
                   const std::string& hostHeader);
 // The session token of a request: a header "Authorization: Bearer <token>"
-// always wins, even an empty one; else the cookie named exactly gc_session,
-// "" when there is none or more than one. Every platform's server takes the
-// token from here.
+// wins; else the cookie named exactly gc_session, "" when there is none or
+// more than one. Every platform's server takes the token from here.
 std::string sessionToken(const std::string& authorization, const std::string& cookie);
 
 struct ApiResponse {

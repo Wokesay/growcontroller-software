@@ -355,6 +355,9 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     assert.equal(await status(`x${cookie}`), 401);
     assert.equal(await status(`note=${cookie}`), 401);
     assert.equal(await status(`${cookie}; ${cookie}`), 401);
+    const token = cookie.slice("gc_session=".length);
+    const bearer = await fetch(`${base}/api/v1/state`, { headers: { Authorization: `Bearer ${token}`, Cookie: "gc_session=other" } });
+    assert.equal(bearer.status, 200);
     // a sensor can be picked once the hub has read it from Home Assistant
     const wanted = ["sensor.grow_ph", "sensor.grow_rh", "sensor.grow_ec"];
     let listed = [];
