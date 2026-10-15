@@ -256,6 +256,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The web app's SBOM lists `preact`** (#201): the release built
+  `sbom-web.cdx.json` with npm's `--omit dev`, which drops every package
+  that a build tool has as a peer, so the SBOMs of 0.1.0-proto.2 to
+  0.1.0-proto.4 left out `preact`, the app's core library, whose code
+  ships in the app. `tools/sbom_web.mjs` now lists exactly the runtime
+  packages of `web/package-lock.json`, read from the lockfile alone, and
+  a test fails when the two differ. Not a vulnerability: the app was
+  complete; its list of parts was not.
 - **The simulator and the Home Assistant server no longer end at the start
   on a bad path or value** (#213): `gc_ha_server --config` with a file it
   cannot read (below a folder it may not enter, a link that loops, no

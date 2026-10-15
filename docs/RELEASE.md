@@ -201,8 +201,8 @@ entry under `[Unreleased]`.
    - The SBOMs list what ships, not the build tools (SD-075). The web
      build fails when a module the bundler puts into the app is neither
      our source, the page nor a runtime package of the lockfile; the web
-     SBOM is to list exactly those packages (today `npm sbom --omit dev`
-     leaves out `preact`, #201). Code the build tools
+     SBOM lists exactly those packages (`tools/sbom_web.mjs`, #201). Code
+     the build tools
      write into our own modules or the page is ours as built by them. The C++ SBOM
      lists the header libraries from `cmake/deps.cmake`, not yet the
      statically linked compiler runtimes; the web app embedded in the
