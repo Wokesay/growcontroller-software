@@ -233,6 +233,13 @@ listed in every release under "Security".
   when the hub refuses the pump, "Blocked: circulation pump can't run –
   after the Stop, mixing comes first") (RAT-036, RAT-052, RAT-004,
   RAT-047).
+- **The simulator starts with a web app folder it cannot read**: when
+  `--web` pointed into a folder the simulator may not enter, or through a
+  link that loops, it ended at the start ("filesystem error: status").
+  Now such a folder counts as no web app: it says why, starts with the
+  embedded web app or the "not built" page, and the API answers
+  (`tools/sim_server.test.mjs`), as the Home Assistant server does since
+  #80.
 - **Editing a bottle out of its pair no longer blocks later saves**
   (#152): clearing or changing part A's pair label, or making it a pH
   bottle, left part B alone with the label, and the hub then refused
