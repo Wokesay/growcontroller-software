@@ -64,6 +64,15 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-078,
+  from PD-225; replaces SD-068's setup code for the app). From
+  0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
+  Assistant's login, and the setup code goes away. Port 8099 is closed by
+  default. A bookmark to it works again once the port is opened in the
+  app's network settings and the app has a password for direct access
+  (set by a Home Assistant administrator in the app; a password from
+  0.1.0-proto.4 is kept); without one, port 8099 only says where the app
+  is now. The ESP keeps its own login. Built in a later change.
 - **Product questions are issues here** (#190, SD-072, from PD-226;
   replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an
