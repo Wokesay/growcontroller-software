@@ -220,6 +220,17 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator keeps a data folder it cannot read** (SD-074): when
+  `--data`, or the folder next to the program on a start without
+  arguments, could not be read (a folder it may not enter, for example
+  one an earlier start with `sudo` made, or a link that loops), it ended
+  at the start; started by a double click, its window just closed. When
+  only files in it could not be read (for example root's files after a
+  start with `sudo`), it started without its configuration and password
+  and later saved over them. Now it says "Data cannot be read (…).
+  Running in memory only." and runs in memory only. It reads, writes and
+  removes nothing in that folder, so data of an earlier start stays as
+  it was.
 - **After a Stop, an interrupted control round mixes in before the next decision**
   (#180, SD-073): a Stop that cut an EC or pH round, while it dosed or
   waited for the dose to mix in, only reset the controller. After Resume
