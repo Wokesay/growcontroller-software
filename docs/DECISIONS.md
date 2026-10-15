@@ -2419,8 +2419,9 @@ SD-058, whose check runs with the npm that comes with Node.
 
 ## SD-071: The app image checks the signatures with the Node of `.nvmrc`, from the official node image
 
-Decided by the project owner on 2026-10-15 (#163, PR #189). Completes
-SD-070 for the Home Assistant app image (SD-034).
+Decided by the project owner on 2026-10-15 (#163, PR #189), and
+confirmed the same day once the `security` review had found the gap on
+amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
 
 - **What:** the image's web stage, which installs the web app's packages
   and checks their registry signatures (SD-058), starts from the official
