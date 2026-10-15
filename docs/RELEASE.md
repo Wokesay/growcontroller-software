@@ -202,7 +202,9 @@ entry under `[Unreleased]`.
      `node` image at `.nvmrc`'s Node on the same Alpine, SD-071: a new
      digest of the `node` tag passes, a new Alpine digest fails until the
      stand-in follows, a newer Node until `.nvmrc` follows, a newer
-     Alpine until the `node` tag and the stand-in follow) and `reuse`
+     Alpine until the `node` tag and the stand-in follow; a new `node`
+     digest is merged only after a review like a raise of `.nvmrc`, as
+     what changed is not in the diff) and `reuse`
      with its dependencies and build backend
      (`tools/requirements-reuse*.txt`, installed with `--require-hashes`,
      wheels only except `reuse` itself, which is built from its hashed

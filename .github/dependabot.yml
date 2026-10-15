@@ -31,7 +31,8 @@ updates:
         update-types: ["version-update:semver-major"]
   # Base images of the Home Assistant app (SD-034, SD-071), pinned by
   # digest. What tools/app.test.mjs lets through: a new digest of the node
-  # tag passes; a new alpine digest fails until the stand-in in app.yml
+  # tag passes, and is reviewed like a raise of .nvmrc as what changed is
+  # not in the diff; a new alpine digest fails until the stand-in in app.yml
   # follows; a newer Node fails until .nvmrc follows by hand (SD-070), in
   # the pull request that raises it; a newer Alpine fails until the node
   # tag and the stand-in follow. Node majors are not proposed.

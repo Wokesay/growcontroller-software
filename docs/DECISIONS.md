@@ -2438,36 +2438,58 @@ SD-070 for the Home Assistant app image (SD-034).
   `node -v` against `.nvmrc` before npm runs, and the build fails on a
   digest of another Node. Raising `.nvmrc` (by hand, SD-070) raises the
   image in the same pull request.
-- **Dependabot:** a new digest of the same `node` tag (the image rebuilt,
-  for example on a fixed Alpine) passes. A newer Node 22 fails until
-  `.nvmrc` follows: such a pull request is the reminder for the pull
-  request that raises `.nvmrc` (SD-070), and is closed when that one is
-  merged. Node majors are not proposed, as for `@types/node`.
+- **Dependabot:** a newer Node 22 fails until `.nvmrc` follows: such a
+  pull request is the reminder for the pull request that raises `.nvmrc`
+  (SD-070), and is closed when that one is merged. Node majors are not
+  proposed, as for `@types/node`, and Dependabot keeps the `-alpine3.24`
+  suffix. A new digest of the same `node` tag (the image rebuilt, for
+  example on a fixed Alpine) passes CI on its own, though what changed is
+  not in the diff, so it is merged only after a review like a raise of
+  `.nvmrc`: docker-node's changes to `22/alpine3.24/` since the pinned
+  digest, the build log's `node -v` and `npm -v`, and `security`. Such
+  digests come only while the tag is current: once a newer Node 22 is
+  out, Docker no longer rebuilds `22.23.3-alpine3.24`, and fixes of the
+  web stage's Alpine come only with a raise of `.nvmrc`.
 - **Where Node comes from:** the `node` image is maintained by the
   Node.js Docker team (`https://github.com/nodejs/docker-node`) and built
   and published on Docker Hub by Docker's Official Images program. On
   amd64 it unpacks the musl build of `unofficial-builds.nodejs.org`,
   checked against a checksum written in docker-node's Dockerfile, not
-  against a signature of the Node release keys; on arm64 it builds Node
+  against a signature of the Node release keys, although `nodejs.org`
+  publishes a signed musl build for amd64 too; on arm64 it builds Node
   from the `nodejs.org` sources, checked against those keys
-  (`22/alpine3.24/Dockerfile` there, read 2026-10-15). The digest pin
-  means none of this changes without a pull request. Only the build uses
-  it: the shipped image holds the web app's files, not Node.
+  (`22/alpine3.24/Dockerfile` there and
+  `https://nodejs.org/dist/v22.23.3/SHASUMS256.txt`, read 2026-10-15).
+  That gap on amd64 ends with Node 24, whose images take the signed
+  build from `nodejs.org`. Node is not shipped, though it builds what is
+  (the web app in the image) and checks the packages, so a tampered Node
+  could pass a bad package and change the web app.
+- **Docker Hub:** both base images come from it, as alpine did before.
+  The digest pins their content, so a changed image on the registry
+  fails the build instead of entering it; what remains is availability
+  (outages, pull limits). The images' attestations are not checked:
+  Docker retired its signing of Official Images in 2025
+  (`https://www.docker.com/blog/retiring-docker-content-trust/`, read
+  2026-10-15), so the digest taken in the pull request is the anchor of
+  trust.
 - **Same Alpine:** a security raise of `.nvmrc` needs a `node` tag on the
   Alpine of the other stages. docker-node usually builds each Node line
-  on the two newest Alpine releases, so this likely holds until Node 22 ends
-  (2027-04-30); if not, the raise moves Alpine too, with the musl check
-  of the server stage.
+  on the two newest Alpine releases, so this likely holds until Node 22
+  ends (2027-04-30); if not, the raise moves Alpine too, with the musl
+  check of the server stage.
 - **What it does not cover:** the licenses stage still runs our own
-  `tools/third_party.mjs` with Alpine's `nodejs`; it reads license files
-  and runs no package code, so its Node version does not matter.
+  `tools/third_party.mjs` with Alpine's `nodejs`, and the app workflow's
+  smoke test runs our own `tools/ha_server.test.mjs` with it; they read
+  files and run no package code, so their Node version does not matter.
 - **Not chosen:**
   - Alpine's packages pinned to a version (`nodejs=…`): Alpine removes
     older package versions from its repository, so the build would break
     at every Alpine fix, and its `nodejs` is Node 24, not CI's 22.
-  - Downloading Node in our Dockerfile with a checksum: the same source
-    as the official image's musl build, but more code of our own to keep
-    (and on arm64 a build from source).
+  - Downloading Node in our Dockerfile, checked against the Node release
+    keys: on amd64 that could take `nodejs.org`'s signed musl build,
+    stronger than the image's unofficial one; on arm64 there is none, so
+    it would mean the unofficial build or a build from source. More code
+    of our own to keep, for a gap that ends with Node 24.
   - Leaving Alpine's Node and printing its version (as before): the
     checker would still differ from CI and change unseen.
 
