@@ -224,6 +224,8 @@ export const msgDe: Record<string, string> = {
   "ev.clock.unset": "Keine Netzwerkzeit und keine gespeicherte Uhrzeit. Uhrzeiten im Verlauf stimmen erst, wenn die Uhrzeit gesichert ist.",
   "ev.stop": "Not-Halt",
   "ev.stop.text": "Alle Pumpen und Ausgänge aus. Ausgelöst: {who}",
+  "ev.stop.unbooked": "Not-Halt: Gabe nicht ganz gezählt",
+  "ev.stop.unbooked.text": "Alles ist aus. Die Gabe von {name} ist nicht ganz gezählt: Im Tank kann mehr sein, im Kanister weniger. Trag unter Rezepte & Kanister ein, was drin ist; miss, bevor du nachdosierst. Grund: {reason}",
   "stop.app": "STOPP-Taste in der App",
   "ev.resumed": "Automatik fortgesetzt",
   "ev.resumed.text": "Not-Halt aufgehoben",

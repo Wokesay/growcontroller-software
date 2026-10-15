@@ -8,7 +8,9 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <optional>
 #include <random>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -915,6 +917,95 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
+}
+
+TEST_CASE("Scenario: a Stop switches everything off before it books the running dose, and holds if booking fails (RAT-036)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  circulateAlways(s, c);
+  auto handDose = [&] {
+    REQUIRE(until(s, [&] {
+      const json now = c.state();
+      return now["job"].is_null() && now["dosing"].is_null();
+    }, 10 * 60 * 1000));
+    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 5}});
+    REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 2000; }, 20000, 200));
+    REQUIRE(s.world().circulating());
+  };
+
+  auto count = [&](const std::string& type, const std::string& key) {
+    size_t n = 0;
+    for (const auto& e : findEvents(c, type)) n += e["title"]["key"] == key ? 1 : 0;
+    return n;
+  };
+
+  // when the hub reads back the stopped run to book it, everything is already off
+  handDose();
+  REQUIRE(s.world().loadOn("light"));
+  bool readBack = false, allOff = false, saved = false;
+  s.world().onRunStatus = [&](const std::string&) {
+    if (readBack) return;
+    readBack = true;
+    sim::World& w = s.world();
+    allOff = !w.circulating() && !w.out[1] && !w.loadOn("light") && !w.loadOn("exhaust") && !w.loadOn("circulation_fan") &&
+             w.cap(kA)->state != 1;
+    saved = json::parse(s.storage().read("state.json").value_or("{}")).value("stopped", false);
+  };
+  c.ok("POST", "/api/v1/stop");
+  s.world().onRunStatus = nullptr;
+  REQUIRE(readBack);
+  CHECK(allOff);
+  CHECK(saved);
+  c.ok("POST", "/api/v1/resume");
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 60000));
+
+  // booking fails: the Stop still holds and is saved, the dose is dropped unbooked, and that is said
+  handDose();
+  const double stockBefore = c.state()["stock"]["teil-a"];  // a single run, booked only when it ends
+  const size_t stops = count("system", "ev.stop");
+  const size_t incomplete = count("dose", "ev.dose_incomplete");
+  const json dropped = c.state()["dosing"]["order"];
+  s.world().onRunStatus = [](const std::string&) { throw std::runtime_error("bus read failed"); };
+  CHECK(c.call("POST", "/api/v1/stop").first == 200);
+  json st = c.state();
+  CHECK(st["stopped"] == true);
+  CHECK(st["outputs"]["tank.circulation"] == false);
+  CHECK_FALSE(s.world().circulating());
+  CHECK(s.world().cap(kA)->state != 1);
+  CHECK(st["job"].is_null());
+  CHECK(st["dosing"].is_null());
+  CHECK(json::parse(s.storage().read("state.json").value_or("{}")).value("stopped", false) == true);
+  CHECK(count("system", "ev.stop") == stops + 1);
+  bool said = false;
+  for (const auto& e : findEvents(c, "system"))
+    if (e["title"]["key"] == "ev.stop.unbooked") {
+      said = true;
+      CHECK(e["severity"] == "warn");
+      CHECK(e["text"]["args"]["name"] == "Teil A");
+      CHECK(e["text"]["args"]["reason"] == "bus read failed");
+      CHECK(e["data"]["canister"] == "teil-a");
+    }
+  CHECK(said);
+  // the read keeps failing: the dropped dose is not read again, so no internal error follows,
+  // nothing switches on, and nothing of it is booked later
+  s.step(5000);
+  CHECK(count("system", "ev.tick_fault") == 0);
+  s.world().onRunStatus = nullptr;
+  s.step(5000);
+  CHECK_FALSE(s.world().circulating());
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(stockBefore));
+  CHECK(count("dose", "ev.dose_incomplete") == incomplete);
+  // pressing Stop again logs no second stop
+  CHECK(c.call("POST", "/api/v1/stop").first == 200);
+  CHECK(count("system", "ev.stop") == stops + 1);
+  // a Resume right away continues nothing of the dropped dose, and a new hand dose runs
+  c.ok("POST", "/api/v1/resume");
+  for (int i = 0; i < 30; ++i) {
+    s.step(1000);
+    const json d = c.state()["dosing"];
+    CHECK((d.is_null() || d["order"] != dropped));
+  }
+  handDose();
 }
 
 TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {

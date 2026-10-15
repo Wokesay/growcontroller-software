@@ -243,6 +243,8 @@ constexpr Entry kMessages[] = {
     {"ev.clock.unset", "No network time and no saved time. Times in the history are only correct once the clock is synced."},
     {"ev.stop", "Emergency stop"},
     {"ev.stop.text", "All pumps and outputs off. Triggered by: {who}"},
+    {"ev.stop.unbooked", "Emergency stop: dose not fully counted"},
+    {"ev.stop.unbooked.text", "Everything is off. The dose of {name} was not fully counted: the tank may hold more and the bottle less. Enter what is left under Recipes & bottles; measure before dosing it again. Reason: {reason}"},
     {"stop.app", "STOP button in the app"},
     {"ev.resumed", "Automation resumed"},
     {"ev.resumed.text", "Emergency stop lifted"},

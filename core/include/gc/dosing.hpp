@@ -151,6 +151,9 @@ class Doser {
   void tick(const Ctx& c, Actuators& act);
   // Stoppt und bucht, was schon gelaufen ist (RAT-070).
   void abort(const Ctx& c, Actuators& act, const Msg& reason);
+  // Drops the running order without booking or logging it, for when booking it failed during a
+  // Stop: nothing of the order runs or is booked later, and the pumps go off once more.
+  void drop(Actuators& act);
   const DoseProgress& progress() const { return progress_; }
   const std::optional<DoseOrder>& active() const { return active_; }
   // Fertig/fehlgeschlagen abholen und zurücksetzen.
