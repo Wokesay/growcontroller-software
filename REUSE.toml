@@ -14,7 +14,7 @@ SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
 
 # Files without comment syntax: Markdown, JSON, SVG, plain text.
 [[annotations]]
-path = ["**/*.md", "*.md", "**/*.json", "*.json", "**/*.svg", "sim/README.txt", "VERSION"]
+path = ["**/*.md", "*.md", "**/*.json", "*.json", "**/*.svg", "sim/README.txt", "VERSION", ".nvmrc"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

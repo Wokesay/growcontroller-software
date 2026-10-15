@@ -40,9 +40,10 @@ an app that reads your sensors and switches nothing:
 
 ## Build it yourself (no hardware needed)
 
-Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22.12 or later; for
-`tools/ci.sh` also [reuse](https://reuse.software/) (`pipx install reuse==6.2.0`;
-CI installs `tools/requirements-reuse.txt` with its hashes).
+Requirements: CMake ≥ 3.20, Ninja, a C++17 compiler, Node.js 22.12 or
+later (CI runs the one in `.nvmrc`); for `tools/ci.sh` also
+[reuse](https://reuse.software/) (`pipx install reuse==6.2.0`; CI installs
+`tools/requirements-reuse.txt` with its hashes).
 
 ```bash
 tools/dev.sh

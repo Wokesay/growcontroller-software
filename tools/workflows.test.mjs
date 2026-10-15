@@ -3,7 +3,8 @@
 // its full commit SHA with the version as a comment (#29); Dependabot
 // keeps both up to date. Node's types for the web app's tests are those of
 // the Node that CI runs (#101). The web app's packages are checked against
-// their registry signatures right after they are installed (#100, SD-058).
+// their registry signatures right after they are installed (#100, SD-058),
+// with the Node pinned in .nvmrc, and a failed check reports why (SD-070).
 // The inactive triage template starts only for people with a role (#29).
 //   node --test tools/workflows.test.mjs
 import assert from "node:assert/strict";
@@ -158,29 +159,62 @@ test("tools and containers come pinned: reuse by hashes, images by digest", () =
   }
 });
 
-test("Node's types are those of the Node that CI runs (#101)", () => {
-  // every setup-node names its version, and all name the same
-  const versions = new Set();
+test("every job that sets up Node runs the one pinned in .nvmrc, and Node's types are its (#101, SD-070)", () => {
+  // npm, which checks the registry signatures (SD-058), comes with Node: one
+  // exact version, raised by hand with a review, never by a runner image.
+  const root = join(dir, "..", "..");
+  const pin = readFileSync(join(root, ".nvmrc"), "utf8");
+  assert.match(pin, /^\d+\.\d+\.\d+\n$/, ".nvmrc holds one exact version");
+  const major = pin.split(".")[0];
   let setups = 0;
-  let named = 0;
   for (const f of files) {
     const text = readFileSync(join(dir, f), "utf8");
-    setups += text.match(/uses:[ \t]*actions\/setup-node@/g)?.length ?? 0;
-    for (const m of text.matchAll(/node-version:[ \t]*(\S+)/g)) {
-      named++;
-      versions.add(m[1]);
-    }
+    const n = text.match(/uses:[ \t]*actions\/setup-node@/g)?.length ?? 0;
+    setups += n;
+    assert.equal(text.match(/^[ \t]+node-version-file: \.nvmrc$/gm)?.length ?? 0, n, `${f}: every setup-node reads .nvmrc`);
+    assert.doesNotMatch(text, /node-version:/, `${f}: no version of its own`);
   }
   assert.ok(setups > 0, "setup-node found");
-  assert.equal(named, setups, "every setup-node has a node-version");
-  assert.equal(versions.size, 1, `one Node version in CI: ${[...versions].join(", ")}`);
-  const web = JSON.parse(readFileSync(join(dir, "..", "..", "web", "package.json"), "utf8"));
-  assert.equal(web.devDependencies["@types/node"]?.split(".")[0], [...versions][0], "@types/node in web/package.json");
+  const web = JSON.parse(readFileSync(join(root, "web", "package.json"), "utf8"));
+  assert.equal(web.devDependencies["@types/node"]?.split(".")[0], major, "@types/node in web/package.json");
   // Dependabot does not raise them to another major on its own.
   const dependabot = readFileSync(join(dir, "..", "dependabot.yml"), "utf8");
   const npm = dependabot.slice(dependabot.indexOf("package-ecosystem: npm"), dependabot.indexOf("- package-ecosystem:", dependabot.indexOf("package-ecosystem: npm")));
   assert.match(npm, /directory: \/web\n/);
   assert.match(npm, /- dependency-name: "@types\/node"\n[ \t]+update-types: \["version-update:semver-major"\]/);
+});
+
+test("a job whose signature check fails says why, right after the check (#163, SD-070)", () => {
+  // Every job that installs the web app's packages has, directly after the
+  // step with the check, a step that runs only on failure and asks npm for
+  // the reason; the check line stays as it is.
+  const report =
+    "      - name: Registry signatures, npm's reasons if their check failed\n" +
+    "        if: failure()\n" +
+    "        timeout-minutes: 5\n" +
+    "        run: node tools/signatures_report.mjs web\n";
+  let jobs = 0;
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    for (const job of text.split(/\n(?= {2}[\w-]+:[ \t]*(?:#.*)?\n)/)) {
+      const steps = job.split(/(?=\n {6}- )/);
+      const at = steps.findIndex((s) => /npm audit signatures/.test(s) || /^\s+tools\/ci\.sh$/m.test(s));
+      if (at < 0) continue;
+      jobs++;
+      assert.equal(steps[at + 1]?.slice(1) + "\n", report.replace(/\n$/, "") + "\n", `${f}: ${job.trim().split("\n")[0]} has the report right after the check`);
+      assert.equal(steps.filter((s) => s.includes("signatures_report.mjs")).length, 1, `${f}: one report per job`);
+    }
+  }
+  // the checks job (tools/ci.sh), the firmware job, the packages, the release
+  assert.ok(jobs >= 4, `jobs found: ${jobs}`);
+});
+
+test("tools/ci.sh and the app image say which Node and npm check the signatures (#163)", () => {
+  const root = join(dir, "..", "..");
+  const ci = readFileSync(join(root, "tools", "ci.sh"), "utf8");
+  assert.match(ci, /\necho "Node \$\(node -v\), npm \$\(npm -v\)[^"\n]*"\n\(cd web && npm ci /, "tools/ci.sh");
+  const docker = readFileSync(join(root, "ha", "app", "Dockerfile"), "utf8");
+  assert.match(docker, /\nRUN node -v && npm -v\nRUN cd web && npm ci /, "ha/app/Dockerfile");
 });
 
 test("the web app's packages are checked against their registry signatures (#100, SD-058)", () => {
