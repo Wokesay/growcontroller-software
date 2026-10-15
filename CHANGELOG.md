@@ -463,15 +463,17 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
-- **The signature check runs one pinned npm, and says why it fails**
-  (#163): the npm that checks the web app's packages against their
-  registry signatures (SD-058) came with whatever Node the runner image
-  had. CI now runs the one Node named in `.nvmrc`, raised by hand with a
-  review, and the app image prints the Node and npm it checks with. When
-  the check fails, a step that runs only then prints each package with
-  npm's reason; until now the output named only the package, so a failure
-  on 2026-10-14 that passed again on re-run could not be explained. The
-  check itself is unchanged.
+- **The signature check runs with a pinned npm, and says why it fails**
+  (#163, SD-070): the npm that checks the web app's packages against
+  their registry signatures (SD-058) came with whatever Node the runner
+  image had. Every job that sets up Node now runs the one named in
+  `.nvmrc`, raised by hand with a review and compared with Node's security
+  releases at every release. The app image still checks with Alpine's
+  Node and npm, and now prints their versions. When a job with the check
+  fails, a step that runs only then shows the end of npm's own log of the
+  check and asks npm again for its reasons; until now the output named
+  only the package, so a failure on 2026-10-14 that passed on re-run could
+  not be explained. The check itself is unchanged.
 - **A Stop holds even when booking the running dose fails** (RAT-036):
   a Stop booked the running dose and ended the job before it switched the
   inlet, the circulation pump and the sockets off. An error while booking

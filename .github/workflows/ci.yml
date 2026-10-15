@@ -104,8 +104,9 @@ jobs:
           export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
           tools/ci.sh
           ccache -s
-      - name: Why the registry signatures failed
+      - name: Registry signatures, npm's reasons if their check failed
         if: failure()
+        timeout-minutes: 5
         run: node tools/signatures_report.mjs web
       - name: Save compiler cache
         if: github.ref == 'refs/heads/main'
@@ -152,8 +153,9 @@ jobs:
         run: |
           cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build && cd - >/dev/null
           node tools/embed_web.mjs
-      - name: Why the registry signatures failed
+      - name: Registry signatures, npm's reasons if their check failed
         if: failure()
+        timeout-minutes: 5
         run: node tools/signatures_report.mjs web
       - name: Restore compiler cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

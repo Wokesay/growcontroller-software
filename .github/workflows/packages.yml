@@ -53,8 +53,9 @@ jobs:
         run: |
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build)
           node tools/embed_web.mjs build-pkg/web_assets.cpp
-      - name: Why the registry signatures failed
+      - name: Registry signatures, npm's reasons if their check failed
         if: failure()
+        timeout-minutes: 5
         run: node tools/signatures_report.mjs web
       - name: Build the simulator
         run: |
