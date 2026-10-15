@@ -123,6 +123,7 @@ test("the server's --app mode and the image match the app", () => {
   assert.match(stages[0][0], new RegExp(`^node:${literal(pin)}-alpine${literal(alpine)}@sha256:[0-9a-f]{64}$`), "web: the Node of .nvmrc on the same Alpine");
   const webStage = docker.slice(docker.indexOf(" AS web"), docker.indexOf(" AS server"));
   assert.doesNotMatch(webStage, /^RUN\b.*\bapk\b/m, "web: nothing from Alpine's packages; everything comes with the pinned image");
+  assert.doesNotMatch(webStage, /\bcorepack\b|\bnpm (?:i|install|up|update)\b[^\n]*(?:\s-g\b|--global)|^(?:ADD|COPY --from)/m, "web: nothing replaces the image's Node or npm");
   // The digest, not the tag, decides what is pulled: before npm runs, the
   // stage checks that its Node is the one of .nvmrc.
   assert.match(read(".dockerignore"), /^!\.nvmrc$/m, ".nvmrc goes into the build");
