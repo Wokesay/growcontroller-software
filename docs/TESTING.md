@@ -74,28 +74,71 @@ ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
   size, history read above 16 MB on the N32R16V; `GET /api/v1/auth/session`
   with a session sends the cookie again (`Max-Age=43200`, SD-064) through
   the ESP's web server.
-- Firmware tests for SD-076 and SD-080: the BOOT gestures (3 s, 8 s,
-  15 s, acting on release, so holding to 15 s opens neither the setup
-  network nor an access reset on the way; held over 30 s does nothing
-  and is reported; a restart ends what a press started); the factory
-  reset, from BOOT, the web app and the flash page, switches the board's
-  outputs and the plugs with a water or CO2 role off first, leaves light,
-  fans, room heater and air pump as they are and the drain pump on,
-  erases only after the confirmation within 30 s (also with a plug
-  missing), and without it erases nothing and control takes the plugs
-  back; no dose starts in the window; Home Assistant and API tokens
-  start neither reset; it erases `history`, `storage` and NVS with a new
-  random value for the storage keys and leaves `fctry` and the apps
-  unchanged, also after a power cut or a watchdog reset halfway; the
-  access reset's new password counts only after the short press, the
-  old one until then, a second request ends the window, and afterwards
-  all sessions, tokens and the Home Assistant key are invalid; a blank
-  or broken `fctry` means a self-flashed device and is never erased;
-  losing one of the first password's two stores gives 423; its window
-  closes after 15 min and neither a restart nor a Wi-Fi rejoin reopens
-  it; a restart by the USB host counts as a power loss; the setup
-  network does not open by itself on a configured device; Bluetooth
-  built as observer only.
+- Tests for SD-076 and SD-080. The gesture, window and control-pause
+  logic sits in the core with the injected clock (R8), so scenario tests
+  run it in simulated time; only the button and LED drivers need a
+  board.
+  - *Gestures (firmware, injected time):* 3 s, 8 s and 15 s act on
+    release, so holding to 15 s opens neither the setup network nor an
+    access reset on the way; released at 2.9, 3.0, 7.9, 8.0, 14.9, 15.0,
+    30.0 and 30.1 s; held over 30 s does nothing and is reported; a
+    restart ends what a press started; a 15-s hold ends a pending access
+    reset, and a press in the window never counts as a hold; the
+    confirming press is ignored in the window's first 2 s, confirms when
+    released within 2 s and cancels when longer.
+  - *Factory reset (core scenario, test_net):* the board's dosing pumps
+    and refill valve go off first (the dimming output keeps its level), a running dose is booked as on a Stop (RAT-036) and a refill
+    counts as a dose, then the plugs with a water or CO2 role go off;
+    light, fans, room heater and air pump keep their state and the drain
+    pump stays on; a role on neither list goes off, and an import cannot
+    widen the list; a plug whose state is unknown, an empty or unreadable
+    list and Wi-Fi down never show "all plugs off" (R5); in the window
+    no job starts, no plug is switched and the cut-offs still act; it
+    erases only after the confirmation, also with a plug missing;
+    without it control takes the plugs back, an interrupted dose or
+    refill is reported, not resumed (R6), a cut control round settles as
+    after a Stop (SD-073), and a Stop or latch set before or during the
+    window still holds; the dehumidifier keeps its minimum pause after
+    the window and after it is adopted again (RAT-034); a restart in the
+    window erases nothing and is reported; a reset never switches
+    anything on; an update and a factory reset exclude each other.
+  - *Factory reset (API and E2E):* only logged in from the home network
+    and with the password again (a wrong one counts as a failed
+    attempt); Home Assistant and API tokens start neither reset; the
+    result per plug before erasing; an export without passwords offered
+    first.
+  - *Factory reset (on a board):* it erases `history`, `storage` and NVS
+    with a new random value for the storage keys and leaves `fctry` and
+    the apps unchanged, also after a power cut or a watchdog reset at
+    each step; a blank NVS at the start makes a new value first; the
+    flash page's command opens the same window, also across the restart
+    that opening the port may cause, and without an answer within 10 s
+    only the whole-chip erase with its warning is left; a restart while
+    BOOT is held starts download mode, and the board watchdog then
+    restarts the ESP normally; the downgrade floor, `otadata` and both app
+    slots survive the reset; the missing plugs are tried until right
+    before NVS is erased.
+  - *Access reset (API and scenario):* the new password counts only
+    after the short press, the old one until then; a press without a
+    request, after 15 min, more than 2 min after the request or after a
+    restart changes nothing; a second request, the same page token with
+    another password, or a password change ends the window, the same
+    request again does not; a request through the relay, the Home
+    Assistant window, the native API or the setup network is refused; afterwards all sessions, tokens and the Home Assistant key
+    are invalid and their live connections end, the outside access and
+    the relay address are back at their defaults, the Home Assistant
+    app's own password is untouched, no output switches and control
+    keeps running; Wi-Fi,
+    plugs, calibrations and history stay; its entry survives a restart,
+    the log's rotation and an import, and only a factory reset removes
+    it.
+  - *First password, USB, setup network, Bluetooth (firmware):* a blank
+    or broken `fctry` means a self-flashed device and is never erased;
+    losing one of the first password's two stores gives 423; its window
+    closes after 15 min and neither a restart nor a Wi-Fi rejoin reopens
+    it; a restart by the USB host counts as a power loss; the setup
+    network does not open by itself on a configured device; Bluetooth
+    built as observer only.
 - Accessibility (axe) as E2E tests; the phone tests cover layout only, in
   Chromium (no WebKit, so iOS Safari itself is not run).
 - Load test of the web server on the ESP32: control must not suffer (RLM,

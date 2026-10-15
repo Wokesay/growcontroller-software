@@ -113,12 +113,15 @@ reset on the hub (holding BOOT for 15 s and confirming with a short
 press, once the firmware has it) keeps it (SD-076, SD-080). Erasing over
 USB also skips the factory reset's first step, which switches off the
 smart plugs with a water or CO2 role (irrigation and circulation pump,
-inlet, humidifier, dehumidifier, CO2, tank heater): they stay as they
+inlet and inlet pump, humidifier, dehumidifier, CO2, tank heater): they stay as they
 are, so switch them off by hand first.
 
 Once secrets are stored in encrypted NVS (SD-024), your own firmware needs
 the same NVS encryption setting and HMAC key ID to read them; otherwise it
-starts without them (as after a factory reset).
+starts without them (as after a factory reset). With the factory reset of
+SD-080 it also needs our key derivation and the small partition that holds
+the reset's value; both are documented in the source, so your own builds
+work.
 
 ## Going back to an official release
 

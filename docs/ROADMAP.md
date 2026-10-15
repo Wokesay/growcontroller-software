@@ -1,6 +1,6 @@
 # Software roadmap
 
-Status 2026-10-13, order decided by the project owner on 2026-10-12: the
+Status 2026-10-15, order decided by the project owner on 2026-10-12: the
 freshness fix, then a polish block and the prototype 0.1.0-proto.5
 (SD-055), then the ESP32-S3 before new Home Assistant features. The
 ESP32-S3 on the carrier board runs control and safety on its own; Home

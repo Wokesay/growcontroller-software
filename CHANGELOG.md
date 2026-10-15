@@ -66,25 +66,21 @@ listed in every release under "Security".
 ### Changed
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
-  PD-219; replaces the 10 s of SD-076). To reset the ESP32-S3 to its
-  factory state, you hold BOOT for 15 s. It first switches off the smart
-  plugs with a water or CO2 role: irrigation and circulation pump,
-  inlet and inlet pump, humidifier, dehumidifier, CO2 and tank heater.
-  Light, fans, room heater and air pump keep their state, and a drain
-  with its own pump stays on. The LEDs show whether every one of these
-  plugs reported "off"; the web app shows which one is missing. Only a
+  PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
+  15 s. It first switches off the smart plugs with a water or CO2 role:
+  irrigation and circulation pump, inlet and inlet pump, humidifier,
+  dehumidifier, CO2 and tank heater. Light, fans, room heater and air
+  pump keep their state, and a drain with its own pump stays on. The
+  LEDs show whether every one of these plugs reported "off". Only a
   short press on BOOT within 30 s then erases; without it nothing is
-  erased and control takes the plugs back. The factory reset in the web
-  app and from our flash page will switch off the same plugs first. It
-  erases Wi-Fi, passwords, settings, calibrations, history and the
-  passwords of adopted plugs, and keeps the label's key; afterwards you
-  reset each plug at its own button and adopt it again. If you only lost
-  access, the access reset keeps all data: hold BOOT long (proposed:
-  8 s), set a new password in the home network within 15 min and confirm
-  it with a short press on BOOT. The old password works until then;
-  afterwards every session and token ends and Home Assistant must be
-  paired again. Before you pass a device on, use the factory reset.
-  Built in a later change.
+  erased. The web app and our flash page switch off the same plugs
+  first. The reset erases Wi-Fi, the password, settings, calibrations,
+  history and the passwords of adopted plugs, and keeps the label's key.
+  If you only lost access, the access reset keeps your data: hold BOOT
+  long (proposed: 8 s), set a new password in the home network within
+  15 min and confirm it with a short press on BOOT. Home Assistant must
+  then be paired again. Before you pass a device on, use the factory
+  reset. Built in a later change.
 - **Sessions claim an issue before working on it** (SD-078): parallel
   sessions had picked up the same issue. Before a session starts, it
   fetches the issue again and leaves it alone if a live claim or an open
