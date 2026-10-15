@@ -187,15 +187,21 @@ listed in every release under "Security".
   and EC from Home Assistant, the combined history view and the stop menu
   wait until the ESP foundation stands.
 - Build tools of the web app: TypeScript 7.0.2 for the type check and
-  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  Playwright 1.64.0 for the end-to-end tests (proposed by Dependabot). The
   app itself does not change.
-- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
-  visible changes.
-- Build tool of the web app: Vite 8.3.2 (proposed by Dependabot). It needs
+- The web app runs on Preact 11.0.1 with the icons of lucide-preact
+  1.53.0 (proposed by Dependabot). Nothing visible changes.
+- Build tool of the web app: Vite 8.3.3 (proposed by Dependabot); 8.3.3
+  closes three advisories of Vite's development server
+  (GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg, GHSA-9jrq-w75r-8gcw), which our
+  builds and tests never run. It needs
   lightningcss, which is under MPL-2.0; the license check now allows
   MPL-2.0 for lightningcss as a build tool, which is never shipped
   (SD-046). The code of the app does not change; Vite 8 bundles it with
   Rolldown, so the built files differ.
+- CI and release workflows: `actions/upload-artifact` 7.0.2,
+  `actions/download-artifact` 8.0.2 and `actions/setup-node` 7.1.0, pinned
+  by commit SHA as before (proposed by Dependabot).
 - **Home Assistant app on Alpine 3.24** (proposed by Dependabot): the
   server in the app is now linked against musl 1.2.6 and the runtime of
   GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
