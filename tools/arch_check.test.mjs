@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The architecture check finds what it guards against: here the options
 // that burn eFuses, in sdkconfig.defaults and in a board profile (PD-022,
-// SD-024). It runs on a copy of itself in an otherwise empty tree.
+// SD-024), and std::random_device where random numbers must come from the
+// operating system (#79, #234). It runs on a copy of itself in an
+// otherwise empty tree.
 //   node --test tools/arch_check.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -42,6 +44,46 @@ test("profiles without such an option pass", () => {
   const r = check({
     "firmware/boards/n8r8.defaults": "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y\n# CONFIG_SECURE_BOOT is not set\n",
     "firmware/sdkconfig.defaults": "CONFIG_SPIRAM=y\n",
+  });
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /Architekturregeln: ok/);
+});
+
+// #79, #234: session tokens, salts and the setup code come from the operating
+// system; std::random_device tries RDSEED first on Linux x86-64
+const randomBytes = (windows, others) =>
+  `void randomBytes(std::uint8_t* p, size_t n) {\n#ifdef _WIN32\n${windows}\n#else\n${others}\n#endif\n}\n`;
+const winRd = "  static std::random_device rd;  // MSVC: the system's generator (rand_s)";
+const getentropy = "  if (getentropy(p, n) != 0) std::abort();";
+
+test("std::random_device, RDSEED or RDRAND outside the Windows branch of sim::randomBytes fails the check", () => {
+  const cases = [
+    ["core/src/auth.cpp", "std::random_device rd;\n"],
+    ["core/src/auth.cpp", "std::random_device rd;  // seeded once\n"],  // a comment after the code hides nothing
+    ["ha/main.cpp", "  static std::random_device rd;\n  p[i] = static_cast<std::uint8_t>(rd());\n"],
+    ["sim/server.cpp", "auto seed = std::random_device{}();\n"],
+    ["sim/a b.cpp", "auto seed = std::random_device{}();\n"],  // a file name with a space
+    ["firmware/main/main.cpp", "std::random_device rd;\n"],
+    ["core/src/token.cpp", "unsigned long long v; _rdseed64_step(&v);\n"],
+    ["sim/noise.cpp", "unsigned v; __builtin_ia32_rdrand32_step(&v);\n"],
+    ["sim/scenario.cpp", randomBytes(winRd, "  static std::random_device rd;")],  // in the branch for the others
+    ["sim/scenario.cpp", "#if !defined(_WIN32)\n  static std::random_device rd;\n#endif\n"],
+    ["sim/scenario.cpp", "#ifdef _WIN32\n#include <io.h>\n#endif\nstatic std::random_device rd;\n"],
+    ["sim/other.cpp", randomBytes(winRd, getentropy)],  // the exception is only sim/scenario.cpp
+  ];
+  for (const [file, text] of cases) {
+    const r = check({ [file]: text });
+    assert.equal(r.status, 1, `${file}: ${text}`);
+    assert.match(r.stdout, /std::random_device, RDSEED or RDRAND outside the Windows branch/, file);
+    assert.match(r.stdout, new RegExp(`^${file.replace(/[./]/g, "\\$&")}:\\d+:`, "m"), file);
+  }
+});
+
+test("std::random_device right after #ifdef _WIN32 in sim/scenario.cpp, in a comment or in the tests passes", () => {
+  const r = check({
+    "sim/scenario.cpp": randomBytes(winRd, getentropy),
+    "sim/scenario.hpp": "// Never std::random_device on the others: libstdc++ tries RDSEED first\n",
+    "tests/core/test_net.cpp": 'auto dir = "gc-test-" + std::to_string(std::random_device{}());\n',
   });
   assert.equal(r.status, 0, r.stdout);
   assert.match(r.stdout, /Architekturregeln: ok/);

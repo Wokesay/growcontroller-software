@@ -279,6 +279,7 @@ TEST_CASE("Random bytes come from the operating system in any length, never all 
       CHECK(x != y);
       CHECK(std::any_of(x.begin(), x.end(), [](std::uint8_t b) { return b != 0; }));
       if (n > 256) CHECK(std::any_of(x.begin() + 256, x.end(), [](std::uint8_t b) { return b != 0; }));  // at least 16 bytes past the first call
+      CHECK(std::any_of(x.end() - 16, x.end(), [](std::uint8_t b) { return b != 0; }));  // filled to the end (#234)
     }
   }
 }
