@@ -191,7 +191,10 @@ listed in every release under "Security".
   app itself does not change.
 - The web app runs on Preact 11.0.1 with the icons of lucide-preact
   1.53.0 (proposed by Dependabot). Nothing visible changes.
-- Build tool of the web app: Vite 8.3.3 (proposed by Dependabot). It needs
+- Build tool of the web app: Vite 8.3.3 (proposed by Dependabot); 8.3.3
+  closes three advisories of Vite's development server
+  (GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg, GHSA-9jrq-w75r-8gcw), which our
+  builds and tests never run. It needs
   lightningcss, which is under MPL-2.0; the license check now allows
   MPL-2.0 for lightningcss as a build tool, which is never shipped
   (SD-046). The code of the app does not change; Vite 8 bundles it with
