@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The modules the bundler puts into the app are our sources and the runtime
 // packages of web/package-lock.json, which the web SBOM is to list, none of a
-// build tool (PD-228, SD-073). Rolldown, Oxc and Vite add modules of their own when the code
+// build tool (PD-228, SD-075). Rolldown, Oxc and Vite add modules of their own when the code
 // needs them: Rolldown its runtime helpers (CommonJS interop and namespace
 // objects), Oxc its syntax-lowering helpers, Vite its preload helper and
 // polyfill. A Vite plugin looks at every module of every chunk, which the
@@ -16,7 +16,7 @@ import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HELPERS = [
-  [/^\0?rolldown[:/]runtime/, "Rolldown's runtime helpers: avoid CommonJS imports and namespace objects; if they cannot be avoided, Rolldown is listed as shipped (SD-073)"],
+  [/^\0?rolldown[:/]runtime/, "Rolldown's runtime helpers: avoid CommonJS imports and namespace objects; if they cannot be avoided, Rolldown is listed as shipped (SD-075)"],
   [/^\0?@oxc-project\+runtime/, "Oxc's syntax-lowering helpers: keep the code within build.target"],
   [/vite\/preload-helper/, "Vite's preload helper for dynamic imports: the app imports statically"],
   [/vite\/modulepreload-polyfill/, "Vite's modulepreload polyfill: keep build.modulePreload.polyfill off"],
@@ -109,7 +109,7 @@ export function toolCodeGuard({ root, lock, entry } = {}) {
         for (const p of shippedProblems(ids, web, pkgs)) found.push(`${file}: ${p}`);
       }
       if (!entrySeen) found.push(`nothing checked: no chunk lists ${nodePath.relative(web, main).split(nodePath.sep).join("/")} among its modules`);
-      if (found.length) this.error(`Modules in the app that are neither our sources nor its runtime packages (PD-228, SD-073):\n- ${found.join("\n- ")}`);
+      if (found.length) this.error(`Modules in the app that are neither our sources nor its runtime packages (PD-228, SD-075):\n- ${found.join("\n- ")}`);
     },
   };
 }

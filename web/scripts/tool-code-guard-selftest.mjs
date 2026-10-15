@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The tool-code guard against the real bundler (SD-073): the unit tests feed
+// The tool-code guard against the real bundler (SD-075): the unit tests feed
 // it made-up bundles, so this builds two throwaway apps with the pinned Vite
 // and Rolldown. One with a CommonJS and a dynamic import must fail, naming
 // Rolldown's runtime and Vite's preload helper; one in plain modules must
@@ -45,7 +45,7 @@ for (const name of ["\\0rolldown/runtime.js", "\\0vite/preload-helper.js"]) {
 const clean = await attempt({ "main.js": 'import { d } from "./d.js";\nconsole.log(d);\n', "d.js": "export const d = 2;\n" });
 if (clean) failures.push(`plain modules: the guard failed the build:\n${clean}`);
 if (failures.length) {
-  console.error(`The tool-code guard does not work with this bundler (SD-073):\n- ${failures.join("\n- ")}`);
+  console.error(`The tool-code guard does not work with this bundler (SD-075):\n- ${failures.join("\n- ")}`);
   process.exit(1);
 }
 console.log("The tool-code guard names Rolldown's and Vite's helpers in a real build, and passes plain modules.");

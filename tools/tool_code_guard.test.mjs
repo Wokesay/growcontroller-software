@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // web/scripts/tool-code-guard.mjs: the modules the bundler puts into the app
 // are our sources and the runtime packages of web/package-lock.json, none
-// of a build tool (PD-228, SD-073). The guard against the real bundler: tools/ci.sh runs
+// of a build tool (PD-228, SD-075). The guard against the real bundler: tools/ci.sh runs
 // web/scripts/tool-code-guard-selftest.mjs.
 //   node --test tools/tool_code_guard.test.mjs
 import assert from "node:assert/strict";
@@ -56,7 +56,7 @@ test("Rolldown's, Oxc's and Vite's own helpers fail, named, with what to do", ()
     "\\0vite/preload-helper.js: Vite's preload helper for dynamic imports",
     "\\0vite/modulepreload-polyfill.js: Vite's modulepreload polyfill",
   ]);
-  assert.match(p[0], /if they cannot be avoided, Rolldown is listed as shipped \(SD-073\)$/);
+  assert.match(p[0], /if they cannot be avoided, Rolldown is listed as shipped \(SD-075\)$/);
   assert.deepEqual(shippedProblems(["\0commonjsHelpers.js"], root, lock), [
     "\\0commonjsHelpers.js: code of a build tool: find what brings it in and keep it out of the app",
   ]);
@@ -124,7 +124,7 @@ test("the plugin fails the build with every problem, when it checked nothing, an
   assert.deepEqual(errors, []);
   guard.generateBundle.call(ctx, {}, { "a.js": chunk([main, "\0rolldown/runtime.js"]), "b.js": chunk([`${root}/node_modules/vite/x.js`]) });
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /^Modules in the app that are neither our sources nor its runtime packages \(PD-228, SD-073\):\n- a\.js: \\0rolldown\/runtime\.js: Rolldown's runtime helpers.*\n- b\.js: node_modules\/vite\/x\.js: vite is a build-time package/);
+  assert.match(errors[0], /^Modules in the app that are neither our sources nor its runtime packages \(PD-228, SD-075\):\n- a\.js: \\0rolldown\/runtime\.js: Rolldown's runtime helpers.*\n- b\.js: node_modules\/vite\/x\.js: vite is a build-time package/);
   // Nothing to check is no pass: no chunk, an empty modules field, or a
   // bundle without the entry
   for (const bundle of [{}, { "a.js": { type: "chunk" } }, { "a.js": chunk([`${root}/src/other.ts`]) }]) {

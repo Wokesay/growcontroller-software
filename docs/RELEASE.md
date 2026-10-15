@@ -192,7 +192,7 @@ entry under `[Unreleased]`.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
-   - The SBOMs list what ships, not the build tools (SD-073). The web
+   - The SBOMs list what ships, not the build tools (SD-075). The web
      build fails when a module the bundler puts into the app is neither
      our source, the page nor a runtime package of the lockfile; the web
      SBOM is to list exactly those packages (today `npm sbom --omit dev`

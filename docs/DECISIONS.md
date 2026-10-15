@@ -2534,7 +2534,80 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   checked for answers.
 
 
-## SD-073: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
+## SD-073: A control round a Stop cut settles as after a restart
+
+Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
+for EC and pH control after a restart (PD-070, PD-071) to the Stop.
+
+- While stopped, the circulation pump is off, so time spent stopped mixes
+  nothing in. A Stop that cut an EC or pH round while it dosed or settled
+  therefore marks the round as cut.
+- Once automation runs again (after Resume, and after maintenance mode or
+  a probe calibration that followed), the cut round first waits for the
+  circulation pump and asks for it. While it waits it holds the other
+  controller but not refill, since the pump may need the refilled level
+  (RAT-047). Its line says "blocked": at once when the hub refuses the
+  pump (level, dry-run latch; the circulation line names why), otherwise
+  after 2 minutes without the pump. Its settle time counts from when the
+  pump runs: the controller's settle time, but at least 15 minutes (the
+  rest after an aborted dose). Then it decides as after any settle time:
+  done, the most rounds, or the next round. Its effect is not learned
+  (RAT-057).
+- While it settles, the cut round is busy as any round is: refill waits,
+  and the other controller waits (pH for EC, RAT-004; EC for pH,
+  RAT-057).
+- The mark lasts until the settle time has run out, so a reset meanwhile
+  (maintenance mode, a probe calibration, a latch) settles it again
+  later; switching the function off ends it.
+- Not covered yet: the internal-error path (#178), and the mark across a
+  restart while stopped, which belongs with SD-028's saved pauses (#20).
+
+---
+
+
+## SD-074: A data folder the simulator cannot read runs it in memory only
+
+Decided by the project owner on 2026-10-15 in the software session
+(follow-up of PR #187, which does the same for `--web`), in two steps:
+first for a folder it cannot read, then the same for files in it that
+it cannot read.
+
+- **When:** the simulator's data folder (`--data`, or the folder next
+  to the program on a start without arguments) cannot be read:
+  - the status of the folder or of a file of the hub or the simulator in
+    it cannot be read: no permission to enter the folder, a link loop,
+    an error of the disk;
+  - or such a file is there but cannot be opened, for example root's
+    files after a start with `sudo` in a folder the user owns.
+
+  A folder or file that is not there is not this case; it is created as
+  before.
+- **What it does:** it starts, says once "Data cannot be read (<file>:
+  <reason>). Running in memory only.", and runs in memory only, as it
+  already does for a folder it cannot create. It no longer names the
+  folder as its data folder at the start.
+- **The folder is left alone:** it may hold data of an earlier start, so
+  the simulator reads nothing from it, writes no new scenario over it and
+  removes nothing in it, also when the scenario is changed
+  (`tests/core/test_storage.cpp`, `tools/sim_server.test.mjs`).
+- **Why:** before, a folder it cannot read ended the simulator at the
+  start with a filesystem error; started by a double click, its window
+  just closed. A file it cannot open was taken as missing: the hub
+  started without its configuration and password and later saved over
+  the old files. Likely cases come from a start with `sudo`: it makes
+  the folder next to the program (the owner's only), so the next start
+  as the user cannot enter it; or it writes root's files into the user's
+  folder.
+- **Not chosen:** refusing to start with exit code 2 and a message.
+  Nothing would be lost unseen, but on a double click the window closes
+  before the message can be read.
+- Applies to the simulator. The hub's storage on the device comes with
+  the firmware.
+- Not covered: a file that can be opened but is not a regular file (for
+  example a folder named `config.json`).
+
+
+## SD-075: Product requirement (from PD-228): the SBOM lists what ships; build tools in a tool list
 
 Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
 
@@ -2587,6 +2660,7 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
 
 ---
 
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |
@@ -2611,74 +2685,3 @@ Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
 `RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
 
 ---
-
-## SD-073: A control round a Stop cut settles as after a restart
-
-Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
-for EC and pH control after a restart (PD-070, PD-071) to the Stop.
-
-- While stopped, the circulation pump is off, so time spent stopped mixes
-  nothing in. A Stop that cut an EC or pH round while it dosed or settled
-  therefore marks the round as cut.
-- Once automation runs again (after Resume, and after maintenance mode or
-  a probe calibration that followed), the cut round first waits for the
-  circulation pump and asks for it. While it waits it holds the other
-  controller but not refill, since the pump may need the refilled level
-  (RAT-047). Its line says "blocked": at once when the hub refuses the
-  pump (level, dry-run latch; the circulation line names why), otherwise
-  after 2 minutes without the pump. Its settle time counts from when the
-  pump runs: the controller's settle time, but at least 15 minutes (the
-  rest after an aborted dose). Then it decides as after any settle time:
-  done, the most rounds, or the next round. Its effect is not learned
-  (RAT-057).
-- While it settles, the cut round is busy as any round is: refill waits,
-  and the other controller waits (pH for EC, RAT-004; EC for pH,
-  RAT-057).
-- The mark lasts until the settle time has run out, so a reset meanwhile
-  (maintenance mode, a probe calibration, a latch) settles it again
-  later; switching the function off ends it.
-- Not covered yet: the internal-error path (#178), and the mark across a
-  restart while stopped, which belongs with SD-028's saved pauses (#20).
-
----
-
-## SD-074: A data folder the simulator cannot read runs it in memory only
-
-Decided by the project owner on 2026-10-15 in the software session
-(follow-up of PR #187, which does the same for `--web`), in two steps:
-first for a folder it cannot read, then the same for files in it that
-it cannot read.
-
-- **When:** the simulator's data folder (`--data`, or the folder next
-  to the program on a start without arguments) cannot be read:
-  - the status of the folder or of a file of the hub or the simulator in
-    it cannot be read: no permission to enter the folder, a link loop,
-    an error of the disk;
-  - or such a file is there but cannot be opened, for example root's
-    files after a start with `sudo` in a folder the user owns.
-
-  A folder or file that is not there is not this case; it is created as
-  before.
-- **What it does:** it starts, says once "Data cannot be read (<file>:
-  <reason>). Running in memory only.", and runs in memory only, as it
-  already does for a folder it cannot create. It no longer names the
-  folder as its data folder at the start.
-- **The folder is left alone:** it may hold data of an earlier start, so
-  the simulator reads nothing from it, writes no new scenario over it and
-  removes nothing in it, also when the scenario is changed
-  (`tests/core/test_storage.cpp`, `tools/sim_server.test.mjs`).
-- **Why:** before, a folder it cannot read ended the simulator at the
-  start with a filesystem error; started by a double click, its window
-  just closed. A file it cannot open was taken as missing: the hub
-  started without its configuration and password and later saved over
-  the old files. Likely cases come from a start with `sudo`: it makes
-  the folder next to the program (the owner's only), so the next start
-  as the user cannot enter it; or it writes root's files into the user's
-  folder.
-- **Not chosen:** refusing to start with exit code 2 and a message.
-  Nothing would be lost unseen, but on a double click the window closes
-  before the message can be read.
-- Applies to the simulator. The hub's storage on the device comes with
-  the firmware.
-- Not covered: a file that can be opened but is not a regular file (for
-  example a folder named `config.json`).

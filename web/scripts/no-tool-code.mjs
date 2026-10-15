@@ -4,7 +4,7 @@
 // own unless told not to: the modulepreload polyfill, and for dynamic
 // imports its preload helper. Breaks the build if either shows up, in a
 // script or inline in a page. scripts/tool-code-guard.mjs checks the modules
-// of every chunk during the build, Rolldown's helpers included (SD-073).
+// of every chunk during the build, Rolldown's helpers included (SD-075).
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
