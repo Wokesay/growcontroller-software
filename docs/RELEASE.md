@@ -38,7 +38,7 @@ As of 2026-10-15. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 sections **Added, Changed, Fixed, Removed, Security**. Every PR adds an
 entry under `[Unreleased]`.
 
-- **"Security"** comes in blocks (SD-078): vulnerabilities, each with an
+- **"Security"** comes in blocks (SD-079): vulnerabilities, each with an
   advisory; safety and robustness fixes, no vulnerability; a protective
   cut-off relaxed on purpose, where there is one; hardening, without a
   vulnerability behind it. In the first two, each item names what it is,
@@ -52,7 +52,7 @@ entry under `[Unreleased]`.
   app. The Home Assistant app's own `ha/app/CHANGELOG.md`, which Home
   Assistant shows from `main` in its update dialog, gets the release's
   section in the release pull request, security items first with their
-  advisories (SD-078).
+  advisories (SD-079).
 
 ## Release process
 
@@ -77,7 +77,7 @@ entry under `[Unreleased]`.
    (`https://nodejs.org/dist/index.json`, `"security": true`) and raise it
    in a pull request of its own if it is lower, together with the app
    image's `node` image (SD-070, SD-071). For a fixed vulnerability,
-   follow the advisory steps below (SD-078). Tag right after
+   follow the advisory steps below (SD-079). Tag right after
    the merge: Home
    Assistant's app store reads `config.yaml` from `main` and offers the
    new version before its image exists.
@@ -264,7 +264,7 @@ entry under `[Unreleased]`.
    findings (V). Development needs no release step; it is built per commit
    (PD-036).
 
-### Security advisories (SD-078)
+### Security advisories (SD-079)
 
 A fixed vulnerability, a flaw that someone without the needed rights can
 trigger, gets a GitHub Security Advisory (GHSA). Other security items
@@ -292,7 +292,7 @@ stand only in the changelog.
 - **After part two of the acceptance (step 2):** set "patched versions"
   to the release and publish the advisories.
 - **At the latest:** 30 days after the fix is on `main` (for the items
-  of 0.1.0-proto.5: 2026-11-14, SD-078), the advisory is published even
+  of 0.1.0-proto.5: 2026-11-14, SD-079), the advisory is published even
   if the release has not passed part two of its acceptance, with "fixed
   in the next release" and the workaround. The CVE is requested at least
   3 working days before the advisory is published, whichever comes
@@ -355,7 +355,7 @@ stand only in the changelog.
   available, via the ENISA platform (Art. 14); severe incidents affecting
   security 24 h / 72 h, a final report one month after the notification.
   At the latest from the first device offered or
-  lent (SD-078). This needs a deputy who can meet the 24-hour deadline.
+  lent (SD-079). This needs a deputy who can meet the 24-hour deadline.
 - **SBOM** belongs in the technical documentation; publishing it is not
   mandatory.
 - **Exit plan at project end:** release the keys or offer an owner unlock;

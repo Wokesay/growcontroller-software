@@ -52,7 +52,7 @@ published anyway, with a workaround.
 The release notes list every security item under "Security", with what
 it is, the affected versions, the impact, the severity and the remedy;
 safety and robustness fixes that are not a vulnerability are listed
-there too, without an advisory (SD-078).
+there too, without an advisory (SD-079).
 
 ## Supported versions
 

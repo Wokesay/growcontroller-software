@@ -87,7 +87,7 @@ listed in every release under "Security".
   English issue labelled `product-question`. The product repository's
   session picks it up and decides it there (PD). The software session no
   longer accesses the product repository.
-- **A security advisory for every fixed vulnerability** (#190, SD-078,
+- **A security advisory for every fixed vulnerability** (#190, SD-079,
   from PD-220): a flaw that someone without the needed rights can
   trigger gets a GitHub Security Advisory, with a CVE from GitHub or the
   CVE of the component it comes from. It is published with the release
@@ -537,7 +537,7 @@ listed in every release under "Security".
 ### Security
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4),
 fixed in this release. Each item names its affected versions, impact,
-severity and remedy (SD-078). Four are vulnerabilities: someone without
+severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
