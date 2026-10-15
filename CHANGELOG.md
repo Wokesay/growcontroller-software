@@ -64,11 +64,12 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Product questions go to the product repository directly** (SD-069):
-  the software session writes each product question it meets, with
-  context, options and its recommendation, into a note of the product
-  repository as a pull request there, instead of handing it to the
-  project owner. Decisions (PD) are still made only there.
+- **Product questions are issues here** (#190, SD-072, from PD-226;
+  replaces SD-069): the software session files each product question it meets,
+  with its software basis, the options and its recommendation, as an
+  English issue labelled `product-question`. The product repository's
+  session picks it up and decides it there (PD). The software session no
+  longer accesses the product repository.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their
@@ -220,7 +221,7 @@ listed in every release under "Security".
 
 ### Fixed
 - **After a Stop, an interrupted control round mixes in before the next decision**
-  (#180, SD-071): a Stop that cut an EC or pH round, while it dosed or
+  (#180, SD-073): a Stop that cut an EC or pH round, while it dosed or
   waited for the dose to mix in, only reset the controller. After Resume
   it could start the next round right away, on a reading the cut dose had
   not mixed into, since the circulation pump is off while stopped; too
@@ -255,6 +256,12 @@ listed in every release under "Security".
   hub now lets a recipe hold both bottles before the second gets the
   label, so two bottles a recipe holds one of can be paired; the recipe
   editor cannot add a bottle to an existing recipe yet (#159).
+- **A new bottle no longer takes over an old stock** (#161): importing a
+  backup without a bottle kept that bottle's stock, and a new bottle of
+  the same name created without a stock, as the setup wizard does, then
+  started with it instead of its size. An import now keeps only the
+  stock of the bottles the hub had and the file keeps, and a new bottle
+  starts with the stock entered, else its size, else unknown.
 - **A removed bottle's stock is saved at once** (#152): until the next
   regular save, a power cut brought it back, and a new bottle of the same
   name then showed the old stock.
@@ -503,16 +510,17 @@ A protective cut-off relaxed on purpose:
 Hardening, without a vulnerability behind it:
 
 - **The signature check runs with a pinned npm, and says why it fails**
-  (#163, SD-070): the npm that checks the web app's packages against
-  their registry signatures (SD-058) came with whatever Node the runner
-  image had. Every job that sets up Node now runs the one named in
-  `.nvmrc`, raised by hand with a review and compared with Node's security
-  releases at every release. The app image still checks with Alpine's
-  Node and npm, and now prints their versions. When a job with the check
-  fails, a step that runs only then shows the end of npm's own log of the
-  check and asks npm again for its reasons; until now the output named
-  only the package, so a failure on 2026-10-14 that passed on re-run could
-  not be explained. The check itself is unchanged.
+  (#163, SD-070, SD-071): the npm that checks the web app's packages
+  against their registry signatures (SD-058) came with whatever Node the
+  runner image had, and in the Home Assistant app image with Alpine's.
+  Every job that sets up Node now runs the one named in `.nvmrc`, raised
+  by hand with a review and compared with Node's security releases at
+  every release; the app image runs the same Node from the official
+  `node` image, pinned by digest, and prints the versions. When a job
+  with the check fails, a step that runs only then shows the end of npm's
+  own log of the check and asks npm again for its reasons; until now the
+  output named only the package, so a failure on 2026-10-14 that passed
+  on re-run could not be explained. The check itself is unchanged.
 - **A Stop holds even when booking the running dose fails** (RAT-036):
   a Stop booked the running dose and ended the job before it switched the
   inlet, the circulation pump and the sockets off. An error while booking

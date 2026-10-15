@@ -37,7 +37,7 @@ constexpr double kPhStartEffect = 5.0;    // pH je ml/L pH− (RAT-050: kleinste
 constexpr double kEcStartEffect = 0.275;  // mS/cm je ml/L Rezept (RAT-055)
 constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
-constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-071)
+constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)
 constexpr Ms kMaxPhAge = 10 * kMinute;    // älter → keine Korrektur (RAT-043)
 
 std::string mmss(Ms ms) {
@@ -142,7 +142,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
 
-  // A round a Stop cut waits for the circulation pump, then settles from when it runs (stopRound, SD-071)
+  // A round a Stop cut waits for the circulation pump, then settles from when it runs (stopRound, SD-073)
   if (pending()) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;

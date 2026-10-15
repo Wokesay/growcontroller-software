@@ -182,6 +182,10 @@ test("every job that sets up Node runs the one pinned in .nvmrc, and Node's type
   const npm = dependabot.slice(dependabot.indexOf("package-ecosystem: npm"), dependabot.indexOf("- package-ecosystem:", dependabot.indexOf("package-ecosystem: npm")));
   assert.match(npm, /directory: \/web\n/);
   assert.match(npm, /- dependency-name: "@types\/node"\n[ \t]+update-types: \["version-update:semver-major"\]/);
+  // Nor the app image's node (SD-071)
+  const image = dependabot.slice(dependabot.indexOf("package-ecosystem: docker"), dependabot.indexOf("- package-ecosystem:", dependabot.indexOf("package-ecosystem: docker")));
+  assert.match(image, /directory: \/ha\/app\n/);
+  assert.match(image, /- dependency-name: node\n[ \t]+update-types: \["version-update:semver-major"\]/, "nor the app image's node (SD-071)");
 });
 
 test("a job whose signature check fails says why, right after the check (#163, SD-070)", () => {

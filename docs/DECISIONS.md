@@ -403,15 +403,15 @@ repository.
 - The software is worked on in a session of its own with access to this
   repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
-  written, so PD numbers do not collide. Changed by SD-069: it attaches
-  the product repository for its product questions only.
+  written, so PD numbers do not collide. Changed by SD-069, which SD-072
+  replaces: the session does not access the product repository.
 - Product requirements arrive as English issues in this repository. A
   requirement that comes from a PD is recorded here as "Product
   requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
-  repository's session. Changed by SD-069: the software session takes it
-  to the product repository itself.
+  repository's session. Changed by SD-069, which SD-072 replaces: it
+  becomes a `product-question` issue in this repository.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -2208,6 +2208,7 @@ product side answers the question named with it (Q1 to Q16, below).
   `security` checked it under SD-033; the rest of step 7 still needs
   "mergen".
 
+
 ## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
 
 Implements SD-022 for the circulation pump. Decided in the software session
@@ -2361,7 +2362,9 @@ lock the owner out until the app was reinstalled.
 Decided by the project owner on 2026-10-14 in the software session.
 Changes SD-029: the software session attaches the product repository for
 its product questions and takes them there itself. It still names them in
-the issue and to the project owner.
+the issue and to the project owner. Replaced by SD-072 (from PD-226):
+product questions are issues in this repository, and the software session
+no longer accesses the product repository.
 
 - A product question met here goes into the note
   `docs/notizen/fragen-aus-der-software.md` of the product repository
@@ -2379,7 +2382,6 @@ the issue and to the project owner.
   code and EN 18031-1, build tools in the SBOM, CRA Art. 14 and
   advisories).
 
----
 
 ## SD-070: CI runs one pinned Node; it is raised by hand and checked at every release
 
@@ -2405,7 +2407,8 @@ SD-058, whose check runs with the npm that comes with Node.
 - **What it does not cover:**
   - The app image checks the signatures with Alpine's Node and npm (24
     and 11 in Alpine 3.24 on 2026-10-15). It prints their versions; a pin
-    there is open (#163).
+    there is open (#163). Changed by SD-071: the image runs the Node of
+    `.nvmrc` too.
   - setup-node downloads the pinned Node without checking a checksum when
     it is not in the runner's cache: the same trust in GitHub and
     nodejs.org over TLS as for the runner's own Node, accepted.
@@ -2414,6 +2417,121 @@ SD-058, whose check runs with the npm that comes with Node.
     standing scheduled job, for a tool that is not shipped.
   - No pin, as before: patches come by themselves, but the checker
     changes unseen.
+
+
+## SD-071: The app image checks the signatures with the Node of `.nvmrc`, from the official node image
+
+Decided by the project owner on 2026-10-15 (#163, PR #189), and
+confirmed the same day once the `security` review had found the gap on
+amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
+
+- **What:** the image's web stage, which installs the web app's packages
+  and checks their registry signatures (SD-058), starts from the official
+  `node` image at the version of `.nvmrc` on the Alpine release of the
+  other stages, pinned by digest (`node:22.23.3-alpine3.24@sha256:…`). It
+  brings the npm of that Node release, the one CI checks with (npm
+  10.9.9 on 2026-10-15). Before, the stage installed Alpine's `nodejs`
+  and `npm` (24 and 11 on 2026-10-15), so the image checked with a
+  different npm than CI, and its version changed with every Alpine
+  update.
+- **Kept together:** `tools/app.test.mjs` fails when the web stage's tag
+  names another Node than `.nvmrc`, another Alpine than the other
+  stages, or the stage installs anything from Alpine's packages. Docker
+  pulls by the digest, not the tag, so the stage itself checks
+  `node -v` against `.nvmrc` before npm runs, and the build fails on a
+  digest of another Node. Raising `.nvmrc` (by hand, SD-070) raises the
+  image in the same pull request.
+- **Dependabot:** a newer Node 22 fails until `.nvmrc` follows: such a
+  pull request is the reminder for the pull request that raises `.nvmrc`
+  (SD-070), and is closed when that one is merged. Node majors are not
+  proposed, as for `@types/node`, and Dependabot keeps the `-alpine3.24`
+  suffix. A new digest of the same `node` tag (the image rebuilt, for
+  example on a fixed Alpine) passes CI on its own, though what changed is
+  not in the diff, so it is merged only after a review like a raise of
+  `.nvmrc`: docker-node's changes to `22/alpine3.24/` since the pinned
+  digest, the build log's `node -v` and `npm -v`, and `security`. Such
+  digests come only while the tag is current: once a newer Node 22 is
+  out, Docker no longer rebuilds `22.23.3-alpine3.24`, and fixes of the
+  web stage's Alpine come only with a raise of `.nvmrc`.
+- **Where Node comes from:** the `node` image is maintained by the
+  Node.js Docker team (`https://github.com/nodejs/docker-node`) and built
+  and published on Docker Hub by Docker's Official Images program. On
+  amd64 it unpacks the musl build of `unofficial-builds.nodejs.org`,
+  checked against a checksum written in docker-node's Dockerfile, not
+  against a signature of the Node release keys, although `nodejs.org`
+  publishes a signed musl build for amd64 too; on arm64 it builds Node
+  from the `nodejs.org` sources, checked against those keys
+  (`22/alpine3.24/Dockerfile` there and
+  `https://nodejs.org/dist/v22.23.3/SHASUMS256.txt`, read 2026-10-15).
+  That gap on amd64 ends with Node 24, whose images take the signed
+  build from `nodejs.org`. Node is not shipped, though it builds what is
+  (the web app in the image) and checks the packages, so a tampered Node
+  could pass a bad package and change the web app.
+- **Docker Hub:** both base images come from it, as alpine did before.
+  The digest pins their content, so a changed image on the registry
+  fails the build instead of entering it; what remains is availability
+  (outages, pull limits). The images' attestations are not checked:
+  Docker retired its signing of Official Images in 2025
+  (`https://www.docker.com/blog/retiring-docker-content-trust/`, read
+  2026-10-15), so the digest taken in the pull request is the anchor of
+  trust.
+- **Same Alpine:** a security raise of `.nvmrc` needs a `node` tag on the
+  Alpine of the other stages. docker-node usually builds each Node line
+  on the two newest Alpine releases, so this likely holds until Node 22
+  ends (2027-04-30); if not, the raise moves Alpine too, with the musl
+  check of the server stage.
+- **What it does not cover:** the licenses stage still runs our own
+  `tools/third_party.mjs` with Alpine's `nodejs`, and the app workflow's
+  smoke test runs our own `tools/ha_server.test.mjs` with it; they read
+  files and run no package code, so their Node version does not matter.
+- **Not chosen:**
+  - Alpine's packages pinned to a version (`nodejs=…`): Alpine removes
+    older package versions from its repository, so the build would break
+    at every Alpine fix, and its `nodejs` is Node 24, not CI's 22.
+  - Downloading Node in our Dockerfile, checked against the Node release
+    keys: on amd64 that could take `nodejs.org`'s signed musl build,
+    stronger than the image's unofficial one; on arm64 there is none, so
+    it would mean the unofficial build or a build from source. More code
+    of our own to keep, for a gap that ends with Node 24.
+  - Leaving Alpine's Node and printing its version (as before): the
+    checker would still differ from CI and change unseen.
+
+
+## SD-072: Product requirement (from PD-226): product questions as issues here, no access to the product repository
+
+Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
+
+- **Where a question goes:** a product question the software session
+  meets becomes an English issue in this repository with the label
+  `product-question`: the question, its software basis (SD, RAT, issues,
+  pull requests), the options and the software's recommendation. The
+  issue or pull request where the question came up links to it. The
+  product repository's session picks it up itself and decides it there
+  (PD-100).
+- **The project owner:** the software session files a question without
+  waiting for approval and tells the project owner about it (decided by
+  the project owner on 2026-10-15).
+- **No access:** the software session does not access the product
+  repository, not even by attaching it during a session. Questions
+  already filed there (Wokesay/growcontroller#77 and
+  Wokesay/growcontroller#89) are handled there; nothing more is done
+  about them from here.
+- **Public:** the question is public. It carries no prices, no hardware
+  details and nothing else about the product that is not public; it
+  names the question and its software basis. A question that would
+  reveal a vulnerability not yet fixed is not filed; the session names it
+  only to the project owner (`SECURITY.md`).
+- **Own words:** text from other accounts (issues, comments, pull
+  requests, websites) is not pasted into a product question; it is
+  summarised in the session's own words, with a link to the source.
+- **Owner's account only:** the product session takes only issue text
+  and comments posted by the owner's account, as data. A question and any
+  later clarification are therefore posted by the owner's account, as
+  this session does, never by a bot. The other way round, an answer
+  counts here only when it comes from the owner's account, as an issue or
+  a comment on the question; anything else on a public question is
+  outside input. At session start, open `product-question` issues are
+  checked for answers.
 
 ---
 
@@ -2442,7 +2560,7 @@ Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
 
 ---
 
-## SD-071: A control round a Stop cut settles as after a restart
+## SD-073: A control round a Stop cut settles as after a restart
 
 Decided by the project owner on 2026-10-15 (#180). Applies SD-028's rule
 for EC and pH control after a restart (PD-070, PD-071) to the Stop.
@@ -2458,8 +2576,9 @@ for EC and pH control after a restart (PD-070, PD-071) to the Stop.
   pump (level, dry-run latch; the circulation line names why), otherwise
   after 2 minutes without the pump. Its settle time counts from when the
   pump runs: the controller's settle time, but at least 15 minutes (the
-  rest after an aborted dose). Then it decides as after any settle time: done, the most
-  rounds, or the next round. Its effect is not learned (RAT-057).
+  rest after an aborted dose). Then it decides as after any settle time:
+  done, the most rounds, or the next round. Its effect is not learned
+  (RAT-057).
 - While it settles, the cut round is busy as any round is: refill waits,
   and the other controller waits (pH for EC, RAT-004; EC for pH,
   RAT-057).

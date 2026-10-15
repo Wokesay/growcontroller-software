@@ -47,7 +47,7 @@ class EcController {
   void tick(const Ctx& c, ControlEnv& env);
   void onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p);
   // A Stop ended the round while it dosed or settled (RAT-036). Once automation runs again, the cut
-  // round waits for the circulation pump and then settles, as after a restart (SD-028, SD-071): no
+  // round waits for the circulation pump and then settles, as after a restart (SD-028, SD-073): no
   // decision on a reading the cut dose has not mixed into (RAT-052). The mark survives reset()
   // until the settle time has run out, and ends when the function is switched off.
   void stopRound();

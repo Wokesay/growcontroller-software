@@ -1008,7 +1008,7 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
   handDose();
 }
 
-TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pump running before the next decision, as after a restart (RAT-036, RAT-052, SD-071)") {
+TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pump running before the next decision, as after a restart (RAT-036, RAT-052, SD-073)") {
   // While stopped nothing circulates, so time spent stopped mixes nothing in: after Resume the cut
   // round first settles, counted from when circulation runs, for its settle time but at least 15 min
   auto purpose = [](Client& c) {
