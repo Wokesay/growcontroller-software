@@ -752,6 +752,238 @@ test("Recipes: taking one bottle out of a pair of three leaves the other two a p
   await expect(row("CalMag")).toContainText("Paar AB");
 });
 
+// Bottles added through the API, and the recipe editor opened from its card (#159)
+async function addNutrients(page: import("@playwright/test").Page, names: string[]) {
+  return page.evaluate(async (list) => {
+    const out: number[] = [];
+    for (const name of list)
+      out.push((await fetch("/api/v1/canisters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, kind: "nutrient", capacityMl: 1000 }) })).status);
+    return out.every((s) => s === 200);
+  }, names);
+}
+async function openRecipe(page: import("@playwright/test").Page, name: string, title = `Rezept „${name}“`) {
+  await page.locator(".card.flat").filter({ has: page.getByRole("heading", { name, exact: true }) }).getByRole("button", { name: /^(Bearbeiten|Edit)$/ }).click();
+  const editor = page.getByRole("dialog", { name: title });
+  await expect(editor).toBeVisible();
+  return editor;
+}
+async function recipeId(page: import("@playwright/test").Page, name: string): Promise<string> {
+  return page.evaluate(async (n) => (await (await fetch("/api/v1/config")).json()).recipes.find((r: { name: string }) => r.name === n).id, name);
+}
+async function apiCall(page: import("@playwright/test").Page, method: string, path: string, body?: unknown) {
+  return page.evaluate(
+    async ([m, p, b]) => (await fetch(p as string, { method: m as string, headers: { "Content-Type": "application/json" }, body: b === undefined ? undefined : JSON.stringify(b) })).status,
+    [method, path, body] as const,
+  );
+}
+
+test("Recipes: an existing recipe lists every nutrient bottle; an amount puts it in, the order counts only bottles with one (#159)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  expect(await addNutrients(page, ["Booster", "Enzym"])).toBe(true);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  const editor = await openRecipe(page, "Wachstum");
+  const names = editor.locator(".step strong");
+  const amount = (name: string) => editor.getByRole("textbox", { name: `Menge für ${name} in ml pro Liter` });
+  await expect(names).toHaveText(["Teil A", "Teil B", "CalMag", "Booster", "Enzym"]);
+  await expect(editor.locator(".step .n")).toHaveText(["1", "2", "3", "", ""]);
+  await expect(editor.getByRole("button", { name: "Booster nach oben" })).toHaveCount(0);
+  await expect(editor.getByText("Ein Kanister ohne Menge kommt nicht ins Rezept.")).toBeVisible();
+  // An amount puts a bottle in, numbered in its row's place; up and down pass over bottles without one
+  await amount("Enzym").fill("0,3");
+  await expect(editor.locator(".step .n")).toHaveText(["1", "2", "3", "", "4"]);
+  await editor.getByRole("button", { name: "CalMag nach unten" }).click();
+  await expect(names).toHaveText(["Teil A", "Teil B", "Booster", "Enzym", "CalMag"]);
+  await expect(editor.locator(".step .n")).toHaveText(["1", "2", "", "3", "4"]);
+  await expect(editor.getByRole("button", { name: "CalMag nach oben" })).toBeFocused();  // down is off at the bottom
+  await page.keyboard.press("Enter");
+  await expect(names).toHaveText(["Teil A", "Teil B", "Booster", "CalMag", "Enzym"]);
+  await editor.getByRole("button", { name: "Enzym nach oben" }).click();
+  await expect(names).toHaveText(["Teil A", "Teil B", "Booster", "Enzym", "CalMag"]);
+  // Each value stays with its bottle after a move
+  await expect(amount("Booster")).toHaveValue("");
+  await expect(amount("Enzym")).toHaveValue("0,3");
+  await expect(amount("CalMag")).toHaveValue("0,6");
+  // The focus moves with the row, and to its other button at the top
+  await expect(editor.getByRole("button", { name: "Enzym nach oben" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(names).toHaveText(["Enzym", "Teil A", "Teil B", "Booster", "CalMag"]);
+  await expect(editor.getByRole("button", { name: "Enzym nach unten" })).toBeFocused();
+  // 0 leaves a bottle out, as an empty field does, and is no problem
+  await amount("Booster").fill("0");
+  await expect(editor.locator(".step .n")).toHaveText(["1", "2", "3", "", "4"]);
+  await expect(editor.getByRole("button", { name: "Booster nach oben" })).toHaveCount(0);
+  await expect(editor.locator("#recipe-problems")).toHaveCount(0);
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  const steps = await page.evaluate(async () => {
+    const cfg = await (await fetch("/api/v1/config")).json();
+    return cfg.recipes.find((r: { name: string }) => r.name === "Wachstum").steps.map((s: { canister: string; mlPerL: number }) => `${s.canister} ${s.mlPerL}`);
+  });
+  expect(steps).toEqual(["enzym 0.3", "teil-a 2", "teil-b 2", "calmag 0.6"]);
+  const again = await openRecipe(page, "Wachstum");
+  await expect(again.locator(".step strong")).toHaveText(["Enzym", "Teil A", "Teil B", "CalMag", "Booster"]);
+  await expect(again.getByRole("textbox", { name: "Menge für Enzym in ml pro Liter" })).toHaveValue("0,3");
+});
+
+test("Recipes: the recipe editor says before saving that a pair is only partly in, with the way out (#159)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/rezepte");
+  const editor = await openRecipe(page, "Wachstum");
+  const amount = (name: string) => editor.getByRole("textbox", { name: `Menge für ${name} in ml pro Liter` });
+  const save = editor.getByRole("button", { name: "Speichern" });
+  const problems = editor.locator("#recipe-problems");
+  await expect(problems).toHaveCount(0);
+  await amount("Teil B").fill("");
+  const half = "Paar AB steht nur zum Teil im Rezept, es fehlt „Teil B“. Trag dafür eine Menge ein oder leere alle Mengen des Paars.";
+  await expect(problems).toHaveText(half);
+  await expect(editor.getByRole("status")).toHaveText(half);  // read out from a region there from the start
+  await expect(save).toBeDisabled();
+  await expect(save).toHaveAccessibleDescription(half);
+  // A negative amount is said to be invalid, not left out without a word
+  await amount("Teil B").fill("-2");
+  await expect(problems).toContainText("Die Menge für „Teil B“ ist ungültig: Trag eine Zahl über 0 ein oder leere das Feld.");
+  await amount("Teil B").fill("2");
+  await expect(problems).toHaveCount(0);
+  await expect(save).toBeEnabled();
+  // The whole pair out is fine, and so is saving it
+  await amount("Teil A").fill("");
+  await amount("Teil B").fill("");
+  await expect(problems).toHaveCount(0);
+  await save.click();
+  await expect(editor).toHaveCount(0);
+  // A pair of three names every bottle missing; nothing in it says so too
+  expect(await apiCall(page, "POST", "/api/v1/canisters", { id: "calmag", pair: "AB" })).toBe(422);  // Wachstum now holds CalMag without A and B
+  expect(await apiCall(page, "DELETE", `/api/v1/recipes/${await recipeId(page, "Wachstum")}`)).toBe(200);
+  expect(await apiCall(page, "POST", "/api/v1/canisters", { id: "calmag", pair: "AB" })).toBe(200);
+  await page.reload();
+  const bloom = await openRecipe(page, "Blüte");
+  await bloom.getByRole("textbox", { name: "Menge für Teil B in ml pro Liter" }).fill("");
+  await bloom.getByRole("textbox", { name: "Menge für CalMag in ml pro Liter" }).fill("");
+  await expect(bloom.locator("#recipe-problems")).toHaveText(
+    "Paar AB steht nur zum Teil im Rezept, es fehlen „Teil B“ und „CalMag“. Trag dafür Mengen ein oder leere alle Mengen des Paars.",
+  );
+  await bloom.getByRole("textbox", { name: "Menge für Teil A in ml pro Liter" }).fill("");
+  await expect(bloom.locator("#recipe-problems")).toHaveText("Trag für mindestens einen Kanister eine Menge ein.");
+  await bloom.getByRole("textbox", { name: "Name" }).fill("");
+  await expect(bloom.locator("#recipe-problems")).toHaveText("Gib dem Rezept einen Namen. Trag für mindestens einen Kanister eine Menge ein.");
+  await bloom.getByRole("button", { name: "Abbrechen" }).click();
+  // A new recipe says what it still needs, without an alarm colour, and saves once it has it
+  await page.getByRole("button", { name: "Rezept", exact: true }).click();
+  const fresh = page.getByRole("dialog", { name: "Rezept anlegen" });
+  await expect(fresh.locator("#recipe-problems")).toHaveText("Gib dem Rezept einen Namen. Trag für mindestens einen Kanister eine Menge ein.");
+  await expect(fresh.locator("#recipe-problems")).toHaveClass(/muted/);
+  await expect(fresh.getByRole("button", { name: "Speichern" })).toBeDisabled();
+  await fresh.getByRole("textbox", { name: "Name" }).fill("Neu");
+  await fresh.getByRole("textbox", { name: "Menge für Teil B in ml pro Liter" }).fill("1");
+  await expect(fresh.locator("#recipe-problems")).toHaveClass(/warn-text/);  // half a pair is a conflict
+  await fresh.getByRole("textbox", { name: "Menge für Teil A in ml pro Liter" }).fill("1");
+  await fresh.getByRole("textbox", { name: "Menge für CalMag in ml pro Liter" }).fill("0,5");  // CalMag is in pair AB here
+  await expect(fresh.locator("#recipe-problems")).toHaveCount(0);
+  await fresh.getByRole("button", { name: "Speichern" }).click();
+  await expect(fresh).toHaveCount(0);
+  // In English, and the hub still refuses half a pair on its own
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  const en = await openRecipe(page, "Blüte", "Recipe \"Blüte\"");
+  await en.getByRole("textbox", { name: "Amount of Teil B in ml per litre" }).fill("");
+  await expect(en.locator("#recipe-problems")).toHaveText(
+    "Pair AB is only partly in the recipe: \"Teil B\" is missing. Enter an amount for it or clear all amounts of the pair.",
+  );
+  expect(await apiCall(page, "POST", "/api/v1/recipes", { name: "Halb", steps: [{ canister: "teil-a", mlPerL: 1 }] })).toBe(422);
+});
+
+test("Recipes: the bottle editor says before saving that a pair label would leave a recipe with part of a pair, and the way out works (#159)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  expect(await addNutrients(page, ["Booster", "Cee"])).toBe(true);
+  expect(await apiCall(page, "POST", "/api/v1/canisters", { id: "cee", pair: "CD" })).toBe(200);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  const bottle = async (name: string) => {
+    await row(name).getByTitle("Bearbeiten").click();
+    const editor = page.getByRole("dialog", { name: `Kanister „${name}“` });
+    await expect(editor).toBeVisible();
+    return editor;
+  };
+  // Leaving one pair and joining another: both said, and both describe Save
+  let editor = await bottle("Teil A");
+  await editor.locator("input[name=canister-pair]").fill("CD");
+  await expect(editor.getByRole("button", { name: "Speichern" })).toHaveAccessibleDescription(
+    "Nach dem Speichern ist „Teil B“ ohne Paar. So stünde Paar CD nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Cee“ und „Teil A“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.",
+  );
+  await expect(editor.getByRole("status")).toHaveText(
+    "Nach dem Speichern ist „Teil B“ ohne Paar. So stünde Paar CD nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Cee“ und „Teil A“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.",
+  );
+  await editor.getByRole("button", { name: "Abbrechen" }).click();
+  editor = await bottle("Booster");
+  let save = editor.getByRole("button", { name: "Speichern" });
+  await editor.locator("input[name=canister-pair]").fill("AB");
+  const many = "So stünde Paar AB nur zum Teil in den Rezepten „Wachstum“ und „Blüte“. Trag dort erst für „Teil A“, „Teil B“ und „Booster“ je eine Menge ein oder leere ihre Mengen, dann speichere hier.";
+  await expect(editor.locator("#bottle-problems")).toHaveText(many);
+  await expect(editor.getByRole("status")).toHaveText(many);  // read out from a region there from the start
+  await expect(save).toBeDisabled();
+  await expect(save).toHaveAccessibleDescription(many);
+  // The field that causes it points to the reason
+  const pairField = editor.locator("input[name=canister-pair]");
+  await expect(pairField).toHaveAttribute("aria-invalid", "true");
+  await expect(pairField).toHaveAccessibleDescription(many);
+  await pairField.fill("XY");
+  await expect(editor.locator("#bottle-problems")).toHaveCount(0);
+  await expect(editor.getByRole("status")).toHaveText("");
+  await expect(pairField).not.toHaveAttribute("aria-invalid", /.*/);
+  await expect(save).toBeEnabled();
+  await editor.getByRole("button", { name: "Abbrechen" }).click();
+  // One recipe: the singular, and its way out works
+  expect(await apiCall(page, "DELETE", `/api/v1/recipes/${await recipeId(page, "Blüte")}`)).toBe(200);
+  await page.reload();
+  editor = await bottle("Booster");
+  await editor.locator("input[name=canister-pair]").fill("AB");
+  await expect(editor.locator("#bottle-problems")).toHaveText(
+    "So stünde Paar AB nur zum Teil im Rezept „Wachstum“. Trag dort erst für „Teil A“, „Teil B“ und „Booster“ eine Menge ein oder leere ihre Mengen, dann speichere hier.",
+  );
+  await editor.getByRole("button", { name: "Abbrechen" }).click();
+  const recipe = await openRecipe(page, "Wachstum");
+  await recipe.getByRole("textbox", { name: "Menge für Booster in ml pro Liter" }).fill("0,5");
+  await recipe.getByRole("button", { name: "Speichern" }).click();
+  await expect(recipe).toHaveCount(0);
+  editor = await bottle("Booster");
+  await editor.locator("input[name=canister-pair]").fill("AB");
+  await expect(editor.locator("#bottle-problems")).toHaveCount(0);
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(row("Booster")).toContainText("Paar AB");
+  // A new bottle cannot be in a recipe yet: save it without the label first
+  await page.locator("#add-bottle").click();
+  editor = page.getByRole("dialog", { name: "Kanister anlegen" });
+  await editor.locator("input[name=canister-name]").fill("");
+  await expect(editor.locator("#bottle-problems")).toHaveText("Gib dem Kanister einen Namen.");
+  await expect(editor.getByRole("button", { name: "Speichern" })).toBeDisabled();
+  await editor.locator("input[name=canister-name]").fill("Neu");
+  await editor.locator("input[name=canister-pair]").fill("AB");
+  await expect(editor.locator("#bottle-problems")).toHaveText(
+    "So stünde Paar AB nur zum Teil im Rezept „Wachstum“. Speichere den Kanister erst ohne Paar, trag dort eine Menge für ihn ein und dann hier das Paar.",
+  );
+  await editor.getByRole("button", { name: "Abbrechen" }).click();
+  // A pH bottle a recipe holds
+  editor = await bottle("CalMag");
+  save = editor.getByRole("button", { name: "Speichern" });
+  await editor.locator("label.field", { hasText: "Typ" }).locator("select").selectOption("ph_down");
+  const ph = "Ein pH-Kanister gehört in kein Rezept, „CalMag“ steht aber im Rezept „Wachstum“. Nimm ihn dort erst heraus (Menge leeren, speichern).";
+  const kind = editor.locator("label.field", { hasText: "Typ" }).locator("select");
+  await expect(editor.locator("#bottle-problems")).toHaveText(ph);
+  await expect(save).toBeDisabled();
+  await expect(kind).toHaveAttribute("aria-invalid", "true");
+  await expect(kind).toHaveAccessibleDescription(ph);
+  await kind.selectOption("nutrient");
+  await expect(editor.locator("#bottle-problems")).toHaveCount(0);
+  await expect(save).toBeEnabled();
+});
+
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
