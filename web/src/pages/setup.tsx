@@ -337,7 +337,7 @@ function rowsFromTemplate(pumps: { id: string; slot: number }[], tpl: RecipeTemp
   let extra = 0;
   return pumps.map((pu, i) => {
     const old = prev.find((r) => r.pump === pu.id);
-    const base = { pump: pu.id, slot: pu.slot, id: old?.id, color: old?.color ?? COLORS[i % COLORS.length], capacityMl: old?.capacityMl ?? 1000 };
+    const base = { pump: pu.id, slot: pu.slot, id: old?.id, color: old?.color ?? COLORS[i % COLORS.length], capacityMl: old ? (old.capacityMl ?? null) : 1000 };
     if (!tpl) return { ...base, name: old?.name ?? "", kind: old?.kind ?? "nutrient", pair: old?.pair ?? "", mlPerL: old?.mlPerL ?? null };
     const s = tpl.steps[i];
     if (s) return { ...base, name: tplName(s), kind: "nutrient", pair: s.pair ?? "", mlPerL: s.mlPerL };
@@ -353,7 +353,7 @@ function StepNutrients(p: { step: number; next: () => void }) {
   const existing = canisters.value;
   const initial: Row[] = pumps.map((pu, i) => {
     const k = existing.find((x) => x.pump === pu.id);
-    return { pump: pu.id, slot: pu.slot, id: k?.id, name: k?.name ?? "", kind: k?.kind ?? "nutrient", pair: k?.pair ?? "", color: k?.color ?? COLORS[i % COLORS.length], capacityMl: k?.capacityMl ?? 1000, mlPerL: null };
+    return { pump: pu.id, slot: pu.slot, id: k?.id, name: k?.name ?? "", kind: k?.kind ?? "nutrient", pair: k?.pair ?? "", color: k?.color ?? COLORS[i % COLORS.length], capacityMl: k ? (k.capacityMl ?? null) : 1000, mlPerL: null };
   });
   const fresh = existing.length === 0;
   const [sel, setSel] = useState<string>(fresh && tpls[0] ? tpls[0].id : "own");

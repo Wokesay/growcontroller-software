@@ -1534,3 +1534,40 @@ TEST_CASE("Messages: pump calibration and emergency stop name their result and c
   CHECK(stop["title"]["key"] == "ev.stop");
   CHECK(stop["text"]["args"]["who"]["key"] == "stop.app");
 }
+
+TEST_CASE("Scenario: an unknown stock is neither booked nor judged during a hand dose, and the mix plan takes it; once known, it is booked (RAT-015, RAT-071, #184)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  s.step(3000);
+  for (const char* id : {kDB, kA}) c.ok("POST", std::string("/api/v1/devices/") + id + "/accept", json::object());
+  c.ok("POST", "/api/v1/canisters", {{"name", "Teil A"}, {"pump", kA}, {"capacityMl", 1000}, {"stockMl", nullptr}});
+  c.ok("POST", "/api/v1/recipes", {{"name", "Nur A"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}}}});
+  c.ok("PUT", "/api/v1/tank", {{"capacityL", 60}});
+  calibrate(s, c, kA);
+  s.world().fill(20, 0.02, 7.0);
+  REQUIRE(c.state()["stock"]["teil-a"].is_null());
+  const auto dose = [&](double ml) {
+    REQUIRE(until(s, [&] { return c.state()["dosing"].is_null() && c.state()["job"].is_null(); }, 10 * 60 * 1000));
+    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", ml}});
+    REQUIRE(until(s, [&] { return c.state()["dosing"].is_null() && c.state()["job"].is_null(); }, 60000, 500));
+  };
+  dose(3);
+  // The dose goes in and is logged, but nothing is booked against a stock nobody knows
+  CHECK(c.state()["stock"]["teil-a"].is_null());
+  bool logged = false;
+  for (const auto& e : findEvents(c, "dose")) logged = logged || (e["data"]["canister"] == "teil-a" && e["data"]["ml"].get<double>() == doctest::Approx(3).epsilon(0.1));
+  CHECK(logged);
+  for (const auto& e : findEvents(c, "tank")) CHECK(e["title"]["key"] != "ev.stock.below_zero");
+  s.step(60000);  // the watchdog evaluates again
+  const json wd = c.state()["watchdog"];
+  for (const auto& i : wd["items"]) CHECK(i["id"] != "stock.teil-a");
+  // The mix plan neither refuses nor counts it
+  const json plan = c.ok("POST", "/api/v1/mix/plan", {{"recipe", "nur-a"}, {"waterL", 20}});
+  CHECK(plan["ok"] == true);
+  for (const auto& e : plan.value("errors", json::array())) CHECK(e["key"].get<std::string>().rfind("mix.stock", 0) != 0);
+  // Once someone enters it, doses are booked again
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 1000}});
+  dose(3);
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(997).epsilon(0.002));
+}

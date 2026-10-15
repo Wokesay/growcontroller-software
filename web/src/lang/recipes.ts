@@ -62,6 +62,11 @@ export const de = {
   "recipes.bottleSize": "Kanistergröße",
   "recipes.stockNow": "Inhalt jetzt",
   "recipes.stockNowHint": "Leer lassen, wenn unbekannt",
+  "recipes.stockUnknownHint": "Der Hub kennt den Inhalt nicht. Trag ein, was im Kanister ist, bei einem vollen die Kanistergröße.",
+  "recipes.stockCountedHint": "Der Hub zieht jede Gabe ab. Ändere den Wert nur, wenn er nicht stimmt.",
+  "recipes.stockUnknownOne": "Beim Kanister „{name}“ kennt der Hub den Inhalt nicht. Tipp auf den Stift (Bearbeiten) und trag ein, was drin ist.",
+  "recipes.stockUnknownMany": "Bei {n} Kanistern kennt der Hub den Inhalt nicht, etwa nach dem Laden einer Sicherung. Tipp jeweils auf den Stift (Bearbeiten) und trag ein, was drin ist.",
+  "recipes.bottleChangedNoSize": "Kanister gewechselt (voll): erst die Kanistergröße eintragen",
   "recipes.stockBelowZero": "Rechnerisch {ml} ml. Trag ein, was wirklich im Kanister ist.",
   "recipes.colour": "Farbe {c}",
 
@@ -139,6 +144,11 @@ export const en: Record<keyof typeof de, string> = {
   "recipes.bottleSize": "Bottle size",
   "recipes.stockNow": "Amount left",
   "recipes.stockNowHint": "Leave empty if you don't know",
+  "recipes.stockUnknownHint": "The hub doesn't know the amount. Enter what is in the bottle; for a full one, its size.",
+  "recipes.stockCountedHint": "The hub subtracts every dose. Change it only if it is wrong.",
+  "recipes.stockUnknownOne": "The hub doesn't know the amount in \"{name}\". Tap the pencil (Edit) and enter what is in it.",
+  "recipes.stockUnknownMany": "The hub doesn't know the amount in {n} bottles, for example after restoring a backup. Tap the pencil (Edit) on each and enter what is in it.",
+  "recipes.bottleChangedNoSize": "Bottle changed (full): enter the bottle size first",
   "recipes.stockBelowZero": "{ml} ml by the hub's count. Enter what is really in the bottle.",
   "recipes.colour": "Colour {c}",
 

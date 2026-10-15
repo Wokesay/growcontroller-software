@@ -289,6 +289,20 @@ listed in every release under "Security".
   recipe with part of a pair, and a pH bottle that a recipe still holds.
   A screen reader reads each change. Before, the hub refused after Save
   with a German-only message.
+- **An unknown stock no longer turns "full" when a bottle is saved**
+  (#184): any save of a bottle whose stock was unknown (a new name, a
+  colour, a pump, a first size), for example after importing a backup
+  onto a new hub, set its stock to its size without a word. Its low-stock
+  and below-zero warnings then came late, and a mix check passed that the
+  bottle could not cover. The stock now stays unknown until an amount is
+  entered or "Bottle changed (full)" is confirmed (RAT-015); a new bottle
+  whose amount is left empty stays unknown too. The bottle editor and
+  the setup no longer fill in 1000 ml for a bottle without a size, a new
+  bottle's amount follows its size until the amount itself is changed,
+  and the overview no longer counts an unknown stock as enough. Where
+  the hub does not know a stock, the bottle list and the overview say
+  so ("unknown" instead of "?", a dashed bar) and how to enter it, and
+  the amount field's hint fits the bottle's state.
 - **A new bottle no longer takes over an old stock** (#161): importing a
   backup without a bottle kept that bottle's stock, and a new bottle of
   the same name created without a stock, as the setup wizard does, then
