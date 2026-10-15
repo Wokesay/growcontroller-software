@@ -64,8 +64,8 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **Product questions are issues here** (SD-072, from PD-226; replaces
-  SD-069): the software session files each product question it meets,
+- **Product questions are issues here** (#190, SD-072, from PD-226;
+  replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an
   English issue labelled `product-question`. The product repository's
   session picks it up and decides it there (PD). The software session no

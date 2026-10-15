@@ -59,6 +59,8 @@ only the sync workflow may write there.
    (SD-027). This changes the SD-027 checks in `tools/workflows.test.mjs`
    (only `actions/*`, no `: write` outside `release.yml`), so it waits
    for the owner's "mergen". Before activating (`security`, #29):
+   - leave `product-question` issues out: they are answered by the
+     product session (SD-072);
    - pin the newest release's commit SHA (at least v1.0.94) and check the
      action's security advisories;
    - keep the workflow's own token (`github_token`) and never add
@@ -201,4 +203,5 @@ devices, so 2–5 h per week with Claude triage. Rules:
   They are written only in the product repository's session; this
   repository receives requirements as issues and names product questions
   instead of deciding them (PD-100, SD-029). Claude files these questions
-  as `product-question` issues here, never as a PD (SD-072).
+  as `product-question` issues here and never decides them as a PD
+  (SD-072).
