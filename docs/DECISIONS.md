@@ -545,7 +545,8 @@ Assistant way is still a product question.
   needs a review (`tools/app.test.mjs`).
 - The web app is served on port 8099 of the Home Assistant host, plain
   HTTP, for the own network. Ingress (Home Assistant's login and HTTPS) is
-  a follow-up.
+  a follow-up. Changed by SD-077 (from PD-225): from 0.1.0-proto.5 on the
+  app runs behind Ingress, and port 8099 is closed by default.
 - The project owner makes the package public once, after the first
   release with the app; releases still wait for the owner's "mergen" and
   tag (SD-023, SD-027).
@@ -2329,7 +2330,10 @@ Decided by the project owner on 2026-10-13 in the software session (#79,
 option 1 of the issue); the details come from a review by `security`.
 Until now anyone in the home network who opened the app's page first could
 set its password, see the names and values of Home Assistant's sensors and
-lock the owner out until the app was reinstalled.
+lock the owner out until the app was reinstalled. The setup code of the
+Home Assistant app is replaced by SD-077 (from PD-225): the app moves
+behind Home Assistant's Ingress. The rest stays, its rule on random
+numbers included.
 
 - **The code:** at every start without a password, `gc_ha_server` makes a
   setup code and prints it to its output, which as an app is the app's log
@@ -3039,6 +3043,142 @@ The software side's proposals, as decided:
 
 ---
 
+## SD-077: Product requirement (from PD-225): the Home Assistant app behind Ingress; a password of its own only for direct access
+
+Recorded on 2026-10-15 from #190, section 2 (SD-029). It does SD-034's
+follow-up (Ingress). PD-225 left to the software, to propose before
+building it, how the app signs users in behind Ingress and what applies
+on port 8099; the project owner decided both on 2026-10-15 in the
+software session, after reviews by `security`. If the product session
+decides otherwise, its decision applies. Replaces SD-068's setup code
+for the app, and with it SD-068's plan to keep the code until the app
+leaves `stage: experimental`.
+
+- **Product requirement (PD-225):** from the next prototype release
+  (0.1.0-proto.5) on, the whole web app of the Home Assistant app runs
+  behind Home Assistant's Ingress, with Home Assistant's login. Port 8099
+  is closed by default. The setup code in the log goes away.
+- **Through Home Assistant (Ingress): Home Assistant's login only,** no
+  password of the app's own there. Only Home Assistant's administrators
+  may open it (`panel_admin`, left at its default): the Supervisor
+  refuses other users from version 2026.10.2 on; before that it only hid
+  the panel from them. The event log names the Home Assistant user who
+  made a change.
+- **Direct (port 8099, a bookmark): a password of its own.** Without one,
+  port 8099 shows only a notice that growcontroller opens in Home
+  Assistant's sidebar, with the link to the source code, and no API. With
+  one, it asks for it as today (the lockout per device of SD-051, the
+  sessions of SD-064). Home Assistant's login does not count there: the
+  direct address is often another one than Home Assistant's own, and
+  Home Assistant's session is not visible to the app outside Ingress.
+  Users of 0.1.0-proto.4 keep their password for direct access.
+- **What building it keeps:**
+  - **Two listeners.** Ingress gets a port of its own in the container
+    (`ingress_port`, not 8099, which is Home Assistant's default for
+    it), never listed under `ports`. It answers only connections whose
+    socket peer is the Supervisor, 172.30.32.2, never an address from a
+    header. It takes the user only from exactly one `X-Remote-User-Id`
+    in the Supervisor's spelling; a request with none, two, or a copy
+    spelt otherwise is refused, so it fails closed. Only `/info` answers
+    there without a user, for the Supervisor's watchdog. No password,
+    session or token of the app counts there, and it keeps no lockout
+    count. Its origin check compares `Sec-Fetch-Site`, not a host name.
+  - **Port 8099 takes nothing from Home Assistant:** it never reads the
+    Supervisor's user headers or `X-Ingress-Path`, whoever sends them.
+    Only its own session counts there, and that session counts nowhere
+    else. Its host and origin checks stay as today. The window onto the
+    ESP's web app (SD-050) is never served there.
+  - **The password for direct access** is set, changed and removed only
+    through Ingress; port 8099 offers none of these, signed in or not,
+    not even with the old password. Through Ingress no old password is
+    asked, and it also works when the password file was lost (where
+    setup over the network answers 423 today). Each of them ends every
+    session of port 8099 and forgets its known clients (SD-051, SD-064). Removing it turns port 8099 into the notice
+    at once; it never reopens a first password over the network. The
+    settings show whether a password is set; the event log names who set,
+    changed or removed it. The page says the password travels in plain
+    text on port 8099 and must not be the Home Assistant password.
+  - **User names** from Home Assistant are text users choose: they are
+    kept to printable, well-formed UTF-8 like other text from Home
+    Assistant (#71), always shown as text, and left out of the diagnostic
+    package, which may go to public GitHub.
+  - `tools/app.test.mjs` keeps `panel_admin` at its default, the Ingress
+    port out of `ports`, and 8099 closed by default; the new keys get
+    SD-034's review.
+- **Port 8099 closed by default,** as PD-225 says, for a new install and
+  for an update where the app's network settings were never saved:
+  direct access is a deliberate choice in two steps, a password in the
+  app and the port opened in the app's network settings. A bookmark from
+  0.1.0-proto.4 works again after that; the release notes and
+  `ha/app/DOCS.md` say so.
+- **The ESP keeps its own login** (SD-044, SD-076); this entry does
+  not change it.
+- **Not chosen:**
+  - a password of its own also behind Ingress, or only for imports and
+    calibration: little gain, since an administrator of Home Assistant
+    reaches the app's data through backups and file access anyway, one
+    lockout shared by everyone, since all requests come from the
+    Supervisor, and two logins;
+  - only a notice on port 8099, without a direct login (`security`'s
+    recommendation): no access from a bookmark without Home Assistant;
+  - port 8099 open by default: an old bookmark would keep working, but a
+    login page with a password in plain text would be on the network by
+    default, against PD-225.
+- **The setup code never ships:** it came after 0.1.0-proto.4, and
+  0.1.0-proto.5 brings Ingress. So the count of wrong codes in the event
+  log, which PD-225 asks for while the code is in a release, is not
+  needed.
+- **Before the release:** a review by `security` of the switch (an XSS
+  flaw on Home Assistant's origin reaches an administrator's session of
+  Home Assistant; framing; only the Supervisor on the Ingress listener;
+  the origin check behind Ingress; the host check; the sessions of port
+  8099), the reasoning in `docs/SECURITY_MODEL.md`, including why the app
+  is protected more strictly than the ESP with its first-password window
+  (SD-076, #190), and the product side's
+  decision on remote access through Ingress, which #190 asks for before
+  this release.
+- **Residual risks,** for the docs:
+  - the web app runs on Home Assistant's origin: an XSS flaw in it
+    reaches the session of the Home Assistant user who opened it, and
+    anything else running there (other apps' panels, cards added to Home
+    Assistant's frontend) can use the app through Ingress as that user,
+    the password for direct access included;
+  - HTTPS only where Home Assistant uses it;
+  - Home Assistant bans an address after failed sign-ins only when a
+    limit is set in its HTTP settings (by default there is none), and has
+    no lockout per user;
+  - whoever may open the panel (above) reaches the app wherever Home
+    Assistant is reachable, through its remote access too, until remote
+    access is decided;
+  - port 8099 sends its password and session in plain text, as today;
+    closing the port hides it from the network, not from Home Assistant
+    and the other apps on the host;
+  - a password kept from 0.1.0-proto.4 may have been set by whoever came
+    first in the network (SD-068). A port mapping saved in the app's
+    network settings before the update stays, so for those users port
+    8099 and that password work at once. The settings reached through
+    Ingress say that a password is set and offer to change or remove it,
+    and the release notes advise doing so.
+- **Open on the product side:** remote access through Ingress (named in
+  #190); the legal points for this app (authentication behind Home
+  Assistant's login, plain text on the direct port, user names as
+  personal data, whether EN 18031-1 applies) in #220 (SD-072).
+- **Merging:** a security rule; the pull requests that record and build
+  it wait for the project owner's "mergen".
+- Sources (retrieved 2026-10-15): only 172.30.32.2 and `ingress_port`
+  (default 8099):
+  <https://raw.githubusercontent.com/home-assistant/developers.home-assistant/master/docs/apps/presentation.md>;
+  `panel_admin` enforced from Supervisor 2026.10.2:
+  <https://github.com/home-assistant/supervisor/pull/7308>,
+  <https://github.com/home-assistant/supervisor/releases>; no ban limit
+  by default (`login_attempts_threshold` defaults to
+  `NO_LOGIN_ATTEMPT_THRESHOLD`, which is -1):
+  <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/__init__.py>,
+  <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/const.py>;
+  a saved port mapping overrides the default:
+  <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/apps/app.py>.
+
+---
 
 ## Drafts (waiting for "entschieden")
 

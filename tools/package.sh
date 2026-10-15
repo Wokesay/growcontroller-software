@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Packs the simulator as a download and tests the package twice:
+# Packs the simulator as a download and tests the package:
 #   1. start with arguments (API and embedded web app answer),
 #   2. plain start without arguments as by double-click (port, data folder
-#      next to the program).
+#      next to the program),
+#   3. plain start with a data folder it cannot read (SD-074, #214),
+#   4. plain start that finds neither its own folder nor the working folder
+#      (#213);
+#   3 and 4 run in memory only and do not name a data folder; both are left
+#   out on Windows (no links to themselves there, and the working folder
+#   cannot be removed while in use).
 # Run from the repository root after the build in build-pkg/:
 #   tools/package.sh <program name> <platform>
 # In GitHub Actions PKG_DIR and PKG_ZIP go to $GITHUB_ENV.
-set -euo pipefail
+set -Eeuo pipefail  # -E: the ERR trap shows the logs also when a function fails
 bin="$1"
 name="$2"
 cd "$(dirname "$0")/.."
@@ -29,8 +35,30 @@ stop() {
   if [ "$windows" = 1 ]; then taskkill //F //IM "$bin" > /dev/null 2>&1 || true; else kill "$1" 2> /dev/null || true; fi
   wait "$1" 2> /dev/null || true
 }
-logs() { echo "--- sim.log"; cat build-pkg/sim.log 2> /dev/null || true; echo "--- einfach.log"; cat build-pkg/einfach.log 2> /dev/null || true; }
-trap 'logs' ERR
+logs() {
+  for f in sim einfach unreadable no-folder; do echo "--- $f.log"; cat "build-pkg/$f.log" 2> /dev/null || true; done
+}
+# On a failure: the logs, and no simulator left running
+trap 'logs; kill "${pid:-}" 2> /dev/null || true' ERR
+
+# The plain start's address from its log, once it answers there.
+answers() {
+  url=""
+  for _ in $(seq 1 60); do
+    url=$(grep -o 'http://127\.0\.0\.1:[0-9]*' "$1" | head -n 1 || true)
+    [ -n "$url" ] && curl -sf "$url/api/v1/info" > /dev/null && return 0
+    sleep 1
+  done
+  curl -sf "$url/api/v1/info" > /dev/null
+}
+# Memory only, said so, and the folder not named as its data folder.
+memory_only() {
+  grep -q "Running in memory only" "$1"
+  if grep -q "^Daten:" "$1"; then
+    echo "::error::$1 names a data folder"
+    return 1
+  fi
+}
 
 # 1. Mit Argumenten
 "./dist/$d/$bin" --port 18080 --scenario neu --prefill 0 > build-pkg/sim.log 2>&1 &
@@ -48,17 +76,37 @@ mkdir -p "$e"
 cp "dist/$d/$bin" "$e/"
 "./$e/$bin" > build-pkg/einfach.log 2>&1 &
 pid=$!
-url=""
-for _ in $(seq 1 60); do
-  url=$(grep -o 'http://127\.0\.0\.1:[0-9]*' build-pkg/einfach.log | head -n 1 || true)
-  [ -n "$url" ] && curl -sf "$url/api/v1/info" > /dev/null && break
-  sleep 1
-done
-curl -sf "$url/api/v1/info" > /dev/null
+answers build-pkg/einfach.log
 grep -q "Demo-Passwort" build-pkg/einfach.log
 for _ in $(seq 1 30); do [ -f "$e/growcontroller-daten/config.json" ] && break; sleep 1; done
 test -f "$e/growcontroller-daten/config.json"
 stop "$pid"
+
+if [ "$windows" = 0 ]; then
+  # 3. The data folder next to the program cannot be read (here a link to
+  #    itself, as after a start with sudo it may not be entered): it is left
+  #    as it is (SD-074, #214)
+  rm -rf "$e/growcontroller-daten"
+  ln -s growcontroller-daten "$e/growcontroller-daten"
+  "./$e/$bin" > build-pkg/unreadable.log 2>&1 &
+  pid=$!
+  answers build-pkg/unreadable.log
+  grep -q "Data cannot be read" build-pkg/unreadable.log
+  memory_only build-pkg/unreadable.log
+  stop "$pid"
+  test -L "$e/growcontroller-daten"
+
+  # 4. Started by a relative name in a working folder that is gone: no folder
+  #    for the data can be found (#213)
+  rm -f "$e/growcontroller-daten"
+  mkdir "$e/weg"
+  bash -c 'cd "$1" && rmdir "$1" && exec -a "$2" "$3"' _ "$PWD/$e/weg" "$bin" "$PWD/$e/$bin" > build-pkg/no-folder.log 2>&1 &
+  pid=$!
+  answers build-pkg/no-folder.log
+  grep -q "No folder for the data" build-pkg/no-folder.log
+  memory_only build-pkg/no-folder.log
+  stop "$pid"
+fi
 logs
 
 echo "Paket dist/$d geprüft"
