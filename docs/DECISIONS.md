@@ -2645,10 +2645,11 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   compilers and base images with their digests, as a plain file with the
   header "not an SBOM, not shipped", part of `SHA256SUMS` and the
   attestation. No second "build" SBOM, and no `scope: excluded` in one.
-- **Open on the software side** (proposals to the project owner): how
-  the build inputs Dependabot does not watch are tracked
-  (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
-  and whether a CVE in a build tool counts as a security item (PD-220).
+- **Decided on the software side** (proposals to the project owner,
+  decided on 2026-10-15, SD-077 points 5 and 6): how the build inputs
+  Dependabot does not watch are tracked (`cmake/deps.cmake`, the ESP-IDF
+  image, the unpinned Alpine packages), and whether a CVE in a build tool
+  counts as a security item (PD-220).
 - **Open on the product side:** what the implementing act on the SBOM
   format (CRA Art. 13(24)) will require.
 - **Done: the build checks every module the bundler puts into the app.**
@@ -2924,6 +2925,108 @@ is re-evaluated in the product repository and is not part of this entry.
   "growcontroller-xxxx" tells neighbours what is there); placing the USB
   port, a switch for its data lines, or USB-OTG in operation (above);
   where the label goes; the packing step that writes the support end.
+
+
+## SD-077: Product requirement (from PD-220): a GitHub advisory for every exploitable security item
+
+Recorded on 2026-10-15 from #190, section 1 (SD-029); the software side's
+proposals decided by the project owner on 2026-10-15 in the software
+session, after `security`'s proposals.
+
+- **The requirement:** every fixed security item gets its own GitHub
+  Security Advisory (GHSA) in this repository, not only an entry in the
+  release notes; this includes the seven items of the next release, which
+  affect 0.1.0-proto.2 to 0.1.0-proto.4. The release notes give per item
+  what it is, the affected versions, the impact, the severity and the
+  remedy, the form of CRA Annex I, Part II (4). The severity is rated per
+  item. The changelog no longer says that no GHSA or CVE of our own is
+  issued.
+- **Reporting (CRA Art. 14, the product side's assumption):** at the
+  latest from the first offer or the first device lent, actively
+  exploited vulnerabilities and severe incidents are reported to the
+  coordinating CSIRT and ENISA (an early warning within 24 hours, a
+  notification within 72 hours), and users are informed. None of the
+  seven items is reportable. `SECURITY.md` keeps the voluntary commitment
+  to report until then.
+
+The software side's proposals, as decided:
+
+1. **Which items get an advisory:** a vulnerability, that is a flaw that
+   someone without the needed rights can trigger: a device in the
+   network, a crafted file or another input. A fix in the Security
+   section that normal use, a faulty probe or someone with the password
+   triggers gets no advisory; it is listed there with the same fields, in
+   a block "Safety and robustness fixes, no vulnerability". Product
+   question #200 asks whether such defects are vulnerabilities under the
+   CRA; until it is answered, this split applies.
+2. **When advisories are published:** the drafts are kept private until
+   the release with the fix passes part two of its acceptance (SD-065),
+   then published. If that release takes longer than 30 days after the
+   fix is on `main`, the advisory is published anyway, with "fixed in the
+   next release" and the workaround; for the items of 0.1.0-proto.5 the
+   date is 2026-11-14, 30 days after this decision. Home Assistant's
+   ingress (PD-225) does not hold up the security fixes: if needed,
+   0.1.0-proto.5 ships without it.
+3. **CVEs:** GitHub, as a CVE Numbering Authority, assigns a CVE to each
+   vulnerability of our own. The project owner requests it in the
+   advisory form at least 3 working days before the tag; GitHub's review
+   takes about 72 hours. A flaw that comes from a component (a library,
+   the processor) gets no CVE of its own; its advisory names the
+   component's CVE.
+4. **Telling users:** the Home Assistant app gets `ha/app/CHANGELOG.md`,
+   with a section per release that lists the security items first, with
+   their GHSA links; Home Assistant shows it in the update dialog. The
+   app's `DOCS.md` gets a section "Security updates". The web app's
+   settings get a fixed link "Security advisories" to this repository's
+   advisories, with no network call. Later the firmware marks an update
+   with its severity and GHSA link.
+5. **Components Dependabot does not watch** (PD-228, SD-075): a weekly
+   scheduled job, without write rights and without secrets, checks
+   OSV.dev for cpp-httplib and nlohmann/json, and Alpine's security
+   database (secdb) for the packages in the last app image; a failed run
+   mails the project owner. Inputs used only to build (the ESP-IDF image,
+   doctest, `registry:2`) stay checked by hand at every release. Before
+   the first firmware release, ESP-IDF moves to a current v5.4.x or newer.
+6. **A CVE in a build tool** (PD-228, SD-075; for example Vite,
+   TypeScript, a compiler) is a security item with an advisory of its own
+   only if the tool's code ships (then it is a component), or if the CVE
+   could have changed a published artifact: then the artifacts are
+   checked, and it may be a severe incident under CRA Art. 14. Otherwise
+   the tool is updated and listed under Security › "Hardening, without a
+   vulnerability behind it", with the CVE or GHSA and "no published
+   version affected".
+
+- **The items of 0.1.0-proto.5** (`security`'s ratings, CVSS 3.1; the
+  product side's estimate for A and C was the same):
+  - A. Any device in the home network could set the Home Assistant
+    app's first password (#79, SD-068): 6.4 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`, CWE-1188. A CVE from GitHub.
+  - B. A crafted backup could make a pH calibrated in Home Assistant
+    count as checked by the hub (SD-041): 3.3 low,
+    `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`, CWE-20. A CVE from GitHub.
+  - C. A device guessing the password locked every other device out of
+    signing in (SD-051): 4.3 medium,
+    `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`, CWE-645. A CVE from GitHub.
+  - D. Session tokens partly predictable on AMD Zen 5 hosts without
+    AMD's fix (RDSEED, SD-068): 4.2 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`, CWE-330. No CVE of its own; it
+    refers to CVE-2025-62626 (AMD-SB-7055).
+  - No advisory: two defects in the sensor truth's jump check (RAT-042),
+    in the simulator only, triggered by normal use or a faulty probe; a
+    session ended at random, which needs the password.
+
+  All four: affected up to 0.1.0-proto.4 (published: proto.2 to
+  proto.4), patched in 0.1.0-proto.5. Before they are published, each
+  fix's regression test runs against the tags v0.1.0-proto.2 to
+  v0.1.0-proto.4 to confirm the range, above all for B.
+- **Open:** product question #200 (point 1); on the product side, what
+  counts as the first offer, which CSIRT coordinates (probably the BSI),
+  and a lawyer's view of Art. 14.
+- **Where:** in this pull request the changelog's Security section (three
+  blocks, the fields per item), `SECURITY.md` (advisories, what triggers
+  reporting, severe incidents) and `docs/RELEASE.md` (the advisory
+  steps). In later pull requests `ha/app/CHANGELOG.md`, the section in
+  `ha/app/DOCS.md`, the link in the web app and the weekly job.
 
 ---
 
