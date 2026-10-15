@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Dependency updates (#29). Actions stay pinned by commit SHA, the Home
-# Assistant app's base image by digest; Dependabot updates the SHA and the
-# version comment (tools/workflows.test.mjs) and the digest.
+# Assistant app's base images by digest; Dependabot updates the SHA and the
+# version comment (tools/workflows.test.mjs) and the digests.
 # cooldown: a new release waits a week before it is proposed, so a hijacked
 # release is more likely noticed first.
 version: 2
@@ -29,13 +29,20 @@ updates:
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-  # Base image of the Home Assistant app (SD-034), pinned by digest
+  # Base images of the Home Assistant app (SD-034, SD-071), pinned by
+  # digest. The node image carries the Node of .nvmrc on the same Alpine
+  # (tools/app.test.mjs): a newer Node or Alpine stays red until .nvmrc and
+  # the other image follow by hand (SD-070); a new digest of the same tag
+  # (an Alpine fix) goes through.
   - package-ecosystem: docker
     directory: /ha/app
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   # reuse for the license check, pinned with hashes (#29)
   - package-ecosystem: pip
     directory: /tools

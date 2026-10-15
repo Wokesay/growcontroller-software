@@ -111,10 +111,18 @@ test("the server's --app mode and the image match the app", () => {
   // the image with nothing but their results.
   const stages = [...docker.matchAll(/^FROM (\S+)(?: AS (\w+))?$/gm)].map((m) => [m[1], m[2]]);
   assert.deepEqual(stages.map(([, name]) => name), ["web", "server", "licenses", undefined]);
-  const base = stages[0][0];
+  const base = stages[1][0];
   assert.match(base, /^alpine:[\d.]+@sha256:[0-9a-f]{64}$/, "pinned by digest");
-  for (const [from, name] of stages.slice(1, 3)) assert.equal(from, base, `${name}: the same base image`);
+  assert.equal(stages[2][0], base, "licenses: the same base image");
   assert.equal(stages[3][0], "scratch");
+  // The web stage's npm checks the packages' signatures (SD-058): the Node
+  // CI runs (.nvmrc), on the same Alpine, pinned by digest (SD-071).
+  const escape = (s) => s.replace(/[.]/g, "\\.");
+  const pin = read(".nvmrc").trim();
+  const alpine = base.match(/^alpine:([\d.]+)@/)[1];
+  assert.match(stages[0][0], new RegExp(`^node:${escape(pin)}-alpine${escape(alpine)}@sha256:[0-9a-f]{64}$`), "web: the Node of .nvmrc on the same Alpine");
+  const webStage = docker.slice(docker.indexOf(" AS web"), docker.indexOf(" AS server"));
+  assert.doesNotMatch(webStage, /apk add/, "web: no Node or npm from Alpine's packages");
   // The Supervisor's stand-in in the smoke test is that base image too, so
   // Dependabot's update of the Dockerfile shows up here.
   assert.match(read(".github/workflows/app.yml"), new RegExp(`^ {6}STANDIN: ${base.replace(/[.]/g, "\\.")}$`, "m"));
