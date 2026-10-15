@@ -91,8 +91,24 @@ test("it fails when npm and the lockfile disagree, rather than write a wrong SBO
   assert.throws(() => webSbom(devMarked, lock), /npm marks preact@11\.0\.0 \(node_modules\/preact\) as development, the lockfile does not/);
   const pathless = { ...full, components: [...full.components, { "bom-ref": "q@1.0.0", name: "q", version: "1.0.0" }] };
   assert.throws(() => webSbom(pathless, lock), /q@1\.0\.0 has no cdx:npm:package:path/);
-  const twice = { ...full, components: [...full.components, component("preact", "11.0.0", "node_modules/@preact/signals/node_modules/preact")] };
-  assert.throws(() => webSbom(twice, { ...lock, packages: { ...lock.packages, "node_modules/@preact/signals/node_modules/preact": { version: "11.0.0" } } }), /preact@11\.0\.0 twice/);
+  const nested = "node_modules/@preact/signals/node_modules/preact";
+  const twice = { ...full, components: full.components.map((c) => (c.properties[0].value === nested ? component("preact", "11.0.0", nested) : c)) };
+  assert.throws(() => webSbom(twice, { ...lock, packages: { ...lock.packages, [nested]: { version: "11.0.0" } } }), /preact@11\.0\.0 twice/);
+  // An installed tree that is not the lockfile's
+  const other = { ...full, components: full.components.map((c) => (c["bom-ref"] === "preact@11.0.0" ? component("preact", "11.0.1", "node_modules/preact") : c)) };
+  assert.throws(() => webSbom(other, lock), /npm lists preact@11\.0\.1 at node_modules\/preact, web\/package-lock\.json has preact@11\.0\.0/);
+  // A build tool's copy with the same name and version leaves a second
+  // edge list for the same reference
+  const shared = { ...full, dependencies: [...full.dependencies, { ref: "preact@11.0.0", dependsOn: ["x@1.0.0"] }] };
+  assert.throws(() => webSbom(shared, lock), /two dependency entries for preact@11\.0\.0/);
+});
+
+test("the SBOM names the filter among its tools", () => {
+  const sbom = webSbom({ ...full, metadata: { ...full.metadata, tools: [{ vendor: "npm", name: "cli", version: "10.9.9" }] } }, lock);
+  assert.deepEqual(sbom.metadata.tools, [
+    { vendor: "npm", name: "cli", version: "10.9.9" },
+    { vendor: "growcontroller-software", name: "tools/sbom_web.mjs" },
+  ]);
 });
 
 test("on the real lockfile: npm's SBOM filtered is exactly the packages the tool-code guard lets into the app, preact among them", () => {
@@ -121,6 +137,11 @@ test("run as a step, it reads npm's SBOM from stdin and writes the web SBOM", ()
   const bad = spawnSync(process.execPath, [join(root, "tools", "sbom_web.mjs"), join(root, "web", "package-lock.json")], { input: "", encoding: "utf8" });
   assert.notEqual(bad.status, 0, "no input is no SBOM");
   assert.equal(bad.stdout, "");
+});
+
+test("an error in the step is never a silent empty SBOM", () => {
+  const src = readFileSync(join(root, "tools", "sbom_web.mjs"), "utf8");
+  assert.doesNotMatch(src.slice(src.indexOf("function isMain")), /catch/, "isMain does not swallow errors");
 });
 
 test("the release and `npm run sbom` build the web SBOM with it, from the installed packages, not with --omit", () => {

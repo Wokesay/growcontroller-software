@@ -10,8 +10,9 @@
 // `cdx:npm:package:path` is a runtime entry, and the dependency edges
 // between them. It fails rather than write a wrong SBOM: a runtime package
 // npm did not list (an optional one not installed here is left out, it
-// cannot ship), one npm marks as development, a component without a path,
-// one listed twice.
+// cannot ship), one at another version than the lockfile's, one npm marks
+// as development, a component without a path, one listed twice, two edge
+// lists for one reference.
 //   (cd web && npm sbom --sbom-format cyclonedx) \
 //     | node tools/sbom_web.mjs web/package-lock.json > sbom-web.cdx.json
 import { readFileSync, realpathSync } from "node:fs";
@@ -42,6 +43,7 @@ export function webSbom(full, lock) {
     const path = c.properties?.find((p) => p.name === PATH_PROP)?.value;
     if (path === undefined) throw new Error(`${c["bom-ref"]} has no ${PATH_PROP}: npm's SBOM changed, check tools/sbom_web.mjs`);
     if (!runtime.has(path)) continue;
+    if (c["bom-ref"] !== runtime.get(path)) throw new Error(`npm lists ${c["bom-ref"]} at ${path}, web/package-lock.json has ${runtime.get(path)}: the installed packages are not the lockfile's, run npm ci`);
     if (c.properties.some((p) => p.name === DEVELOPMENT_PROP)) throw new Error(`npm marks ${c["bom-ref"]} (${path}) as development, the lockfile does not: run npm install and check web/package-lock.json`);
     if (refs.has(c["bom-ref"])) throw new Error(`npm lists ${c["bom-ref"]} twice among the runtime packages: its dependency edges would be ambiguous`);
     refs.add(c["bom-ref"]);
@@ -54,15 +56,21 @@ export function webSbom(full, lock) {
   const dependencies = (full.dependencies ?? [])
     .filter((d) => refs.has(d.ref))
     .map((d) => ({ ...d, dependsOn: (d.dependsOn ?? []).filter((r) => refs.has(r)) }));
-  return { ...full, components, dependencies };
+  const listed = new Set();
+  for (const d of dependencies) {
+    if (listed.has(d.ref)) throw new Error(`two dependency entries for ${d.ref}: a build tool's copy has the same name and version, its edges would mix in`);
+    listed.add(d.ref);
+  }
+  // The file is npm's SBOM, filtered here: say so
+  const metadata = Array.isArray(full.metadata?.tools)
+    ? { ...full.metadata, tools: [...full.metadata.tools, { vendor: "growcontroller-software", name: "tools/sbom_web.mjs" }] }
+    : full.metadata;
+  return { ...full, metadata, components, dependencies };
 }
 
+// No try: an error here must fail the step, not leave an empty SBOM
 function isMain() {
-  try {
-    return process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
+  return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 }
 
 if (isMain()) {
