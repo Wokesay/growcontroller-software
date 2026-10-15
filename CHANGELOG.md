@@ -220,7 +220,7 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
-- **A large refill no longer latches the inlet** (#155, SD-075): a
+- **A large refill no longer latches the inlet** (#155, SD-080): a
   refill planned longer than the valve may stay open ("Ventil höchstens
   offen", 15 min by default) ran into that limit, which shut the inlet as
   a fault and waited for a person, after every refill from a nearly empty
@@ -554,7 +554,7 @@ AMD's CVE-2025-62626.
 A protective cut-off added:
 
 - **A refill after which the level did not rise latches the inlet**
-  (#155, SD-075, RAT-031): no refill checked that water arrived. With an
+  (#155, SD-080, RAT-031): no refill checked that water arrived. With an
   empty supply, a leak, a stuck valve or a level sensor that does not
   follow, the inlet opened again after every pause for as long as the
   level read below the start level. Now, at the end of each fill's pause,
@@ -565,22 +565,25 @@ A protective cut-off added:
   known, no valid or fresh level, a level calibration, a fill cut by a
   restart) ends its steps; fills not confirmed are added up and never
   fill past the target or stay open longer than one fill may before they
-  are judged, and two not judged in a row latch the inlet too. A pending
-  check survives a restart. Residual risk: a level reading wrongly low
-  still gets fills up to the target or one fill's open time before the
-  latch; with start level and target less than 4 L apart, a level that
-  hovers at the start level without following can let small fills
-  repeat; an inlet on a socket that keeps running while only the hub
-  restarts is not counted for that time; and an irrigation pump the hub
-  does not know can make a correct fill look like a missing rise: bind it
-  as the irrigation pump. After the
-  update, check that the inlet rate under Functions is about right: one
-  set at more than twice the real rate now latches every refill.
+  are judged, and two not judged in a row, also across refills, latch
+  the inlet too. A pending check survives a restart. Residual risk: a
+  level reading wrongly low still gets fills up to the target or one
+  fill's open time before the latch; with start level and target less
+  than 4 L apart, a level that hovers at the start level without
+  following can let small fills repeat; an inlet on a socket that keeps
+  running while the hub loses power or hangs is not counted for that
+  time; an irrigation pump that draws more than half a fill in the pause
+  of two refills in a row, or a level curve saved while a refill waits to
+  be checked, latches a sound inlet; and an irrigation pump the hub does
+  not know can make a correct fill look like a missing rise: bind it as
+  the irrigation pump. After the update, check that the inlet rate under
+  Functions is about right: one set at more than twice the real rate now
+  latches every refill.
 
 A protective cut-off relaxed on purpose:
 
 - **A large refill no longer ends in the open-time latch** (#155,
-  SD-075): a fill planned longer than the valve may stay open used to be
+  SD-080): a fill planned longer than the valve may stay open used to be
   cut by that limit, which latched the inlet. That also stopped a large
   refill from a level reading wrongly low after one fill. A fill now
   stops a minute before the limit and the rest follows in steps, also

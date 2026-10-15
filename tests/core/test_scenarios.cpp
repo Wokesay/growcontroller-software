@@ -936,7 +936,7 @@ json lastEvent(Client& c, const std::string& type, const std::string& title) {
 }
 }  // namespace
 
-TEST_CASE("Scenario: a refill from a nearly empty tank fills in steps within the inlet's open time, checks each rise and reaches its target (#155, SD-075)") {
+TEST_CASE("Scenario: a refill from a nearly empty tank fills in steps within the inlet's open time, checks each rise and reaches its target (#155, SD-080)") {
   // Demo: 60 L tank, inlet 2 L/min, the valve open at most 15 min, refill below 30 L to 45 L. From
   // 2.3 L that is 42.7 L or 21 min: planned so, the inlet's own limit cut it and latched (RAT-031).
   sim::Simulation s(test::opts("demo"));
@@ -979,7 +979,7 @@ TEST_CASE("Scenario: a refill from a nearly empty tank fills in steps within the
   CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
 }
 
-TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet; a slower inlet within reason does not (#155, SD-075, RAT-031)") {
+TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet; a slower inlet within reason does not (#155, SD-080, RAT-031)") {
   SUBCASE("a stuck level sensor: one step, then the latch, no second step") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1019,7 +1019,7 @@ TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet
   }
 }
 
-TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, SD-075)") {
+TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, SD-080)") {
   SUBCASE("too little rise while the pump ran is not judged; with the level still stuck it latches before another fill") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1193,7 +1193,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
   }
 }
 
-TEST_CASE("Scenario: small refills in a row are judged together, and the smallest open time still fills (#155, SD-075)") {
+TEST_CASE("Scenario: small refills in a row are judged together, and the smallest open time still fills (#155, SD-080)") {
   SUBCASE("a stuck level with a small gap: the fills together never pass the target, then they are judged") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1272,7 +1272,7 @@ TEST_CASE("Scenario: small refills in a row are judged together, and the smalles
   }
 }
 
-TEST_CASE("Scenario: a refill across a restart: steps end and are reported, a pending check is still judged, a cut fill counts as not judged (#155, SD-075, RAT-007)") {
+TEST_CASE("Scenario: a refill across a restart: steps end and are reported, a pending check is still judged, a cut fill counts as not judged (#155, SD-080, RAT-007)") {
   SUBCASE("a restart between steps ends them, reported; the check still passes") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1373,7 +1373,7 @@ TEST_CASE("Scenario: a refill across a restart: steps end and are reported, a pe
   }
 }
 
-TEST_CASE("Scenario: what ends refill steps, an inlet closed outside the refill, and calibrations during the check (#155, SD-075)") {
+TEST_CASE("Scenario: what ends refill steps, an inlet closed outside the refill, and calibrations during the check (#155, SD-080)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   demoAt(s, c, 2.3);
@@ -1409,7 +1409,7 @@ TEST_CASE("Scenario: what ends refill steps, an inlet closed outside the refill,
   CHECK_FALSE(inletLatched(c));
 }
 
-TEST_CASE("Scenario: refill steps go on across a clock step in the pause, and a hand dose in the pause ends them (#155, SD-075)") {
+TEST_CASE("Scenario: refill steps go on across a clock step in the pause, and a hand dose in the pause ends them (#155, SD-080)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   demoAt(s, c, 2.3);
@@ -1440,7 +1440,7 @@ TEST_CASE("Scenario: refill steps go on across a clock step in the pause, and a 
   CHECK_FALSE(inletLatched(c));
 }
 
-TEST_CASE("Scenario: the refill does not take over a valve opened by hand, and says it will lock (#155, SD-075)") {
+TEST_CASE("Scenario: the refill does not take over a valve opened by hand, and says it will lock (#155, SD-080)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   demoAt(s, c, 10);

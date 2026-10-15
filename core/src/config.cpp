@@ -558,7 +558,7 @@ RuntimeState runtimeFromJson(const json& j) {
   }
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
   // The refill's record is cleaned when read: a damaged part never stops the hub. A fill that is not
-  // an object still counts as a fill a restart cut; a count out of range starts again (SD-075)
+  // an object still counts as a fill a restart cut; a count out of range starts again (SD-080)
   if (j.contains("refill") && j["refill"].is_object()) {
     const json& r = j["refill"];
     for (const char* k : {"fill", "check", "unconfirmed"}) {

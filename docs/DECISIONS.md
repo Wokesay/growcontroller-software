@@ -2633,7 +2633,7 @@ it cannot read.
 
 ---
 
-## SD-075: A refill stays within the inlet's open time, checks its rise and fills in steps
+## SD-080: A refill stays within the inlet's open time, checks its rise and fills in steps
 
 Decided by the project owner on 2026-10-15 in the software session
 (#155), on the proposal of `domain`.
@@ -2727,8 +2727,8 @@ Decided by the project owner on 2026-10-15 in the software session
   not known (R5), and fills with such a record latch as not checkable.
   A hard reset between the valve opening and the save at the end of that
   tick loses the fill's record; the inlet is off after a start (R6). An
-  inlet on a socket that keeps its power while only the hub restarts (a
-  crash, an update) flows on until its own auto-off or the off after the
+  inlet on a socket that keeps its mains power while the hub loses its
+  own power or hangs flows on until its own auto-off or the off after the
   start; that water is not counted, so with a level reading stuck low the
   next fill can pass the target by it.
 - **EC and pH wait** from the first opening of a refill until its last
@@ -2756,6 +2756,12 @@ Decided by the project owner on 2026-10-15 in the software session
     both can make a fill look short or overfill past the target.
   - A level sensor that reads low by a fixed amount but follows the rise
     passes; the computed gap is then filled in steps.
+  - Fills not judged count across refills until one passes: an
+    irrigation pump that draws more than half a fill during the pause, in
+    two refills with none passing between them, latches a sound inlet.
+  - Saving a new level curve (a calibration, an import) while a check or
+    fills not confirmed wait, with the level below the start level,
+    latches the inlet: their rise cannot be compared.
   - When one fill's open time holds less than 4 L (a short
     `max_open_min` or a slow inlet), its fills are judged at that size: a
     reading off by the level's uncertainty (RAT-030, RAT-078) can latch a
@@ -2765,7 +2771,7 @@ Decided by the project owner on 2026-10-15 in the software session
     and latch: it belongs bound as `zone.irrigation_pump` (#233).
   - A valve opened at the device itself (its button, its own app) gets no
     open-time limit from the hub, only its own auto-off and the capacity
-    and level cut-offs (older than SD-075, #228).
+    and level cut-offs (older than SD-080, #228).
   - A person who closes the inlet in the app sees the refill open it again
     after the pause, if the level is still low (#233).
 - **One pull request:** the cap alone would have widened a gap. Before

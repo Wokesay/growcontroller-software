@@ -54,7 +54,7 @@ default password (EN 18031-1).
 |---|---|---|
 | pH jump | probe +2.1 pH | jump lock, control line, event |
 | EC 0 | probe dry | EC gate, latch "no effect" |
-| Value freezes | raw values stand still (pH/EC head; the level head too, as a stuck level sensor) | standstill detection; for the level, the refill's rise check (#155, SD-075) |
+| Value freezes | raw values stand still (pH/EC head; the level head too, as a stuck level sensor) | standstill detection; for the level, the refill's rise check (#155, SD-080) |
 | Head/level offline | device does not respond | data loss, inlet emergency cut-off |
 | Block/pull off a cap | run fails after 0.3 s, or the cap is missing | pair fault, "catch up"; amount estimated from the run time |
 | Dosing block offline | block does not respond, hub sees the last state | deadline per run: pumps off, counted as run |
