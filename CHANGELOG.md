@@ -64,6 +64,14 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Sessions claim an issue before working on it** (SD-078): parallel
+  sessions had picked up the same issue. Before a session starts, it
+  fetches the issue again and leaves it alone if a live claim or an open
+  pull request covers it. Otherwise it claims it with a comment naming
+  the session and its branch and the label `in-progress`; of two claims
+  the first comment wins. A multi-part issue is claimed per part, a claim
+  with an open pull request never goes stale, and any other claim quiet
+  for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
 - **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
   from PD-225; replaces SD-068's setup code for the app). From
   0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
