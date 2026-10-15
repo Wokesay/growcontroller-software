@@ -171,6 +171,11 @@ entry under `[Unreleased]`.
        password and reads sensors;
      - another device guessing the password six times does not lock out
        a phone that signed in (SD-051);
+     - after the update from a version before #80 (the server ran as
+       root), the app starts and reads values, so it finds the Supervisor
+       in `/etc/hosts`; the host's log (Settings › System › Logs, Host)
+       has no `apparmor="DENIED"` for `*_growcontroller`; restoring the
+       app's backup and starting it again works;
      - a new backup holds the new version, and its entry for the app is
        not empty.
 

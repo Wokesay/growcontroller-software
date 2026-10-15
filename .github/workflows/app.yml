@@ -38,6 +38,9 @@ jobs:
       GC_SOURCE_REV: ${{ github.event.pull_request.head.sha || github.sha }}
       # The stand-in for the Supervisor: the build's own base image
       STANDIN: alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+      # The oldest AppArmor the app's profile must load with: Debian 12's
+      # (3.0), the base of Home Assistant's Supervised installation
+      DEBIAN: debian:12@sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,22 +71,62 @@ jobs:
           if [ "$rc" != 2 ]; then echo "::error::Without SUPERVISOR_TOKEN the app ended with $rc, not 2"; exit 1; fi
           rc=0; docker run --rm -e SUPERVISOR_TOKEN=smoke-test "$img" --config /x > /dev/null 2>&1 || rc=$?
           if [ "$rc" != 2 ]; then echo "::error::--config was not refused ($rc)"; exit 1; fi
-          # A stand-in for the Supervisor on a network of its own, reached by
-          # name as in Home Assistant: it answers every request with an empty
-          # list of states and keeps what it was asked.
+          # A stand-in for the Supervisor on a network of its own: it answers
+          # every request with an empty list of states and keeps what it was
+          # asked. The app finds it by name in its /etc/hosts, where Home
+          # Assistant puts the Supervisor's address.
           docker network create gc-smoke
-          docker run -d --name supervisor --network gc-smoke --network-alias supervisor "$STANDIN" sh -c \
+          docker run -d --name supervisor --network gc-smoke "$STANDIN" sh -c \
             'while true; do printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]" | nc -l -p 80 >> /tmp/requests 2>&1; done'
-          # Started like the Supervisor starts it: a token in the environment,
-          # no arguments.
-          docker run -d --name app --network gc-smoke -e SUPERVISOR_TOKEN=smoke-test -p 127.0.0.1:8099:8099 "$img"
-          ok=""
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8099/api/v1/info -o info.json; then ok=1; break; fi
-            sleep 1
-          done
-          if [ -z "$ok" ]; then docker logs app; echo "::error::The app did not answer"; exit 1; fi
+          supervisor=$(docker inspect supervisor --format '{{(index .NetworkSettings.Networks "gc-smoke").IPAddress}}')
+          # The app's AppArmor profile (#80). The Supervisor loads it with the
+          # host's parser and fails the install or update if that refuses it,
+          # so the oldest parser it may meet reads it too.
+          docker run --rm -v "$PWD/ha/app/apparmor.txt:/apparmor.txt:ro" "$DEBIAN" sh -ec '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends apparmor > /dev/null
+            apparmor_parser --version | head -n 1
+            apparmor_parser -Q -K /apparmor.txt'
+          # Loaded and renamed as the Supervisor does it; every start below
+          # runs in it.
+          sed 's/^profile growcontroller /profile 0000ci00_growcontroller /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"
+          grep -q '^profile 0000ci00_growcontroller ' "$RUNNER_TEMP/apparmor.txt"
+          sudo apparmor_parser -r -W "$RUNNER_TEMP/apparmor.txt"
+          # The app's own folder, mounted at /data as Home Assistant mounts it,
+          # with a file a version before #80 left there as root.
+          docker volume create gc-data > /dev/null
+          docker run --rm -v gc-data:/data "$STANDIN" sh -ec 'mkdir -m 700 /data/hub; echo old > /data/hub/before-80; chmod 600 /data/hub/before-80'
+          # Started like the Supervisor starts it: as root behind docker-init,
+          # in its profile, a token and the time zone in the environment, no
+          # arguments.
+          start() {
+            docker run -d --name "$1" --init --security-opt apparmor=0000ci00_growcontroller --network gc-smoke --add-host "supervisor:$supervisor" \
+              -v "$2:/data" -e SUPERVISOR_TOKEN=smoke-test -e TZ=Europe/Berlin -p 127.0.0.1:8099:8099 "$img"
+          }
+          answers() {
+            for _ in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8099/api/v1/info -o info.json; then return 0; fi
+              sleep 1
+            done
+            docker logs "$1"; echo "::error::The app did not answer"; return 1
+          }
+          start app gc-data
+          answers app
           jq -e --arg v "$v" '.version == $v and .platform.kind == "home-assistant" and .platform.readOnly == true' info.json
+          # The server, docker-init's child, answers as an account of its own:
+          # no root, no capabilities, no way to gain them, in its profile (#80).
+          confined() {
+            init=$(docker inspect "$1" --format '{{.State.Pid}}')
+            server=$(pgrep -P "$init")
+            grep -E '^(Uid|Gid|Groups|CapPrm|CapEff|CapAmb|NoNewPrivs):' "/proc/$server/status" | awk '{$1=$1; print}' > status.txt
+            cat status.txt
+            for want in 'Uid: 65532 65532 65532 65532' 'Gid: 65532 65532 65532 65532' 'Groups:' 'CapPrm: 0000000000000000' 'CapEff: 0000000000000000' 'CapAmb: 0000000000000000' 'NoNewPrivs: 1'; do
+              grep -qxF "$want" status.txt || { echo "::error::$1 does not run with \"$want\" (#80)"; return 1; }
+            done
+            profile=$(sudo cat "/proc/$server/attr/current" | tr -d '\0')
+            if [ "$profile" != "0000ci00_growcontroller (enforce)" ]; then echo "::error::$1 runs in \"$profile\""; return 1; fi
+          }
+          confined app
           # The first password needs the setup code from the app's log (#79).
           jq -e '.hasPassword == false and .setupCode == true' info.json
           setup_code=""
@@ -100,6 +143,10 @@ jobs:
           if [ "$code" != 200 ]; then echo "::error::The first password with the code got $code, not 200"; exit 1; fi
           curl -fsS http://127.0.0.1:8099/ -o index.html
           grep -q '<div id="app"' index.html
+          # and the files it loads, which the server's account must read too
+          grep -oE '/assets/[^"]+[.]js' index.html > assets.txt
+          test -s assets.txt
+          curl -fsS "http://127.0.0.1:8099$(sed -n 1p assets.txt)" -o /dev/null
           code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: example.com' http://127.0.0.1:8099/api/v1/info)
           if [ "$code" != 403 ]; then echo "::error::A foreign host name got $code, not 403"; exit 1; fi
           # The longest paths the web server still matches with its recursive
@@ -131,6 +178,47 @@ jobs:
           if [ "$(stat -c %a hub)" != 700 ] || [ -z "$(find hub -type f)" ] || [ -n "$(find hub -type f ! -perm 600)" ]; then
             echo "::error::The data folder is empty or not private"; ls -la hub; exit 1
           fi
+          # Everything in it is the app's account's, the file from before #80 too.
+          docker run --rm -v gc-data:/data "$STANDIN" sh -ec 'test -f /data/hub/before-80; find /data/hub \( ! -user 65532 -o ! -group 65532 \) -print' > foreign.txt
+          if [ -s foreign.txt ]; then echo "::error::Not the app's: $(cat foreign.txt)"; exit 1; fi
+          # Started again, it enters its folder, now its account's, as root
+          # once more (dac_override) and still ends as it should.
+          docker start app > /dev/null
+          answers app
+          confined app
+          docker stop -t 10 app
+          code=$(docker inspect app --format '{{.State.ExitCode}}')
+          if [ "$code" != 0 ]; then echo "::error::The app ended with $code on SIGTERM after a restart"; exit 1; fi
+          # A new install: /data empty, as the Supervisor creates it. The
+          # server makes its folder in the profile, private and its own.
+          docker volume create gc-fresh > /dev/null
+          start fresh gc-fresh
+          answers fresh
+          confined fresh
+          docker stop -t 10 fresh
+          code=$(docker inspect fresh --format '{{.State.ExitCode}}')
+          if [ "$code" != 0 ]; then echo "::error::A new install ended with $code on SIGTERM"; exit 1; fi
+          made=$(docker run --rm -v gc-fresh:/data "$STANDIN" stat -c '%u:%g %a' /data/hub)
+          if [ "$made" != "65532:65532 700" ]; then echo "::error::A new install made its folder as $made"; exit 1; fi
+          docker rm fresh
+          docker volume rm gc-fresh
+          # Its profile refused nothing it did,
+          sleep 2
+          sudo dmesg > dmesg.txt
+          test -s dmesg.txt
+          grep 'apparmor="DENIED"' dmesg.txt | grep -F 'profile="0000ci00_growcontroller"' > denied.txt || true
+          if [ -s denied.txt ]; then cat denied.txt; echo "::error::The app's AppArmor profile refused it something"; exit 1; fi
+          # and a refusal would show: a file the profile does not allow, read
+          # in it, is refused and logged (the kernel logs it a moment later).
+          rc=0; docker run --rm --security-opt apparmor=0000ci00_growcontroller "$STANDIN" cat /etc/passwd > /dev/null 2>&1 || rc=$?
+          if [ "$rc" = 0 ]; then echo "::error::The profile let a tool read /etc/passwd"; exit 1; fi
+          seen=""
+          for _ in $(seq 1 10); do
+            sudo dmesg > dmesg.txt
+            if grep -qE 'apparmor="DENIED".* profile="0000ci00_growcontroller".* name="/etc/passwd"' dmesg.txt; then seen=1; break; fi
+            sleep 1
+          done
+          if [ -z "$seen" ]; then echo "::error::A refusal of the profile does not show in the kernel log"; exit 1; fi
           # The license texts and the source code link are in the image.
           docker cp app:/licenses licenses
           for f in LICENSE.txt THIRD_PARTY_LICENSES.txt musl-COPYRIGHT.txt BUILD_PACKAGES.txt; do
@@ -140,6 +228,7 @@ jobs:
           docker cp app:/web web-out
           grep -rqF "$GC_SOURCE_REV" web-out/assets || { echo "::error::The web app has no link to $GC_SOURCE_REV"; exit 1; }
           docker rm app
+          docker volume rm gc-data
           docker rm -f supervisor
           docker network rm gc-smoke
       # The image's server is linked against musl and the GCC runtime of its
@@ -159,13 +248,15 @@ jobs:
         timeout-minutes: 5
         run: |
           # The binary that ships, with values a stand-in Home Assistant
-          # reports: a number, an unavailable sensor, a unit to convert (#112).
-          # CI set: a missing binary fails instead of skipping.
+          # reports: a number, an unavailable sensor, a unit to convert (#112),
+          # and as root, as the Supervisor starts it, giving up root (#80).
+          # CI set: a missing binary fails instead of skipping; GC_HA_ROOT_TEST
+          # set: the tests as root fail instead of skipping.
           docker create --name shipped "growcontroller-ha:$ARCH" > /dev/null
           docker cp shipped:/gc_ha_server "$RUNNER_TEMP/gc_ha_server"
           docker rm shipped > /dev/null
           docker run --rm -v "$PWD:/src:ro" -v "$RUNNER_TEMP/gc_ha_server:/gc_ha_server:ro" -w /src \
-            -e CI=true -e GC_HA_SERVER=/gc_ha_server "$STANDIN" sh -ec '
+            -e CI=true -e GC_HA_SERVER=/gc_ha_server -e GC_HA_ROOT_TEST=1 "$STANDIN" sh -ec '
             apk add --no-cache nodejs > /dev/null
             node --test tools/ha_server.test.mjs'
       - name: Save the image
