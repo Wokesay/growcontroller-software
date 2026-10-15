@@ -348,6 +348,12 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1", code }) });
     assert.equal(setup.status, 200, out);
     const cookie = (setup.headers.get("set-cookie") ?? "").split(";")[0];
+    // the session comes from the one cookie named exactly gc_session
+    const status = async (c) => (await fetch(`${base}/api/v1/state`, { headers: { Cookie: c } })).status;
+    assert.equal(await status(`theme=dark; ${cookie}; lang=en`), 200);
+    assert.equal(await status(`x${cookie}`), 401);
+    assert.equal(await status(`note=${cookie}`), 401);
+    assert.equal(await status(`${cookie}; ${cookie}`), 401);
     // a sensor can be picked once the hub has read it from Home Assistant
     const wanted = ["sensor.grow_ph", "sensor.grow_rh", "sensor.grow_ec"];
     let listed = [];

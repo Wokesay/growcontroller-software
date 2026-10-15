@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <optional>
 #include <sstream>
 #include <string_view>
 
@@ -75,16 +76,18 @@ std::string sessionToken(const std::string& authorization, const std::string& co
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
     return s;
   };
+  std::optional<std::string_view> found;
   std::string_view rest = cookie;
   while (!rest.empty()) {
     auto semi = rest.find(';');
     std::string_view pair = rest.substr(0, semi);
     rest = semi == std::string_view::npos ? std::string_view{} : rest.substr(semi + 1);
     auto eq = pair.find('=');
-    if (eq == std::string_view::npos) continue;
-    if (trim(pair.substr(0, eq)) == "gc_session") return std::string(trim(pair.substr(eq + 1)));
+    if (eq == std::string_view::npos || trim(pair.substr(0, eq)) != "gc_session") continue;
+    if (found) return {};  // more than one: their order says nothing about which is ours
+    found = trim(pair.substr(eq + 1));
   }
-  return {};
+  return found ? std::string(*found) : std::string();
 }
 
 bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {

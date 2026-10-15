@@ -583,8 +583,8 @@ Hardening, without a vulnerability behind it:
 - **The session is read from the cookie of exactly that name** (Home
   Assistant app, simulator and firmware): the servers now split the
   browser's `Cookie` header into its name=value pairs and take the session
-  only from the pair named `gc_session`, in one place in the core
-  (`gc::sessionToken`).
+  only from the pair named `gc_session`, and only when the header holds
+  exactly one, in one place in the core (`gc::sessionToken`).
 - **The web build checks every module the bundler puts into the app**
   (#190, PD-228, SD-075): the app's code is to come only from our
   sources and the runtime packages of the lockfile, and the build

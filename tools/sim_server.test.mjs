@@ -61,8 +61,9 @@ function fetchStatus(port, path) {
 }
 
 // Starts the server with these options, in its own folder; it must answer
-// and end cleanly on SIGTERM. Gives what it printed.
-async function startsWith(args) {
+// and end cleanly on SIGTERM. `check` runs while it is up, with its port.
+// Gives what it printed.
+async function startsWith(args, check) {
   const child = spawn(bin, ["--host", "127.0.0.1", "--port", String(await freePort()), "--scenario", "neu", "--prefill", "0", ...args], {
     cwd: tmp,
     stdio: ["ignore", "pipe", "pipe"],
@@ -89,6 +90,7 @@ async function startsWith(args) {
     assert.equal(info?.status, 200, `/api/v1/info answers:\n${out}`);
     assert.equal(JSON.parse(info.body).platform?.simulated, true, info.body);
     assert.equal((await fetchStatus(port, "/"))?.status, 200, `the start page answers:\n${out}`);
+    if (check) await check(port);
   } finally {
     child.kill("SIGTERM");
   }
@@ -170,4 +172,24 @@ test("--data it can use is named as its data folder, and nothing is said about i
   const out = await startsWith(["--data", data]);
   assert.ok(out.split("\n").includes(`Daten: ${data}`), out);
   assert.doesNotMatch(out, /Data cannot be/);
+});
+
+test("the session comes from the one cookie named exactly gc_session", { skip, timeout: 120000 }, async () => {
+  await startsWith([], async (port) => {
+    const base = `http://127.0.0.1:${port}`;
+    const login = await fetch(`${base}/api/v1/auth/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ password: "sim-password-1" }),
+    });
+    assert.equal(login.status, 200, await login.text());
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+    assert.match(cookie, /^gc_session=[0-9a-f]+$/);
+    const state = async (c) => (await fetch(`${base}/api/v1/state`, { headers: { Cookie: c } })).status;
+    assert.equal(await state(cookie), 200);
+    assert.equal(await state(`theme=dark; ${cookie}; lang=en`), 200);
+    assert.equal(await state(`x${cookie}`), 401);
+    assert.equal(await state(`note=${cookie}`), 401);
+    assert.equal(await state(`${cookie}; ${cookie}`), 401);
+  });
 });
