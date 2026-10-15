@@ -56,7 +56,10 @@ entry under `[Unreleased]`.
    Assistant (`docs/HOME_ASSISTANT.md`) for the password, the sensors, a
    restart with the same data folder and the checks the pull request
    lists for what the release brings; automatic updates of the app stay
-   off on that Home Assistant (off unless switched on). Tag right after
+   off on that Home Assistant (off unless switched on). Compare `.nvmrc`
+   with the newest Node 22 security release
+   (`https://nodejs.org/dist/index.json`, `"security": true`) and raise it
+   in a pull request of its own if it is lower (SD-070). Tag right after
    the merge: Home
    Assistant's app store reads `config.yaml` from `main` and offers the
    new version before its image exists.
@@ -105,6 +108,20 @@ entry under `[Unreleased]`.
      that stand the cooldown and the lockfile pin.
      `tools/workflows.test.mjs` keeps the step and the registry addresses
      in place.
+   - The npm that checks them comes with Node, so every job that sets up
+     Node runs the exact one named in `.nvmrc`, not whatever the runner
+     image brings (SD-070). It is raised by hand in a pull request of its
+     own, with a `security` review; step 1 "Prepare" compares it with the
+     newest Node 22 security release. The app image checks with Alpine's
+     Node and npm and prints their versions.
+   - When a job with the check fails, a step that runs only then
+     (`tools/signatures_report.mjs`) shows the end of npm's own log of
+     the check, the only record of the failed run (or that the check
+     passed and the job failed elsewhere), and asks npm again for each
+     invalid or missing package with npm's reason. A check that passes
+     when asked again is no clearance. Text from npm cannot act as a
+     workflow command there. The step changes nothing and never replaces
+     the check.
    - In `tools/ci.sh` (CI's `checks` job), before the packages are
      installed, `tools/check_provenance.mjs` finds for every package in the
      lockfile, every platform build included, the highest lower version
