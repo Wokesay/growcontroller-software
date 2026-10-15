@@ -5,5 +5,8 @@ import type { Plugin } from "vite";
 
 type Lock = { packages?: Record<string, { dev?: boolean }> };
 
-export function shippedProblems(ids: string[], root: string, lock: Lock): string[];
+type PathLike = Pick<typeof import("node:path"), "isAbsolute" | "relative">;
+
+export function shippedProblems(ids: string[], root: string, lock: Lock, path?: PathLike): string[];
+export function entryListed(ids: string[], entry: string, path?: PathLike): boolean;
 export function toolCodeGuard(options?: { root?: string; lock?: Lock; entry?: string }): Plugin;

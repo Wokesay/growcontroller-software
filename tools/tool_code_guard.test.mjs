@@ -6,9 +6,9 @@
 //   node --test tools/tool_code_guard.test.mjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { test } from "node:test";
-import { shippedProblems, toolCodeGuard } from "../web/scripts/tool-code-guard.mjs";
+import { entryListed, shippedProblems, toolCodeGuard } from "../web/scripts/tool-code-guard.mjs";
 
 const root = "/w/web";
 const lock = {
@@ -127,6 +127,17 @@ test("the plugin fails the build with every problem, when it checked nothing, an
   errors.length = 0;
   guard.generateBundle.call(ctx, {}, { "a.js": chunk([main]), "assets/worker-x.js": { type: "asset" } });
   assert.match(errors[0] ?? "", /assets\/worker-x\.js: a script that is not a chunk of the app's build/);
+});
+
+test("on Windows, Vite's ids with forward slashes match the web folder and the entry", () => {
+  // Vite names modules D:/a/web/src/main.tsx; Node's paths there use
+  // backslashes (CI's Windows build failed on this)
+  const web = "D:\\a\\web";
+  const ids = ["D:/a/web/src/main.tsx", "D:/a/web/node_modules/preact/dist/preact.mjs", "d:/a/web/index.html?html-proxy", "\0rolldown/runtime.js"];
+  assert.deepEqual(shippedProblems(ids, web, lock, win32).map((p) => p.slice(0, p.indexOf(":", 3))), ["\\0rolldown/runtime.js"]);
+  assert.equal(entryListed(ids, win32.join(web, "src", "main.tsx"), win32), true);
+  assert.equal(entryListed(["D:/a/web/src/other.ts"], win32.join(web, "src", "main.tsx"), win32), false);
+  assert.deepEqual(shippedProblems(["E:/x/y.js"], web, lock, win32), ["E:/x/y.js: neither our sources nor a package"]);
 });
 
 test("vite.config.ts runs the guard, the build still runs the text check, and tools/ci.sh the self-test", () => {

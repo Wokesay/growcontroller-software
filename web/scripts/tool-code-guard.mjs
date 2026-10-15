@@ -12,7 +12,7 @@
 // a malicious build tool, which runs in the same process (SECURITY_MODEL.md).
 // The types are in tool-code-guard.d.mts: change both together.
 import { readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HELPERS = [
@@ -25,13 +25,16 @@ const TOOL = "code of a build tool: find what brings it in and keep it out of th
 const PACKAGE = "is a build-time package, not in the web SBOM: keep it out of the app, or make it a runtime dependency";
 
 const shown = (id) => id.replace(/\0/g, "\\0");
+const clean = (id) => id.split(/[?#]/)[0];
 
 // One line per module that is not ours and not a runtime package of
-// web/package-lock.json; none for a clean bundle.
-export function shippedProblems(ids, root, lock) {
+// web/package-lock.json; none for a clean bundle. `path` is the platform's:
+// on Windows Vite names modules with forward slashes, Node with backslashes.
+export function shippedProblems(ids, root, lock, path = nodePath) {
+  const { isAbsolute, relative } = path;
   const problems = [];
   for (const raw of ids) {
-    const id = raw.split(/[?#]/)[0];
+    const id = clean(raw);
     if (id.startsWith("\0") || !isAbsolute(id)) {
       const what = HELPERS.find(([re]) => re.test(id))?.[1] ?? TOOL;
       problems.push(`${shown(id)}: ${what}`);
@@ -43,10 +46,10 @@ export function shippedProblems(ids, root, lock) {
       continue;
     }
     const parts = rel.split(/[\\/]/);
-    const path = parts.join("/");
-    if (path === "index.html" || parts[0] === "src") continue;
+    const shownPath = parts.join("/");
+    if (shownPath === "index.html" || parts[0] === "src") continue;
     if (parts[0] !== "node_modules") {
-      problems.push(`${path}: neither our sources nor a package`);
+      problems.push(`${shownPath}: neither our sources nor a package`);
       continue;
     }
     // The innermost installed package that holds the file: the longest
@@ -58,26 +61,34 @@ export function shippedProblems(ids, root, lock) {
     }
     if (!key) {
       const name = parts[1]?.startsWith("@") ? `${parts[1]}/${parts[2]}` : parts[1];
-      problems.push(`${path}: ${name ?? "?"} is not in web/package-lock.json`);
+      problems.push(`${shownPath}: ${name ?? "?"} is not in web/package-lock.json`);
       continue;
     }
     const name = key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length);
-    if (lock.packages[key].dev) problems.push(`${path}: ${name} ${PACKAGE}`);
+    if (lock.packages[key].dev) problems.push(`${shownPath}: ${name} ${PACKAGE}`);
   }
   return problems;
+}
+
+// Whether one of the modules is the entry, compared as paths.
+export function entryListed(ids, entry, path = nodePath) {
+  return ids.some((raw) => {
+    const id = clean(raw);
+    return !id.startsWith("\0") && path.isAbsolute(id) && path.relative(entry, id) === "";
+  });
 }
 
 // The Vite plugin: fails the build with every problem at once, and when it
 // checked nothing (no chunk, or the entry not among its modules), so that a
 // change of the bundler's output does not leave it passing silently.
 export function toolCodeGuard({ root, lock, entry } = {}) {
-  const web = root ?? realpathSync(resolve(fileURLToPath(new URL("..", import.meta.url))));
-  const main = entry ?? join(web, "src", "main.tsx");
+  const web = root ?? realpathSync(nodePath.resolve(fileURLToPath(new URL("..", import.meta.url))));
+  const main = entry ?? nodePath.join(web, "src", "main.tsx");
   return {
     name: "growcontroller:tool-code-guard",
     apply: "build",
     generateBundle(_options, bundle) {
-      const pkgs = lock ?? JSON.parse(readFileSync(join(web, "package-lock.json"), "utf8"));
+      const pkgs = lock ?? JSON.parse(readFileSync(nodePath.join(web, "package-lock.json"), "utf8"));
       const found = [];
       let entrySeen = false;
       for (const [file, out] of Object.entries(bundle)) {
@@ -88,10 +99,10 @@ export function toolCodeGuard({ root, lock, entry } = {}) {
           continue;
         }
         const ids = Object.keys(out.modules ?? {});
-        if (ids.some((id) => id.split(/[?#]/)[0] === main)) entrySeen = true;
+        if (entryListed(ids, main)) entrySeen = true;
         for (const p of shippedProblems(ids, web, pkgs)) found.push(`${file}: ${p}`);
       }
-      if (!entrySeen) found.push(`nothing checked: no chunk lists ${relative(web, main)} among its modules`);
+      if (!entrySeen) found.push(`nothing checked: no chunk lists ${nodePath.relative(web, main).split(nodePath.sep).join("/")} among its modules`);
       if (found.length) this.error(`Build tool code in the app (PD-228, SD-073):\n- ${found.join("\n- ")}`);
     },
   };
