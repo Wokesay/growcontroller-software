@@ -56,7 +56,13 @@ entry under `[Unreleased]`.
    Assistant (`docs/HOME_ASSISTANT.md`) for the password, the sensors, a
    restart with the same data folder and the checks the pull request
    lists for what the release brings; automatic updates of the app stay
-   off on that Home Assistant (off unless switched on). Compare `.nvmrc`
+   off on that Home Assistant (off unless switched on). On Windows the
+   project owner also starts the release branch's simulator package (an
+   artifact of its CI run) once by double click with a
+   `growcontroller-daten` next to it that it may not read (Properties ›
+   Security › deny Read): it opens, says "Data cannot be read" and leaves
+   the folder as it is (SD-074). The package test does this on macOS and
+   Linux (#214). Compare `.nvmrc`
    with the newest Node 22 security release
    (`https://nodejs.org/dist/index.json`, `"security": true`) and raise it
    in a pull request of its own if it is lower, together with the app

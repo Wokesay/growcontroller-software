@@ -2,11 +2,12 @@
 // gc_sim_server and a folder whose status it cannot read, instead of ending
 // at the start: a --web folder is no web app, so it starts without it (with
 // the embedded web app or the "not built" page); a --data folder runs it in
-// memory only and is left alone (SD-074). Runs the built server (tools/ci.sh
+// memory only and is left alone (SD-074). A bad option value or a data folder
+// it cannot create ends or says so (#213). Runs the built server (tools/ci.sh
 // builds it first).
 //   node --test tools/sim_server.test.mjs      (GC_SIM_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { get } from "node:http";
 import { createServer } from "node:net";
@@ -102,6 +103,12 @@ function dataSaysWhy(out) {
   assert.doesNotMatch(out, /Data cannot be saved/);
 }
 
+// A call that must end at once, in its own folder; one that starts the
+// server instead times out.
+function run(args) {
+  return spawnSync(bin, args, { cwd: tmp, encoding: "utf8", timeout: 15000 });
+}
+
 // tools/ci.sh builds the server first: in CI a missing one is a failure,
 // not a skip.
 if (process.env.CI && !existsSync(bin)) throw new Error(`${bin} is not built`);
@@ -170,4 +177,26 @@ test("--data it can use is named as its data folder, and nothing is said about i
   const out = await startsWith(["--data", data]);
   assert.ok(out.split("\n").includes(`Daten: ${data}`), out);
   assert.doesNotMatch(out, /Data cannot be/);
+});
+
+test("an option value that is no number, or out of range, ends with a message naming the range (#213)", { skip }, () => {
+  const range = { "--port": "a whole number from 1 to 65535", "--speed": "a number from 0 to 600", "--prefill": "a number from 0 to 1000" };
+  for (const [option, value] of [
+    ["--port", "abc"], ["--port", ""], ["--port", "0"], ["--port", "70000"], ["--port", "80.5"], ["--port", "0x1F90"],
+    ["--speed", "x"], ["--speed", "-1"], ["--speed", "601"], ["--speed", "inf"],
+    ["--prefill", "x"], ["--prefill", "nan"], ["--prefill", "-1"], ["--prefill", "1001"],
+  ]) {
+    const r = run(["--scenario", "neu", option, value]);
+    assert.deepEqual([r.status, r.signal], [2, null], `${option} ${value}: ${r.stderr}`);
+    assert.ok(r.stderr.split("\n").includes(`${option} must be ${range[option]}, not "${value}"`), r.stderr);
+  }
+});
+
+test("a data folder it cannot create is not named as its data folder (#213)", { skip, timeout: 120000 }, async () => {
+  // below a file: memory only, said once (FileStorage)
+  const dir = mkdtempSync(join(tmp, "file-"));
+  writeFileSync(join(dir, "file"), "x");
+  const out = await startsWith(["--data", join(dir, "file", "data")]);
+  assert.equal(out.match(/Data cannot be saved \(.+\)\. Running in memory only\./g)?.length, 1, out);
+  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
 });
