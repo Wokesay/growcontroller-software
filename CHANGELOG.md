@@ -695,6 +695,22 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **Three security fixes are guarded against coming back** (#234); each
+  check fails when its fix is taken out:
+  - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED
+    and RDRAND instructions in our own code of the core, the simulator,
+    the Home Assistant server and the firmware. The one exception is the
+    Windows branch of `sim::randomBytes`. `std::random_device` tries
+    RDSEED first on Linux x86-64 (AMD-SB-7055). On the code of
+    0.1.0-proto.4 the check names both places that used it.
+  - A scenario test leaves a calibration of the hub's own pH probe open
+    for 45 min. A jump must then lock the reading, and pH control must
+    not dose on it (RAT-042). So far the test of that fix covered only a
+    probe from Home Assistant.
+  - A test imports a backup that gives a pH calibrated in Home Assistant
+    the class of the hub's own pH head, with a calibration. That was the
+    way in up to 0.1.0-proto.4. The reading must stay without a value,
+    and the app must not offer a calibration for it (RAT-025, SD-041).
 - **The web build checks every module the bundler puts into the app**
   (#190, PD-228, SD-075): the app's code is to come only from our
   sources and the runtime packages of the lockfile, and the build
