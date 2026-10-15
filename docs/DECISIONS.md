@@ -403,13 +403,15 @@ repository.
 - The software is worked on in a session of its own with access to this
   repository only. The product repository's session works on hardware and
   product and is the only place where product decisions (PD) are
-  written, so PD numbers do not collide.
+  written, so PD numbers do not collide. Changed by SD-069: it attaches
+  the product repository for its product questions only.
 - Product requirements arrive as English issues in this repository. A
   requirement that comes from a PD is recorded here as "Product
   requirement (from PD-xxx)".
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
-  repository's session.
+  repository's session. Changed by SD-069: the software session takes it
+  to the product repository itself.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -2190,6 +2192,21 @@ product side answers the question named with it (Q1 to Q16, below).
   RAT-052 (once settle times are measured). No RAT rule changes with
   this entry; RAT-007 and RAT-018 only say now what PD-160 decided
   instead of "still open".
+- **2026-10-14, ahead of step 7:** at the project owner's request, before
+  0.1.0-proto.5, the hub keeps a stock booked below zero and reports it
+  each time it falls below zero, instead of stopping it at 0 without a
+  report. Below zero means at or below -0.5 ml (`kStockBelowZeroMl`), so it
+  shows as at least -1 ml and a rounding difference under 0.5 ml raises no
+  alarm. A stock the user enters is never below zero; an unchanged one
+  still saves, so such a bottle can be renamed, and the bottle editor
+  sends the amount left only when it was changed there. The texts lead
+  with the bottle: if it is empty, change it; otherwise enter the amount
+  left; calibrate the pump again only if it keeps happening. A mix sees
+  the stock as used up. This changes no dose refusal, switching or
+  cut-off, and a mix is refused exactly when it was refused before; the
+  only new refusal is an amount entered below zero (an input check).
+  `security` checked it under SD-033; the rest of step 7 still needs
+  "mergen".
 
 ## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
 
@@ -2287,6 +2304,80 @@ wait and the reasons to hold are own rules, not from a source.
 - This changes a protective cut-off in the actuator gateway, so the merge
   waits for the project owner's "mergen" (SD-023, SD-033).
 
+
+## SD-068: The Home Assistant app's first password needs a setup code from its log
+
+Decided by the project owner on 2026-10-13 in the software session (#79,
+option 1 of the issue); the details come from a review by `security`.
+Until now anyone in the home network who opened the app's page first could
+set its password, see the names and values of Home Assistant's sensors and
+lock the owner out until the app was reinstalled.
+
+- **The code:** at every start without a password, `gc_ha_server` makes a
+  setup code and prints it to its output, which as an app is the app's log
+  in Home Assistant, readable by its administrators only (and by apps they
+  gave the Supervisor role `manager` or `admin`, which are as privileged). 16 characters of
+  32 (no 0, 1, I or O; 80 bits), in groups of four. The first password
+  needs it; it is typed in any case, with dashes or spaces.
+- **Kept in memory only,** never in a file, the event log, the state or the
+  diagnostic package; used up by the password; a new start makes a new
+  one and voids the old. No time limit for the app; the core takes one,
+  which SD-044's setup token for the ESP (15 min) will use.
+- **No lockout for wrong codes:** 80 bits leave nothing to guess (rate
+  limiting is asked for below 64 bits, NIST SP 800-63B revision 3,
+  §5.1.2.2; not checked against revision 4), and a
+  count shared by every device that never signed in (SD-051) would let
+  anyone in the network block the owner's setup. Wrong codes are counted;
+  the event log gets the first one and then at most one entry per 15 min
+  with the count, and the setup's entry names the count, so a loop cannot
+  fill the log (SD-051).
+- **The order of the checks:** a password already set (409), then the
+  code (403 `auth.code`, the same for a missing and a wrong one, from the
+  JSON body only), then the password's strength (422); no password is
+  hashed before the code is right.
+- `GET /info` says `setupCode: true` while one is needed, so the setup
+  page asks for it and says where it is.
+- No code while the credentials are lost (setup answers 423 then).
+- **Random numbers** for the code, salts and session tokens come from
+  `getentropy()` (on Windows the system's generator), not from
+  `std::random_device`: libstdc++ tries RDSEED first and takes the zero
+  that a Zen 5 processor without its fix reports as success (AMD-SB-7055).
+- The simulator asks for no code: it listens on 127.0.0.1 unless told
+  otherwise, its data is simulated and it switches nothing real; started
+  with `--host 0.0.0.0`, whoever comes first sets its password, and the
+  demo has a fixed one. The ESP gets SD-044's token; until it is built,
+  whoever comes first sets the ESP's password.
+- Not chosen: Home Assistant's ingress now (its login and HTTPS, but the
+  web app would have to work below a path); it stays the follow-up before
+  the app leaves `stage: experimental`. A lockout for wrong codes (see
+  above).
+- Open for the product session (PD-100): whether a code of 80 bits without
+  a rate limit meets EN 18031-1 AUM-6, and whether the app's log counts as
+  a channel only the owner reaches.
+
+
+## SD-069: The software session takes its product questions to the product repository itself
+
+Decided by the project owner on 2026-10-14 in the software session.
+Changes SD-029: the software session attaches the product repository for
+its product questions and takes them there itself. It still names them in
+the issue and to the project owner.
+
+- A product question met here goes into the note
+  `docs/notizen/fragen-aus-der-software.md` of the product repository
+  `Wokesay/growcontroller`, as a pull request there, in German like that
+  repository: per question the context, the options and the software's
+  recommendation, with references to SD, RAT and pull requests of this
+  repository.
+- The software session writes nothing else there: no PD, no other file,
+  no merge. The product repository's session decides, records the PD
+  (PD-100), and sends what it means for the software as an English issue
+  to this repository, as before.
+- The session attaches the product repository only for this, with the
+  project owner's approval of the access.
+- First use: three questions in Wokesay/growcontroller#77 (the setup
+  code and EN 18031-1, build tools in the SBOM, CRA Art. 14 and
+  advisories).
 
 ---
 

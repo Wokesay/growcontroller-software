@@ -21,8 +21,22 @@ class Auth {
   explicit Auth(RandomFn rng) : rng_(std::move(rng)) {}
 
   bool hasPassword() const { return !hash_.empty(); }
+  // First password (#79): a platform that can show a secret to its owner
+  // alone (the app's log in Home Assistant) arms a one-time setup code, and
+  // the first password then needs it. Kept in memory only; arming again
+  // voids the one before; used up by the password; refused from `validFor`
+  // after `now` on (0: no time limit; SD-044 gives 15 min). "" when a
+  // password is set.
+  std::string armSetupCode(Ms now, Ms validFor = 0);
+  bool setupCodeRequired() const { return !setupCode_.empty() && !hasPassword(); }
+  // Wrong setup codes are counted, never braked: 80 bits leave nothing to
+  // guess, and a count shared by every new client would let anyone block the
+  // owner's setup (SD-051). Whether to log a refusal now: the first one, then
+  // at most one per 15 min, so a loop cannot fill the event log.
+  std::int64_t wrongSetupCodes() const { return wrongCodes_; }
+  bool logWrongSetupCode(Ms now);
   // Liefert leeren Schlüssel bei Erfolg, sonst den Grund.
-  Msg setInitialPassword(const std::string& pw);
+  Msg setInitialPassword(const std::string& pw, const std::string& code = "", Ms now = 0);
   // A wrong old password counts as a failed attempt of `client`.
   Msg changePassword(const std::string& oldPw, const std::string& newPw, Ms now, const std::string& client);
   // Anmeldung mit Sperre nach Fehlversuchen. Bei Erfolg ein Sitzungs-Token.
@@ -65,6 +79,10 @@ class Auth {
   std::string hashOf(const std::string& pw, const std::string& saltHex, std::uint32_t it) const;
   RandomFn rng_;
   std::string salt_, hash_;
+  std::string setupCode_;  // without dashes; never in toJson()
+  Ms setupCodeUntil_ = 0;  // 0: no time limit
+  std::int64_t wrongCodes_ = 0;  // a loop of days stays far below its end
+  std::optional<Ms> wrongLogged_;
   std::uint32_t iterations_ = kIterations;
   std::map<std::string, Ms> sessions_;  // Token → zuletzt benutzt
   Attempts shared_;                    // every client that has not signed in

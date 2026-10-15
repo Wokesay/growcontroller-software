@@ -107,7 +107,9 @@ builds and tests.
 Other views stay in the product repository: `kunde` (customer), `anwender`
 (grower), `architekt` (architecture), `firmware`, `hardware`,
 `regulatorik` (regulatory), `produkt` (product and business). This
-repository asks them through the project owner (PD-100).
+repository asks them through the product repository: Claude writes the
+question into its note `docs/notizen/fragen-aus-der-software.md` as a
+pull request there (PD-100, SD-069).
 
 **Flow of a change:**
 
@@ -198,4 +200,6 @@ devices, so 2–5 h per week with Claude triage. Rules:
   repository they appear as "Product requirement (from PD-xxx)".
   They are written only in the product repository's session; this
   repository receives requirements as issues and names product questions
-  instead of deciding them (PD-100, SD-029).
+  instead of deciding them (PD-100, SD-029). Claude takes these questions
+  to the product repository itself, as a pull request to a note there,
+  never as a PD (SD-069).

@@ -8,7 +8,9 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <optional>
 #include <random>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -917,6 +919,95 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(c.state()["stopped"] == false);
 }
 
+TEST_CASE("Scenario: a Stop switches everything off before it books the running dose, and holds if booking fails (RAT-036)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  circulateAlways(s, c);
+  auto handDose = [&] {
+    REQUIRE(until(s, [&] {
+      const json now = c.state();
+      return now["job"].is_null() && now["dosing"].is_null();
+    }, 10 * 60 * 1000));
+    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 5}});
+    REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 2000; }, 20000, 200));
+    REQUIRE(s.world().circulating());
+  };
+
+  auto count = [&](const std::string& type, const std::string& key) {
+    size_t n = 0;
+    for (const auto& e : findEvents(c, type)) n += e["title"]["key"] == key ? 1 : 0;
+    return n;
+  };
+
+  // when the hub reads back the stopped run to book it, everything is already off
+  handDose();
+  REQUIRE(s.world().loadOn("light"));
+  bool readBack = false, allOff = false, saved = false;
+  s.world().onRunStatus = [&](const std::string&) {
+    if (readBack) return;
+    readBack = true;
+    sim::World& w = s.world();
+    allOff = !w.circulating() && !w.out[1] && !w.loadOn("light") && !w.loadOn("exhaust") && !w.loadOn("circulation_fan") &&
+             w.cap(kA)->state != 1;
+    saved = json::parse(s.storage().read("state.json").value_or("{}")).value("stopped", false);
+  };
+  c.ok("POST", "/api/v1/stop");
+  s.world().onRunStatus = nullptr;
+  REQUIRE(readBack);
+  CHECK(allOff);
+  CHECK(saved);
+  c.ok("POST", "/api/v1/resume");
+  REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 60000));
+
+  // booking fails: the Stop still holds and is saved, the dose is dropped unbooked, and that is said
+  handDose();
+  const double stockBefore = c.state()["stock"]["teil-a"];  // a single run, booked only when it ends
+  const size_t stops = count("system", "ev.stop");
+  const size_t incomplete = count("dose", "ev.dose_incomplete");
+  const json dropped = c.state()["dosing"]["order"];
+  s.world().onRunStatus = [](const std::string&) { throw std::runtime_error("bus read failed"); };
+  CHECK(c.call("POST", "/api/v1/stop").first == 200);
+  json st = c.state();
+  CHECK(st["stopped"] == true);
+  CHECK(st["outputs"]["tank.circulation"] == false);
+  CHECK_FALSE(s.world().circulating());
+  CHECK(s.world().cap(kA)->state != 1);
+  CHECK(st["job"].is_null());
+  CHECK(st["dosing"].is_null());
+  CHECK(json::parse(s.storage().read("state.json").value_or("{}")).value("stopped", false) == true);
+  CHECK(count("system", "ev.stop") == stops + 1);
+  bool said = false;
+  for (const auto& e : findEvents(c, "system"))
+    if (e["title"]["key"] == "ev.stop.unbooked") {
+      said = true;
+      CHECK(e["severity"] == "warn");
+      CHECK(e["text"]["args"]["name"] == "Teil A");
+      CHECK(e["text"]["args"]["reason"] == "bus read failed");
+      CHECK(e["data"]["canister"] == "teil-a");
+    }
+  CHECK(said);
+  // the read keeps failing: the dropped dose is not read again, so no internal error follows,
+  // nothing switches on, and nothing of it is booked later
+  s.step(5000);
+  CHECK(count("system", "ev.tick_fault") == 0);
+  s.world().onRunStatus = nullptr;
+  s.step(5000);
+  CHECK_FALSE(s.world().circulating());
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(stockBefore));
+  CHECK(count("dose", "ev.dose_incomplete") == incomplete);
+  // pressing Stop again logs no second stop
+  CHECK(c.call("POST", "/api/v1/stop").first == 200);
+  CHECK(count("system", "ev.stop") == stops + 1);
+  // a Resume right away continues nothing of the dropped dose, and a new hand dose runs
+  c.ok("POST", "/api/v1/resume");
+  for (int i = 0; i < 30; ++i) {
+    s.step(1000);
+    const json d = c.state()["dosing"];
+    CHECK((d.is_null() || d["order"] != dropped));
+  }
+  handDose();
+}
+
 TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -943,6 +1034,102 @@ TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
       CHECK(e["text"]["key"] == "purpose.mix");
     }
   CHECK(logged);
+}
+
+TEST_CASE("Scenario: a stock booked below zero is kept and reported, never set to 0 (RAT-015, RAT-071)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  const auto dose = [&](double ml) {
+    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", ml}});
+    REQUIRE(until(s, [&] { return c.state()["dosing"].is_null() && c.state()["job"].is_null(); }, 60000, 500));
+  };
+  const auto reports = [&](std::uint64_t since) {
+    int n = 0;
+    for (const auto& e : findEvents(c, "tank"))
+      if (e["id"].get<std::uint64_t>() > since && e["title"]["key"] == "ev.stock.below_zero") n++;
+    return n;
+  };
+  const auto stockItem = [&] {
+    s.step(60000);  // the watchdog evaluates again
+    const json wd = c.state()["watchdog"];
+    for (const auto& i : wd["items"])
+      if (i["id"] == "stock.teil-a") return i;
+    return json();
+  };
+  // exactly what is left goes out, or a little more: a rounding difference under 0.5 ml raises no alarm
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 5}});
+  auto before = c.state()["eventId"].get<std::uint64_t>();
+  dose(5);
+  CHECK(reports(before) == 0);
+  CHECK(stockItem()["text"]["key"] == "watch.stock.low");
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 4.7}});
+  dose(5);
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(-0.3).epsilon(0.05));
+  CHECK(reports(before) == 0);
+  CHECK(stockItem()["text"]["key"] == "watch.stock.low");
+
+  // the stock entered is too low: 3 ml left, but a 5 ml hand dose goes in
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 3}});
+  before = c.state()["eventId"].get<std::uint64_t>();
+  dose(5);
+  REQUIRE(c.state()["stock"]["teil-a"].is_number());
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(-2.0).epsilon(0.05));  // what the booking says, not 0
+  CHECK(reports(before) == 1);
+  for (const auto& e : findEvents(c, "tank"))
+    if (e["id"].get<std::uint64_t>() > before && e["title"]["key"] == "ev.stock.below_zero") {
+      CHECK(e["severity"] == "warn");
+      CHECK(e["text"]["key"] == "ev.stock.below_zero.text");
+      CHECK(e["text"]["args"]["name"] == "Teil A");
+      CHECK(e["data"]["canister"] == "teil-a");
+    }
+  json item = stockItem();
+  CHECK(item["status"] == "problem");
+  CHECK(item["text"]["key"] == "watch.stock.negative");
+  // a mix sees the stock used up and says so
+  const auto refused = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
+  CHECK(refused.first == 422);
+  CHECK(refused.second["error"]["key"] == "mix.stock_negative");
+  CHECK(refused.second["error"]["args"]["name"] == "Teil A");  // the message keeps its values
+
+  // a second dose from the negative stock is not reported again, also not after a restart
+  dose(3);
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(-5.0).epsilon(0.05));
+  // renaming the bottle sends the stock back unchanged, or leaves it empty: both keep it
+  const json neg = c.state()["stock"]["teil-a"];
+  c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"name", "Teil A"}, {"stockMl", neg}});
+  c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"name", "Teil A"}, {"stockMl", nullptr}});
+  CHECK(c.state()["stock"]["teil-a"] == neg);
+  CHECK(c.call("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"name", "Teil A"}, {"stockMl", neg.get<double>() + 1}}).first == 422);
+  CHECK(c.state()["stock"]["teil-a"] == neg);
+  s.reboot();
+  c.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  s.step(5000);  // the devices are found again
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(-5.0).epsilon(0.05));
+  CHECK(stockItem()["text"]["key"] == "watch.stock.negative");
+  dose(3);
+  CHECK(reports(before) == 1);
+
+  // a new bottle clears it; falling below zero again is reported again
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 1000}});
+  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(1000.0));
+  CHECK(stockItem().is_null());
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 1}});
+  dose(3);
+  CHECK(reports(before) == 2);
+
+  // falling below zero during a Stop: the pumps go off first, then the run is booked and reported
+  c.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", 2}});
+  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 5}});  // the hand-dose cap
+  REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 4000; }, 20000, 200));
+  c.ok("POST", "/api/v1/stop");
+  CHECK(s.world().cap(kA)->state != 1);
+  CHECK(c.state()["stopped"] == true);
+  CHECK(c.state()["stock"]["teil-a"].get<double>() < -0.5);  // more than 2.8 ml ran in 4 s
+  CHECK(reports(before) == 3);
+  c.ok("POST", "/api/v1/resume");
 }
 
 TEST_CASE("Szenario: Kappe im Lauf abgezogen → Auftrag scheitert sofort, nichts hängt") {

@@ -64,6 +64,11 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Product questions go to the product repository directly** (SD-069):
+  the software session writes each product question it meets, with
+  context, options and its recommendation, into a note of the product
+  repository as a pull request there, instead of handing it to the
+  project owner. Decisions (PD) are still made only there.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their
@@ -267,6 +272,19 @@ listed in every release under "Security".
   and the hub's texts with seconds, minutes and hours ("seit 75 s nichts")
   no longer break between the number and the unit; other numbers with
   units (ml, ml/L) follow (#148).
+- **A stock below zero is reported** (RAT-015, RAT-071, SD-066): when more
+  was booked from a bottle than its stock, the hub set the stock to 0 and
+  showed "0 ml left – change the bottle soon", which hid that more had
+  been booked than entered and that doses after that went in short. Now
+  the stock stays below zero ("-2 ml by the hub's count – bottle empty?
+  Change it, or enter the amount left"; German "Rechnerisch -2 ml …"), the
+  event log says each time it falls below zero what to do (empty? change
+  it; otherwise enter the amount left under Recipes & bottles; calibrate
+  the pump again only if it keeps happening), and a mix says the stock is
+  used up. Entering the amount left or tapping "Bottle changed" clears it.
+  Less than half a millilitre below zero raises no alarm. An amount left
+  entered below zero is refused, and the bottle editor sends it only when
+  you changed it, so a dose booked while the editor is open is kept.
 - **A pH jump is caught while the hub's own pH dose settles** (RAT-042,
   RAT-044): after its own pH dose, the hub took any pH change as expected
   for the whole wait after the dose plus a minute (6 min by default), so a
@@ -376,7 +394,12 @@ a device in the home network, and a device already signed in kept its
 session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
 each with the password, and whoever has the password can already stop,
 switch or change it; the fifth, like the first, concerns the hub's own
-probes. No GHSA or CVE is issued.
+probes; the sixth needs a device in the home network before the owner sets
+the first password, and the Home Assistant app switches nothing; the
+seventh needs a Linux x86-64 host with an AMD Zen 5 processor without
+AMD's fix, and even there a session token or salt is only partly
+predictable. No GHSA or CVE of our own is issued; the seventh follows from
+AMD's CVE-2025-62626.
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -419,6 +442,27 @@ probes. No GHSA or CVE is issued.
   jump in the last minutes of another announcement (after a mix or hand
   dose, the inlet, an EC round or a probe calibration) is still taken as
   explained; that stays open.
+- **Nobody else can set the Home Assistant app's first password** (#79,
+  SD-068): until the owner set it, any device in the home network could
+  set it first, see the names of Home Assistant's sensors and the values of
+  those it could pick, and lock the owner out until the app was
+  reinstalled. The app now prints a one-time setup code to its log, which
+  only Home Assistant's administrators, and apps they gave that right, can
+  read, and the first password needs it. The code has 80 bits, is kept
+  in memory only and is used up by the password; a restart makes a new
+  one. Wrong codes lock nobody out and are logged at most once per 15
+  minutes.
+- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
+  CVE-2025-62626): the Home Assistant app and the simulator took the
+  random numbers for session tokens and password salts from
+  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
+  instruction first. AMD Zen 5 processors without AMD's fix can return
+  zeros there while reporting success, so on such a host part of a session
+  token could be zero and easier to guess. They now come from the
+  operating system (`getentropy()`), as does the setup code. Not affected:
+  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
+  microcode or BIOS fix. Nothing to do after the update: the restart ends
+  every old session, and salts need not be secret.
 
 A protective cut-off relaxed on purpose:
 
@@ -437,6 +481,15 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **A Stop holds even when booking the running dose fails** (RAT-036):
+  a Stop booked the running dose and ended the job before it switched the
+  inlet, the circulation pump and the sockets off. An error while booking
+  left them on and the Stop unsaved, and the app showed an internal error.
+  Now the Stop takes effect, everything goes off and the Stop is saved
+  first; the gateway refuses any start meanwhile. A dose that cannot be
+  booked is dropped, so nothing of it runs or is booked later, and the log
+  says "Emergency stop: dose not fully counted" with the bottle, what to
+  check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
   page in use; now a page in use renews it (`GET /auth/session` sends it

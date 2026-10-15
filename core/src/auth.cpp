@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "gc/messages.hpp"
 #include "gc/sha256.hpp"
 
 namespace gc {
@@ -31,8 +32,37 @@ std::string Auth::hashOf(const std::string& pw, const std::string& saltHex, std:
   return toHex(dk.data(), dk.size());
 }
 
-Msg Auth::setInitialPassword(const std::string& pw) {
+// 16 characters of 32 without 0, 1, I and O (80 bits), shown in groups of four.
+std::string Auth::armSetupCode(Ms now, Ms validFor) {
+  if (hasPassword()) return {};
+  static constexpr char kAlphabet[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  std::uint8_t r[16];
+  rng_(r, sizeof r);
+  setupCode_.clear();
+  for (std::uint8_t b : r) setupCode_ += kAlphabet[b & 31];  // 256 is a multiple of 32: no bias
+  setupCodeUntil_ = validFor > 0 ? now + validFor : 0;
+  std::string shown;
+  for (size_t i = 0; i < setupCode_.size(); ++i) shown += (i > 0 && i % 4 == 0 ? "-" : "") + setupCode_.substr(i, 1);
+  return shown;
+}
+
+bool Auth::logWrongSetupCode(Ms now) {
+  if (wrongLogged_ && now - *wrongLogged_ < 15 * kMinute) return false;
+  wrongLogged_ = now;
+  return true;
+}
+
+Msg Auth::setInitialPassword(const std::string& pw, const std::string& code, Ms now) {
   if (hasPassword()) return {"auth.exists", "Passwort ist bereits gesetzt", json::object()};
+  if (setupCodeRequired()) {  // before the password's hash: a wrong code costs nothing
+    std::string typed;  // as it comes from the log: any case, dashes or white space between the groups
+    for (char ch : code)
+      if (ch != '-' && !std::isspace(static_cast<unsigned char>(ch))) typed += static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    if (!sameHash(typed, setupCode_) || (setupCodeUntil_ > 0 && now >= setupCodeUntil_)) {
+      wrongCodes_++;
+      return say("auth.code");
+    }
+  }
   Msg m = checkStrength(pw);
   if (!m.key.empty()) return m;
   std::uint8_t salt[16];
@@ -40,6 +70,7 @@ Msg Auth::setInitialPassword(const std::string& pw) {
   salt_ = toHex(salt, sizeof salt);
   iterations_ = kIterations;
   hash_ = hashOf(pw, salt_, iterations_);
+  setupCode_.clear();
   return {};
 }
 

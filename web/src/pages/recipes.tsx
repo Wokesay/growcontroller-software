@@ -9,6 +9,14 @@ import { num } from "../format";
 import { canisters, catalog, readOnly, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
 
+// At or below this, a stock counts as booked below zero, as on the hub
+// (kStockBelowZeroMl, SD-066).
+const STOCK_BELOW_ZERO_ML = -0.5;
+const belowZero = (ml: number | null): boolean => ml !== null && ml <= STOCK_BELOW_ZERO_ML;
+// A stock booked below zero is not offered back as a value: the field stays
+// empty, so saving keeps it until the user enters what is there; a rounding
+// difference just under zero is offered as 0.
+const editableStock = (ml: number | null): number | null => (ml === null ? null : belowZero(ml) ? null : Math.max(0, ml));
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0", "#9a8a2c", "#6b7280"];
 
 const KIND: Record<Canister["kind"], TextKey> = { nutrient: "setup.nut.kindNutrient", ph_down: "setup.nut.kindPhDown", ph_up: "setup.nut.kindPhUp" };
@@ -174,8 +182,11 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
     pair: p.can?.pair ?? "",
     color: p.can?.color ?? COLORS[canisters.value.length % COLORS.length],
     capacityMl: p.can?.capacityMl ?? (1000 as number | null),
-    stockMl: (p.can ? st.stock[p.can.id] : 1000) as number | null,
+    stockMl: (p.can ? editableStock(st.stock[p.can.id] ?? null) : 1000) as number | null,
   });
+  // The amount left is sent only when it was changed here: a dose booked while
+  // the editor is open is not undone by saving a new name (SD-066)
+  const [stockOpened] = useState(v.stockMl);
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
   // Leaving its pair takes the label from a partner left alone (#152), as removing does
   const oldPair = p.can?.pair ?? "";
@@ -194,7 +205,8 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
             variant="primary"
             aria-describedby={unpairs ? "bottle-unpairs" : undefined}
             onClick={async () => {
-              await post("/canisters", { id: p.can?.id, ...v, pair: v.kind === "nutrient" ? v.pair : "" });
+              const stockMl = p.can && v.stockMl === stockOpened ? null : v.stockMl;
+              await post("/canisters", { id: p.can?.id, ...v, stockMl, pair: v.kind === "nutrient" ? v.pair : "" });
               await refreshConfig();
               await refreshState();
               toast(t("recipes.bottleSaved"));
@@ -235,8 +247,15 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         <Field label={t("recipes.bottleSize")}>
           <NumberInput value={v.capacityMl} onValue={(x) => set("capacityMl", x)} unit="ml" />
         </Field>
-        <Field label={t("recipes.stockNow")} hint={t("recipes.stockNowHint")}>
-          <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" />
+        <Field
+          label={t("recipes.stockNow")}
+          hint={
+            p.can && belowZero(st.stock[p.can.id] ?? null)
+              ? t("recipes.stockBelowZero", { ml: num(st.stock[p.can.id], 0) })
+              : t("recipes.stockNowHint")
+          }
+        >
+          <NumberInput value={v.stockMl} onValue={(x) => set("stockMl", x)} unit="ml" name="canister-stock" />
         </Field>
       </div>
       <div class="row">
@@ -392,9 +411,11 @@ export function RecipesPage() {
                     <td data-label={t("recipes.stock")}>
                       <div class="row" style="gap:8px;flex-wrap:nowrap">
                         <div class={`bar ${ml !== null && ml < (k.kind === "nutrient" ? 150 : 20) ? "low" : ""}`} style="width:80px">
-                          <span style={`width:${k.capacityMl && ml !== null ? Math.min(100, (ml / k.capacityMl) * 100) : 0}%`} />
+                          <span style={`width:${k.capacityMl && ml !== null ? Math.max(2, Math.min(100, (ml / k.capacityMl) * 100)) : 0}%`} />
                         </div>
-                        <span class="small num nowrap">{ml === null ? "?" : `${num(ml, 0)} ml`}</span>
+                        <span class="small num nowrap" style={belowZero(ml) ? "color:var(--bad)" : undefined}>
+                          {ml === null ? "?" : `${num(ml, 0)} ml`}
+                        </span>
                       </div>
                     </td>
                     <td class="num nowrap full actions">

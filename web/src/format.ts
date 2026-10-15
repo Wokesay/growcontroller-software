@@ -18,7 +18,8 @@ export function num(v: number | null | undefined, decimals = 1): string {
     f = new Intl.NumberFormat(locale(), { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     nf.set(key, f);
   }
-  return f.format(v);
+  // -0.3 rounds to "-0", which is no value of its own; drop the sign then
+  return f.format(v).replace(/^[-\u2212](0(?:[.,]0+)?)$/, "$1");
 }
 
 // A plain number in the language of the page (5,8 / 5.8), with as many

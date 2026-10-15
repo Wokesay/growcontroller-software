@@ -6,6 +6,7 @@
 
 #include <array>
 #include <deque>
+#include <functional>
 #include <map>
 #include <optional>
 #include <random>
@@ -136,6 +137,9 @@ class World {
   // Pumpen
   bool startRun(const std::string& capId, Ms ms, const std::string& jobId, std::string& err);
   void stopAllPumps();
+  // Test seam: called each time the hub reads a cap's run status, as it does to book a run, so a
+  // test can see what was switched at that moment or make the read fail. Empty in the simulator.
+  std::function<void(const std::string& capId)> onRunStatus;
 
   void fill(double volumeL, double ec, double ph);
   json toJson() const;

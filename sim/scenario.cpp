@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -17,6 +18,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/random.h>  // getentropy
+#endif
 #endif
 
 namespace sim {
@@ -227,12 +231,24 @@ gc::Epoch realNow() {
   return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void randomBytes(std::uint8_t* p, size_t n) {
-  static std::random_device rd;
-  for (size_t i = 0; i < n; ++i) p[i] = static_cast<std::uint8_t>(rd());
-}
-
 }  // namespace
+
+void randomBytes(std::uint8_t* p, size_t n) {
+#ifdef _WIN32
+  static std::random_device rd;  // MSVC: the system's generator (rand_s)
+  for (size_t i = 0; i < n; ++i) p[i] = static_cast<std::uint8_t>(rd());
+#else
+  while (n > 0) {
+    const size_t k = std::min<size_t>(n, 256);  // getentropy's limit per call
+    if (getentropy(p, k) != 0) {
+      std::perror("getentropy");
+      std::abort();
+    }
+    p += k;
+    n -= k;
+  }
+#endif
+}
 
 Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::builtin()) {
   bool fresh = true;
