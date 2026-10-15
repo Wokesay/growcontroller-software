@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The modules the bundler puts into the app are our sources and the packages
-// the web SBOM lists (`npm sbom --omit dev`), none of a build tool (PD-228,
-// SD-073). Rolldown, Oxc and Vite add modules of their own when the code
+// The modules the bundler puts into the app are our sources and the runtime
+// packages of web/package-lock.json, which the web SBOM is to list, none of a
+// build tool (PD-228, SD-073). Rolldown, Oxc and Vite add modules of their own when the code
 // needs them: Rolldown its runtime helpers (CommonJS interop and namespace
 // objects), Oxc its syntax-lowering helpers, Vite its preload helper and
 // polyfill. A Vite plugin looks at every module of every chunk, which the
@@ -22,7 +22,7 @@ const HELPERS = [
   [/vite\/modulepreload-polyfill/, "Vite's modulepreload polyfill: keep build.modulePreload.polyfill off"],
 ];
 const TOOL = "code of a build tool: find what brings it in and keep it out of the app";
-const PACKAGE = "is a build-time package, not in the web SBOM: keep it out of the app, or make it a runtime dependency";
+const PACKAGE = "is a build-time package: keep it out of the app, or make it a runtime dependency";
 
 const shown = (id) => id.replace(/\0/g, "\\0");
 const clean = (id) => id.split(/[?#]/)[0];
@@ -103,7 +103,7 @@ export function toolCodeGuard({ root, lock, entry } = {}) {
         for (const p of shippedProblems(ids, web, pkgs)) found.push(`${file}: ${p}`);
       }
       if (!entrySeen) found.push(`nothing checked: no chunk lists ${nodePath.relative(web, main).split(nodePath.sep).join("/")} among its modules`);
-      if (found.length) this.error(`Build tool code in the app (PD-228, SD-073):\n- ${found.join("\n- ")}`);
+      if (found.length) this.error(`Modules in the app that are neither our sources nor its runtime packages (PD-228, SD-073):\n- ${found.join("\n- ")}`);
     },
   };
 }

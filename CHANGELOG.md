@@ -496,8 +496,9 @@ A protective cut-off relaxed on purpose:
 Hardening, without a vulnerability behind it:
 
 - **The web build checks every module the bundler puts into the app**
-  (#190, PD-228, SD-073): the web SBOM lists the app's runtime packages,
-  and the build searched the output only for three markers of Vite.
+  (#190, PD-228, SD-073): the app's code is to come only from our
+  sources and the runtime packages of the lockfile, and the build
+  searched the output only for three markers of Vite.
   Rolldown's runtime helpers or a build-time package leave no such marker
   in minified code. The build now looks at every module of every chunk
   and fails on one that is neither our source nor a runtime package of
