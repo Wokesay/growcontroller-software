@@ -2,6 +2,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
+import { toolCodeGuard } from "./scripts/tool-code-guard.mjs";
 
 // Source revision for the source code link in the app (AGPL-3.0 §13): a
 // release or CI sets GC_SOURCE_REV to the commit; else GITHUB_SHA; locally the
@@ -25,7 +26,7 @@ function sourceRev(): string {
 const target = process.env.GC_SIM ?? "http://127.0.0.1:8080";
 
 export default defineConfig({
-  plugins: [preact()],
+  plugins: [preact(), toolCodeGuard()],
   define: { __GC_SOURCE_REV__: JSON.stringify(sourceRev()) },
   build: {
     target: "es2020",

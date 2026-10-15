@@ -38,8 +38,12 @@ details confidential until disclosure.
 |---|---|
 | 0.x (prototype) | only the latest pre-release, including the Home Assistant app: a fix comes in the next pre-release; do not dose or switch real hardware with it |
 
-The support period for sold devices will be set before the first sale (at
-least 5 years, CRA Art. 13).
+**Support period for devices:** every board with our firmware gets
+security updates for 7 years from the delivery of that board, also boards
+delivered before 2027-12-11. The end is stated per delivery year and falls
+in December: a board delivered in 2028 gets security updates until at
+least 12/2035. The web app will show the end date for your device and a
+notice once it has passed (CRA Art. 13(19)).
 
 Background: [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md),
 [`docs/RELEASE.md`](docs/RELEASE.md).
