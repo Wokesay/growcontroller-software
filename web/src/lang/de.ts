@@ -213,7 +213,7 @@ export const deBase = {
   "setup.done.laterDevices": "Geräte erweitern",
   "setup.done.laterDevicesText": "Weitere Steckdosen und Sensorköpfe, z. B. Füllstand oder pH/EC.",
   "setup.done.laterFunctions": "Funktionen",
-  "setup.done.laterFunctionsText": "Automatisch nachregeln, nachfüllen, Watchdog.",
+  "setup.done.laterFunctionsText": "Automatisch nachregeln, nachfüllen, überwachen.",
   "setup.done.laterProbes": "Sonden kalibrieren",
   "setup.done.laterProbesText": "pH und EC, damit der Hub regeln kann.",
   "setup.side.missing": "Für „Nährlösung mischen“ fehlt noch",

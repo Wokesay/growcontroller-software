@@ -1481,7 +1481,7 @@ Result Hub::importConfig(const json& j) {
     }
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
-    return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
+    return Result::fail(409, "job.busy", "Es wird gerade dosiert oder gemischt – lade die Einstellungen danach");
   act_.stopAll(cat_, cfg_, clock_.nowMs());
   // A socket that loses its fan role goes back to "off after power loss";
   // every switched socket in the import gets the setting of its role.
@@ -1532,7 +1532,7 @@ Result Hub::mixPlan(const json& req) {
 
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
+  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft schon ein Mischlauf, eine Handgabe, ein Einmessen oder ein Schlauchfüllen");  // kein Doppelstart (RAT-003)
   // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
@@ -2071,7 +2071,7 @@ Result Hub::probeCalibration(const json& j) {
 Result Hub::ackLatch(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = rt_.latches.find(id);
-  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Keine solche Rastung");
+  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Diese Sperre ist schon aufgehoben");
   if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
   rt_.latches.erase(it);
   stateDirty_ = true;
