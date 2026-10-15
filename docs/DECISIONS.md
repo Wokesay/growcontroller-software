@@ -2649,10 +2649,11 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   compilers and base images with their digests, as a plain file with the
   header "not an SBOM, not shipped", part of `SHA256SUMS` and the
   attestation. No second "build" SBOM, and no `scope: excluded` in one.
-- **Open on the software side** (proposals to the project owner): how
-  the build inputs Dependabot does not watch are tracked
-  (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
-  and whether a CVE in a build tool counts as a security item (PD-220).
+- **Decided on the software side** (proposals to the project owner,
+  decided on 2026-10-15, SD-079 points 5 and 6): how the build inputs
+  Dependabot does not watch are tracked (`cmake/deps.cmake`, the ESP-IDF
+  image, the unpinned Alpine packages), and whether a CVE in a build tool
+  counts as a security item (PD-220).
 - **Open on the product side:** what the implementing act on the SBOM
   format (CRA Art. 13(24)) will require.
 - **Done: the build checks every module the bundler puts into the app.**
@@ -2934,7 +2935,6 @@ is re-evaluated in the product repository and is not part of this entry.
   port, a switch for its data lines, or USB-OTG in operation (above);
   where the label goes; the packing step that writes the support end.
 
----
 
 ## SD-077: Product requirement (from PD-225): the Home Assistant app behind Ingress; a password of its own only for direct access
 
@@ -3071,32 +3071,6 @@ leaves `stage: experimental`.
   a saved port mapping overrides the default:
   <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/apps/app.py>.
 
----
-
-## Drafts (waiting for "entschieden")
-
-| # | Draft | Core | Needs PD |
-|---|---|---|---|
-| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
-| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
-| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
-| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
-| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
-| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
-| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
-| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
-| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
-| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
-| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
-| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
-| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
-| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
-| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
-
-Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
-`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.
-
----
 
 ## SD-078: A session claims an issue before it works on it
 
@@ -3184,3 +3158,139 @@ is therefore a comment that names its session, and the label
   without code). SD-061 rejected reserving SD numbers through issues;
   here the issue is the work item itself, and the comment order settles
   a race.
+
+
+## SD-079: Product requirement (from PD-220): a GitHub advisory for every exploitable security item
+
+Recorded on 2026-10-15 from #190, section 1 (SD-029); the software side's
+proposals decided by the project owner on 2026-10-15 in the software
+session, after `security`'s proposals.
+
+- **The requirement:** every fixed security item gets its own GitHub
+  Security Advisory (GHSA) in this repository, not only an entry in the
+  release notes; this includes the seven items of the next release, which
+  affect 0.1.0-proto.2 to 0.1.0-proto.4. Point 1 below limits this to
+  vulnerabilities until product question #200 is answered; if #200 says
+  the other items are vulnerabilities too, they get advisories as well. The release notes give per item
+  what it is, the affected versions, the impact, the severity and the
+  remedy, the form of CRA Annex I, Part II (4). The severity is rated per
+  item. The changelog no longer says that no GHSA or CVE of our own is
+  issued.
+- **Reporting (CRA Art. 14, the product side's assumption):** at the
+  latest from the first offer or the first device lent, actively
+  exploited vulnerabilities and severe incidents are reported to the
+  coordinating CSIRT and ENISA (an early warning within 24 hours, a
+  notification within 72 hours, a final report within 14 days of a fix or
+  mitigation for a vulnerability and within a month of the notification
+  for an incident), and users are informed. None of the
+  seven items is reportable. `SECURITY.md` keeps the voluntary commitment
+  to report until then.
+
+The software side's proposals, as decided:
+
+1. **Which items get an advisory:** a vulnerability, that is a flaw that
+   someone without the needed rights can trigger: a device in the
+   network, a crafted file or another input. A fix in the Security
+   section that normal use, a faulty probe or someone with the password
+   triggers gets no advisory; it is listed there with the same fields, in
+   a block "Safety and robustness fixes, no vulnerability". Product
+   question #200 asks whether such defects are vulnerabilities under the
+   CRA; until it is answered, this split applies.
+2. **When advisories are published:** the drafts are kept private until
+   the release with the fix passes part two of its acceptance (SD-065),
+   then published. If that release takes longer than 30 days after the
+   fix is on `main`, the advisory is published anyway, with "fixed in the
+   next release" and the workaround; for the items of 0.1.0-proto.5 the
+   date is 2026-11-14, 30 days after this decision. Home Assistant's
+   ingress (PD-225, #190 section 2) does not hold up the security fixes: if needed,
+   0.1.0-proto.5 ships without it.
+3. **CVEs:** for each vulnerability of our own we request a CVE from
+   GitHub, which is a CVE Numbering Authority. The project owner requests it in the
+   advisory form at least 3 working days before the tag; GitHub's review
+   takes about 72 hours. A flaw that comes from a component (a library,
+   the processor) gets no CVE of its own; its advisory names the
+   component's CVE.
+4. **Telling users:** the Home Assistant app gets `ha/app/CHANGELOG.md`,
+   with a section per release that lists the security items first, with
+   their GHSA links; Home Assistant shows it in the update dialog. The
+   app's `DOCS.md` gets a section "Security updates". The web app's
+   settings get a fixed link "Security advisories" to this repository's
+   advisories, with no network call. Later the firmware marks an update
+   with its severity and GHSA link.
+5. **Components Dependabot does not watch** (PD-228, SD-075): a weekly
+   scheduled job, without write rights and without secrets, checks
+   OSV.dev for cpp-httplib and nlohmann/json, and Alpine's security
+   database (secdb) for the packages in the last app image; a failed run
+   mails the project owner. Inputs used only to build (doctest,
+   `registry:2`, and the ESP-IDF image until the firmware ships) stay
+   checked by hand at every release. Once the firmware ships, ESP-IDF's
+   libraries ship in it and join the weekly job. Before the first
+   firmware release, ESP-IDF moves to a current v5.4.x or newer.
+6. **A CVE in a build tool** (PD-228, SD-075; for example Vite,
+   TypeScript, a compiler) is a security item with an advisory of its own
+   only if the tool's code ships (then it is a component), or if the CVE
+   could have changed a published artifact: then the artifacts are
+   checked, and it may be a severe incident under CRA Art. 14. Otherwise
+   the tool is updated and listed under Security › "Hardening, without a
+   vulnerability behind it", with the CVE or GHSA and "no published
+   version affected".
+
+- **The items of 0.1.0-proto.5** (`security`'s ratings, CVSS 3.1; the
+  product side's estimate for A and C was the same):
+  - A. Any device in the home network could set the Home Assistant
+    app's first password (#79, SD-068): 6.4 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`, CWE-1188. A CVE from GitHub.
+  - B. A crafted backup could make a pH calibrated in Home Assistant
+    count as checked by the hub (SD-041): 3.3 low,
+    `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`, CWE-807. A CVE from GitHub.
+  - C. A device guessing the password locked every other device out of
+    signing in (SD-051): 4.3 medium,
+    `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`, CWE-645. A CVE from GitHub.
+  - D. Session tokens partly predictable on AMD Zen 5 hosts without
+    AMD's fix (RDSEED, SD-068): 4.2 medium,
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`, CWE-331. No CVE of its own; it
+    refers to CVE-2025-62626 (AMD-SB-7055).
+  - No advisory: two defects in the sensor truth's jump check (RAT-042),
+    in the simulator only, triggered by normal use or a faulty probe; a
+    session ended at random, which needs the password.
+
+  All four: affected up to 0.1.0-proto.4 (published: proto.2 to
+  proto.4), patched in 0.1.0-proto.5. `qa` confirmed the range on
+  2026-10-15 with each fix's test, or one adapted to the older code,
+  against builds of v0.1.0-proto.2 and v0.1.0-proto.4 (proto.3 changed
+  none of them; RDSEED by the code): all seven items of the Security
+  section affect proto.2 to proto.4. Later items get the same check
+  before they are published.
+- **Open:** product question #200 (point 1); on the product side, what
+  counts as the first offer, which CSIRT coordinates (probably the BSI),
+  and a lawyer's view of Art. 14.
+- **Where:** in this pull request the changelog's Security section (its
+  blocks, the fields per item), `SECURITY.md` (advisories, what triggers
+  reporting, severe incidents) and `docs/RELEASE.md` (the advisory
+  steps). In later pull requests `ha/app/CHANGELOG.md`, the section in
+  `ha/app/DOCS.md`, the link in the web app and the weekly job.
+
+---
+
+## Drafts (waiting for "entschieden")
+
+| # | Draft | Core | Needs PD |
+|---|---|---|---|
+| E1 | Standalone software | Web app on the hub, without cloud and account. Home Assistant only optional via MQTT, then read-only with a few commands; logic never lives in HA. | decided: PD-013 |
+| E2 | Platform ESP32-S3, option C | Control, safety, API, web UI and 1 year of history on the ESP32-S3-WROOM-1-N16R8. No Linux in the hub. Optional "companion" (Docker/NAS/HA add-on) only for convenience. | decided: PD-014 (confirmed by PD-038) |
+| E3 | One core, two platforms | C++17 without platform headers; host simulator as a digital twin; ESP-IDF instead of Arduino; re-evaluate Rust later. | no |
+| E4 | Web app | Preact + TypeScript + Vite, gzip in the app image (atomic update, rollback takes the UI along), budget 250 KB, live via SSE, hash routing, no external resources. | no |
+| E5 | Configuration model | Catalog as data with fixed kinds of prerequisites; roles bound to the device ID; two state axes (setup/run time); phases as parameter sets; run-time state separate from the configuration. | no |
+| E6 | Architecture rules R1–R8 | Gateway is the only actuator path; watchdog sees only the read model; a missing value is never 0; after a restart everything is off; the catalog can only tighten safety; one event loop with an injected clock. CI checks them by machine. | no |
+| E7 | No dosing without a calibration value | stricter than RAT-015; gateway and planning refuse | decided: PD-015 |
+| E8 | Stage 0 does not dose pH blindly | pH correction only with a secured measurement path (RAT-044); in stage 0 manual measurement and a hint | decided: PD-016 |
+| E9 | Own repository | Private repository `Wokesay/growcontroller-software` (PD-017), moved with its history (PD-023); one-way mirror `ref/software/` in the product repository | decided: PD-017, PD-023 |
+| E10 | License | Decided differently: AGPL-3.0-or-later for firmware, UI, docs, catalog and templates; no CLA, no DCO (inbound = outbound); no dual licensing; additional permission under AGPL §7 for the binary-only ESP-IDF libraries; devices do not lock out the owner's own firmware. The draft had proposed GPL-3.0-or-later with DCO, Apache-2.0 for interfaces and CC BY-SA 4.0 for docs. | decided differently: PD-022, PD-032, PD-033 |
+| E11 | Free and subscription | Dropped: there is no subscription; all functions are free. | dropped: PD-024 |
+| E12 | Versions and updates | SemVer, Keep a Changelog with a "Security" section, self-describing versions without code names (PD-037), channels Stable, Beta and Development (PD-036, instead of stable/beta), GitHub Releases with SBOM and checksums, OTA A/B signed (the owner can still install their own firmware, PD-022), update only when idle, sign offline | channels: PD-036; signed OTA: PD-043/PD-047; SemVer: draft |
+| E13 | Access | Mandatory password before any function, PBKDF2, lockout after failed attempts; local HTTPS before the first device at third parties | no (required by EN 18031) |
+| E14 | Bug reports | technical issues via GitHub with forms; in the app "Report a problem" with a case number and diagnostic package, without telemetry | no |
+| E15 | Roles and flow | agents `triage`, `reviewer`, `qa`, `security`, `release`, `ux`, `domain`; flow in `WORKFLOW.md`; issue workflows read-only | no |
+
+Reasoning, options and sources: `CONCEPT.md`, `CONFIGURATION.md`,
+`RELEASE.md`, `SECURITY_MODEL.md`, `WORKFLOW.md`.

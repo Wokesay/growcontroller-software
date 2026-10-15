@@ -87,6 +87,17 @@ listed in every release under "Security".
   English issue labelled `product-question`. The product repository's
   session picks it up and decides it there (PD). The software session no
   longer accesses the product repository.
+- **A security advisory for every fixed vulnerability** (#190, SD-079,
+  from PD-220): a flaw that someone without the needed rights can
+  trigger gets a GitHub Security Advisory, with a CVE from GitHub or the
+  CVE of the component it comes from. It is published with the release
+  that fixes it; if that release takes longer than 30 days after the fix
+  is on `main`, it is published anyway, with a workaround. The Security
+  section names per item the affected versions, impact, severity and
+  remedy (`SECURITY.md`, `docs/RELEASE.md`). At the latest from the
+  first device offered or lent, actively exploited vulnerabilities and
+  severe incidents are reported under CRA Art. 14; until then we do so
+  voluntarily.
 - **Triage template (not active) only for people with a role** (#29):
   `docs/templates/claude-triage.yml` starts only for an issue opened by
   the owner, a member or a collaborator, or for "@claude" in their
@@ -524,37 +535,45 @@ listed in every release under "Security".
   and the build now fails if code of Vite shows up in the app again.
 
 ### Security
-Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4).
-Severity: low. The first concerns the hub's own probes, which only the
-simulator has so far; the second needed the password for an import, and
-nothing in the Home Assistant app reads a value to switch; the third needs
-a device in the home network, and a device already signed in kept its
-session and "Stop"; the fourth needs 16 other sign-ins within 12 hours,
-each with the password, and whoever has the password can already stop,
-switch or change it; the fifth, like the first, concerns the hub's own
-probes; the sixth needs a device in the home network before the owner sets
-the first password, and the Home Assistant app switches nothing; the
-seventh needs a Linux x86-64 host with an AMD Zen 5 processor without
-AMD's fix, and even there a session token or salt is only partly
-predictable. No GHSA or CVE of our own is issued; the seventh follows from
-AMD's CVE-2025-62626.
+Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4),
+fixed in this release. Each item names its affected versions, impact,
+severity and remedy (SD-079). Four are vulnerabilities: someone without
+the needed rights, a device in the network or a crafted file, could
+trigger them. Each gets a GitHub Security Advisory (GHSA), published
+with this release; we request a CVE from GitHub for the three of our own,
+and the fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
+fixes: normal use, a faulty probe or someone with the password triggers
+them, so they get no advisory.
 
-- **An abandoned probe calibration no longer keeps jump checks off:** a
-  calibration window closed without saving left the calibration open on
-  the hub until a restart; meanwhile jumps of that probe were taken as the
-  calibration (RAT-042). A calibration now ends when its window closes and
-  with its device; one left for 30 min without a step no longer explains
-  jumps, while pH and EC control keep waiting until it is saved or
-  cancelled, since the probe may still be in a buffer.
-- **An import could show a pH calibrated in Home Assistant as checked**
-  (SD-041): a device whose reported class differs from the configured one
-  now has no value, and an import gives a calibration only to a class that
-  offers it.
+Vulnerabilities, each with an advisory:
+
+- **Nobody else can set the Home Assistant app's first password** (#79,
+  SD-068): until the owner set it, any device in the home network could
+  set it first, see the names of Home Assistant's sensors and the values of
+  those it could pick, change the app's settings, and lock the owner out
+  until the app was reinstalled. The app now prints a one-time setup code to its log, which
+  only Home Assistant's administrators, and apps they gave that right, can
+  read, and the first password needs it. The code has 80 bits, is kept
+  in memory only and is used up by the password; a restart makes a new
+  one. Wrong codes lock nobody out and are logged at most once per 15
+  minutes.
+  - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: needs a device in the home network before the owner sets the
+    first password; the Home Assistant app switches nothing.
+  - Severity: medium, CVSS 3.1 6.4
+    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`), CWE-1188.
+  - Remedy: update to 0.1.0-proto.5. The update keeps a password that is
+    already set: if you did not set it yourself, reinstall the app or
+    restore a backup made before that password was set, then set the
+    password or update at once. On an older version, set the password
+    right after installing.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
-  a device in the network that sent a wrong password every 15 minutes kept
-  every other one from signing in, the owner's phone included, and so from
-  "Stop" unless it was still signed in. Now a device that has signed in
+  a device in the network that, after about ten wrong passwords, sent one
+  every 15 minutes kept every other one from signing in, the owner's phone
+  included, and in the simulator from "Stop" unless it was still signed
+  in. Now a device that has signed in
   since the hub last started has its own count, so guessing from another
   address no longer locks it out; all devices that never signed in share
   one count, so guessing from many of them stays as slow as from one. The
@@ -563,11 +582,84 @@ AMD's CVE-2025-62626.
   device that changed the password keeps its own count. Only counted
   failures are written to the event log: neither a try refused during the
   wait nor one before the first password is.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: needs a device in the home network (for the simulator only
+    when it was started with `--host`); a device already signed in kept
+    its session and, in the simulator, "Stop".
+  - Severity: medium, CVSS 3.1 4.3
+    (`CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`), CWE-645.
+  - Remedy: update to 0.1.0-proto.5. Until then, keep the devices you
+    need signed in; "Sign-in failed" in the event log shows when someone
+    guesses, not from which device, so look for an unknown device in your
+    router's list of connected devices.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
+  CVE-2025-62626): the Home Assistant app and the simulator took the
+  random numbers for session tokens and password salts from
+  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
+  instruction first. AMD Zen 5 processors without AMD's fix can return
+  zeros there while reporting success, so on such a host part of a session
+  token could be zero and easier to guess. They now come from the
+  operating system (`getentropy()`), as does the setup code. Not affected:
+  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
+  microcode or BIOS fix. Nothing to do after the update: the restart ends
+  every old session, and salts need not be secret.
+  - Affected: the Home Assistant app on amd64 and the simulator on Linux
+    x86-64, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: needs a Linux x86-64 host with an AMD Zen 5 processor without
+    AMD's fix (for the simulator also a start with `--host`), and even
+    there a session token or salt is only partly predictable.
+  - Severity: medium, CVSS 3.1 4.2
+    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-331.
+  - Remedy: update to 0.1.0-proto.5. Until then, install AMD's microcode
+    or BIOS fix.
+  - Advisory: a GHSA, published with this release; no CVE of its own, it
+    refers to CVE-2025-62626.
+- **An import could show a pH calibrated in Home Assistant as checked**
+  (SD-041): a crafted backup could give a Home Assistant pH sensor the
+  class of the hub's own pH probe, with a calibration; its values then
+  showed as checked by the hub ("Valid", without "Calibrated elsewhere")
+  and counted as usable until the app restarted. Now a device whose
+  reported class differs from the configured one has no value, and an
+  import gives a calibration only to a class that offers it.
+  - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: a crafted backup; the owner must import it, which needs the
+    password, and the Home Assistant app cannot switch anything.
+  - Severity: low, CVSS 3.1 3.3
+    (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-807.
+  - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
+    made yourself.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+
+Safety and robustness fixes, no vulnerability:
+
+- **An abandoned probe calibration no longer keeps jump checks off:** a
+  calibration window closed without saving left the calibration open on
+  the hub until a restart; meanwhile jumps of that probe were taken as the
+  calibration (RAT-042). A calibration now ends when its window closes and
+  with its device; one left for 30 min without a step no longer explains
+  jumps, while pH and EC control keep waiting until it is saved or
+  cancelled, since the probe may still be in a buffer.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4; in the Home
+    Assistant app only through a crafted import.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5. Until then, restart the simulator
+    after a calibration you did not finish.
 - **A new sign-in ends the session used longest ago:** with 16 sessions
   open, a 17th sign-in ended a random one of them, so the phone someone was
-  using could be signed out and had to sign in again before it could reach
-  "Stop". Now the session used longest ago ends. Found through a test of the
+  using could be signed out and had to sign in again before it could
+  reach "Stop" in the simulator. Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: needs 16 other sign-ins within 12 hours, each with the
+    password, and whoever has the password can already stop, switch or
+    change it.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 - **A disturbed pH probe is no longer taken as the hub's own pH dose**
   (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
   until a minute after the dose's wait, against RAT-042, which keeps own pH
@@ -580,27 +672,11 @@ AMD's CVE-2025-62626.
   jump in the last minutes of another announcement (after a mix or hand
   dose, the inlet, an EC round or a probe calibration) is still taken as
   explained; that stays open.
-- **Nobody else can set the Home Assistant app's first password** (#79,
-  SD-068): until the owner set it, any device in the home network could
-  set it first, see the names of Home Assistant's sensors and the values of
-  those it could pick, and lock the owner out until the app was
-  reinstalled. The app now prints a one-time setup code to its log, which
-  only Home Assistant's administrators, and apps they gave that right, can
-  read, and the first password needs it. The code has 80 bits, is kept
-  in memory only and is used up by the password; a restart makes a new
-  one. Wrong codes lock nobody out and are logged at most once per 15
-  minutes.
-- **Random numbers no longer come through RDSEED** (AMD-SB-7055,
-  CVE-2025-62626): the Home Assistant app and the simulator took the
-  random numbers for session tokens and password salts from
-  `std::random_device`, which on Linux x86-64 tries the processor's RDSEED
-  instruction first. AMD Zen 5 processors without AMD's fix can return
-  zeros there while reporting success, so on such a host part of a session
-  token could be zero and easier to guess. They now come from the
-  operating system (`getentropy()`), as does the setup code. Not affected:
-  aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
-  microcode or BIOS fix. Nothing to do after the update: the restart ends
-  every old session, and salts need not be secret.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far; there, pH control dosed twice on the jumped reading.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 
 A protective cut-off relaxed on purpose:
 
