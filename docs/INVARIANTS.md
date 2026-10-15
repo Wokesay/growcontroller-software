@@ -156,3 +156,4 @@ dedicated test or with a deviation · **○** open.
 | Phases provide parameters, never names | RAT-076 | ✓ | `effectiveParams` · test_catalog_config M15-1; `arch_check.sh` R4 |
 | Harvest is an event; "completed" is a state of its own | RAT-077, RAT-002 | ◐ | `growHarvest`, `growComplete` |
 | Stop is an active, idempotent cascade | RAT-036 | ✓ | `Hub::stop` · test_scenarios; second stage after 30 s open |
+| Stop takes effect and switches everything off before the running dose is booked; a dose that cannot be booked is dropped without further booking (nothing of it runs or is booked later) and reported (not for calibration and priming runs, which book nothing), the Stop stays in force and saved, the job ends | RAT-036, proposal by `security` | ✓ | `Hub::stop` · test_scenarios "Scenario: a Stop switches everything off before it books the running dose, and holds if booking fails (RAT-036)" |

@@ -107,6 +107,7 @@ bool SimBus::startRun(const std::string& pump, gc::Ms ms, const std::string& job
 }
 
 gc::RunStatus SimBus::runStatus(const std::string& pump) const {
+  if (w_.onRunStatus) w_.onRunStatus(pump);
   gc::RunStatus st;
   Device* block = nullptr;
   Cap* c = w_.cap(pump, &block);

@@ -463,6 +463,15 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **A Stop holds even when booking the running dose fails** (RAT-036):
+  a Stop booked the running dose and ended the job before it switched the
+  inlet, the circulation pump and the sockets off. An error while booking
+  left them on and the Stop unsaved, and the app showed an internal error.
+  Now the Stop takes effect, everything goes off and the Stop is saved
+  first; the gateway refuses any start meanwhile. A dose that cannot be
+  booked is dropped, so nothing of it runs or is booked later, and the log
+  says "Emergency stop: dose not fully counted" with the bottle, what to
+  check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
   page in use; now a page in use renews it (`GET /auth/session` sends it

@@ -647,6 +647,17 @@ void Doser::abort(const Ctx& c, Actuators& act, const Msg& reason) {
   active_.reset();
 }
 
+void Doser::drop(Actuators& act) {
+  if (active_) act.clearRun(active_->step.pump);
+  active_.reset();
+  running_ = false;
+  finished_.reset();
+  try {  // a repeat: the Stop switched the pumps off just before
+    act.stopPumps();
+  } catch (...) {
+  }
+}
+
 std::optional<DoseProgress> Doser::takeFinished() {
   auto f = finished_;
   finished_.reset();

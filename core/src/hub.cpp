@@ -6,6 +6,7 @@
 #include <cmath>
 #include <set>
 #include <sstream>
+#include <string_view>
 
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -2045,24 +2046,53 @@ Result Hub::ackLatch(const std::string& id) {
 
 Result Hub::stop(const Msg& who) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Not-Halt: aktive Abschaltkaskade, idempotent (RAT-036)
+  // Stop: an active, idempotent shutdown (RAT-036). It takes effect and everything goes off
+  // first, as on an internal error: booking the running dose can then neither keep an output on
+  // nor switch one on (the gateway refuses while stopped).
+  const bool first = !stopped_;
+  stopped_ = true;
+  rt_.stopped = true;
+  const Ms stopAt = clock_.nowMs();
+  act_.stopAll(cat_, cfg_, stopAt);
+  saveState();  // at once: a power loss while the dose is booked keeps the stop
   Ctx c = ctx();
-  if (doser_.busy()) doser_.abort(c, act_, say("abort.stop"));
+  c.now = stopAt;  // a run counts until the stop, not until the sockets were switched
+  // When booking the running dose fails, the order is dropped unbooked, so nothing of it runs or
+  // is booked later, and that is reported below.
+  std::optional<DoseOrder> unbooked;
+  json reason;
+  if (doser_.busy()) {
+    const DoseOrder order = *doser_.active();
+    auto drop = [&](json why) {
+      doser_.drop(act_);
+      unbooked = order;
+      reason = std::move(why);
+    };
+    try {
+      doser_.abort(c, act_, say("abort.stop"));
+    } catch (const std::exception& e) {
+      std::string why;
+      for (const char ch : std::string_view(e.what()).substr(0, 200))
+        why += (ch >= 0x20 && ch < 0x7f) ? ch : '?';  // a technical text: printable ASCII only
+      drop(why.empty() ? json(say("abort.internal")) : json(why));
+    } catch (...) {
+      drop(say("abort.internal"));
+    }
+  }
   if (auto fin = doser_.takeFinished()) {
-    // Regler-Gaben gehören nicht zum Nutzerauftrag; die Regler werden unten zurückgesetzt.
+    // Controller doses are not part of the user's job; the controllers are reset below.
     const bool controllerDose = fin->orderId.rfind("ec-", 0) == 0 || fin->orderId.rfind("ph-", 0) == 0;
     if (job_ && !controllerDose) onJobDose(c, *fin);
   }
-  act_.stopAll(cat_, cfg_, clock_.nowMs());
   ec_.reset();
   ph_.reset();
   if (job_) finishJob("aborted", say("job.emergency_stop"));
-  const bool first = !stopped_;
-  // Saved before the slow socket writes, so a power loss meanwhile keeps the stop.
-  stopped_ = true;
-  rt_.stopped = true;
   saveState();
   if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
+  // Calibration and priming runs book no stock (RAT-070), so there is nothing to say for them
+  if (unbooked && unbooked->purpose != "calibration" && unbooked->purpose != "prime")
+    log_.add(clock_.epoch(), "system", "warn", say("ev.stop.unbooked"),
+             say("ev.stop.unbooked.text", {{"name", unbooked->step.name}, {"reason", reason}}), {{"canister", unbooked->step.canister}});
   saveEvents();
   // A manual emergency stop stops everything, also after a power loss
   // (PD-076). Written on every stop, so pressing it again retries a socket

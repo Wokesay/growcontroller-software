@@ -40,6 +40,7 @@ default password (EN 18031-1).
 | Flow rate of the caps | 42–53 ml/min, random per cap | RAT-054: 38–53 ml/min |
 | Run length of a cap | ends exactly at the requested time, with no overrun or stop volume | **Assumption**; real overrun is to be measured (SD-066 step 2) |
 | Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
+| Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
 | Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |
