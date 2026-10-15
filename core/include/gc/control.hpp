@@ -32,7 +32,7 @@ struct ControlEnv {
   Actuators& act;
   Doser& doser;
   SensorTruth& truth;
-  bool userJob = false;      // Mischlauf, Handgabe oder Einmessen aktiv
+  bool userJob = false;      // a mix, manual dose, pump calibration or tube priming is active
   bool circulationOn = false;
   double volumeL = kNaN;     // Füllstand, sonst bekanntes Volumen aus Mischläufen
   Epoch lastEcDoseAt = 0;

@@ -16,7 +16,7 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   // with numbers in the page language.
   await expect(page.getByTestId("watchdog")).toContainText(/Alles in Ordnung|Problem/);
   const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
-  await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
+  await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Freigabe nötig|Aus|Läuft|Füllt/);
   await expect.poll(lines).toMatch(/\d,\d/);
   expect(await lines()).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
   // Events too: the hub stores key and values, the page shows German.
@@ -32,7 +32,7 @@ test("English page: monitoring and control lines come in English from the hub (S
   const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
   await expect.poll(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
   await expect.poll(lines).toMatch(/\d\.\d/);
-  expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
+  expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Freigabe nötig|Läuft|Füllt/);
   await expect(page.getByTestId("event").filter({ hasText: "Signed in" }).first()).toBeVisible();
   await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" })).toHaveCount(0);
 });
@@ -237,6 +237,9 @@ test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await expect(page.getByTestId("metric-pH").getByText("Sprungsperre")).toBeVisible({ timeout: 30_000 });
   await page.goto("/#/tank");
   await expect(page.getByText(/sprang ohne Dosierung/).first()).toBeVisible();
+  // the lock list names the reading in words, never the internal key (#143)
+  await expect(page.getByText(/pH im Tank sprang unerwartet – frei nach 15/).first()).toBeVisible();
+  await expect(page.getByText(/jump\.tank\./)).toHaveCount(0);
   await page.request.post("/api/v1/sim/fault", { data: { device: head.id, fault: "none" } });
 });
 

@@ -64,6 +64,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plain words instead of developer terms** (#143, SD-055): in German,
+  locks now say "Freigabe nötig" and "Freigeben", as the help and the
+  English texts do, instead of "Gerastet" and "quittieren". The lock list
+  on Tank & control names the reading of a jump lock instead of an
+  internal key. Control lines, checklists, events and hints no longer say
+  "Sensorwahrheit", "Aktor-Gateway", "Notgrenze", "watchdog" or "job" /
+  "Auftrag"; the Overview no longer speaks of "Stufe 0", and Settings no
+  longer shows a rule number. Events say "Change no. 7" instead of
+  "Settings revision 7", and no longer name internal files when a saved
+  file cannot be read. Message keys stay, so on a German page events saved
+  before show the new words; on an English page they keep the old ones.
 - **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
   button, its question, the banner, Monitoring, the event log and every
   message call the function "Stop", in German "Stopp" or "Alles stoppen",
