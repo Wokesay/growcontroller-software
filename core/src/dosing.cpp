@@ -249,7 +249,7 @@ void Actuators::stopAll(const Catalog& cat, const Config& cfg, Ms now, bool keep
     if (keepPowerLossOn && rd->onAfterPowerLoss) return;
     std::string e;
     sw(b.device, b.channel, false, e);
-    offSince_[role] = now;  // Mindestpausen gelten auch nach Not-Halt und Neustart
+    offSince_[role] = now;  // minimum pauses also hold after a Stop and a restart
   });
   onSince_.clear();
 }

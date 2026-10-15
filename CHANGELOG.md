@@ -64,6 +64,16 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
+  button, its question, the banner, Monitoring, the event log and every
+  message call the function "Stop", in German "Stopp" or "Alles stoppen",
+  never "emergency stop" or "Not-Halt". Examples: "Stop everything?" /
+  "Alles stoppen?", "Stop active." / "Stopp aktiv.", "Stop cleared" /
+  "Stopp aufgehoben". The Home Assistant app's documentation says the
+  same. The message keys stay, so on a German page events saved before
+  show the new words too; on an English page they keep the old ones. A
+  mix refused during a Stop now says so in both languages; for API
+  clients its error key is `act.stopped` instead of `job.stopped`.
 - **Sessions claim an issue before working on it** (SD-078): parallel
   sessions had picked up the same issue. Before a session starts, it
   fetches the issue again and leaves it alone if a live claim or an open
@@ -647,7 +657,7 @@ Hardening, without a vulnerability behind it:
   Now the Stop takes effect, everything goes off and the Stop is saved
   first; the gateway refuses any start meanwhile. A dose that cannot be
   booked is dropped, so nothing of it runs or is booked later, and the log
-  says "Emergency stop: dose not fully counted" with the bottle, what to
+  says "Stop: dose not fully counted" with the bottle, what to
   check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a

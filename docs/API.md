@@ -109,7 +109,8 @@ When the dosing of a job step cannot start or go on (`/mix/start`,
 key `job.start_failed` and the cause as the message in `args.reason`,
 for example `dose.too_small` or `act.stopped` in `args.reason.key`.
 Checks of the request itself keep their own keys (for example
-`job.busy`, `dose.hand_limit`, `job.state`). Job messages (`job.message`) use their own keys,
+`job.busy`, `dose.hand_limit`, `job.state`); a mix started during a Stop
+is refused with `act.stopped` itself. Job messages (`job.message`) use their own keys,
 for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 `job.emergency_stop`.
 
@@ -123,7 +124,7 @@ for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
 | POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel. For a sensor on its own schedule (Home Assistant, SD-041) `point` answers with `pending {since, reference}`: the point is taken from the sensor's next report; with none within its freshness limit the session in the state carries `failed` (`probe.no_raw`) |
 | POST | `/latches/{id}/ack` | acknowledge a latch (a jump lock clears itself) |
-| POST | `/stop`, `/resume`, `/maintenance {minutes}` | emergency stop, resume, maintenance mode |
+| POST | `/stop`, `/resume`, `/maintenance {minutes}` | Stop, resume, maintenance mode |
 | POST | `/measure {ph, ec}` | manual measurement |
 | POST | `/grow/start`, `/grow/next`, `/grow/harvest`, `/grow/complete` | cultivation run |
 | POST | `/update/check`, `/update/install`, `/update/rollback` | install only while no dosing runs (409) |
