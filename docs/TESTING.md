@@ -74,12 +74,22 @@ ruleset on `main` requires `quick` and `ci-ok` (SD-027, SD-030).
   size, history read above 16 MB on the N32R16V; `GET /api/v1/auth/session`
   with a session sends the cookie again (`Max-Age=43200`, SD-064) through
   the ESP's web server.
-- Firmware tests for SD-076: the BOOT gestures (3 s, 10 s to 30 s,
-  acting on release, so holding to 10 s never opens the setup network;
-  held over 30 s does nothing and is reported; a restart ends what a
-  press started); the factory reset switches everything off first,
-  erases `history`, `storage` and NVS and leaves `fctry` and the apps
-  unchanged, also after a power cut or a watchdog reset halfway; a blank
+- Firmware tests for SD-076 and SD-080: the BOOT gestures (3 s, 8 s,
+  15 s, acting on release, so holding to 15 s opens neither the setup
+  network nor an access reset on the way; held over 30 s does nothing
+  and is reported; a restart ends what a press started); the factory
+  reset, from BOOT, the web app and the flash page, switches the board's
+  outputs and the plugs with a water or CO2 role off first, leaves light,
+  fans, room heater and air pump as they are and the drain pump on,
+  erases only after the confirmation within 30 s (also with a plug
+  missing), and without it erases nothing and control takes the plugs
+  back; no dose starts in the window; Home Assistant and API tokens
+  start neither reset; it erases `history`, `storage` and NVS with a new
+  random value for the storage keys and leaves `fctry` and the apps
+  unchanged, also after a power cut or a watchdog reset halfway; the
+  access reset's new password counts only after the short press, the
+  old one until then, a second request ends the window, and afterwards
+  all sessions, tokens and the Home Assistant key are invalid; a blank
   or broken `fctry` means a self-flashed device and is never erased;
   losing one of the first password's two stores gives 423; its window
   closes after 15 min and neither a restart nor a Wi-Fi rejoin reopens

@@ -2787,6 +2787,16 @@ is re-evaluated in the product repository and is not part of this entry.
     window (harder to remember, more mistakes); no upper limit for the
     factory reset (a stuck button would reset the device when it comes
     free).
+- Changed by SD-080 (PD-197 to PD-199, PD-217 to PD-219): the factory
+  reset starts with BOOT held 15 s, switches the plugs with a water or
+  CO2 role off first, and erases only after a short BOOT press within
+  30 s; the web app and our flash page run the same switch-off. This
+  replaces "held 10 s to 30 s: factory reset" here and the trigger in
+  "Factory data and factory reset" below. An access reset with BOOT held
+  long (proposed: 8 s) also replaces a password that is set, so "a
+  password that is set is never touched" no longer holds. Where this
+  entry names BOOT held for 10 s (the way out after a lost NVS, the
+  login page's "Not you?"), SD-080 applies.
 - **First password on a pre-flashed device** (PD-191, PD-192; changes
   SD-044 for these devices; self-flashed devices keep the token):
   - mandatory, cannot be skipped; set in the home network within 15 min
@@ -3065,6 +3075,231 @@ leaves `stage: experimental`.
   <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/const.py>;
   a saved port mapping overrides the default:
   <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/apps/app.py>.
+
+
+## SD-080: Product requirement (from PD-197 to PD-199, PD-217 to PD-219): factory reset after BOOT 15 s and a confirmation, plugs off first, what it erases, access reset
+
+Recorded on 2026-10-15 from #133 (SD-029). The project owner decided
+PD-197 to PD-199 on 2026-10-13 and PD-217 to PD-219 on 2026-10-15 in the
+product repository; they describe behaviour only. They replace two parts
+of SD-076: the factory reset by BOOT held 10 s to 30 s, and "a password
+that is set is never touched". The rest of SD-076 stays. Where the
+product side left a point to the firmware, this entry gives the software
+side's view, marked "Proposed by the software side (to be confirmed)";
+it holds until the product side decides otherwise.
+
+- **Factory reset with BOOT (PD-197, PD-199):**
+  1. The user holds BOOT for 15 s.
+  2. The firmware switches off the plugs listed below, before anything
+     is confirmed.
+  3. A 30-s window opens. The board's status LEDs show whether every one
+     of these plugs has reported "off" (PD-212). Which plug is missing is
+     shown only in the web app.
+  4. A short BOOT press in the window erases, on purpose also when a plug
+     did not report "off".
+  5. Without that press nothing is erased, and control takes the plugs
+     back.
+  - To switch off or unplug a missing plug by hand first, the user does
+    not confirm and starts again afterwards.
+- **Plugs at the start of a factory reset (PD-198, PD-219):**
+  - off: every plug with a water or CO2 role: irrigation pump
+    (`zone.irrigation_pump`), inlet (`tank.inlet`), inlet pump (PD-120),
+    humidifier, dehumidifier, CO2, circulation pump (`tank.circulation`,
+    as on a Stop and an internal error, PD-076, PD-077) and the heater in
+    the nutrient tank (`tank.heater`). They go off together and count for
+    "all plugs off";
+  - keep their state: light, exhaust, circulation fan
+    (`zone.circulation_fan`), room heater (`zone.heater`) and the air
+    pump in DWC and RDWC;
+  - stays on: the drain with its own pump, as on a Stop, a power loss and
+    an internal error (PD-135, PD-144);
+  - when control switches the dehumidifier on again, without the
+    confirmation or after the plug is adopted again, its minimum pause
+    applies (PD-052);
+  - a Stop, an internal error, a power loss and a loss of control do not
+    change.
+- **The same switch-off on every own path (PD-217):** the factory reset
+  in the web app and the one our flash page starts over USB switch the
+  same plugs off first; then the firmware erases. The web app comes
+  first, the flash page before the first device is sold. In the web app
+  it needs a login from the home network (SD-076) and the password again,
+  shows the result per plug before erasing, and cannot be started by
+  Home Assistant or an API token. Our flash page erases the whole chip
+  only when the firmware does not answer, and only after a warning that
+  the label's key is lost with it (the warning's text is open).
+- **What the factory reset erases (PD-197, PD-218):**
+  - everything except the factory data with the label's key (`fctry`):
+    Wi-Fi, the password, settings, calibrations, history and the
+    passwords of adopted plugs. Calibrations and history are erased, not
+    only made unreadable; SD-076's mark finishes an interrupted erase at
+    the next start;
+  - it makes a new random value from which the keys of the encrypted
+    storage are derived with the eFuse HMAC key, so nothing written
+    before can be read with the new keys and a previous owner learns
+    nothing new (PD-208, #176). The value is kept apart from `fctry`; the
+    eFuse stays as it is;
+  - it runs only while no dose runs; the board's outputs (dosing pumps,
+    refill valve) are off during it, and the LEDs show it;
+  - afterwards a pre-flashed device opens its setup network and starts a
+    new first-password window when it first joins the home network
+    (PD-186, PD-192); a self-flashed device is set up over USB again
+    (SD-044);
+  - without a valid calibration nothing is dosed or controlled (PD-015);
+    each plug is reset at its own button and adopted again (about 3 to 5
+    min each);
+  - before erasing, the web app offers an export without passwords. Its
+    format and its import are open; both must hold under CRA Annex I,
+    Part I (2)(m).
+- **Access reset with BOOT held long (PD-218):**
+  - it opens a 15-min window in the home network, as for the first
+    password (PD-191, PD-192), in which the user sets a new password;
+  - the new password counts only after a short BOOT press at the device;
+    until then the old one stays valid. So nobody can do it from afar;
+  - afterwards every session, every token and the Home Assistant key are
+    invalid, and Home Assistant must be paired again;
+  - neither Home Assistant nor an API token can start it or the factory
+    reset;
+  - an "access reset" entry stays in the event log until a factory reset
+    and is shown after login and on the LEDs;
+  - Wi-Fi, plugs, calibrations and history stay, and control keeps
+    running;
+  - two requests in one window end it without a change (the product
+    side's view of the firmware);
+  - without a password it works as before (SD-076);
+  - the web app and the user guide keep "reset access, data stays" apart
+    from the factory reset, and say: factory reset before passing the
+    device on;
+  - the setup network still never sets or resets a password (SD-044,
+    SD-076).
+- **Proposed by the software side (to be confirmed):** the points that
+  PD-197 to PD-219 leave to the firmware. LEDs and texts with `ux`;
+  everything checked on a sample.
+  - *Hold times:* 3 s setup network (SD-076), 8 s access reset, 15 s
+    factory reset. Each acts when BOOT is released; held longer than
+    30 s does nothing and is reported as a stuck button. So the plugs go
+    off when BOOT is released after 15 s, not while it is still held: a
+    stuck button switches nothing, and a user who sees the warning at
+    15 s can hold on past 30 s to cancel. The window's 30 s count from
+    the release. The access reset gets a time of its own, unlike SD-076's
+    one gesture for the setup network and the first password, because it
+    replaces a password that is set: changing Wi-Fi must not open it.
+  - *LEDs and buzzer:* while BOOT is held, one pattern per stage reached
+    (3 s, 8 s, 15 s, past 30 s), the 15-s one clearly a warning. In the
+    window, one pattern for "all plugs off" and another for "a plug is
+    missing", changing as plugs report; one for erasing; one while an
+    access reset waits for its press. The buzzer sounds for the 15-s
+    stage and the window only, an exception to PD-171 for a deliberate
+    act at the device.
+  - *The confirming press:* released within 2 s, and counted only from
+    2 s after the window opened, so releasing the 15-s hold or a bounce
+    never counts. A longer press ends the window without erasing.
+  - *Plugs in the window:* all at once, as far as the ESP's connections
+    allow; each attempt waits at most 2 s and is repeated every 3 s until
+    the plug reports "off" or the window ends. The window does not wait
+    for them. If Wi-Fi is down, no plug can be reached: the firmware
+    keeps reconnecting and the LEDs show "a plug is missing". The web
+    app shows the plugs only after login, so a user who lost the
+    password sees the LEDs only; there is no page without login, which
+    would name the plugs to the home network.
+  - *Control in the window:* paused. The gateway switches on nothing the
+    reset switched off and starts no job; cut-offs still act. Without the
+    confirmation, control runs again: plugs go to the state control sets,
+    running plans are evaluated again, and the safety component releases
+    the board's outputs as after a normal start (SD-045). An interrupted
+    dose or refill is reported, not resumed (R6), and a control round
+    settles as after a Stop (SD-073). A Stop set before or during the
+    window still holds afterwards.
+  - *No dose running:* made true at the start, not waited for. On release
+    after 15 s the board's dosing pumps and refill valve go off first: a
+    running dose ends and is booked as on a Stop (RAT-036), and a running
+    refill (PD-161) counts as a dose. Then the plugs go off, so the refill
+    valve is never open while the plugs are off. In the window no dose
+    can start; at the confirming press the firmware checks again before
+    it marks the reset.
+  - *Web app and flash page:* the same switch-off, 30-s window and result
+    per plug. In the web app "Erase" in the window confirms, or a BOOT
+    press if the product side decides so (the software side recommends
+    the press: no reset from afar, and all paths end the same way). The
+    flash page sends a command over its USB serial connection, and a
+    short BOOT press at the device confirms; it asks for no password, as
+    whoever is on USB can already install any firmware (SD-076). If the
+    firmware does not answer within 10 s, or the serial port is closed
+    in operation, only the whole-chip erase with the warning is left.
+  - *Roles:* a role `tank.air_pump` (mains, runs continuously) that keeps
+    its state at a factory reset, like the fans. Both heater roles stay:
+    `tank.heater` (a water role: off) and `zone.heater` (the room: keeps
+    its state), each only with RAT-060's latching cut-off, as
+    `PLANT_AUTOMATION.md` plans. The classes live in code next to the
+    fans' list (PD-050), as the catalog can only tighten safety (R7); a
+    role on neither list goes off. The inlet pump, CO2 and drain roles
+    get theirs when they enter the catalog.
+  - *Access reset:* a request waits in memory only, so a restart ends it
+    (SD-076). The same request again from the same page is not a second
+    one; another request, or a password change in the window, ends the
+    window and is logged. The page that sent the request says when to
+    press BOOT. The "access reset" entry is kept apart from the event
+    log, whose oldest entries drop out, so it never does; the LEDs and a
+    notice after login show it for 7 days. Without a password each kind
+    of device keeps its own way to the first password (SD-044, SD-076).
+    The login page's "Not you?" (SD-076) points to the access reset.
+  - *The random value (#176):* it must last until NVS is erased last, as
+    the reset's mark is in NVS. So it cannot sit in `storage` (erased
+    before), in `fctry` (kept, read-only) or in the NVS it unlocks. The
+    partition tables have no place for it; a small partition can be
+    added only before the first device ships. ESP-IDF's own HMAC scheme
+    derives the keys from fixed values (to be confirmed in the pinned
+    ESP-IDF), so a new value per reset needs a scheme of our own, which
+    ESP-IDF allows.
+- **Residual risks, for the docs (PD-199, PD-218, PD-219):**
+  - whoever confirms without looking at the LEDs erases anyway: a missing
+    plug then runs unchecked until the new setup, as on a hub failure
+    (SD-028); the circulation pump without a limit, the tank heater only
+    with its own thermostat;
+  - BOOT held 15 s switches the plugs off also without the confirmation,
+    until control takes them back. It is no Stop: control may switch them
+    on again; whoever works at the tank uses Stop (PD-172, PD-174);
+  - "all plugs off" rests on the plugs' own reports: a welded relay, a
+    wrong role or an unreachable plug stays on;
+  - after the reset, room heater and exhaust keep their last state,
+    limited only by the plug's auto-off and power limit or the device's
+    own thermostat, without the hub's heater cut-off (RAT-060); the light
+    follows its plug's schedule (PD-051) or its auto-off (PD-065); the
+    board's light output (`zone.light_dim`, PD-028) is off after the
+    restart, like every board output (R6);
+  - in DWC and RDWC the water stands without circulation and tank heater
+    until the new setup; the drain pump runs on its own float, which the
+    hub no longer watches. Until the plugs are adopted again nobody
+    controls humidity (a long pause in flowering risks botrytis), and a
+    dehumidifier switched on by hand runs without the hub's tank lock;
+  - whoever is at the device and in the home network can take over access
+    with the access reset, with the plugs and the history; the entry only
+    makes it visible. Anyone in the home network can end an access reset
+    with a second request; the way out is then the factory reset;
+  - whoever means the access reset but holds BOOT past 15 s switches the
+    plugs off, and a short press then erases everything; the LEDs warn
+    first;
+  - if USB is off in operation or the firmware hangs, our flash page
+    erases without the switch-off and the plugs stay in their last state;
+    the warning can be clicked away; esptool and other flash pages never
+    switch off;
+  - a factory reset from afar in the web app switches the circulation
+    pump and the tank heater off until someone sets the device up again
+    on site;
+  - the user guide: look at the LEDs before confirming; BOOT is recessed
+    and needs a pen; put the air pump above the water level or fit a
+    check valve.
+- **Open on the product side:** whether the serial channel stays open in
+  operation, and whether a factory reset in the web app also needs a
+  BOOT press at the device (PD-217); the warning's text; the export's
+  format and import; whether adopting a plug again sets its auto-off,
+  schedule, power-loss setting and switched-off cloud again; HTTPS for
+  the password in the home network; whether the web app never shows plug
+  passwords and the Wi-Fi key (PD-218); whether the air pump also keeps
+  running like a fan on an internal error and after a power loss, and
+  whether setup asks where the dehumidifier drains (PD-219).
+- **Merging:** a safety and security rule (the actuator gateway, the
+  login); the pull requests that record and build it wait for the
+  project owner's "mergen".
 
 ---
 
