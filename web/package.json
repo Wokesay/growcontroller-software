@@ -15,15 +15,15 @@
   },
   "dependencies": {
     "@preact/signals": "2.11.3",
-    "lucide-preact": "1.52.0",
-    "preact": "11.0.0",
+    "lucide-preact": "1.53.0",
+    "preact": "11.0.1",
     "uplot": "1.6.32"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.0",
     "@preact/preset-vite": "2.10.6",
     "@types/node": "22.20.5",
     "typescript": "7.0.2",
-    "vite": "8.3.2"
+    "vite": "8.3.3"
   }
 }

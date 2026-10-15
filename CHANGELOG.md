@@ -167,6 +167,27 @@ listed in every release under "Security".
   project runs a relay free of charge, and you can run your own. A
   direct way through a port forward is not offered. Whether an app comes
   into the stores is decided later.
+- **Partition tables: room for factory data** (SD-076): both boards get a
+  read-only 16 KB partition `fctry` before the first app, for the serial
+  number and the setup network's key from the label of pre-flashed
+  devices. Nothing else moves: flashing a board you already have keeps
+  its settings and data, unless you choose to erase. The installer never
+  writes it and a factory reset will keep it; erasing the whole flash
+  wipes it.
+- **Plan: pre-flashed devices, setup without a cable, support period**
+  (SD-076): until a series with hardened firmware, you flash the DevKit
+  yourself in the browser; later it can come pre-flashed. Wi-Fi is then
+  set up through the ESP32-S3's own setup network with the key from the
+  label; on a configured device it opens only when you hold BOOT for
+  3 s, for at most 10 min. Holding BOOT for 10 s resets the device to
+  factory state: settings, calibration values, passwords, Wi-Fi and
+  history are erased, the label's key stays. A pre-flashed device asks for
+  its first password in the home network within 15 min after it joins.
+  Every board with our firmware gets security updates for 7 years from
+  its delivery, until December (delivered 2028: until at least 12/2035);
+  `SECURITY.md` says so, and the web app will show the date. Any
+  computer on a USB port of the DevKit can install other firmware
+  without a button press, so unplug USB in operation.
 - **Plan: one release for every package, Home Assistant as a window on
   the ESP32-S3** (SD-048, SD-050, `docs/ROADMAP.md`): firmware, Home
   Assistant app and simulator keep one version and one release. From M3
@@ -187,15 +208,21 @@ listed in every release under "Security".
   and EC from Home Assistant, the combined history view and the stop menu
   wait until the ESP foundation stands.
 - Build tools of the web app: TypeScript 7.0.2 for the type check and
-  Playwright 1.63.0 for the end-to-end tests (proposed by Dependabot). The
+  Playwright 1.64.0 for the end-to-end tests (proposed by Dependabot). The
   app itself does not change.
-- The web app runs on Preact 11.0.0 (proposed by Dependabot). Nothing
-  visible changes.
-- Build tool of the web app: Vite 8.3.2 (proposed by Dependabot). It needs
+- The web app runs on Preact 11.0.1 with the icons of lucide-preact
+  1.53.0 (proposed by Dependabot). Nothing visible changes.
+- Build tool of the web app: Vite 8.3.3 (proposed by Dependabot); 8.3.3
+  closes three advisories of Vite's development server
+  (GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg, GHSA-9jrq-w75r-8gcw), which our
+  builds and tests never run. It needs
   lightningcss, which is under MPL-2.0; the license check now allows
   MPL-2.0 for lightningcss as a build tool, which is never shipped
   (SD-046). The code of the app does not change; Vite 8 bundles it with
   Rolldown, so the built files differ.
+- CI and release workflows: `actions/upload-artifact` 7.0.2,
+  `actions/download-artifact` 8.0.2 and `actions/setup-node` 7.1.0, pinned
+  by commit SHA as before (proposed by Dependabot).
 - **Home Assistant app on Alpine 3.24** (proposed by Dependabot): the
   server in the app is now linked against musl 1.2.6 and the runtime of
   GCC 15.2 instead of musl 1.2.5 and GCC 14.2 from Alpine 3.22. The image
