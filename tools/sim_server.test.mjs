@@ -2,7 +2,8 @@
 // gc_sim_server and a folder whose status it cannot read, instead of ending
 // at the start: a --web folder is no web app, so it starts without it (with
 // the embedded web app or the "not built" page); a --data folder runs it in
-// memory only and is left alone (SD-074). Runs the built server (tools/ci.sh
+// memory only and is left alone (SD-074). The session comes from the one
+// cookie named exactly gc_session. Runs the built server (tools/ci.sh
 // builds it first).
 //   node --test tools/sim_server.test.mjs      (GC_SIM_SERVER=<binary> for another build)
 import assert from "node:assert/strict";

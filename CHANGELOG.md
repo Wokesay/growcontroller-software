@@ -580,11 +580,12 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
-- **The session is read from the cookie of exactly that name** (Home
-  Assistant app, simulator and firmware): the servers now split the
+- **The session comes only from a cookie named exactly `gc_session`**
+  (Home Assistant app, simulator and firmware): the servers now split the
   browser's `Cookie` header into its name=value pairs and take the session
-  only from the pair named `gc_session`, and only when the header holds
-  exactly one, in one place in the core (`gc::sessionToken`).
+  only from the pair of that name, and only when there is exactly one such
+  pair; two cookies of that name count as none. This happens in one place
+  in the core (`gc::sessionToken`).
 - **The web build checks every module the bundler puts into the app**
   (#190, PD-228, SD-075): the app's code is to come only from our
   sources and the runtime packages of the lockfile, and the build

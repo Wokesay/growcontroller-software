@@ -5,7 +5,8 @@
 // still honours --data, --host, --web and --port. Started as root, it gives
 // up root before it opens its port (#80). The first password needs
 // the setup code the start prints (#79). Values that a stand-in Home
-// Assistant reports reach the hub's readings (#112). Runs the built
+// Assistant reports reach the hub's readings (#112), with the session
+// taken from the one cookie named exactly gc_session. Runs the built
 // server (tools/ci.sh builds it first; the app image's own server in
 // .github/workflows/app.yml).
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
