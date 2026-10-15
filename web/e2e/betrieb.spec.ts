@@ -984,6 +984,147 @@ test("Recipes: the bottle editor says before saving that a pair label would leav
   await expect(save).toBeEnabled();
 });
 
+test("Recipes: a bottle whose stock is unknown stays unknown when edited, also when it gets a size; a bottle change gives it one (RAT-015, #184)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  expect(await apiCall(page, "POST", "/api/v1/canisters", { name: "Booster", kind: "nutrient", capacityMl: null })).toBe(200);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ has: page.getByText(name, { exact: true }) });
+  const stock = () => page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).stock.booster);
+  await expect(row("Booster")).toContainText("unbekannt");
+  await expect(page.getByText("Beim Kanister „Booster“ kennt der Hub den Inhalt nicht. Tipp auf den Stift (Bearbeiten) und trag ein, was drin ist.")).toBeVisible();
+  await expect(row("Booster").getByTitle("Kanister gewechselt (voll): erst die Kanistergröße eintragen")).toBeDisabled();
+  await row("Booster").getByTitle("Bearbeiten").click();
+  const editor = page.getByRole("dialog", { name: "Kanister „Booster“" });
+  // No size of its own is filled in, and a size is not an amount left
+  await expect(editor.locator("input[name=canister-size]")).toHaveValue("");
+  await expect(editor.locator("input[name=canister-stock]")).toHaveValue("");
+  await expect(editor.getByText("Der Hub kennt den Inhalt nicht. Trag ein, was im Kanister ist, bei einem vollen die Kanistergröße.")).toBeVisible();
+  await editor.locator("input[name=canister-size]").fill("1000");
+  await expect(editor.locator("input[name=canister-stock]")).toHaveValue("");
+  // Typed key by key, an existing bottle's amount keeps its focus too; left empty again, nothing is entered
+  const amount = editor.locator("input[name=canister-stock]");
+  await amount.click();
+  await amount.pressSequentially("250", { delay: 30 });
+  await expect(amount).toBeFocused();
+  await expect(amount).toHaveValue("250");
+  await amount.fill("");
+  await editor.locator("input[name=canister-name]").fill("Booster Plus");
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(row("Booster Plus")).toContainText("unbekannt");
+  expect(await stock()).toBeNull();
+  // The overview does not count it as enough, and says how to give it one
+  await page.goto("/");
+  await expect(page.getByText("Vorrat in allen Kanistern ausreichend")).toHaveCount(0);
+  await expect(page.locator(".list .item").filter({ hasText: "Booster Plus" })).toContainText("unbekannt");
+  await expect(page.getByText("Trag den Inhalt unter Rezepte & Kanister ein, dann warnt der Hub, bevor ein Kanister leer wird.")).toBeVisible();
+  // A bottle change gives it a number
+  await page.goto("/#/rezepte");
+  await row("Booster Plus").getByTitle("Kanister gewechselt (voll)").click();
+  await expect(row("Booster Plus")).toContainText("1.000 ml");
+  await expect(page.getByText("Beim Kanister „Booster Plus“ kennt der Hub den Inhalt nicht.", { exact: false })).toHaveCount(0);
+  await row("Booster Plus").getByTitle("Bearbeiten").click();
+  await expect(page.getByRole("dialog").getByText("Der Hub zieht jede Gabe ab. Ändere den Wert nur, wenn er nicht stimmt.")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Abbrechen" }).click();
+  await page.goto("/");
+  await expect(page.getByText("Vorrat in allen Kanistern ausreichend")).toBeVisible();
+});
+
+test("Recipes: a new bottle starts full: its amount follows its size until the amount itself is changed (#184)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  await page.goto("/#/rezepte");
+  await page.locator("#add-bottle").click();
+  const editor = page.getByRole("dialog", { name: "Kanister anlegen" });
+  const size = editor.locator("input[name=canister-size]");
+  const amount = editor.locator("input[name=canister-stock]");
+  await expect(amount).toHaveValue("1000");
+  // Typed key by key, as on a phone: each field keeps its focus and every digit
+  await size.click();
+  await size.press("ControlOrMeta+a");
+  await size.pressSequentially("500", { delay: 30 });
+  await expect(size).toBeFocused();
+  await expect(size).toHaveValue("500");
+  await expect(amount).toHaveValue("500");
+  await amount.click();
+  await amount.press("ControlOrMeta+a");
+  await amount.pressSequentially("300", { delay: 30 });
+  await expect(amount).toBeFocused();
+  await expect(amount).toHaveValue("300");
+  await size.fill("750");
+  await expect(amount).toHaveValue("300");
+  await editor.locator("input[name=canister-name]").fill("Bloom");
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  expect(await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).stock.bloom)).toBe(300);
+  // A size cleared clears the amount that follows it; an amount left empty on purpose stays unknown
+  await page.locator("#add-bottle").click();
+  await size.fill("");
+  await expect(amount).toHaveValue("");
+  await size.fill("500");
+  await expect(amount).toHaveValue("500");
+  await amount.fill("");
+  await editor.locator("input[name=canister-name]").fill("Enzym");
+  await editor.getByRole("button", { name: "Speichern" }).click();
+  await expect(editor).toHaveCount(0);
+  expect(await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).stock.enzym)).toBeNull();
+});
+
+test("Setup run again over a bottle whose stock is unknown keeps it unknown and adds no size (RAT-015, #184)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const bottle = (id: string) =>
+    page.evaluate(async (i) => {
+      const k = (await (await fetch("/api/v1/config")).json()).canisters.find((c: { id: string }) => c.id === i);
+      const stock = (await (await fetch("/api/v1/state")).json()).stock;
+      return { found: !!k, size: k?.capacityMl ?? null, stock: stock[i] ?? null };
+    }, id);
+  for (const size of [null, 500]) {
+    expect(await apiCall(page, "DELETE", "/api/v1/canisters/ph")).toBe(200);
+    expect(await apiCall(page, "POST", "/api/v1/canisters", { name: "pH−", kind: "ph_down", pump: "CAP-1F02D9", capacityMl: size, stockMl: null })).toBe(200);
+    expect(await bottle("ph")).toEqual({ found: true, size, stock: null });
+    await page.goto("/#/einrichtung?s=3");
+    await page.reload();
+    await expect(page.getByTestId("existing-recipes")).toBeVisible();
+    await page.getByTestId("wizard-next").click();
+    await expect(page.getByTestId("existing-recipes")).toHaveCount(0);
+    expect(await bottle("ph"), `size ${size}`).toEqual({ found: true, size, stock: null });
+  }
+  expect((await bottle("teil-a")).stock).toBeGreaterThan(0);
+});
+
+test("Overview and recipes: a low stock and unknown ones are listed together, the note counts the bottles, also in English (RAT-015, #184)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  for (const name of ["Booster", "Enzym"]) expect(await apiCall(page, "POST", "/api/v1/canisters", { name, kind: "nutrient", capacityMl: null })).toBe(200);
+  expect(await apiCall(page, "POST", "/api/v1/canisters/teil-a/stock", { ml: 100 })).toBe(200);
+  await page.goto("/#/rezepte");
+  await page.reload();
+  await expect(page.getByText("Bei 2 Kanistern kennt der Hub den Inhalt nicht, etwa nach dem Laden einer Sicherung.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Beim Kanister", { exact: false })).toHaveCount(0);
+  await page.goto("/");
+  const items = page.locator(".list .item");
+  await expect(items.filter({ hasText: "Teil A" })).toContainText("100 ml");
+  await expect(items.filter({ hasText: "Booster" })).toContainText("unbekannt");
+  await expect(items.filter({ hasText: "Enzym" })).toContainText("unbekannt");
+  await expect(items.filter({ hasText: "Teil B" })).toHaveCount(0);  // enough: not listed
+  await expect(page.getByText("Trag den Inhalt unter Rezepte & Kanister ein", { exact: false })).toHaveCount(1);
+  await expect(page.getByText("Vorrat in allen Kanistern ausreichend")).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await expect(items.filter({ hasText: "Booster" })).toContainText("unknown");
+  await expect(page.getByText("Enter the amount under Recipes & bottles, so the hub warns you before a bottle runs out.")).toBeVisible();
+  await page.goto("/#/rezepte");
+  await expect(page.getByText("The hub doesn't know the amount in 2 bottles, for example after restoring a backup.", { exact: false })).toBeVisible();
+  const row = page.locator(".rtable tbody tr").filter({ has: page.getByText("Booster", { exact: true }) });
+  await expect(row).toContainText("unknown");
+  await expect(row.getByTitle("Bottle changed (full): enter the bottle size first")).toBeDisabled();
+  await row.getByTitle("Edit").click();
+  await expect(page.getByRole("dialog").getByText("The hub doesn't know the amount. Enter what is in the bottle; for a full one, its size.")).toBeVisible();
+});
+
 test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the opener, the title names it (#105)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);

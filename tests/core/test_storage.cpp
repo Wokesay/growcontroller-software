@@ -630,3 +630,46 @@ TEST_CASE("Storage: a bottle new to the hub that comes with an import does not t
   c2.ok("POST", "/api/v1/config/import", file);
   CHECK(c2.state()["stock"][one].is_null());
 }
+
+TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and stays so through edits and a restart until entered (RAT-015, #184)") {
+  json file;
+  {
+    sim::Simulation demo(test::opts("demo"));
+    test::Client d{demo};
+    d.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    file = d.ok("GET", "/api/v1/config/export");
+  }
+  TempDir dir;
+  sim::Simulation s(onFreshCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  c.ok("POST", "/api/v1/config/import", file);
+  const json stock = c.state()["stock"];
+  REQUIRE(stock.contains("teil-a"));
+  for (const auto& [id, ml] : stock.items()) {
+    CAPTURE(id);
+    CHECK(ml.is_null());
+  }
+  c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"name", "Teil A neu"}});
+  CHECK(c.state()["stock"]["teil-a"].is_null());
+  s.step(2000);
+  CHECK_FALSE(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("teil-a"));
+  // Through a restart; then a bottle change gives it a number that stays
+  sim::Simulation again(onFreshCard(dir, s.hub().now() + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  CHECK(c2.state()["stock"]["teil-a"].is_null());
+  c2.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"color", "#336699"}});
+  CHECK(c2.state()["stock"]["teil-a"].is_null());
+  double full = 0;
+  const json cfg = c2.ok("GET", "/api/v1/config");
+  for (const auto& k : cfg["canisters"])
+    if (k["id"] == "teil-a") full = k["capacityMl"].get<double>();
+  REQUIRE(full > 0);
+  c2.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", full}});
+  again.step(2000);
+  sim::Simulation third(onFreshCard(dir, again.hub().now() + 1));
+  test::Client c3{third};
+  c3.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  CHECK(c3.state()["stock"]["teil-a"].get<double>() == doctest::Approx(full));
+}
