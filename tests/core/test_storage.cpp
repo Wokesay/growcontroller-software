@@ -427,3 +427,50 @@ TEST_CASE("Storage: a removed bottle's stock leaves the card at once; a new bott
   REQUIRE(id == "ph");
   CHECK(c2.state()["stock"]["ph"].get<double>() == doctest::Approx(500));
 }
+
+TEST_CASE("Storage: an import drops the stock of the bottles it leaves out; a bottle created later never takes over a stock left behind (#161)") {
+  TempDir dir;
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("POST", "/api/v1/canisters", {{"id", "ph"}, {"stockMl", 123}});
+  json file = c.ok("GET", "/api/v1/config/export");
+  json kept = json::array();
+  for (const auto& k : file["canisters"])
+    if (k["id"] != "ph") kept.push_back(k);
+  file["canisters"] = kept;
+  // An import is refused while a job or a dose runs
+  for (int i = 0; i < 600 && !(c.state()["job"].is_null() && c.state()["dosing"].is_null()); ++i) s.step(5000);
+  c.ok("POST", "/api/v1/config/import", file);
+  s.step(2000);
+  CHECK_FALSE(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("ph"));
+  const std::string id = c.ok("POST", "/api/v1/canisters", {{"name", "pH−"}, {"kind", "ph_down"}, {"capacityMl", 500}})["id"];
+  REQUIRE(id == "ph");
+  CHECK(c.state()["stock"]["ph"].get<double>() == doctest::Approx(500));
+  // A stock left behind on the card (by an older version): a new bottle of that name still starts full,
+  // or unknown without a size
+  c.ok("DELETE", "/api/v1/canisters/ph");
+  s.step(2000);
+  json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
+  state["stockMl"]["ph"] = 123;
+  state["stockMl"]["neu"] = 77;
+  state["stockMl"]["minus"] = -5;
+  {
+    std::ofstream out(dir.path / "state.json", std::ios::trunc);
+    out << state.dump();
+  }
+  sim::Simulation again(onCard(dir, s.hub().now() + 1));
+  test::Client c2{again};
+  c2.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  REQUIRE(c2.ok("POST", "/api/v1/canisters", {{"name", "pH−"}, {"kind", "ph_down"}, {"capacityMl", 500}})["id"] == "ph");
+  CHECK(c2.state()["stock"]["ph"].get<double>() == doctest::Approx(500));
+  REQUIRE(c2.ok("POST", "/api/v1/canisters", {{"name", "Neu"}, {"kind", "nutrient"}, {"capacityMl", nullptr}})["id"] == "neu");
+  CHECK(c2.state()["stock"]["neu"].is_null());
+  // A stock below zero left behind does not let a new bottle be entered below zero (SD-066)
+  auto [code, body] = c2.call("POST", "/api/v1/canisters", {{"name", "Minus"}, {"kind", "nutrient"}, {"stockMl", -5}});
+  CHECK(code == 422);
+  CHECK(body["error"]["key"] == "canister.stock");
+  CHECK_FALSE(c2.state()["stock"].contains("minus"));
+  REQUIRE(c2.ok("POST", "/api/v1/canisters", {{"name", "Minus"}, {"kind", "nutrient"}, {"stockMl", 0}})["id"] == "minus");
+  CHECK(c2.state()["stock"]["minus"].get<double>() == doctest::Approx(0));
+}
