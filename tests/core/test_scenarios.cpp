@@ -853,7 +853,7 @@ TEST_CASE("Scenario: a clock step keeps the hour of the repeat guard (SD-067)") 
   CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "repeat");
 }
 
-TEST_CASE("Scenario: during an emergency stop the latch may release itself; the pump starts only after Resume (SD-067)") {
+TEST_CASE("Scenario: during a Stop the latch may release itself; the pump starts only after Resume (SD-067)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   circulateAlways(s, c);
@@ -937,7 +937,7 @@ TEST_CASE("Scenario: someone guessing the password cannot keep the owner from st
   CHECK(phone.state()["stopped"] == true);
 }
 
-TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen") {
+TEST_CASE("Scenario: a Stop switches everything off and holds automation until Resume") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -952,6 +952,11 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(code != 200);
   CHECK(refused["error"]["key"] == "job.start_failed");
   CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
+  // a mix is refused too, with a message in the page's language (SD-045: "Stop", never "emergency stop")
+  auto [mixCode, mix] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
+  CHECK(mixCode == 409);
+  CHECK(mix["error"]["key"] == "act.stopped");
+  CHECK(mix["error"]["text"] == "Stop active – tap Resume first");
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
 }
@@ -1530,7 +1535,7 @@ TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
   CHECK(r["value"].is_number());
 }
 
-TEST_CASE("Messages: pump calibration and emergency stop name their result and cause (SD-032)") {
+TEST_CASE("Messages: pump calibration and the Stop name their result and cause (SD-032)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   s.world().cap(kB)->storedFlow = 0;  // a chip that reports 0: no previous rate, not "clearly different" (R5)

@@ -567,7 +567,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     bool done = c.now - startedMs_ >= plannedMs_;
     bool sensorStop = level.usable() && *level.value >= p.num("target_l") + 1.0;
     if (!open || !*open) {
-      filling_ = false;  // vom Gateway abgeschaltet (Notgrenze, Zeitlimit, Not-Halt)
+      filling_ = false;  // switched off by the gateway (inlet emergency limit, time limit, Stop)
       st_.state = "latched";
       st_.line = say("refill.stopped");
       return;

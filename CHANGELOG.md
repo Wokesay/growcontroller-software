@@ -64,6 +64,16 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
+  button, its question, the banner, Monitoring, the event log and every
+  message call the function "Stop", in German "Stopp" or "Alles stoppen",
+  never "emergency stop" or "Not-Halt". Examples: "Stop everything?" /
+  "Alles stoppen?", "Stop active." / "Stopp aktiv.", "Stop cleared" /
+  "Stopp aufgehoben". The Home Assistant app's documentation says the
+  same. The message keys stay, so on a German page events saved before
+  show the new words too; on an English page they keep the old ones. A
+  mix refused during a Stop now says so in both languages; for API
+  clients its error key is `act.stopped` instead of `job.stopped`.
 - **Sessions claim an issue before working on it** (SD-078): parallel
   sessions had picked up the same issue. Before a session starts, it
   fetches the issue again and leaves it alone if a live claim or an open
@@ -702,7 +712,9 @@ Hardening, without a vulnerability behind it:
     the Home Assistant server and the firmware. The one exception is the
     Windows branch of `sim::randomBytes`. `std::random_device` tries
     RDSEED first on Linux x86-64 (AMD-SB-7055). On the code of
-    0.1.0-proto.4 the check names both places that used it.
+    0.1.0-proto.4 the check names both places that used it. The test of
+    `sim::randomBytes` now also checks that it fills the buffer to the
+    end.
   - A scenario test leaves a calibration of the hub's own pH probe open
     for 45 min. A jump must then lock the reading, and pH control must
     not dose on it (RAT-042). So far the test of that fix covered only a
@@ -739,7 +751,7 @@ Hardening, without a vulnerability behind it:
   Now the Stop takes effect, everything goes off and the Stop is saved
   first; the gateway refuses any start meanwhile. A dose that cannot be
   booked is dropped, so nothing of it runs or is booked later, and the log
-  says "Emergency stop: dose not fully counted" with the bottle, what to
+  says "Stop: dose not fully counted" with the bottle, what to
   check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a
