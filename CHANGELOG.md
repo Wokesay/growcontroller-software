@@ -511,8 +511,8 @@ Vulnerabilities, each with an advisory:
 - **Nobody else can set the Home Assistant app's first password** (#79,
   SD-068): until the owner set it, any device in the home network could
   set it first, see the names of Home Assistant's sensors and the values of
-  those it could pick, and lock the owner out until the app was
-  reinstalled. The app now prints a one-time setup code to its log, which
+  those it could pick, change the app's settings, and lock the owner out
+  until the app was reinstalled. The app now prints a one-time setup code to its log, which
   only Home Assistant's administrators, and apps they gave that right, can
   read, and the first password needs it. The code has 80 bits, is kept
   in memory only and is used up by the password; a restart makes a new
@@ -551,7 +551,8 @@ Vulnerabilities, each with an advisory:
     (`CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`), CWE-645.
   - Remedy: update to 0.1.0-proto.5. Until then, keep the devices you
     need signed in; "Sign-in failed" in the event log shows when someone
-    guesses, not from which device.
+    guesses, not from which device, so look for an unknown device in your
+    router's list of connected devices.
   - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Random numbers no longer come through RDSEED** (AMD-SB-7055,
   CVE-2025-62626): the Home Assistant app and the simulator took the
@@ -570,7 +571,7 @@ Vulnerabilities, each with an advisory:
     AMD's fix (for the simulator also a start with `--host`), and even
     there a session token or salt is only partly predictable.
   - Severity: medium, CVSS 3.1 4.2
-    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-330.
+    (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-331.
   - Remedy: update to 0.1.0-proto.5. Until then, install AMD's microcode
     or BIOS fix.
   - Advisory: a GHSA, published with this release; no CVE of its own, it
@@ -584,7 +585,7 @@ Vulnerabilities, each with an advisory:
     password, and nothing in the Home Assistant app reads a value to
     switch.
   - Severity: low, CVSS 3.1 3.3
-    (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-20.
+    (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-807.
   - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
     made yourself.
   - Advisory: a GHSA, published with this release; a CVE requested from GitHub.

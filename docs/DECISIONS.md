@@ -2947,7 +2947,9 @@ session, after `security`'s proposals.
   latest from the first offer or the first device lent, actively
   exploited vulnerabilities and severe incidents are reported to the
   coordinating CSIRT and ENISA (an early warning within 24 hours, a
-  notification within 72 hours), and users are informed. None of the
+  notification within 72 hours, a final report within 14 days of a fix or
+  mitigation for a vulnerability and within a month of the notification
+  for an incident), and users are informed. None of the
   seven items is reportable. `SECURITY.md` keeps the voluntary commitment
   to report until then.
 
@@ -3007,13 +3009,13 @@ The software side's proposals, as decided:
     `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`, CWE-1188. A CVE from GitHub.
   - B. A crafted backup could make a pH calibrated in Home Assistant
     count as checked by the hub (SD-041): 3.3 low,
-    `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`, CWE-20. A CVE from GitHub.
+    `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`, CWE-807. A CVE from GitHub.
   - C. A device guessing the password locked every other device out of
     signing in (SD-051): 4.3 medium,
     `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`, CWE-645. A CVE from GitHub.
   - D. Session tokens partly predictable on AMD Zen 5 hosts without
     AMD's fix (RDSEED, SD-068): 4.2 medium,
-    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`, CWE-330. No CVE of its own; it
+    `AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`, CWE-331. No CVE of its own; it
     refers to CVE-2025-62626 (AMD-SB-7055).
   - No advisory: two defects in the sensor truth's jump check (RAT-042),
     in the simulator only, triggered by normal use or a faulty probe; a

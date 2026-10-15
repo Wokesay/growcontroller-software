@@ -331,9 +331,11 @@ stand only in the changelog.
   the web app shows the end date and a notice once it has passed (Art.
   13(19)). Every security update stays available for at least 10 years
   (Art. 13).
-- **Reporting actively exploited vulnerabilities:** 24 h / 72 h / 14 days
-  via the ENISA platform (Art. 14); severe incidents affecting security
-  24 h / 72 h / one month. At the latest from the first device offered or
+- **Reporting actively exploited vulnerabilities:** 24 h / 72 h from
+  learning of it, a final report 14 days after a fix or mitigation is
+  available, via the ENISA platform (Art. 14); severe incidents affecting
+  security 24 h / 72 h, a final report one month after the notification.
+  At the latest from the first device offered or
   lent (SD-077). This needs a deputy who can meet the 24-hour deadline.
 - **SBOM** belongs in the technical documentation; publishing it is not
   mandatory.
