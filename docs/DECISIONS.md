@@ -2396,9 +2396,10 @@ SD-058, whose check runs with the npm that comes with Node.
 - **When:** at every release, in step 1 "Prepare" (`docs/RELEASE.md`):
   `.nvmrc` is compared with the newest Node 22 security release
   (`https://nodejs.org/dist/index.json`, `"security": true`) and raised
-  if it is lower. Between two releases CI may run a few weeks on a Node
-  without the newest patch. Node only builds and checks there and is not
-  shipped, so that risk is small.
+  if it is lower. Until the next release CI may run on a Node without the
+  newest patch. Node is not shipped, though it builds what is (the web
+  app in the firmware, the packages and the release), so that risk is
+  small.
 - **Node 22 ends on 2027-04-30:** the move to the next LTS, together with
   the `@types/node` major, comes before then.
 - **What it does not cover:**

@@ -9,8 +9,9 @@
 //     with npm's code and message, or that npm could not check at all,
 // with the Node and npm that checked. It changes nothing and never fails the
 // job itself: the check already did. Text from npm goes to the log between
-// ::stop-commands:: markers and on one line each, so it cannot act as a
-// workflow command.
+// ::stop-commands:: markers, which is what keeps it from acting as a
+// workflow command (the runner finds "##[" anywhere in a line); on top of
+// that each piece is one line with the command markers broken up.
 //   node tools/signatures_report.mjs [web folder]
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -21,12 +22,15 @@ import { fileURLToPath } from "node:url";
 const MAX_LINE = 4000;
 const MAX_ENTRIES = 200;
 const LOG_LINES = 60;
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 60_000;
 
-// One line of text from npm: no line breaks or control characters, cut short.
+// One line of text from npm: no line breaks, control or direction
+// characters, workflow command markers broken up, cut short.
 export function oneLine(v) {
   return String(v ?? "")
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+/g, " ")
+    .replace(/::/g, ": :")
+    .replace(/##\[/g, "## [")
     .trim()
     .slice(0, MAX_LINE);
 }
@@ -74,21 +78,27 @@ export function describe(stdout) {
   return lines;
 }
 
-// The end of npm's own log of the last `npm audit signatures` written before
-// `before` (ms), or a note when there is none.
-export function failedRunLog(logsDir, before) {
+// The end of npm's own log of the last `npm audit signatures` written after
+// `after` and before `before` (ms), or a note when there is none. `after`
+// is when this job's npm ci finished: older logs come from a cache.
+export function failedRunLog(logsDir, before, after = 0) {
   let logs = [];
   try {
     logs = readdirSync(logsDir)
       .filter((f) => f.endsWith(".log"))
       .map((f) => ({ f, t: statSync(join(logsDir, f)).mtimeMs }))
-      .filter((x) => x.t < before)
+      .filter((x) => x.t < before && x.t >= after)
       .sort((a, b) => b.t - a.t);
   } catch {
     return [`No npm logs in ${oneLine(logsDir)}.`];
   }
   for (const { f } of logs) {
-    const text = readFileSync(join(logsDir, f), "utf8");
+    let text;
+    try {
+      text = readFileSync(join(logsDir, f), "utf8");
+    } catch {
+      continue;
+    }
     if (!/verbose title npm audit signatures\b/.test(text)) continue;
     const exit = text.match(/verbose exit (\d+)/)?.[1];
     if (exit === "0") return [`The signature check passed in this job (npm log ${oneLine(f)}); the job failed elsewhere.`];
@@ -108,24 +118,34 @@ export function npmCli(execPath = process.execPath, platform = process.platform)
 function runNpm(args, cwd) {
   const cli = npmCli();
   const opts = { cwd, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: TIMEOUT_MS };
+  // The arguments are constants of this file; on Windows without the file
+  // next to Node, the shell starts npm.cmd.
   const r = existsSync(cli)
     ? spawnSync(process.execPath, [cli, ...args], opts)
-    : spawnSync("npm", args, { ...opts, shell: process.platform === "win32" });
+    : process.platform === "win32"
+      ? spawnSync(`npm ${args.join(" ")}`, { ...opts, shell: true })
+      : spawnSync("npm", args, opts);
   return { out: r.stdout ?? "", err: r.stderr ?? "", status: r.status, error: r.error };
 }
 
-// All lines of the report; `npm` runs npm with arguments in a folder.
-export function report(web, { npm = runNpm, logsDir, now = Date.now() } = {}) {
-  if (!existsSync(join(web, "node_modules"))) return [`No packages installed in ${oneLine(web)}: the job failed before npm ci, nothing to report.`];
-  const lines = [`Node ${process.version}, npm ${oneLine(npm(["-v"], web).out) || "?"}`];
-  const dir = logsDir ?? join(process.env.npm_config_cache || oneLine(npm(["config", "get", "cache"], web).out), "_logs");
-  lines.push(...failedRunLog(dir, now));
+// The report, line by line to `print`: npm's log of the failed run first,
+// so it is out before anything can take long. `npm` runs npm with
+// arguments in a folder.
+export function report(web, { npm = runNpm, logsDir, now = Date.now(), print = console.log } = {}) {
+  if (!existsSync(join(web, "node_modules"))) return print(`No packages installed in ${oneLine(web)}: the job failed before npm ci, nothing to report.`);
+  let installed = 0;
+  try {
+    installed = statSync(join(web, "node_modules", ".package-lock.json")).mtimeMs;
+  } catch {}
+  const dir = logsDir ?? (process.env.npm_config_cache ? join(process.env.npm_config_cache, "_logs") : null);
+  if (dir) for (const l of failedRunLog(dir, now, installed)) print(l);
+  print(`Node ${process.version}, npm ${oneLine(npm(["-v"], web).out) || "?"}`);
+  if (!dir) for (const l of failedRunLog(join(oneLine(npm(["config", "get", "cache"], web).out), "_logs"), now, installed)) print(l);
   const r = npm(["audit", "signatures", "--json"], web);
-  lines.push("Asked again now:");
-  if (r.error) lines.push(`  npm could not be started or did not finish: ${oneLine(r.error.code ?? r.error.message)}`);
-  lines.push(...describe(r.out).map((l) => `  ${l}`));
-  for (const l of r.err.split(/\r?\n/).filter((x) => x.trim()).slice(-20)) lines.push(`  ${oneLine(l)}`);
-  return lines;
+  print("Asked again now:");
+  if (r.error) print(`  npm could not be started or did not finish: ${oneLine(r.error.code ?? r.error.message)}`);
+  for (const l of describe(r.out)) print(`  ${l}`);
+  for (const l of r.err.split(/\r?\n/).filter((x) => x.trim()).slice(-20)) print(`  ${oneLine(l)}`);
 }
 
 function isMain() {
@@ -140,7 +160,7 @@ if (isMain()) {
   const token = randomUUID();
   console.log(`::stop-commands::${token}`);
   try {
-    for (const line of report(resolve(process.argv[2] ?? "web"))) console.log(line);
+    report(resolve(process.argv[2] ?? "web"));
   } catch (e) {
     console.log(`The report itself failed: ${oneLine(e?.stack ?? e)}`);
   } finally {

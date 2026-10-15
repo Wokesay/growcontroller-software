@@ -58,15 +58,17 @@ test("npm that cannot check at all is not taken for a check that passed", () => 
   for (const other of ["null", "{}", JSON.stringify({ invalid: "x" })]) assert.deepEqual(describe(other), [`npm gave no report: ${other}`], other);
 });
 
-test("text from npm cannot become a workflow command, odd entries and many entries stay readable", () => {
-  const sneaky = { ...invalidBabel, message: "x\n::add-mask::invalid\r\n::warning::re-run, a flake" };
+test("text from npm is one line with its command markers broken up; odd and many entries stay readable", () => {
+  // The fence against workflow commands is ::stop-commands:: around the whole
+  // output (the last test); this is the layer under it.
+  const sneaky = { ...invalidBabel, message: "x\n::add-mask::invalid\r\n##[warning]re-run, a flake\u202e" };
   const lines = describe(JSON.stringify({ invalid: [sneaky, null, "text"], missing: [] }));
-  for (const l of lines) assert.doesNotMatch(l.trimStart(), /^::/, l);
-  assert.ok(lines.includes("  EATTESTATIONVERIFY: x ::add-mask::invalid ::warning::re-run, a flake"));
+  for (const l of lines) assert.doesNotMatch(l, /::|##\[|[\u0000-\u001f\u202e]/, l);
+  assert.ok(lines.includes("  EATTESTATIONVERIFY: x : :add-mask: :invalid ## [warning]re-run, a flake"), lines.join("\n"));
   assert.ok(lines.includes("invalid: null") && lines.includes('invalid: "text"'));
   assert.deepEqual(describe(JSON.stringify({ error: { summary: "a\n::error::b", detail: "c\n::stop-commands::d" } })), [
-    "npm could not check the signatures: a ::error::b",
-    "  c ::stop-commands::d",
+    "npm could not check the signatures: a : :error: :b",
+    "  c : :stop-commands: :d",
   ]);
   const many = describe(JSON.stringify({ invalid: Array.from({ length: 250 }, (_, i) => ({ name: `p${i}`, version: "1.0.0", message: "m".repeat(9000) })), missing: [] }));
   assert.equal(many.at(-1), "… and 50 more");
@@ -96,6 +98,14 @@ test("npm's log of the check shows the failed run, or that the check passed and 
   assert.match(failedRunLog(join(logs, "none"), 1)[0], /^No npm logs in /);
   const empty = tmp(t);
   assert.deepEqual(failedRunLog(empty, 1), ["No npm log of a signature check found; the job may have failed before it, or elsewhere."]);
+  // Logs older than this job's npm ci come from a cache: not this job's check
+  assert.deepEqual(failedRunLog(logs, 1_000_000, 250_000), ["No npm log of a signature check found; the job may have failed before it, or elsewhere."]);
+  writeFileSync(join(logs, "5-debug-0.log"), "unreadable");
+  utimesSync(join(logs, "5-debug-0.log"), 500, 500);
+  rmSync(join(logs, "5-debug-0.log"));
+  mkdirSync(join(logs, "6-debug-0.log"));
+  utimesSync(join(logs, "6-debug-0.log"), 600, 600);
+  assert.equal(failedRunLog(logs, 1_000_000)[0], "End of npm's log of the check (2-debug-0.log, exit 1):");
 });
 
 test("the report asks npm in the web folder and says when npm cannot be started", (t) => {
@@ -108,16 +118,20 @@ test("the report asks npm in the web folder and says when npm cannot be started"
     if (args[0] === "-v") return { out: "10.9.9\n", err: "", status: 0 };
     return { out: JSON.stringify({ invalid: [invalidBabel], missing: [] }), err: "npm warn x\n", status: 1 };
   };
-  const lines = report(web, { npm, logsDir: logs, now: 1 });
+  const lines = [];
+  report(web, { npm, logsDir: logs, now: 1, print: (l) => lines.push(l) });
   assert.deepEqual(calls, [
     ["-v", web],
     ["audit signatures --json", web],
   ]);
-  assert.equal(lines[0], `Node ${process.version}, npm 10.9.9`);
+  // npm's log of the failed run comes first, before anything can take long
+  assert.equal(lines[0], "No npm log of a signature check found; the job may have failed before it, or elsewhere.");
+  assert.equal(lines[1], `Node ${process.version}, npm 10.9.9`);
   assert.ok(lines.includes("Asked again now:"));
   assert.ok(lines.includes("  invalid: @babel/helper-validator-identifier@7.29.7 (attestation https://slsa.dev/provenance/v1)"));
   assert.ok(lines.includes("  npm warn x"));
-  const gone = report(web, { npm: () => ({ out: "", err: "", status: null, error: Object.assign(new Error("spawn npm ENOENT"), { code: "ENOENT" }) }), logsDir: logs });
+  const gone = [];
+  report(web, { npm: () => ({ out: "", err: "", status: null, error: Object.assign(new Error("spawn npm ENOENT"), { code: "ENOENT" }) }), logsDir: logs, print: (l) => gone.push(l) });
   assert.ok(gone.includes("  npm could not be started or did not finish: ENOENT"), gone.join("\n"));
 });
 
