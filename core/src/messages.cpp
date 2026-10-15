@@ -176,6 +176,7 @@ constexpr Entry kMessages[] = {
     {"watch.level.low", "{value:1} L below {min:1} L"},
     {"watch.stock.label", "{name} stock"},
     {"watch.stock.low", "{ml:0} ml left – change the bottle soon"},
+    {"watch.stock.negative", "{ml:0} ml by the hub's count – bottle empty? Change it, or enter the amount left"},
     {"watch.calib.label", "Calibrate {name}"},
     {"watch.calib.missing", "Pump not calibrated – it won't dose"},
     {"watch.ctl.ec", "EC top-up"},
@@ -335,6 +336,9 @@ constexpr Entry kMessages[] = {
     {"ev.manual.text", "Manually"},
     {"ev.bottle_changed", "Bottle changed"},
     {"ev.bottle_changed.text", "{name}: {ml:0} ml"},
+    {"ev.stock.below_zero", "Stock below zero by the hub's count"},
+    {"ev.stock.below_zero.text", "{name}: bottle empty? Change it; doses since it ran dry did not go in fully. If not, enter the amount left under Recipes & bottles. If this keeps happening, calibrate the pump again."},
+    {"canister.stock", "The amount left can't be below 0 ml. Enter what is in the bottle."},
 
     // Events: control (control.cpp)
     {"ev.ec.no_effect", "EC doses have no effect"},
@@ -401,6 +405,7 @@ constexpr Entry kMessages[] = {
     {"job.emergency_stop", "Cancelled by the emergency stop"},
     {"mix.done", "Done: {water:1} L \"{recipe}\". {after}"},
     {"mix.failed_open", "A mix stopped part way is still open: resume it or end it first."},
+    {"mix.stock_negative", "{name}: stock used up by the hub's count – check the bottle and enter the amount left under Recipes & bottles"},
     {"mix.after_auto", "pH comes last: pH correction takes over after mixing."},
     {"mix.after_manual", "pH comes last: measure pH by hand now and enter it."},
     {"mix.circulate", "Mixing with the circulation pump (1 min)"},

@@ -2192,6 +2192,21 @@ product side answers the question named with it (Q1 to Q16, below).
   RAT-052 (once settle times are measured). No RAT rule changes with
   this entry; RAT-007 and RAT-018 only say now what PD-160 decided
   instead of "still open".
+- **2026-10-14, ahead of step 7:** at the project owner's request, before
+  0.1.0-proto.5, the hub keeps a stock booked below zero and reports it
+  each time it falls below zero, instead of stopping it at 0 without a
+  report. Below zero means at or below -0.5 ml (`kStockBelowZeroMl`), so it
+  shows as at least -1 ml and a rounding difference under 0.5 ml raises no
+  alarm. A stock the user enters is never below zero; an unchanged one
+  still saves, so such a bottle can be renamed, and the bottle editor
+  sends the amount left only when it was changed there. The texts lead
+  with the bottle: if it is empty, change it; otherwise enter the amount
+  left; calibrate the pump again only if it keeps happening. A mix sees
+  the stock as used up. This changes no dose refusal, switching or
+  cut-off, and a mix is refused exactly when it was refused before; the
+  only new refusal is an amount entered below zero (an input check).
+  `security` checked it under SD-033; the rest of step 7 still needs
+  "mergen".
 
 ## SD-067: A low-level latch releases itself: which latch, margin, wait and what holds (#27)
 

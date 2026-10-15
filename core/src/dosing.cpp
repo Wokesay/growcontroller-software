@@ -543,7 +543,16 @@ void Doser::book(const Ctx& c, Ms ms) {
   if (o.purpose == "calibration" || o.purpose == "prime") return;  // kein Verbrauch (RAT-070)
   // Vorrat je Lauf buchen, nicht erst am Ende (RAT-070): ein Abbruch fehlt sonst
   auto st = c.rt.stockMl.find(o.step.canister);
-  if (st != c.rt.stockMl.end() && isNum(st->second) && isNum(ml)) st->second = std::max(0.0, st->second - ml);
+  if (st == c.rt.stockMl.end() || !isNum(st->second) || !isNum(ml)) return;
+  // Booked as it went, also below zero: then the bottle ran dry, or the
+  // stock entered or the pump's calibration is wrong. Reported each time it
+  // falls below zero, never hidden as 0 (RAT-015, SD-066); a rounding
+  // difference alone does not count (kStockBelowZeroMl).
+  const bool wasCovered = st->second > kStockBelowZeroMl;
+  st->second -= ml;
+  if (wasCovered && st->second <= kStockBelowZeroMl)
+    c.log.add(c.epoch, "tank", "warn", say("ev.stock.below_zero"), say("ev.stock.below_zero.text", {{"name", o.step.name}}),
+              {{"canister", o.step.canister}, {"stockMl", st->second}});
 }
 
 void Doser::logOrder(const Ctx& c) {

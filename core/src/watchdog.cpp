@@ -164,8 +164,11 @@ WatchResult evaluate(const WatchInput& in) {
     auto st = in.rt.stockMl.find(k.id);
     if (st != in.rt.stockMl.end() && isNum(st->second)) {
       double min = k.kind == "nutrient" ? 150.0 : 20.0;  // Mindeststand (RAT-071)
-      if (st->second < min)
-        add("stock." + k.id, say("watch.stock.label", {{"name", k.name}}), "problem", say("watch.stock.low", {{"ml", st->second}}));
+      const Msg label = say("watch.stock.label", {{"name", k.name}});
+      if (st->second <= kStockBelowZeroMl)  // booked below zero: bottle empty, or stock or calibration wrong (SD-066)
+        add("stock." + k.id, label, "problem", say("watch.stock.negative", {{"ml", st->second}}));
+      else if (st->second < min)
+        add("stock." + k.id, label, "problem", say("watch.stock.low", {{"ml", st->second}}));
     }
     if (!k.pump.empty()) {
       auto f = in.pumpFlow.find(k.pump);

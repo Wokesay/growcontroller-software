@@ -60,7 +60,7 @@ UI can do, an integration can do as well.
 
 | Method | Path | Content |
 |---|---|---|
-| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock, cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
+| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock (ml per bottle, `null` when unknown, below zero when more was booked than entered, SD-066), cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
@@ -83,7 +83,7 @@ UI can do, an integration can do as well.
 | POST | `/roles/{rolle}/switch` `{on}` | manual operation, with all locks (otherwise 409 with the reason) |
 | PUT | `/tank` | name, usable volume, minimum level, water, volume without a level head |
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
-| POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock |
+| POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
 | POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |

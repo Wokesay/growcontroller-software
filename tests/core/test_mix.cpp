@@ -69,6 +69,13 @@ TEST_CASE("Mischen: Nutzvolumen, Doppelstart, Vorrat") {
   f.rt.lastMixAt = 0;
   f.rt.stockMl["a"] = 5;
   CHECK_FALSE(f.plan(10).ok);
+  // used up by the count: refused with what to do, not with a negative amount in the bottle (SD-066)
+  f.rt.stockMl["a"] = -2;
+  auto p = f.plan(10);
+  CHECK_FALSE(p.ok);
+  bool negative = false;
+  for (const auto& e : p.errors) negative = negative || (e.key == "mix.stock_negative" && e.args["canister"] == "a");
+  CHECK(negative);
 }
 
 TEST_CASE("Teilläufe: gleich groß, Untergrenze 1 s (M2-6, RAT-050/RAT-055)") {

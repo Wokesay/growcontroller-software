@@ -545,6 +545,33 @@ for (const lang of ["de", "en"] as const) {
   });
 }
 
+test("Recipes: saving a bottle keeps a dose booked while its editor was open; a stock below zero shows in red (SD-066)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const state = async () => (await page.request.get("/api/v1/state")).json();
+  expect((await page.request.post("/api/v1/canisters/calmag/stock", { data: { ml: 3 } })).ok()).toBeTruthy();
+  await page.goto("/#/rezepte");
+  const row = (name: string) => page.locator(".rtable tbody tr").filter({ hasText: name });
+  await row("CalMag").getByTitle("Bearbeiten").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("input[name=canister-name]")).toHaveValue("CalMag");
+  // while the editor is open, a hand dose books 5 ml from the 3 ml left
+  await expect.poll(async () => { const s = await state(); return s.job === null && s.dosing === null; }, { timeout: 60_000 }).toBe(true);
+  expect((await page.request.post("/api/v1/dose", { data: { canister: "calmag", ml: 5 } })).ok()).toBeTruthy();
+  await expect.poll(async () => { const s = await state(); return s.job === null && s.dosing === null; }, { timeout: 60_000 }).toBe(true);
+  expect((await state()).stock.calmag).toBeLessThan(-1);
+  // only the name changes: the amount left it opened with is not sent back
+  await dialog.locator("input[name=canister-name]").fill("CalMag neu");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect((await state()).stock.calmag).toBeLessThan(-1);
+  await expect(row("CalMag neu").locator("span.num", { hasText: /^-\d+ ml$/ })).toHaveAttribute("style", /--bad/);
+  // opened again: the field is empty and says what the hub counts
+  await row("CalMag neu").getByTitle("Bearbeiten").click();
+  await expect(dialog.locator("input[name=canister-stock]")).toHaveValue("");
+  await expect(dialog).toContainText(/Rechnerisch -\d+ ml\. Trag ein, was wirklich im Kanister ist\./);
+});
+
 test("Recipes: a bottle a recipe uses says where and how to take it out, a pair as a whole, and the way works (#120)", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
