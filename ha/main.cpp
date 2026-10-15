@@ -18,6 +18,15 @@
 
 #include <httplib.h>
 
+#ifdef __linux__
+#include <grp.h>
+#include <sys/prctl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <cerrno>
+#endif
+
 #include "gc/api.hpp"
 #include "gc/embedded.hpp"
 #include "gc/hub.hpp"
@@ -30,6 +39,56 @@ namespace {
 
 std::atomic<bool> g_running{true};
 void onSignal(int) { g_running = false; }
+
+#ifdef __linux__
+// As a Home Assistant app the server is started as root (#80). Before it
+// opens its port it gives the data folder to an account of its own and
+// becomes that account for good: no root, no capabilities, no way back,
+// so a flaw in the web server cannot reach the other apps' traffic on Home
+// Assistant's network. Port 8099 needs no privilege. "" or why it failed.
+constexpr uid_t kAppUid = 65532;
+constexpr gid_t kAppGid = 65532;
+std::string dropRoot(std::string data) {
+  namespace fs = std::filesystem;
+  const auto sys = [](int e) { return std::error_code(e, std::generic_category()).message(); };
+  while (data.size() > 1 && data.back() == '/') data.pop_back();  // "link/" would be followed
+  std::error_code ec;
+  if (fs::is_symlink(fs::symlink_status(data, ec))) return data + " is a link";  // what it points to is not ours
+  if (fs::create_directories(data, ec) && !ec) {
+    std::error_code ignored;  // a new folder is the owner's only, as the store makes it
+    fs::permissions(data, fs::perms::owner_all, ignored);
+  }
+  if (ec) return "cannot create " + data + ": " + ec.message();
+  // The folder and what is in it (the store keeps no subfolders), including
+  // files a version before #80 or a restore from a backup left as root; a
+  // link is changed itself, never what it points to
+  if (lchown(data.c_str(), kAppUid, kAppGid) != 0) {
+    const int e = errno;
+    return "cannot hand " + data + " to its own account: " + sys(e);
+  }
+  for (fs::directory_iterator it(data, ec), end; !ec && it != end; it.increment(ec))
+    if (lchown(it->path().c_str(), kAppUid, kAppGid) != 0) {
+      const int e = errno;
+      return "cannot hand " + it->path().string() + " to its own account: " + sys(e);
+    }
+  if (ec) return "cannot read " + data + ": " + ec.message();
+  if (setgroups(0, nullptr) != 0 || setgid(kAppGid) != 0 || setuid(kAppUid) != 0) {
+    const int e = errno;
+    return "cannot switch to its own account: " + sys(e);
+  }
+  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
+    const int e = errno;
+    return "cannot block new rights (no_new_privs): " + sys(e);
+  }
+  if (setuid(0) == 0 || geteuid() != kAppUid || getegid() != kAppGid) return "it could still become root again";
+  // Now its owner: the folder is private again, whatever an earlier run left
+  if (chmod(data.c_str(), 0700) != 0) {
+    const int e = errno;
+    return "cannot make " + data + " private: " + sys(e);
+  }
+  return {};
+}
+#endif
 
 // Wall time from the computer. Assumption: its operating system keeps the
 // time synced (NTP), so the time counts as secured (PD-073).
@@ -88,7 +147,8 @@ void usage() {
             << "  --app               as a Home Assistant app (SD-034): Home Assistant at http://supervisor/core with the\n"
             << "                      Supervisor's token (SUPERVISOR_TOKEN), data in /data/hub, the web app from /web,\n"
             << "                      reachable in the network on port 8099 (--data, --host, --web, --port still apply);\n"
-            << "                      --config and --token-file are refused\n"
+            << "                      --config and --token-file are refused; started as root, it hands the --data\n"
+            << "                      folder to user 65532 and switches to that user for good (#80)\n"
             << "Until a password is set, the start prints a setup code that the first password needs (#79).\n";
 }
 
@@ -178,12 +238,28 @@ int main(int argc, char** argv) {
     return 2;
   }
 
+  // What to do when the app cannot start: never reinstall, that deletes its data
+  const char* const startAgain =
+      "Your data is kept. Start the app again. If this comes back, restore the backup from before the update "
+      "and report this: https://github.com/Wokesay/growcontroller-software/issues\n";
+#ifdef __linux__
+  if (app && geteuid() == 0) {
+    const std::string why = dropRoot(data);
+    if (!why.empty()) {
+      std::cerr << "growcontroller did not start: it could not give up its administrator rights (root). Detail: " << why << ".\n"
+                << startAgain;
+      return 2;
+    }
+  }
+#endif
   const gc::Catalog cat = ha::catalog();
   HostClock clock;
   sim::FileStorage store(data);
   if (!store.ready()) {  // a password set here must survive a restart (#68)
-    std::cerr << "The data folder " << data << " cannot be written. "
-              << (app ? "Restart the app; if it stays, reinstall it.\n" : "Choose a writable one with --data.\n");
+    if (app)
+      std::cerr << "growcontroller did not start: its data folder " << data << " cannot be written.\n" << startAgain;
+    else
+      std::cerr << "The data folder " << data << " cannot be written. Choose a writable one with --data.\n";
     return 2;
   }
   ha::HaBus bus(mapping.entities);
@@ -300,11 +376,16 @@ int main(int argc, char** argv) {
   svr.Put(R"(/api/v1/.*)", apiHandler);
   svr.Patch(R"(/api/v1/.*)", apiHandler);
   svr.Delete(R"(/api/v1/.*)", apiHandler);
-  const bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html");
+  std::error_code webErr;  // a folder it may not read is no web app, not a crash at the start (#80)
+  const bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
+  if (webErr) std::cerr << "The web app in " << web << " cannot be read; growcontroller runs without it. Detail: " << webErr.message() << ".\n";
   if (haveWeb) svr.set_mount_point("/", web);
   svr.Get(R"(/(?!api/).*)", [&](const httplib::Request&, httplib::Response& res) {
     if (!haveWeb) {
-      res.set_content("Web app not built: cd web && npm ci && npm run build", "text/plain; charset=utf-8");
+      res.set_content(app ? "growcontroller's web app cannot be read. Start the app again; if this stays, report it: "
+                            "https://github.com/Wokesay/growcontroller-software/issues"
+                          : "Web app not built: cd web && npm ci && npm run build",
+                      "text/plain; charset=utf-8");
       return;
     }
     res.set_content(readFile((std::filesystem::path(web) / "index.html").string()), "text/html; charset=utf-8");
