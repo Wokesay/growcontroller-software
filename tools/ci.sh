@@ -16,7 +16,7 @@ tools/arch_check.sh
 end
 
 group "CI and release scripts, workflow pins"
-node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs
 end
 
 group "Text keys of the web app"
@@ -43,6 +43,7 @@ end
 # before any of them runs (SD-058).
 group "Web app (provenance, registry signatures, type check, build, size budget, no build tool code; type check of the end-to-end tests and the build configs)"
 node tools/check_provenance.mjs
+echo "Node $(node -v), npm $(npm -v) check the signatures (CI: .nvmrc, #163)"
 (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build && npm run typecheck:node)
 end
 

@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: ${{ !inputs.release && 'npm' || '' }}
           cache-dependency-path: web/package-lock.json
           package-manager-cache: ${{ !inputs.release }}
@@ -53,6 +53,9 @@ jobs:
         run: |
           (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build)
           node tools/embed_web.mjs build-pkg/web_assets.cpp
+      - name: Why the registry signatures failed
+        if: failure()
+        run: node tools/signatures_report.mjs web
       - name: Build the simulator
         run: |
           cmake -S . -B build-pkg -DCMAKE_BUILD_TYPE=Release -DGC_BUILD_TESTS=OFF -DGC_WERROR=OFF \

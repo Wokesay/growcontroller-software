@@ -463,6 +463,15 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The signature check runs one pinned npm, and says why it fails**
+  (#163): the npm that checks the web app's packages against their
+  registry signatures (SD-058) came with whatever Node the runner image
+  had. CI now runs the one Node named in `.nvmrc`, raised by hand with a
+  review, and the app image prints the Node and npm it checks with. When
+  the check fails, a step that runs only then prints each package with
+  npm's reason; until now the output named only the package, so a failure
+  on 2026-10-14 that passed again on re-run could not be explained. The
+  check itself is unchanged.
 - **A Stop holds even when booking the running dose fails** (RAT-036):
   a Stop booked the running dose and ended the job before it switched the
   inlet, the circulation pump and the sockets off. An error while booking

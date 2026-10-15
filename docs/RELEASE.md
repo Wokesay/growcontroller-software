@@ -105,6 +105,15 @@ entry under `[Unreleased]`.
      that stand the cooldown and the lockfile pin.
      `tools/workflows.test.mjs` keeps the step and the registry addresses
      in place.
+   - The npm that checks them comes with Node, so CI runs one exact Node,
+     named in `.nvmrc`, not whatever the runner image brings (#163). It is
+     raised by hand in a pull request of its own, with a `security`
+     review, when Node 22 has a security release. The app image checks
+     with Alpine's Node and npm and prints their versions. When a check
+     fails, a step that runs only then asks npm again and prints each
+     package with npm's reason (`tools/signatures_report.mjs`); the
+     plain output names only the package. It changes nothing and never
+     replaces the check.
    - In `tools/ci.sh` (CI's `checks` job), before the packages are
      installed, `tools/check_provenance.mjs` finds for every package in the
      lockfile, every platform build included, the highest lower version
