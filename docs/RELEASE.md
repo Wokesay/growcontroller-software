@@ -44,9 +44,15 @@ entry under `[Unreleased]`.
   vulnerability behind it. In the first two, each item names what it is,
   the affected versions, the impact, the severity, the remedy (CRA
   Annex I, Part II (4)) and, for a vulnerability, its GHSA and CVE IDs.
-- **For the app**, every release gets a three-line summary:
-  "New / Fixed / Please note" (`kunde`). The full changelog is embedded in
-  the firmware (`GET /api/v1/changelog`) and readable in the app.
+- **For the app**, every release gets a short summary: "New / Fixed /
+  Please note" (`kunde`), and "Security" whenever the release fixes a
+  vulnerability, in plain words with its severity (the app shows it from
+  the update manifest's `sicherheit` list). The full changelog is
+  embedded in the firmware (`GET /api/v1/changelog`) and readable in the
+  app. The Home Assistant app's own `ha/app/CHANGELOG.md`, which Home
+  Assistant shows from `main` in its update dialog, gets the release's
+  section in the release pull request, security items first with their
+  advisories (SD-077).
 
 ## Release process
 
@@ -259,8 +265,11 @@ stand only in the changelog.
   affected versions, the CVSS 3.1 vector, the CWE, and a description
   with the impact, the fix and the workaround.
 - **CVE:** for a flaw of our own, the project owner requests a CVE in
-  the draft at least 3 working days before the tag; GitHub's review
-  takes about 72 hours. A flaw of a component (a library, the processor)
+  the draft at the start of step 1, at least 3 working days before the
+  release pull request is merged, since the tag follows the merge at
+  once; GitHub's review takes about 72 hours. If GitHub has not assigned
+  it by then, the release is tagged anyway and the ID is added when it
+  comes, so a security fix is not held back. A flaw of a component (a library, the processor)
   gets no CVE of its own; the advisory names the component's CVE.
 - **Before the tag (step 1):** each fix's regression test runs against
   the published tags of the affected range (adapted where it calls code

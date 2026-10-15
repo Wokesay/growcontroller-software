@@ -531,9 +531,10 @@ Vulnerabilities, each with an advisory:
   - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
-  a device in the network that sent a wrong password every 15 minutes kept
-  every other one from signing in, the owner's phone included, and so from
-  "Stop" unless it was still signed in. Now a device that has signed in
+  a device in the network that, after about ten wrong passwords, sent one
+  every 15 minutes kept every other one from signing in, the owner's phone
+  included, and in the simulator from "Stop" unless it was still signed
+  in. Now a device that has signed in
   since the hub last started has its own count, so guessing from another
   address no longer locks it out; all devices that never signed in share
   one count, so guessing from many of them stays as slow as from one. The
@@ -546,7 +547,7 @@ Vulnerabilities, each with an advisory:
     0.1.0-proto.4.
   - Impact: needs a device in the home network (for the simulator only
     when it was started with `--host`); a device already signed in kept
-    its session and "Stop".
+    its session and, in the simulator, "Stop".
   - Severity: medium, CVSS 3.1 4.3
     (`CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`), CWE-645.
   - Remedy: update to 0.1.0-proto.5. Until then, keep the devices you
@@ -577,13 +578,15 @@ Vulnerabilities, each with an advisory:
   - Advisory: a GHSA, published with this release; no CVE of its own, it
     refers to CVE-2025-62626.
 - **An import could show a pH calibrated in Home Assistant as checked**
-  (SD-041): a device whose reported class differs from the configured one
-  now has no value, and an import gives a calibration only to a class that
-  offers it.
+  (SD-041): a crafted backup could give a Home Assistant pH sensor the
+  class of the hub's own pH probe, with a calibration; its values then
+  showed as checked by the hub ("Valid", without "Calibrated elsewhere")
+  and counted as usable until the app restarted. Now a device whose
+  reported class differs from the configured one has no value, and an
+  import gives a calibration only to a class that offers it.
   - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: a crafted backup; the owner must import it, which needs the
-    password, and nothing in the Home Assistant app reads a value to
-    switch.
+    password, and the Home Assistant app cannot switch anything.
   - Severity: low, CVSS 3.1 3.3
     (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-807.
   - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
@@ -599,15 +602,17 @@ Safety and robustness fixes, no vulnerability:
   with its device; one left for 30 min without a step no longer explains
   jumps, while pH and EC control keep waiting until it is saved or
   cancelled, since the probe may still be in a buffer.
-  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4; in the Home
+    Assistant app only through a crafted import.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far.
   - Severity: low; no CVSS, as it is not a vulnerability.
-  - Remedy: update to 0.1.0-proto.5.
+  - Remedy: update to 0.1.0-proto.5. Until then, restart the simulator
+    after a calibration you did not finish.
 - **A new sign-in ends the session used longest ago:** with 16 sessions
   open, a 17th sign-in ended a random one of them, so the phone someone was
-  using could be signed out and had to sign in again before it could reach
-  "Stop". Now the session used longest ago ends. Found through a test of the
+  using could be signed out and had to sign in again before it could
+  reach "Stop" in the simulator. Now the session used longest ago ends. Found through a test of the
   lockout (SD-051) that failed in about 1 of 16 runs.
   - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
     0.1.0-proto.4.
@@ -630,7 +635,7 @@ Safety and robustness fixes, no vulnerability:
   explained; that stays open.
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
-    so far.
+    so far; there, pH control dosed twice on the jumped reading.
   - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
 

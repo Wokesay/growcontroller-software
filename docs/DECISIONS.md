@@ -3022,9 +3022,12 @@ The software side's proposals, as decided:
     session ended at random, which needs the password.
 
   All four: affected up to 0.1.0-proto.4 (published: proto.2 to
-  proto.4), patched in 0.1.0-proto.5. Before they are published, each
-  fix's regression test runs against the tags v0.1.0-proto.2 to
-  v0.1.0-proto.4 to confirm the range, above all for B.
+  proto.4), patched in 0.1.0-proto.5. `qa` confirmed the range on
+  2026-10-15 with each fix's test, or one adapted to the older code,
+  against builds of v0.1.0-proto.2 and v0.1.0-proto.4 (proto.3 changed
+  none of them; RDSEED by the code): all seven items of the Security
+  section affect proto.2 to proto.4. Later items get the same check
+  before they are published.
 - **Open:** product question #200 (point 1); on the product side, what
   counts as the first offer, which CSIRT coordinates (probably the BSI),
   and a lawyer's view of Art. 14.
