@@ -1224,6 +1224,7 @@ Result Hub::putCanister(const json& j) {
   for (auto& x : next.canisters)
     if (x.id == id) k = &x;
   const std::string oldPair = k ? k->pair : "";
+  const bool created = !k;
   if (!k) {
     std::string base = slug(jstr(j, "name", "kanister"));
     id = base;
@@ -1248,12 +1249,15 @@ Result Hub::putCanister(const json& j) {
     // A stock entered is never below zero; an unchanged one still saves, so a
     // bottle booked below zero can be renamed (SD-066)
     const double ml = j["stockMl"];
-    auto was = rt_.stockMl.find(id);
+    auto was = created ? rt_.stockMl.end() : rt_.stockMl.find(id);
     if ((!isNum(ml) || ml < 0) && !(was != rt_.stockMl.end() && was->second == ml)) return Result::fail(422, say("canister.stock"));
   }
   cfg_ = next;
+  // A new bottle starts with the stock entered, else full, else unknown, never with a stock left
+  // behind by a bottle of the same name (#161)
   if (j.contains("stockMl") && j["stockMl"].is_number()) rt_.stockMl[id] = j["stockMl"];
-  else if (!rt_.stockMl.count(id) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
+  else if ((created || !rt_.stockMl.count(id)) && isNum(k->capacityMl)) rt_.stockMl[id] = k->capacityMl;
+  else if (created) rt_.stockMl.erase(id);
   stateDirty_ = true;
   saveConfig(unpaired.empty() ? say("ev.cfg.canister", {{"name", k->name}})
                               : say("ev.cfg.canister_unpairs", {{"name", k->name}, {"partner", unpaired}}));
@@ -1485,6 +1489,11 @@ Result Hub::importConfig(const json& j) {
   next.revision = cfg_.revision;
   // Die Sperre gegen eine zweite Einrichtung kommt nie aus einer Datei.
   next.system.passwordSet = cfg_.system.passwordSet || auth_.hasPassword();
+  // Only the stock of a bottle the hub had and the file keeps stays; a bottle new to the hub, now or
+  // later, never takes over one left behind (#161)
+  for (auto it = rt_.stockMl.begin(); it != rt_.stockMl.end();)
+    it = cfg_.canister(it->first) && next.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
+  stateDirty_ = true;
   cfg_ = next;
   if (net_)
     cfg_.forEachBinding([&](const std::string& role, const Binding& b) {

@@ -241,6 +241,12 @@ listed in every release under "Security".
   hub now lets a recipe hold both bottles before the second gets the
   label, so two bottles a recipe holds one of can be paired; the recipe
   editor cannot add a bottle to an existing recipe yet (#159).
+- **A new bottle no longer takes over an old stock** (#161): importing a
+  backup without a bottle kept that bottle's stock, and a new bottle of
+  the same name created without a stock, as the setup wizard does, then
+  started with it instead of its size. An import now keeps only the
+  stock of the bottles the hub had and the file keeps, and a new bottle
+  starts with the stock entered, else its size, else unknown.
 - **A removed bottle's stock is saved at once** (#152): until the next
   regular save, a power cut brought it back, and a new bottle of the same
   name then showed the old stock.
