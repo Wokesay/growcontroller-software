@@ -220,7 +220,7 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
-- **The simulator keeps a data folder it cannot read** (SD-073): when
+- **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
   one an earlier start with `sudo` made, or a link that loops), it ended

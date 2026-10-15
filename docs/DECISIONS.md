@@ -2535,7 +2535,7 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
 
 ---
 
-## SD-073: A data folder the simulator cannot read runs it in memory only
+## SD-074: A data folder the simulator cannot read runs it in memory only
 
 Decided by the project owner on 2026-10-15 in the software session
 (follow-up of PR #187, which does the same for `--web`), in two steps:

@@ -284,7 +284,7 @@ Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::b
   if (!opts_.dataDir.empty()) {
     if (auto why = unreadable(opts_.dataDir)) {
       // It may hold data: said once, then memory only, so nothing is read,
-      // written or removed there (SD-073).
+      // written or removed there (SD-074).
       std::cerr << "Data cannot be read (" << *why << "). Running in memory only.\n";
       opts_.dataDir.clear();
     } else {

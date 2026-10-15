@@ -365,7 +365,7 @@ TEST_CASE("Storage: after a full card, a clean shutdown right after space return
   CHECK(c2.ok("GET", "/api/v1/history?series=tank.ph&from=" + std::to_string(start) + "&to=" + std::to_string(end - 30))["series"] == before["series"]);
 }
 
-TEST_CASE("Storage: a data folder it cannot read runs the simulator in memory only and is left alone (SD-073)") {
+TEST_CASE("Storage: a data folder it cannot read runs the simulator in memory only and is left alone (SD-074)") {
   // The status of the folder or of its config.json cannot be read (here a
   // link to itself; also a folder it may not enter): it may hold data, so
   // nothing is read, written or removed there.
@@ -397,7 +397,7 @@ TEST_CASE("Storage: a data folder it cannot read runs the simulator in memory on
   }
 }
 
-TEST_CASE("Storage: a hub file the simulator cannot read runs it in memory only, and every file stays as it was (SD-073)") {
+TEST_CASE("Storage: a hub file the simulator cannot read runs it in memory only, and every file stays as it was (SD-074)") {
   // E.g. root's files after a start with sudo, in a folder it can read: a
   // start would boot without them and later save over them.
   TempDir dir;

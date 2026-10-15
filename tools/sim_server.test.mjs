@@ -2,7 +2,7 @@
 // gc_sim_server and a folder whose status it cannot read, instead of ending
 // at the start: a --web folder is no web app, so it starts without it (with
 // the embedded web app or the "not built" page); a --data folder runs it in
-// memory only and is left alone (SD-073). Runs the built server (tools/ci.sh
+// memory only and is left alone (SD-074). Runs the built server (tools/ci.sh
 // builds it first).
 //   node --test tools/sim_server.test.mjs      (GC_SIM_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
@@ -121,7 +121,7 @@ test("--web through a link to itself: it starts without it", { skip, timeout: 12
   assert.match(await startsWith(["--web", loop]), webSaysWhy);
 });
 
-test("--data below a folder it may not enter: memory only, and its data stays as it was (SD-073)", { skip, timeout: 120000 }, async (t) => {
+test("--data below a folder it may not enter: memory only, and its data stays as it was (SD-074)", { skip, timeout: 120000 }, async (t) => {
   const dir = join(tmp, "locked-data");
   const data = join(dir, "data");
   mkdirSync(data, { recursive: true });
@@ -135,7 +135,7 @@ test("--data below a folder it may not enter: memory only, and its data stays as
   assert.equal(readFileSync(join(data, "config.json"), "utf8"), '{"kept":true}');
 });
 
-test("--data through a link to itself: memory only, and the link stays (SD-073)", { skip, timeout: 120000 }, async () => {
+test("--data through a link to itself: memory only, and the link stays (SD-074)", { skip, timeout: 120000 }, async () => {
   const dir = mkdtempSync(join(tmp, "data-"));
   const loop = join(dir, "loop");
   symlinkSync("loop", loop);
@@ -146,7 +146,7 @@ test("--data through a link to itself: memory only, and the link stays (SD-073)"
   assert.ok(lstatSync(loop).isSymbolicLink());
 });
 
-test("--data holding a file it cannot read: memory only, and every file stays as it was (SD-073)", { skip, timeout: 120000 }, async (t) => {
+test("--data holding a file it cannot read: memory only, and every file stays as it was (SD-074)", { skip, timeout: 120000 }, async (t) => {
   // e.g. root's files after a start with sudo, in a folder it can read
   const data = mkdtempSync(join(tmp, "data-"));
   for (const f of ["config.json", "state.json"]) writeFileSync(join(data, f), '{"kept":true}');
