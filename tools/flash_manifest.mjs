@@ -53,7 +53,7 @@ const kPartitionTable = 0x8000; // ESP-IDF's default offset; the partitions foll
 
 // A board's partitions from firmware/boards/<board>.csv, placed as ESP-IDF
 // places them: one after the other, apps on 64 KB boundaries; "readonly" is
-// the only flag a partition may carry (the factory data, SD-070)
+// the only flag a partition may carry (the factory data, SD-071)
 export function layout(board, csv) {
   if (csv === undefined) {
     if (!boards[board]) throw new Error(`unknown board "${board}": ${Object.keys(boards).join(" or ")}`);
@@ -111,7 +111,7 @@ export function manifest(board, version, files) {
     // Ask before erasing: without the prompt, ESP Web Tools erases a new
     // install unasked. Its erase (this prompt, and "Erase User Data" once
     // Improv runs) is the whole chip, factory data included; the flash page
-    // for pre-flashed devices needs a patched copy (SD-070)
+    // for pre-flashed devices needs a patched copy (SD-071)
     new_install_prompt_erase: true,
     // No Wi-Fi setup over Improv yet (SD-044): do not wait for it after flashing
     new_install_improv_wait_time: 0,

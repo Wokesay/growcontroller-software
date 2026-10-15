@@ -208,7 +208,7 @@ repository itself are recorded here in full.
 - Exception (SD-024): the HMAC key for encrypted NVS. Open: whether a test
   lab accepts the USB path with the BOOT button for own firmware, and
   whether and when hardware Secure Boot with owner key slots comes.
-- Changed by SD-070: on either of the DevKit's USB ports no BOOT button is
+- Changed by SD-071: on either of the DevKit's USB ports no BOOT button is
   needed to install firmware; whether a test lab accepts that is open.
 
 
@@ -245,7 +245,7 @@ repository itself are recorded here in full.
   separately): USB-JTAG off at run time without a further eFuse
   (feasibility open), a recessed BOOT button, sessions stored only as
   hashes.
-- Changed by SD-070: the recessed BOOT button guards flashing on neither
+- Changed by SD-071: the recessed BOOT button guards flashing on neither
   of the DevKit's ports: on the board's USB port and, through its
   auto-program circuit (to be confirmed on the schematic), on the UART
   port a connected computer starts download mode without it.
@@ -908,7 +908,7 @@ reviewed by `security`.
 - Open: whether the BOOT button can be reached on the carrier board
   (product question); whether the UART counts as a physically protected
   interface under EN 18031 (`regulatorik`).
-- Changed by SD-070: Improv also runs on the board's USB port
+- Changed by SD-071: Improv also runs on the board's USB port
   (USB-Serial-JTAG), where opening the port can restart the ESP, as can
   opening the DevKit's UART port (DTR and RTS), so "never restarts the
   device while a job runs" does not hold over USB (the restart counts as
@@ -2397,7 +2397,7 @@ the issue and to the project owner.
   advisories).
 
 
-## SD-070: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
+## SD-071: Product requirement (from PD-179 to PD-186, PD-191, PD-192): self-flashed now, pre-flashed later, a setup network with a label key, first password in a window, support period
 
 Decided by the project owner in the product repository on 2026-10-12
 (#133); PD-180 is replaced by PD-186. The firmware facts come from a

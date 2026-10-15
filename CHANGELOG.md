@@ -166,7 +166,7 @@ listed in every release under "Security".
   project runs a relay free of charge, and you can run your own. A
   direct way through a port forward is not offered. Whether an app comes
   into the stores is decided later.
-- **Partition tables: room for factory data** (SD-070): both boards get a
+- **Partition tables: room for factory data** (SD-071): both boards get a
   read-only 16 KB partition `fctry` before the first app, for the serial
   number and the setup network's key from the label of pre-flashed
   devices. Nothing else moves: flashing a board you already have keeps
@@ -174,7 +174,7 @@ listed in every release under "Security".
   writes it and a factory reset will keep it; erasing the whole flash
   wipes it.
 - **Plan: pre-flashed devices, setup without a cable, support period**
-  (SD-070): until a series with hardened firmware, you flash the DevKit
+  (SD-071): until a series with hardened firmware, you flash the DevKit
   yourself in the browser; later it can come pre-flashed. Wi-Fi is then
   set up through the ESP32-S3's own setup network with the key from the
   label; on a configured device it opens only when you hold BOOT for
