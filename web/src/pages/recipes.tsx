@@ -188,6 +188,10 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   // the editor is open is not undone by saving a new name (SD-066)
   const [stockOpened] = useState(v.stockMl);
   const set = (k: string, val: unknown) => setV({ ...v, [k]: val });
+  // Leaving its pair takes the label from a partner left alone (#152), as removing does
+  const oldPair = p.can?.pair ?? "";
+  const others = oldPair && (v.kind === "nutrient" ? v.pair : "") !== oldPair ? canisters.value.filter((k) => k.id !== p.can?.id && k.pair === oldPair) : [];
+  const unpairs = others.length === 1 ? others[0] : undefined;
   return (
     <Modal
       title={p.can ? t("recipes.bottleTitle", { name: p.can.name }) : t("recipes.addBottle")}
@@ -199,6 +203,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           </button>
           <Button
             variant="primary"
+            aria-describedby={unpairs ? "bottle-unpairs" : undefined}
             onClick={async () => {
               const stockMl = p.can && v.stockMl === stockOpened ? null : v.stockMl;
               await post("/canisters", { id: p.can?.id, ...v, stockMl, pair: v.kind === "nutrient" ? v.pair : "" });
@@ -236,7 +241,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
         </Field>
         {v.kind === "nutrient" && (
           <Field label={t("setup.nut.pair")} hint={t("recipes.pairHint")}>
-            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} />
+            <input class="input" value={v.pair} placeholder={t("recipes.pairPlaceholder")} onInput={(e) => set("pair", (e.target as HTMLInputElement).value.toUpperCase().slice(0, 8))} name="canister-pair" />
           </Field>
         )}
         <Field label={t("recipes.bottleSize")}>
@@ -262,6 +267,11 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
           />
         ))}
       </div>
+      {unpairs && (
+        <p class="small muted" role="status" id="bottle-unpairs">
+          {t("recipes.editUnpairs", { partner: unpairs.name })}
+        </p>
+      )}
     </Modal>
   );
 }
