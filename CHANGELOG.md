@@ -516,7 +516,33 @@ Hardening, without a vulnerability behind it:
   browser left signed in, a cookie read off the unencrypted home network
   until HTTPS) stays valid as long as it is used at least every 12 hours;
   changing the password ends every session at once.
-
+- **The Home Assistant app no longer runs as root** (#80): the server ran
+  in its container with full administrator rights (root, with Docker's
+  default capabilities), and Home Assistant starts every app without a
+  seccomp filter, so a flaw in its web server would have given an attacker
+  root in the container. Now, at every start and before it opens its port,
+  it hands its data folder and what is in it to an account of its own
+  (user 65532; for a link, the link itself, never the file it points to; a
+  data folder that is a link is refused) and switches to that account for
+  good: no root, no capabilities, no new privileges; then it makes the
+  folder private again. Nothing to do after the update. If it cannot, the
+  app does not start and its log says why and what to do; your data is
+  kept. The app also brings an AppArmor profile (`ha/app/apparmor.txt`):
+  besides the basic system files every confined program may read, the
+  server reads only its web app and `/etc/hosts`, writes only its data
+  folder and uses only TCP over IPv4. CI now runs the app image the way
+  the Supervisor starts it, in that profile, also as a new install and
+  after a restart, fails if the profile refuses anything, and checks that
+  the profile loads with Debian 12's older AppArmor. Found on the way: a
+  web folder the server may not read stopped it at the start; now it
+  starts without the web app and says so in its log. Residual risk:
+  docker-init, which the Supervisor starts first, stays root next to the
+  server with the profile's capabilities (chown, dac_override, kill,
+  setgid, setuid); it runs nothing but the server, which can no longer
+  signal it. A host without AppArmor runs the app without the profile.
+  From the merge until the release, a new install gets the previous image
+  in the new profile, since Home Assistant takes the profile from the
+  repository.
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator
   packages, the release build, the Home Assistant app image),
