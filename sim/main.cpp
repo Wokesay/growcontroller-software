@@ -278,7 +278,10 @@ int main(int argc, char** argv) {
   // Web-App: Ordner (--web, Entwicklung) oder eingebettet (Download-Fassung),
   // jeweils mit Rückfall auf index.html (Single-Page-App).
   if (web.empty() && !GC_EMBEDDED_WEB) web = "web/dist";
-  const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html");
+  // A --web whose status cannot be read (no permission, a link loop) is no
+  // web app, not a crash at the start.
+  std::error_code webErr;
+  const bool haveDir = !web.empty() && std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
   const bool haveWeb = haveDir || GC_EMBEDDED_WEB;
   if (haveDir) svr.set_mount_point("/", web);
   svr.Get(R"(/(?!api/).*)", [&](const httplib::Request& req, httplib::Response& res) {

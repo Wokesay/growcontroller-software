@@ -219,6 +219,12 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator starts with a web app folder it cannot read**: when
+  `--web` pointed into a folder the simulator may not enter, or through a
+  link that loops, it ended at the start ("filesystem error: status").
+  Now such a folder counts as no web app: it starts with the embedded web
+  app or the "not built" page, and the API answers
+  (`tools/sim_server.test.mjs`).
 - **Removing one bottle of a pair no longer blocks every later save**
   (#147): the other bottle kept its pair label on its own, and the hub
   then refused saving a recipe, the tank, a zone or a function, binding a
