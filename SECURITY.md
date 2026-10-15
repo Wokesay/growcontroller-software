@@ -24,11 +24,11 @@ login.
 At the latest from the first offer of a device or the first device lent,
 we report under Art. 14 CRA (applies since 2026-09-11) every actively
 exploited vulnerability and every severe incident that affects the
-security of the product to the coordinating CSIRT and ENISA through the
-single reporting platform: an early warning within 24 hours of learning
-of it, a notification within 72 hours, then a final report. We inform
-affected users and tell them what they can do. Until then we do so
-voluntarily. A second reporting channel besides GitHub follows before
+security of the product. The report goes to the coordinating CSIRT and
+ENISA through the single reporting platform: an early warning within 24
+hours of learning of it, a notification within 72 hours, then a final
+report. We inform affected users and tell them what they can do. Until
+then we do so voluntarily. A second reporting channel besides GitHub follows before
 devices are offered.
 
 We will not take action against anyone who researches and reports in good
@@ -41,8 +41,8 @@ details confidential until disclosure.
 Every fixed vulnerability gets a GitHub Security Advisory in this
 repository
 (`https://github.com/Wokesay/growcontroller-software/security/advisories`),
-with a CVE that GitHub assigns, or the CVE of the component it comes
-from. A vulnerability here is a flaw that someone without the needed
+with a CVE that we request from GitHub, or the CVE of the component it
+comes from. A vulnerability here is a flaw that someone without the needed
 rights can trigger: a device in the network, a crafted file or another
 input. The advisory is published with the release that contains the
 fix, once that release has passed its acceptance. If that release takes
@@ -51,8 +51,8 @@ published anyway, with a workaround.
 
 The release notes list every security item under "Security", with what
 it is, the affected versions, the impact, the severity and the remedy;
-safety and robustness fixes that are no vulnerability are listed there
-too, without an advisory (SD-077).
+safety and robustness fixes that are not a vulnerability are listed
+there too, without an advisory (SD-077).
 
 ## Supported versions
 

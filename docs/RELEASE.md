@@ -1,6 +1,6 @@
 # Versions, changelog, releases, updates
 
-As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
+As of 2026-10-15. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 (agents of the product repository). An assessment, not legal advice.
 
 ## Versions
@@ -38,11 +38,12 @@ As of 2026-10-08. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 sections **Added, Changed, Fixed, Removed, Security**. Every PR adds an
 entry under `[Unreleased]`.
 
-- **"Security"** names per item what it is, the affected versions, the
-  impact, the severity, the remedy (CRA Annex I, Part II (4)) and the
-  GHSA and CVE IDs. Three blocks: vulnerabilities, each with an advisory;
-  safety and robustness fixes, no vulnerability; hardening, without a
-  vulnerability behind it (SD-077).
+- **"Security"** comes in blocks (SD-077): vulnerabilities, each with an
+  advisory; safety and robustness fixes, no vulnerability; a protective
+  cut-off relaxed on purpose, where there is one; hardening, without a
+  vulnerability behind it. In the first two, each item names what it is,
+  the affected versions, the impact, the severity, the remedy (CRA
+  Annex I, Part II (4)) and, for a vulnerability, its GHSA and CVE IDs.
 - **For the app**, every release gets a three-line summary:
   "New / Fixed / Please note" (`kunde`). The full changelog is embedded in
   the firmware (`GET /api/v1/changelog`) and readable in the app.
@@ -264,18 +265,25 @@ stand only in the changelog.
 - **Before the tag (step 1):** each fix's regression test runs against
   the published tags of the affected range (adapted where it calls code
   a tag does not have), and the drafts and the changelog get the
-  confirmed range and the GHSA and CVE IDs.
+  confirmed range and the GHSA and CVE IDs, and the advisory's
+  publication date where it came out before the release. An item no
+  published version has leaves the vulnerability block without an
+  advisory. Check product question #200: if it says safety and
+  robustness fixes are vulnerabilities, they get advisories too.
 - **After part two of the acceptance (step 2):** set "patched versions"
   to the release and publish the advisories.
-- **At the latest:** if the release is not out 30 days after the fix is
-  on `main`, the advisory is published anyway, with "fixed in the next
-  release" and the workaround.
+- **At the latest:** 30 days after the fix is on `main` (for the items
+  of 0.1.0-proto.5: 2026-11-14, SD-077), the advisory is published even
+  if the release has not passed part two of its acceptance, with "fixed
+  in the next release" and the workaround. The CVE is requested at least
+  3 working days before the advisory is published, whichever comes
+  first: the tag or that date.
 - **A CVE in a build tool** gets an advisory only if the tool's code
   ships, or if the CVE could have changed a published artifact; then the
   artifacts are checked, and it may be a severe incident (CRA Art. 14).
   Otherwise the tool is updated and listed under Security › "Hardening,
-  without a vulnerability behind it" with the CVE and "no published
-  version affected".
+  without a vulnerability behind it" with the CVE or GHSA and "no
+  published version affected".
 
 ## Updates on the hub (concept, a mock-up in the simulator)
 

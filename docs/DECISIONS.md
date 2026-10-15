@@ -2936,7 +2936,9 @@ session, after `security`'s proposals.
 - **The requirement:** every fixed security item gets its own GitHub
   Security Advisory (GHSA) in this repository, not only an entry in the
   release notes; this includes the seven items of the next release, which
-  affect 0.1.0-proto.2 to 0.1.0-proto.4. The release notes give per item
+  affect 0.1.0-proto.2 to 0.1.0-proto.4. Point 1 below limits this to
+  vulnerabilities until product question #200 is answered; if #200 says
+  the other items are vulnerabilities too, they get advisories as well. The release notes give per item
   what it is, the affected versions, the impact, the severity and the
   remedy, the form of CRA Annex I, Part II (4). The severity is rated per
   item. The changelog no longer says that no GHSA or CVE of our own is
@@ -2965,10 +2967,10 @@ The software side's proposals, as decided:
    fix is on `main`, the advisory is published anyway, with "fixed in the
    next release" and the workaround; for the items of 0.1.0-proto.5 the
    date is 2026-11-14, 30 days after this decision. Home Assistant's
-   ingress (PD-225) does not hold up the security fixes: if needed,
+   ingress (PD-225, #190 section 2) does not hold up the security fixes: if needed,
    0.1.0-proto.5 ships without it.
-3. **CVEs:** GitHub, as a CVE Numbering Authority, assigns a CVE to each
-   vulnerability of our own. The project owner requests it in the
+3. **CVEs:** for each vulnerability of our own we request a CVE from
+   GitHub, which is a CVE Numbering Authority. The project owner requests it in the
    advisory form at least 3 working days before the tag; GitHub's review
    takes about 72 hours. A flaw that comes from a component (a library,
    the processor) gets no CVE of its own; its advisory names the
@@ -2984,9 +2986,11 @@ The software side's proposals, as decided:
    scheduled job, without write rights and without secrets, checks
    OSV.dev for cpp-httplib and nlohmann/json, and Alpine's security
    database (secdb) for the packages in the last app image; a failed run
-   mails the project owner. Inputs used only to build (the ESP-IDF image,
-   doctest, `registry:2`) stay checked by hand at every release. Before
-   the first firmware release, ESP-IDF moves to a current v5.4.x or newer.
+   mails the project owner. Inputs used only to build (doctest,
+   `registry:2`, and the ESP-IDF image until the firmware ships) stay
+   checked by hand at every release. Once the firmware ships, ESP-IDF's
+   libraries ship in it and join the weekly job. Before the first
+   firmware release, ESP-IDF moves to a current v5.4.x or newer.
 6. **A CVE in a build tool** (PD-228, SD-075; for example Vite,
    TypeScript, a compiler) is a security item with an advisory of its own
    only if the tool's code ships (then it is a component), or if the CVE
@@ -3022,7 +3026,7 @@ The software side's proposals, as decided:
 - **Open:** product question #200 (point 1); on the product side, what
   counts as the first offer, which CSIRT coordinates (probably the BSI),
   and a lawyer's view of Art. 14.
-- **Where:** in this pull request the changelog's Security section (three
+- **Where:** in this pull request the changelog's Security section (its
   blocks, the fields per item), `SECURITY.md` (advisories, what triggers
   reporting, severe incidents) and `docs/RELEASE.md` (the advisory
   steps). In later pull requests `ha/app/CHANGELOG.md`, the section in

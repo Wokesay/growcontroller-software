@@ -501,8 +501,8 @@ fixed in this release. Each item names its affected versions, impact,
 severity and remedy (SD-077). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
-with this release; GitHub assigns a CVE to the three of our own, and the
-fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
+with this release; we request a CVE from GitHub for the three of our own,
+and the fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -525,9 +525,10 @@ Vulnerabilities, each with an advisory:
     (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`), CWE-1188.
   - Remedy: update to 0.1.0-proto.5. The update keeps a password that is
     already set: if you did not set it yourself, reinstall the app or
-    restore a backup made before that password was set. On an older
-    version, set the password right after installing.
-  - Advisory: a GHSA, published with this release; a CVE from GitHub.
+    restore a backup made before that password was set, then set the
+    password or update at once. On an older version, set the password
+    right after installing.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
   a device in the network that sent a wrong password every 15 minutes kept
@@ -543,13 +544,15 @@ Vulnerabilities, each with an advisory:
   wait nor one before the first password is.
   - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
     0.1.0-proto.4.
-  - Impact: needs a device in the home network; a device already signed
-    in kept its session and "Stop".
+  - Impact: needs a device in the home network (for the simulator only
+    when it was started with `--host`); a device already signed in kept
+    its session and "Stop".
   - Severity: medium, CVSS 3.1 4.3
     (`CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`), CWE-645.
   - Remedy: update to 0.1.0-proto.5. Until then, keep the devices you
-    need signed in, and find the guessing device in the event log.
-  - Advisory: a GHSA, published with this release; a CVE from GitHub.
+    need signed in; "Sign-in failed" in the event log shows when someone
+    guesses, not from which device.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Random numbers no longer come through RDSEED** (AMD-SB-7055,
   CVE-2025-62626): the Home Assistant app and the simulator took the
   random numbers for session tokens and password salts from
@@ -564,8 +567,8 @@ Vulnerabilities, each with an advisory:
   - Affected: the Home Assistant app on amd64 and the simulator on Linux
     x86-64, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: needs a Linux x86-64 host with an AMD Zen 5 processor without
-    AMD's fix, and even there a session token or salt is only partly
-    predictable.
+    AMD's fix (for the simulator also a start with `--host`), and even
+    there a session token or salt is only partly predictable.
   - Severity: medium, CVSS 3.1 4.2
     (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-330.
   - Remedy: update to 0.1.0-proto.5. Until then, install AMD's microcode
@@ -584,7 +587,7 @@ Vulnerabilities, each with an advisory:
     (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-20.
   - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
     made yourself.
-  - Advisory: a GHSA, published with this release; a CVE from GitHub.
+  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 
 Safety and robustness fixes, no vulnerability:
 
@@ -598,7 +601,7 @@ Safety and robustness fixes, no vulnerability:
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far.
-  - Severity: low; no CVSS, as it is no vulnerability.
+  - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
 - **A new sign-in ends the session used longest ago:** with 16 sessions
   open, a 17th sign-in ended a random one of them, so the phone someone was
@@ -610,7 +613,7 @@ Safety and robustness fixes, no vulnerability:
   - Impact: needs 16 other sign-ins within 12 hours, each with the
     password, and whoever has the password can already stop, switch or
     change it.
-  - Severity: low; no CVSS, as it is no vulnerability.
+  - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
 - **A disturbed pH probe is no longer taken as the hub's own pH dose**
   (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
@@ -627,7 +630,7 @@ Safety and robustness fixes, no vulnerability:
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far.
-  - Severity: low; no CVSS, as it is no vulnerability.
+  - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
 
 A protective cut-off relaxed on purpose:
