@@ -528,7 +528,8 @@ void to_json(json& j, const RuntimeState& s) {
        {"manualAt", s.manualAt},
        {"clock", s.clock ? json(*s.clock) : json(nullptr)},
        {"bootCount", s.bootCount},
-       {"stopped", s.stopped}};
+       {"stopped", s.stopped},
+       {"refill", s.refill}};
 }
 
 RuntimeState runtimeFromJson(const json& j) {
@@ -555,6 +556,7 @@ RuntimeState runtimeFromJson(const json& j) {
       }
   }
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
+  if (j.contains("refill") && j["refill"].is_object()) s.refill = j["refill"];
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});
   if (j.contains("clock")) s.clock = stampFromJson(j["clock"]);

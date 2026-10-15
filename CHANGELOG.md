@@ -225,11 +225,14 @@ listed in every release under "Security".
   offen", 15 min by default) ran into that limit, which shut the inlet as
   a fault and waited for a person, after every refill from a nearly empty
   tank. Now one fill keeps the valve open at most a minute less than the
-  limit, and the rest follows in steps with a 10 min pause between them,
-  each step named in the refill's line ("Füllt Etappe 1 von 2 …"). EC and
-  pH wait from the first opening until the last step is checked. The
-  limit itself is unchanged and still closes the valve however it was
-  opened. The refill no longer takes over an inlet opened by hand.
+  limit (half of it, if that is shorter), and the rest follows in steps
+  with a 10 min pause between them, each step named in the refill's line
+  ("Füllt: Etappe 1 von 2 …"). The first fill waits until the level
+  reading has been undisturbed for 3 min, for example after irrigation.
+  EC and pH wait from the first opening until the last step is checked.
+  The limit itself is unchanged and still closes a valve the hub opened.
+  The refill no longer takes over an inlet opened by hand, and says that
+  such a valve locks after the limit.
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
@@ -554,13 +557,28 @@ A protective cut-off added:
   follow, the inlet opened again after every pause for as long as the
   level read below the start level. Now, at the end of each fill's pause,
   the level must have risen by at least half of what flowed in by the set
-  rate; otherwise the inlet is shut and waits until a person releases it,
-  and the event names what to check, the set inlet rate included. A fill
-  the irrigation pump overlapped is not judged and its further steps are
-  left out; small fills back to back are judged together.
+  rate; otherwise the inlet is latched until a person releases it, and
+  the alarm names what to check. A fill whose rise cannot be judged (a
+  rise too small while the irrigation pump ran or its state was not
+  known, no valid or fresh level, a level calibration, a fill cut by a
+  restart) ends its steps, and two of them in a row latch the inlet too.
+  A pending check and that count survive a restart. Residual risk: a
+  level reading wrongly low still gets one capped fill before the latch,
+  and an irrigation pump the hub does not know can make a correct fill
+  look like a missing rise: bind it as the irrigation pump. After the
+  update, check that the inlet rate under Functions is about right: one
+  set at more than twice the real rate now latches every refill.
 
 A protective cut-off relaxed on purpose:
 
+- **A large refill no longer ends in the open-time latch** (#155,
+  SD-075): a fill planned longer than the valve may stay open used to be
+  cut by that limit, which latched the inlet. That also stopped a large
+  refill from a level reading wrongly low after one fill. A fill now
+  stops a minute before the limit and the rest follows in steps, also
+  above the start level; that case is caught by the rise check above
+  instead. The limit itself still closes and latches a valve the hub
+  opened.
 - **A protective lock that releases itself, deliberately** (SD-067, #27):
   the circulation pump's dry-run lock, when caused by a low level, now
   lifts by itself after the tank is refilled (see Changed). This relaxes a

@@ -41,6 +41,7 @@ struct ControlEnv {
   bool phBusy = false;       // pH dosiert oder schwingt ein: EC-Runde wartet (RAT-057)
   bool refilling = false;    // Zulauf offen: Wirkung nicht messbar, nicht dosieren (RAT-055)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
+  bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-075)
 };
 
 class EcController {
@@ -123,34 +124,29 @@ class RefillController {
   bool filling() const { return filling_; }
   // From the first opening of a refill until the rise of its last fill is checked, EC and pH wait:
   // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-075)
-  bool holding() const { return filling_ || check_.has_value() || step_ < steps_; }
-  void shiftClock(Epoch d) {
-    if (cooldownUntil_ > 0) cooldownUntil_ += d;
+  bool holding(const RuntimeState& rt) const {
+    return filling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
   }
+  void shiftClock(RuntimeState& rt, Epoch d);
 
  private:
-  // A fill whose rise is checked at the end of its pause (SD-075)
-  struct Check {
-    Ms closedMs = 0;            // the level must be read after the valve closed
-    double startL = kNaN;       // level when it opened
-    double expectedL = 0;       // what flowed in while it was open, by the set rate
-    bool irrigation = false;    // the irrigation pump ran, or its state was not known: not judged
-    json curve;                 // the level curve it was planned with: another one is not judged
-  };
-  void endSteps();
+  void endSteps() {
+    steps_ = step_;
+    leftL_ = 0;
+  }
+  // The open fill becomes a check of its rise at the end of the pause (SD-075)
+  void toCheck(const Ctx& c, double expectedL);
+  void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
+  bool booted_ = false;
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
+  Ms disturbedMs_ = 0;  // the level reading was last disturbed (irrigation, maintenance, a hand on the valve)
+  Ms chainAt_ = -1;     // a fill too small to judge alone was checked in this tick: the next one adds to it
   double startL_ = kNaN, plannedL_ = kNaN;
   // The refill as planned at its first fill: target, rate and open time, then step by step the
   // litres left and the fixed number of steps; the total is computed once (RAT-001, SD-075)
   double targetL_ = kNaN, flow_ = kNaN, maxOpen_ = kNaN, leftL_ = 0;
   int step_ = 0, steps_ = 0;
-  bool irrigation_ = false;
-  json curve_;
-  std::optional<Check> check_;
-  // Fills too small to judge alone, back to back, judged together (SD-075)
-  double chainStartL_ = kNaN, chainExpectedL_ = 0;
-  Ms chainAt_ = -1;
   Epoch cooldownUntil_ = 0;
   CtlStatus st_;
 };

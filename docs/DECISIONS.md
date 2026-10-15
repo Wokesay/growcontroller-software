@@ -2648,9 +2648,9 @@ Decided by the project owner on 2026-10-15 in the software session
 - **Within the open time:** one fill keeps the valve open at most
   `max_open_min` minus 1 min, or minus half of it if that is shorter, so
   a late controller tick still closes it before the limit. The limit
-  itself is unchanged and still closes the valve however it was opened.
-  An inlet that adds less than 0.5 L in that time blocks the refill with
-  a line naming the rate and the open time.
+  itself is unchanged and still closes a valve the hub opened, however
+  it opened it. An inlet that adds less than 0.5 L in one fill blocks the
+  refill with a line naming the rate and the open time.
 - **In steps:** what does not fit follows in steps after a 10 min pause,
   also above the start level, each named in the refill's line. The total
   is computed once, at the first step (RAT-001); the steps only split it,
@@ -2658,31 +2658,70 @@ Decided by the project owner on 2026-10-15 in the software session
   fits, or reaches the target. A step ends the refill early when the
   level passes the target by 1 L (RAT-038). The steps end on Stop,
   maintenance mode, the function switched off, a block other than the
-  pause, a latch, or a change of the target, the rate or the open time.
-  A restart between steps does not resume them (RAT-007). The refill
-  does not take over an inlet opened by hand.
+  pause, a latch, a mix or hand dose, or a change of the target, the
+  rate or the open time.
+- **Before the first fill** the level reading must have been undisturbed
+  for 3 min: no irrigation pump running, no maintenance, no valve opened
+  by hand, no start of the hub. The reading lags 1.5–2 min (RAT-038), so
+  a fill opened right after irrigation or draining would start from a
+  level read too high and could look like a missing rise. The refill
+  does not take over a valve opened by hand; its line says that valve
+  closes and locks after `max_open_min`.
 - **The rise is checked:** at the end of each fill's pause, on a level
-  read after the valve closed (or the last one, if none comes within
-  another 10 min: a sensor that reports only on a change sends nothing
-  while it is stuck), the level must have risen by at least
+  read after the valve closed, the level must have risen by at least
   half of what flowed in by the set rate while the valve was open.
   Otherwise the inlet is latched with a reason of its own and an alarm
   that names what to check, the set rate included; it stays so until a
   person releases it (RAT-031: a leak, an empty supply, a stuck valve and
   a level sensor that does not follow look the same).
-  - Not judged, and the steps end, with an event saying why: the
-    irrigation pump ran, or its state was not known, between the fill's
-    opening and the check (it draws from the tank; no estimate, R5); no
-    valid level at the check; the level sensor calibrated meanwhile.
+  - A rise that is enough counts, also when the irrigation pump ran: it
+    only lowers the level.
+  - Not judged, with an event saying why, and the steps end: a rise too
+    small while the irrigation pump ran or its state was not known (it
+    draws from the tank; no estimate, R5); no valid level at the check;
+    no level read since the valve closed; the level sensor being
+    calibrated, or its curve changed; a fill cut by a restart.
+  - **Two fills in a row that could not be judged latch the inlet too,**
+    with their reason. Without that, a plug offline or a calibration left
+    open would let every fill pass unchecked.
   - A fill smaller than 4 L, or than twice the volume at the level
-    curve's first point, is too small for the level's uncertainty
-    (RAT-030, RAT-078) to judge alone. It is added to the next fill if
-    that starts right after the check, and the sum is judged.
-  - 50 %, 4 L and the 1 min margin are assumptions, not measured
-    (RAT-038).
+    curve's first point when it starts at or below that point, is too
+    small for the level's uncertainty (RAT-030, RAT-078) to judge alone.
+    It is added to the next fill if that starts right after the check.
+    Fills judged together never add more than the target allows from
+    where they began; when the next one would, they are judged now.
+  - A fill closed outside the refill (the device's own auto-off, a person
+    in the app, an internal error) is checked too, after the pause; one
+    the gateway's emergency limit or a person's Stop or maintenance
+    closed is not.
+- **Across a restart:** the open fill, the pending check and the count
+  of fills not judged are saved at once (RAT-063). After a restart a
+  pending check is still judged; a fill the restart cut counts as not
+  judged; steps it ended are reported and not resumed (RAT-007, R6).
 - **EC and pH wait** from the first opening of a refill until its last
   fill is checked (RAT-055, RAT-057): a round in a tank half filled would
-  be diluted by the next step.
+  be diluted by the next step. The longest hold is the number of steps
+  times the open time plus 10 min.
+- **Assumptions, not measured (RAT-038):** 50 %, 4 L, the 1 min margin and
+  the 3 min settling; the inlet rate stays constant during a fill (it
+  falls with a pressure tank or a gravity barrel, which can latch); the
+  level curve covers all the water the inlet fills (for example RDWC
+  buckets); water draining back into the tank (ebb and flow) can hide a
+  missing rise.
+- **Residual risks:**
+  - A level reading wrongly low gets one capped fill (at most rate × open
+    time) before the check latches; a fill too small to judge, up to the
+    target, before the fills are judged together.
+  - A level sensor that reads low by a fixed amount but follows the rise
+    passes; the computed gap is then filled in steps.
+  - An irrigation pump the hub does not know (an outside timer, a Home
+    Assistant automation) can make a correct fill look like a missing rise
+    and latch: it belongs bound as `zone.irrigation_pump` (#233).
+  - A valve opened at the device itself (its button, its own app) gets no
+    open-time limit from the hub, only its own auto-off and the capacity
+    and level cut-offs (older than SD-075, #228).
+  - A person who closes the inlet in the app sees the refill open it again
+    after the pause, if the level is still low (#233).
 - **One pull request:** the cap alone would have widened a gap. Before
   it, a large plan from a level reading wrongly low (a stuck sensor, one
   out of the water) ran into the open-time latch after its first fill; a
