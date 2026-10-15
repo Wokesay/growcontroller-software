@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include <cerrno>
 #include <cstdio>
 #include <string>
 
@@ -26,18 +27,36 @@ bool EspStorage::mount() {
 }
 
 std::optional<std::string> EspStorage::read(const std::string& name) {
+  failed_.erase(name);
+  errno = 0;
   FILE* f = std::fopen(pathOf(name).c_str(), "rb");
   // SPIFFS kann nicht über eine bestehende Datei umbenennen; zwischen remove und
   // rename liegt nur die fertige .tmp. Ein Stromausfall genau dort verliert nichts.
-  if (!f) f = std::fopen(pathOf(name + ".tmp").c_str(), "rb");
-  if (!f) return std::nullopt;
+  // Only for a file that is not there: one there but not opened (a read error
+  // of the flash) is kept, and never written over (SD-080).
+  if (!f && errno == ENOENT) {
+    errno = 0;
+    f = std::fopen(pathOf(name + ".tmp").c_str(), "rb");
+    if (!f && errno == ENOENT) return std::nullopt;  // not there
+  }
+  if (!f) {
+    failed_.insert(name);
+    return std::nullopt;
+  }
   std::string data;
   char buf[1024];
   size_t n;
   while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) data.append(buf, n);
+  const bool bad = std::ferror(f) != 0;  // a read error is not a shorter file
   std::fclose(f);
+  if (bad) {
+    failed_.insert(name);
+    return std::nullopt;
+  }
   return data;
 }
+
+bool EspStorage::unreadable(const std::string& name) { return failed_.count(name) > 0; }
 
 bool EspStorage::write(const std::string& name, const std::string& data) {
   std::string tmp = pathOf(name + ".tmp");

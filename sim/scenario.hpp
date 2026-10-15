@@ -45,6 +45,8 @@ class FileStorage : public gc::IStorage {
   // The folder exists and takes a file; the hub's own files are made the owner's only.
   bool ready();
   std::optional<std::string> read(const std::string& name) override;
+  bool unreadable(const std::string& name) override;  // there but cannot be read (SD-080)
+  std::optional<std::string> readError(const std::string& name);  // why, if it cannot be read
   bool write(const std::string& name, const std::string& data) override;
   bool append(const std::string& name, const std::string& data) override;
   std::vector<std::string> hold(bool on);
@@ -61,6 +63,7 @@ class FileStorage : public gc::IStorage {
   bool noFolder_ = false;          // the folder cannot be created at the start: memory only, said once
   bool used_ = false;              // files were written: a folder that goes away later is a failure
   std::set<std::string> failing_;  // files whose last write failed: each said once, and again when it works
+  std::map<std::string, std::string> readFailed_;  // could not be opened or read to the end, and why (SD-080)
   int holds_ = 0;
   std::map<std::string, std::string> cache_;
   std::vector<std::string> dirty_;              // written while held, in order
