@@ -5,7 +5,9 @@
 // imports a package that is not a runtime dependency (tools/license_policy.mjs).
 // It does not see what reaches the app other than by an import in web/src:
 // web/index.html, url() in style sheets, the JSX runtime the build adds
-// (preact/jsx-runtime) and helper code Vite and Rolldown add themselves.
+// (preact/jsx-runtime) and helper code Vite and Rolldown add themselves;
+// web/scripts/tool-code-guard.mjs checks those modules in the build
+// (SD-075).
 //   node tools/check_licenses.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";

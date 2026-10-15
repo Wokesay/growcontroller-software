@@ -168,3 +168,32 @@ test("each partition table fills its board's flash exactly, sizes on 4 KB, apps 
   assert.throws(() => layout("x", "nvs, data, nvs, 0x9000, 0x6000\n"), /has an offset/);
   assert.throws(() => layout("x", "nvs, data, nvs, , 6 MB\n"), /not a size/);
 });
+
+test("the factory data sit read-only in the gap before the first app, and the installer writes no image there (SD-076)", () => {
+  for (const b of Object.keys(boards)) {
+    const parts = layout(b);
+    const fctry = parts.find((p) => p.name === "fctry");
+    assert.ok(fctry, `${b}: a factory data partition`);
+    assert.deepEqual([fctry.type, fctry.subtype, fctry.offset, fctry.size, fctry.flags], ["data", "nvs", 0x1c000, 0x4000, ["readonly"]], b);
+    assert.equal(parts[parts.indexOf(fctry) + 1].name, "ota_0", `${b}: right before the first app, which stays at 0x20000`);
+    assert.equal(parts.find((p) => p.name === "ota_0").offset, 0x20000, b);
+    assert.deepEqual(parts.filter((p) => p.flags.length).map((p) => p.name), ["fctry"], `${b}: no other partition has a flag`);
+  }
+  const odd = { ...built(), flash_files: { "0x0": "bootloader/bootloader.bin", "0x1c000": "fctry.bin" } };
+  assert.throws(() => flashFiles("n32r16v", odd), /is not bootloader, partition table, OTA data or the first app/);
+  assert.throws(() => flashFiles("n8r8", { ...odd, flash_settings: { ...odd.flash_settings, flash_size: "8MB" } }), /is not bootloader/);
+  assert.throws(() => layout("x", "fctry, data, nvs, , 0x4000, encrypted\n"), /not a flag/);
+});
+
+test("no partition ever moves: a device keeps its partition table for life (SD-076)", () => {
+  const K = 1024;
+  const shipped = {
+    n32r16v: [["nvs", 0x9000, 64 * K], ["otadata", 0x19000, 8 * K], ["phy_init", 0x1b000, 4 * K], ["fctry", 0x1c000, 16 * K],
+      ["ota_0", 0x20000, 4096 * K], ["ota_1", 0x420000, 4096 * K], ["storage", 0x820000, 2048 * K], ["history", 0xa20000, 22400 * K]],
+    n8r8: [["nvs", 0x9000, 64 * K], ["otadata", 0x19000, 8 * K], ["phy_init", 0x1b000, 4 * K], ["fctry", 0x1c000, 16 * K],
+      ["ota_0", 0x20000, 2560 * K], ["ota_1", 0x2a0000, 2560 * K], ["storage", 0x520000, 1024 * K], ["history", 0x620000, 1920 * K]],
+  };
+  assert.deepEqual(Object.keys(shipped), Object.keys(boards), "every board is listed");
+  for (const b of Object.keys(boards))
+    assert.deepEqual(layout(b).map((p) => [p.name, p.offset, p.size]), shipped[b], b);
+});
