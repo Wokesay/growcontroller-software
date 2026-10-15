@@ -16,7 +16,7 @@ tools/arch_check.sh
 end
 
 group "CI and release scripts, workflow pins"
-node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/web_tool_code.test.mjs
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/tool_code_guard.test.mjs
 end
 
 group "Text keys of the web app"
@@ -45,6 +45,7 @@ group "Web app (provenance, registry signatures, type check, build, size budget,
 node tools/check_provenance.mjs
 echo "Node $(node -v), npm $(npm -v) check the signatures (CI: .nvmrc, #163)"
 (cd web && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures && npm run build && npm run typecheck:node)
+(cd web && node scripts/tool-code-guard-selftest.mjs)
 end
 
 if [ "${E2E:-0}" = "1" ]; then

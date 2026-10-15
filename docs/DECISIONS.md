@@ -2538,8 +2538,8 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
 
 Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
 
-- **The SBOM lists only what ships in the product.** Build tools (Vite,
-  Rolldown, TypeScript, compilers, base images) do not go into it.
+- **The SBOM lists only what ships in the product.** Build tools (for
+  example Vite, TypeScript, compilers, base images) do not go into it.
 - **Gaps to close:**
   - the bundler's helper code: the check for tool code covers Rolldown
     (with the next release; done, below). If its helpers could not be
@@ -2559,15 +2559,28 @@ Recorded on 2026-10-15 from the PD-228 comment on #190 (SD-029).
   the build inputs Dependabot does not watch are tracked
   (`cmake/deps.cmake`, the ESP-IDF image, the unpinned Alpine packages),
   and whether a CVE in a build tool counts as a security item (PD-220).
-- **Done: the build knows every module of the app.** A Vite plugin
-  (`web/scripts/tool-modules.mjs`) looks at every module of every chunk
-  and fails the build on one that is neither our source, the page nor a
-  runtime package of `web/package-lock.json`: Rolldown's runtime helpers,
-  Vite's preload helper and polyfill, any other module of a build tool,
-  and a build-time package. The minified output does not show this, so
-  the text check of `web/scripts/no-tool-code.mjs` could not; it stays
-  for the page. On 2026-10-15 the app holds no such module, and the
-  bundle is unchanged.
+- **Open on the product side:** what the implementing act on the SBOM
+  format (CRA Art. 13(24)) will require.
+- **Done: the build checks every module the bundler puts into the app.**
+  A Vite plugin (`web/scripts/tool-code-guard.mjs`) looks at every module
+  of every chunk and fails the build on one that is neither our source,
+  the page nor a runtime package of `web/package-lock.json`: Rolldown's
+  runtime helpers, Oxc's lowering helpers, Vite's preload helper and
+  polyfill, any other module of a build tool, and a build-time package.
+  It also fails when it checked nothing (no chunk lists `src/main.tsx`),
+  and on a script that is not a chunk of the build (a web worker).
+  `web/scripts/tool-code-guard-selftest.mjs` (in `tools/ci.sh`) builds two
+  throwaway apps with the pinned bundler to show the guard names
+  Rolldown's and Vite's helpers and passes plain modules. The text check
+  of `web/scripts/no-tool-code.mjs` stays for the output, the page
+  included. On 2026-10-15 the app holds no such module, and the built app
+  is the same byte for byte with and without the guard.
+- **What it does not see:** code the build tools write into our own
+  modules (for example helpers a transform inlines), text added after the
+  modules are rendered, the page, CSS `url()` files and `web/public/`.
+  That is ours as built by the tools in the tool list. It keeps the SBOM
+  accurate against honest tools and mistakes; it is no defence against a
+  malicious build tool, which runs in the same process (`docs/SECURITY_MODEL.md`).
 
 ---
 

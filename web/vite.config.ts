@@ -2,7 +2,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
-import { toolCodeGuard } from "./scripts/tool-modules.mjs";
+import { toolCodeGuard } from "./scripts/tool-code-guard.mjs";
 
 // Source revision for the source code link in the app (AGPL-3.0 §13): a
 // release or CI sets GC_SOURCE_REV to the commit; else GITHUB_SHA; locally the

@@ -3,7 +3,7 @@
 // lists Vite as used for building only, not shipped. Vite adds code of its
 // own unless told not to: the modulepreload polyfill, and for dynamic
 // imports its preload helper. Breaks the build if either shows up, in a
-// script or inline in a page. scripts/tool-modules.mjs checks the modules
+// script or inline in a page. scripts/tool-code-guard.mjs checks the modules
 // of every chunk during the build, Rolldown's helpers included (SD-073).
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";

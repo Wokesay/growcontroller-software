@@ -193,9 +193,11 @@ entry under `[Unreleased]`.
      the release: `config.yaml` on `main` is what every installed app
      compares itself with (SD-034).
    - The SBOMs list what ships, not the build tools (SD-073). The web
-     build fails when a module of the app is neither our source nor a
-     runtime package of the lockfile, so the web SBOM
-     (`npm sbom --omit dev`) covers all code of the app. The C++ SBOM
+     build fails when a module the bundler puts into the app is neither
+     our source, the page nor a runtime package of the lockfile, so every
+     package in the app's modules is in the web SBOM
+     (`npm sbom --omit dev`). Code the build tools write into our own
+     modules or the page is ours as built by them. The C++ SBOM
      lists the header libraries from `cmake/deps.cmake`, not yet the
      statically linked compiler runtimes; the web app embedded in the
      simulator is in the web SBOM. The app image has no SBOM of its own
