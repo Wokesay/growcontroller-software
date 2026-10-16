@@ -16,7 +16,7 @@ tools/arch_check.sh
 end
 
 group "CI and release scripts, workflow pins"
-node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/tool_code_guard.test.mjs tools/sbom_web.test.mjs
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/tool_code_guard.test.mjs tools/sbom_web.test.mjs tools/core_tests.test.mjs
 end
 
 group "Text keys of the web app"
@@ -32,7 +32,8 @@ end
 group "Core, simulator and tests (Debug, AddressSanitizer, UBSan)"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGC_SANITIZE=ON
 cmake --build build
-./build/gc_tests
+# Each test case in a process of its own, on every core (#260)
+tools/core_tests.sh build/gc_tests
 node --test tools/ha_server.test.mjs tools/sim_server.test.mjs
 end
 
