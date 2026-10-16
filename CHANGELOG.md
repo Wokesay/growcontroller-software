@@ -95,6 +95,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+
+- **Core tests on every core** (#260): `tools/ci.sh`, and with it CI's
+  `checks` job, runs the C++ tests with `tools/core_tests.sh`: each test
+  case in a process and a temporary folder of its own, as many at once
+  as there are cores, the scenarios first. On four cores they took
+  about 9 min in a local run instead of about 34 in one process. A test
+  case that fails, crashes, does not end or runs other than one case
+  fails the run; its output is shown after all have ended, with the
+  command to run it again. A passing run names the five slowest cases.
+  `build/gc_tests` alone still runs everything in one process, as the
+  app image's job does.
 - **The catalog in the page's language** (#143, #18, SD-083 point 3):
   the names and texts of roles, device classes, functions and their
   settings, and of the Home Assistant app's sensor classes, show in the
