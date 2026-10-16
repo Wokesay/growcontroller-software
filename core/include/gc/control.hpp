@@ -129,8 +129,8 @@ class RefillController {
     return filling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
   }
   void shiftClock(RuntimeState& rt, Epoch d);
-  // A level calibration of the bound level sensor committed a new curve (SD-080)
-  static void levelCommitted(RuntimeState& rt);
+  // A level calibration of the bound level sensor committed this new curve (SD-080)
+  static void levelCommitted(RuntimeState& rt, const json& curve);
 
  private:
   void endSteps() {

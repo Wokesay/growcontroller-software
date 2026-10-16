@@ -636,12 +636,13 @@ void RefillController::toCheck(const Ctx& c, double expectedL, double openMin) {
   rec.erase("fill");
 }
 
-void RefillController::levelCommitted(RuntimeState& rt) {
+void RefillController::levelCommitted(RuntimeState& rt, const json& curve) {
   // A level calibration committed a new curve during a person's work: its points needed a sensor
-  // that follows the tank, so a move across the new curve counts. A session cancelled, or a curve
+  // that follows the tank, so a move across this curve counts. A session cancelled, or a curve
   // imported, shows nothing of the sensor (SD-080)
-  if (rt.refill.is_object() && rt.refill.contains("unconfirmed") && rt.refill["unconfirmed"].is_object())
-    rt.refill["unconfirmed"]["calibrated"] = true;
+  if (rt.refill.is_object() && rt.refill.contains("unconfirmed") && rt.refill["unconfirmed"].is_object() &&
+      rt.refill["unconfirmed"].contains("personL"))
+    rt.refill["unconfirmed"]["calibrated"] = curve;
 }
 
 void RefillController::keepForPerson(const Ctx& c, double levelNow) {
@@ -1014,11 +1015,12 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // each of them plan the whole gap again. When nothing more fits, they are judged now.
   if (rec.contains("unconfirmed")) {
     // Kept through a person's work, and the reading moved since: it follows the tank. Across a new
-    // curve only when a level calibration committed it (levelCommitted)
+    // curve only when a level calibration committed this very curve (levelCommitted)
     const json& u = rec["unconfirmed"];
     const double personL = jnumOr(u, "personL", kNaN);
     const bool sameCurve = levelCurve(c) == (u.contains("curve") ? u["curve"] : json(nullptr));
-    if (isNum(personL) && std::fabs(*level.value - personL) >= kFollowsL && (sameCurve || jflag(u, "calibrated"))) rec.erase("unconfirmed");
+    const bool calibrated = u.contains("calibrated") && u["calibrated"] == levelCurve(c);
+    if (isNum(personL) && std::fabs(*level.value - personL) >= kFollowsL && (sameCurve || calibrated)) rec.erase("unconfirmed");
   }
   if (rec.contains("unconfirmed")) {
     const json& u = rec["unconfirmed"];

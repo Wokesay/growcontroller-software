@@ -3352,10 +3352,12 @@ Decided by the project owner on 2026-10-15 in the software session
     change, a calibration), and that fill is judged on its own. If it has
     not, as a stuck sensor would not, the next fill gets only what is left
     and the fills are judged together. A move across a new level curve
-    counts only when a level calibration of the level sensor committed
-    it during the person's work: its points need a sensor that follows. A
-    calibration cancelled or a curve imported shows nothing of the
-    sensor, so the fills latch as measured on another curve. So a Stop, maintenance or
+    counts only while the curve is the one a level calibration of the
+    level sensor committed during the person's work: its points need a
+    sensor that follows. A calibration cancelled or a curve imported,
+    also after such a commit, shows nothing of the sensor, so the fills
+    latch as measured on another curve. A curve committed from a raw value
+    that only jitters is not refused yet (#264). So a Stop, maintenance or
     switching the refill off and on gives a level stuck low no second
     full fill. Such a fill is not counted as not judged. Switching the
     refill off during a fill starts the pause, as a Stop does.

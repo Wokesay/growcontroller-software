@@ -2088,7 +2088,7 @@ Result Hub::probeCalibration(const json& j) {
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
     if (const Binding* lb = cfg_.binding("tank.level"); kind == "tank_curve" && lb && lb->device == dev) {
-      RefillController::levelCommitted(rt_);
+      RefillController::levelCommitted(rt_, data);
       stateDirty_ = true;
     }
     const Msg kindMsg = kindName(kind);

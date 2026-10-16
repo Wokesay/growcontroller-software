@@ -1612,6 +1612,30 @@ TEST_CASE("Scenario: a person's Stop, maintenance or switching the refill off ke
     probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
     probe({{"action", "commit"}});
   }
+  SUBCASE("a level calibration committed, then the sensor sticks and a curve is imported before the next fill: only the committed curve counts") {
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(3 * 60 * 1000, 5000);
+    const json lvl = {{"device", "LVL-77B210"}, {"kind", "tank_curve"}};
+    const auto probe = [&](json body) {
+      body.update(lvl);
+      c.ok("POST", "/api/v1/probe", body);
+    };
+    probe({{"action", "start"}});
+    s.step(3 * 60 * 1000 + 10000, 5000);
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
+    s.world().fill(15, 1.3, 5.9);
+    s.step(4 * 60 * 1000, 5000);
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
+    probe({{"action", "commit"}});
+    freezeLevel(s);
+    json cfg = c.ok("GET", "/api/v1/config/export");
+    for (auto& p : cfg["calibrations"]["LVL-77B210"]["tank_curve"]["points"]) p[1] = p[1].get<double>() + 3.0;  // reads 3 L more
+    c.ok("POST", "/api/v1/config/import", cfg);
+    REQUIRE(soon(s, [&] { return inletLatched(c); }, 30 * 60 * 1000, 5000));
+    CHECK(c.state()["latches"]["inlet.fault"]["why"]["args"]["why"]["key"] == "refill.unjudged.curve");
+    CHECK(s.world().tank.volumeL < 15.5);  // no fill from the moved reading
+  }
   SUBCASE("the refill switched off during the fill, then on") {
     stuckFill();
     s.step(5 * 60 * 1000, 5000);
