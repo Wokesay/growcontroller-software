@@ -248,6 +248,8 @@ constexpr Entry kMessages[] = {
     {"ev.kept.config.text", "The hub runs with factory settings; yours stay safe in {file}. Don't set anything up again – it won't be saved. Restart the hub; if this comes back, report a problem under Settings."},
     {"ev.kept.state", "Saved state can't be read"},
     {"ev.kept.state.text", "Locks and stock levels are unknown, so everything stays off. Restart the hub first to read {file} again. Tapping \"Resume\" deletes the saved ones – check the tank and bottles before you do."},
+    {"ev.state_missing", "Saved state missing"},
+    {"ev.state_missing.text", "The hub ran before, but {file} is gone. Locks and stock levels are unknown, so everything stays off, fans included. Check the tank and bottles before you tap \"Resume\"."},
     {"ev.kept.state_replaced", "Saved state replaced"},
     {"ev.kept.state_replaced.text", "The hub has written {file} anew. The locks and stock levels it held are gone – check the tank and enter the bottles' stock levels again."},
     {"ev.kept.auth", "Password can't be read"},

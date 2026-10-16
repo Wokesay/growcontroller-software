@@ -171,11 +171,19 @@ void Hub::boot() {
     }
     return s;
   };
+  // Every start writes its events and a state.json: events there, or kept
+  // unread, mean the hub ran before (#238)
+  bool ranBefore = false;
   if (auto s = read(kEventsFile)) {
+    ranBefore = true;
     auto j = json::parse(*s, nullptr, false);
     if (!j.is_discarded()) log_.load(j);
   }
-  if (auto s = read(kEventsLog)) log_.replay(*s);
+  if (auto s = read(kEventsLog)) {
+    ranBefore = true;
+    log_.replay(*s);
+  }
+  ranBefore = ranBefore || kept_.count(kEventsFile) || kept_.count(kEventsLog);
   savedEventId_ = log_.lastId();
   // Time base first (PD-069): without a secured time the clock continues
   // from the moment saved last; a newer event moves it forward by at most 1 h.
@@ -245,8 +253,13 @@ void Hub::boot() {
     }
   } else if (kept_.count(kStateFile)) {
     unknownState();  // as with a broken one (SD-081)
+  } else if (ranBefore) {
+    // A hub that ran before always left one: a state.json that is gone is
+    // unknown, not new (#238)
+    unknownState();
+    log_.add(bootEpoch_, "system", "alarm", say("ev.state_missing"), say("ev.state_missing.text", {{"file", kStateFile}}));
   }
-  const bool stateKept = kept_.count(kStateFile) > 0;
+  const bool stateSaid = kept_.count(kStateFile) > 0 || (!stateRaw && ranBefore);
 
   if (auto s = read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
   if (auth_.hasPassword() && !cfg_.system.passwordSet) {
@@ -270,7 +283,7 @@ void Hub::boot() {
   // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
-  if (stopped_ && !stateKept)  // a kept state says why everything stays off
+  if (stopped_ && !stateSaid)  // a kept or missing state says why everything stays off
     log_.add(bootEpoch_, "system", "alarm", say("ev.stop_kept"), say("ev.stop_kept.text"));
   if (auto s = read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);

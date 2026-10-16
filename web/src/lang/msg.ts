@@ -228,6 +228,8 @@ export const msgDe: Record<string, string> = {
   "ev.kept.config.text": "Der Hub läuft mit Werkseinstellungen; deine bleiben in {file} erhalten. Richte nichts neu ein, es wird nicht gespeichert. Starte den Hub neu; kommt das wieder, melde es unter Einstellungen.",
   "ev.kept.state": "Gespeicherter Zustand nicht lesbar",
   "ev.kept.state.text": "Sperren und Vorrat sind unbekannt, darum bleibt alles aus. Starte den Hub zuerst neu, um {file} wieder zu lesen. „Fortsetzen“ löscht die gespeicherten Werte – prüf vorher Tank und Kanister.",
+  "ev.state_missing": "Gespeicherter Zustand fehlt",
+  "ev.state_missing.text": "Der Hub lief schon einmal, aber {file} fehlt. Sperren und Vorrat sind unbekannt, darum bleibt alles aus, auch die Lüfter. Prüf Tank und Kanister, bevor du auf „Fortsetzen“ tippst.",
   "ev.kept.state_replaced": "Gespeicherter Zustand ersetzt",
   "ev.kept.state_replaced.text": "Der Hub hat {file} neu geschrieben. Die Sperren und Vorräte darin sind weg – prüf den Tank und trag den Vorrat der Kanister neu ein.",
   "ev.kept.auth": "Passwort nicht lesbar",
