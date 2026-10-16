@@ -604,7 +604,7 @@ TEST_CASE("Scenario: after a cut mix both controllers wait for the longer settle
   CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
   CHECK(lastDoseId(c) == doses);
   CHECK(c.state()["dosing"].is_null());
-  CHECK(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] != "ec.mixcut_settling"; }, 8 * 60 * 1000, 5000));  // then it decides
+  CHECK(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"].get<std::string>().rfind("ec.mixcut_", 0) != 0; }, 8 * 60 * 1000, 5000));  // then it decides
 }
 
 TEST_CASE("Scenario: a mix cut with EC and pH already on target logs no correction of their own (SD-057)") {
@@ -988,7 +988,8 @@ TEST_CASE("Scenario: a pump that is not running while a mix mixes in at its end:
   }
   SUBCASE("off for 10 s: the card says so, says it again when the pump runs, and the mix ends not mixed yet") {
     plugFault("offline");
-    REQUIRE(until(s, [&] { return c.state()["job"]["message"]["key"] == "mix.settling_no_circ"; }, 60000));
+    s.step(12000);  // 10 s after the first tick that reads it unknown, not later
+    REQUIRE(c.state()["job"]["message"]["key"] == "mix.settling_no_circ");
     CHECK(c.state()["job"]["pumpStands"] == true);
     CHECK(c.state()["job"]["circulating"].is_null());  // offline: unknown, never "off" (R5)
     plugFault("none");
@@ -1044,8 +1045,11 @@ TEST_CASE("Scenario: a locked controller waits for a person, not for the mixed t
   CHECK(c.state()["job"]["message"]["key"] == "mix.settling_plain");
   c.ok("POST", "/api/v1/jobs/" + id + "/abort");
   s.step(60000);
+  // No mark: once someone acknowledges the latch, EC goes on without settling a cut first
+  c.ok("POST", "/api/v1/latches/ec.no_effect/ack");
+  s.step(5000);
   const std::string line = c.state()["controllers"]["ec"]["line"]["key"];
-  CHECK(line.rfind("ec.mixcut_", 0) != 0);  // no mark: it waits for a person
+  CHECK(line.rfind("ec.mixcut_", 0) != 0);
   std::filesystem::remove_all(dir);
 }
 
