@@ -1622,19 +1622,21 @@ Result Hub::putFunction(const std::string& id, const json& j) {
 
 Result Hub::importConfig(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Reading the saved file falls back to the default zone; a file chosen to import is refused instead.
-  if (j.is_object() && j.contains("system") && j["system"].is_object() && j["system"].contains("timezone")) {
-    const json& tz = j["system"]["timezone"];
-    if (!tz.is_string() || !isTimeZoneName(tz.get<std::string>())) return Result::fail(422, say("system.timezone"));
-  }
   if (!j.is_object()) return Result::fail(422, say("config.not_object"));
-  // A newer schema in words of its own; anything else that is no version is refused when it is read
+  // A newer schema in words of its own, before anything a newer version may write differently;
+  // anything else that is no version is refused when it is read
   if (j.contains("schemaVersion")) {
     const json& v = j["schemaVersion"];
     const bool newer = v.is_number_unsigned() ? v.get<std::uint64_t>() > static_cast<std::uint64_t>(kSchemaVersion)
                      : v.is_number_integer()  ? v.get<std::int64_t>() > kSchemaVersion
+                     : v.is_number_float()    ? std::isfinite(v.get<double>()) && v.get<double>() > kSchemaVersion
                                               : false;
     if (newer) return Result::fail(422, say("config.newer"));
+  }
+  // Reading the saved file falls back to the default zone; a file chosen to import is refused instead.
+  if (j.contains("system") && j["system"].is_object() && j["system"].contains("timezone")) {
+    const json& tz = j["system"]["timezone"];
+    if (!tz.is_string() || !isTimeZoneName(tz.get<std::string>())) return Result::fail(422, say("system.timezone"));
   }
   Config next;
   try {

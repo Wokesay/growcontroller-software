@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <set>
 #include <stdexcept>
 
@@ -488,8 +489,8 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         out.push_back(say("cfg.recipe.ph_band", {{"name", r.name}, {"min", lo}, {"max", hi}}));
     }
   }
-  // A phase's value names its phase (R4); a function's value its function only
-  auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::string* phase) {
+  // A finding names the function and the parameter, and for a phase's value the phase too
+  auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::optional<std::string>& phase) {
     if (pd.type != "number") return;
     json args = {{"fn", fd.label}, {"param", pd.label}};
     if (phase) args["phase"] = *phase;
@@ -501,7 +502,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!isNum(v) || (isNum(pd.min) && v < pd.min) || (isNum(pd.max) && v > pd.max)) {
       args["min"] = numOrNull(pd.min);
       args["max"] = numOrNull(pd.max);
-      args["unit"] = pd.unit;
+      args["unit"] = pd.unit.empty() ? std::string() : "\u00a0" + pd.unit;  // with its space, so none is left without one
       err(say(phase ? "cfg.phase.range" : "cfg.param.range", args));
     }
   };
@@ -521,7 +522,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         err(say("cfg.param.unknown", {{"fn", fd->label}, {"param", key}}));
         continue;
       }
-      checkParam(*fd, *pd, val, nullptr);
+      checkParam(*fd, *pd, val, std::nullopt);
     }
   }
   // Phasen liefern Parameter (R4): dieselben Bereiche wie in den Einstellungen.
@@ -536,7 +537,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         for (const auto& pd : fd.params)
           if (pd.key == key && pd.phase) {
             known = true;
-            checkParam(fd, pd, val, &ph.name);
+            checkParam(fd, pd, val, ph.name);
           }
       if (!known) err(say("cfg.phase.unknown", {{"phase", ph.name}, {"param", key}}));
     }

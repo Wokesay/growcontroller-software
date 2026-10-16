@@ -361,14 +361,36 @@ TEST_CASE("Konfiguration: Phasenparameter im Katalogbereich (RAT-008, RAT-076)")
   Config c = sample();
   c.grow.phases = {{"Blüte", 56, {{"ph_target", 5.9}, {"ec_target", 1.8}}}};
   CHECK(validateConfig(c, cat).empty());
+  // Each finding names the phase, the function and the parameter (SD-083)
+  auto first = [&] {
+    const auto errs = validateConfig(c, cat);
+    REQUIRE_FALSE(errs.empty());
+    return errs.front();
+  };
   c.grow.phases[0].params["ph_tolerance"] = 0.0;
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  Msg m = first();
+  CHECK(m.key == "cfg.phase.range");
+  CHECK(m.args["phase"] == "Blüte");
+  CHECK(m.args.contains("fn"));
+  CHECK(m.args["unit"] == "");  // the pH tolerance has none, and no space is left for it
   c.grow.phases[0].params = {{"ph_target", 1.0}};
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  m = first();
+  CHECK(m.key == "cfg.phase.range");
+  CHECK(m.text.find("  ") == std::string::npos);
+  c.grow.phases[0].params = {{"ec_target", 9.0}};
+  m = first();
+  CHECK(m.key == "cfg.phase.range");
+  CHECK(m.args["unit"].get<std::string>().rfind("\u00a0", 0) == 0);  // a unit comes with its no-break space
   c.grow.phases[0].params = {{"ec_floor", 2.0}};  // nicht phasenabhängig
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  m = first();
+  CHECK(m.key == "cfg.phase.unknown");
+  CHECK(m.args["param"] == "ec_floor");
   c.grow.phases[0].params = {{"ph_target", "sauer"}};
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  m = first();
+  CHECK(m.key == "cfg.phase.type");
+  CHECK(m.args["phase"] == "Blüte");
+  c.grow.phases[0].params = json::array();
+  CHECK(first().key == "cfg.phase.params");
 }
 
 TEST_CASE("Konfiguration: Migration v1 → v2 (Zelt-Rollen werden Rollen der Zone)") {
@@ -398,12 +420,22 @@ TEST_CASE("Konfiguration: Rollen am falschen Ort und unbekannte Zonenart werden 
   Config c = sample();
   c.devices.push_back({"CLIM-1", "head_climate", "Klima"});
   c.tank().roles["zone.air_temp"] = {"CLIM-1", 0};
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  auto errs = validateConfig(c, cat);
+  REQUIRE_FALSE(errs.empty());
+  CHECK(errs.front().key == "cfg.role.place_tank");
+  CHECK(errs.front().args["role"] == "zone.air_temp");
   c.tank().roles.erase("zone.air_temp");
+  c.zone().roles["tank.ph"] = {"PH-1", 0};
+  errs = validateConfig(c, cat);
+  REQUIRE_FALSE(errs.empty());
+  CHECK(errs.front().key == "cfg.role.place");
+  c.zone().roles.erase("tank.ph");
   c.zone().roles["zone.air_temp"] = {"CLIM-1", 0};
   CHECK(validateConfig(c, cat).empty());
   c.zone().kind = "keller";
-  CHECK_FALSE(validateConfig(c, cat).empty());
+  errs = validateConfig(c, cat);
+  REQUIRE_FALSE(errs.empty());
+  CHECK(errs.front().key == "cfg.zone.kind");
 }
 
 TEST_CASE("Runtime state: a damaged refill record is cleaned when read and never stops the hub (SD-082)") {

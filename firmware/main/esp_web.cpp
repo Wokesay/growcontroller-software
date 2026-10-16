@@ -150,7 +150,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
       // Langsame oder stumme Gegenstelle darf den einzigen Server-Task nicht blockieren.
       if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 2) continue;
       if (n == HTTPD_SOCK_ERR_TIMEOUT)
-        return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"Request incomplete\"}}");
+        return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"The data arrived incomplete – check the Wi-Fi and try again\"}}");
       return ESP_FAIL;
     }
     got += static_cast<size_t>(n);
