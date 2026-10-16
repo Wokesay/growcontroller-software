@@ -854,7 +854,10 @@ json Hub::state() {
     const DeviceClassDef* cls = cat_.deviceClass(d.cls);
     json cal = json::object();
     if (auto it = cfg_.calibrations.find(d.id); it != cfg_.calibrations.end())
-      for (const auto& [k, v] : it->second) cal[k] = static_cast<Epoch>(jnum(v, "at", 0));
+      for (const auto& [k, v] : it->second) {
+        const double at = jnum(v, "at", 0);  // from a file: a time the hub can have written, else not set
+        cal[k] = isNum(at) && at >= 0 && at <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(at) : 0;
+      }
     devs.push_back({{"id", d.id},
                     {"class", d.cls},
                     {"classLabel", cls ? cls->label : d.cls},
@@ -1629,7 +1632,7 @@ Result Hub::importConfig(const json& j) {
     const json& v = j["schemaVersion"];
     const bool newer = v.is_number_unsigned() ? v.get<std::uint64_t>() > static_cast<std::uint64_t>(kSchemaVersion)
                      : v.is_number_integer()  ? v.get<std::int64_t>() > kSchemaVersion
-                     : v.is_number_float()    ? std::isfinite(v.get<double>()) && v.get<double>() > kSchemaVersion
+                     : v.is_number_float()    ? std::isfinite(v.get<double>()) && v.get<double>() == std::floor(v.get<double>()) && v.get<double>() > kSchemaVersion
                                               : false;
     if (newer) return Result::fail(422, say("config.newer"));
   }
@@ -2392,7 +2395,9 @@ Result Hub::growNextPhase() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto& g = cfg_.grow;
   if (g.state != "running") return Result::fail(409, say("grow.state"));
-  if (g.phase + 1 >= static_cast<int>(g.phases.size())) return Result::fail(409, say("grow.last"));
+  // A saved phase outside its list never indexes it (an import is refused: cfg.grow.phase)
+  if (g.phase < 0 || static_cast<size_t>(g.phase) >= g.phases.size()) return Result::fail(409, say("cfg.grow.phase"));
+  if (static_cast<size_t>(g.phase) + 1 >= g.phases.size()) return Result::fail(409, say("grow.last"));
   g.phase++;
   g.phaseStartedAt = clock_.epoch();
   saveConfig({});

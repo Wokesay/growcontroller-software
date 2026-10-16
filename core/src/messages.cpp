@@ -328,6 +328,8 @@ constexpr Entry kMessages[] = {
     {"cfg.recipe.amounts", "these amounts ({sum:1} ml/L in all)"},
     {"cfg.recipe.amounts_scaled", "these amounts without the fixed ones ({sum:1} ml/L)"},
     {"cfg.recipe.ph_band", "{name}: the pH range needs a low and a high value between {min} and {max}, the low one first"},
+    {"cfg.grow.phase", "The grow cycle's current phase is not one of its phases – finish the cycle and start a new one"},
+    {"cfg.phase.days", "Phase \"{phase}\": the days must be a whole number, 0 or more – finish the cycle and start a new one"},
     {"recipe.ref_ec", "The chart EC is a number in mS/cm"},
     {"recipe.ph", "The pH range is two numbers, low and high"},
     {"ev.cfg.pair_template", "Bottles paired from the template"},
