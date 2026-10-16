@@ -1311,6 +1311,42 @@ TEST_CASE("Home Assistant: an import cannot make a pH calibrated in Home Assista
   CHECK(hub.importConfig(cfg).status == 422);
 }
 
+// #234: up to 0.1.0-proto.4 a crafted backup could give the sensor the class of
+// the hub's own pH head. That class offers a calibration, so the import accepts
+// it; only the class check in SensorTruth::update keeps the value out
+TEST_CASE("Home Assistant: an import that gives a pH calibrated in Home Assistant the class of the hub's own pH head leaves it without a value (SD-041, RAT-025)") {
+  const gc::Catalog cat = ha::catalog();
+  REQUIRE(cat.deviceClasses.count("head_ph"));
+  ha::HaBus bus({{"sensor.grow_ph", "ph"}});
+  gc::MemoryStorage store;
+  test::Clock clk;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  int n = 0;
+  auto tick = [&] {
+    clk.ms += 1000;
+    ++n;  // a live value moves a little, so it never looks stuck
+    bus.update("sensor.grow_ph", state("sensor.grow_ph", n % 2 ? "6.10" : "6.12", "", iso(kNoonMs + clk.ms)), kNoonMs + clk.ms, clk.ms);
+    hub.tick();
+  };
+  tick();
+  REQUIRE(hub.acceptDevice("ha.sensor.grow_ph", "").status == 200);
+  tick();
+  REQUIRE(hub.state()["readings"]["tank.ph"]["reason"]["key"] == "truth.external");
+  json cfg = gc::json(hub.config());
+  for (auto& d : cfg["devices"])
+    if (d["id"] == "ha.sensor.grow_ph") d["class"] = "head_ph";
+  cfg["calibrations"]["ha.sensor.grow_ph"]["ph"] = {{"points", json::array({json::array({4.0, 4.0}), json::array({7.0, 7.0})})}, {"at", 0}};
+  REQUIRE(hub.importConfig(cfg).status == 200);  // a valid backup of a hub with that head
+  for (int i = 0; i < 5; ++i) tick();
+  const json ph = hub.state()["readings"]["tank.ph"];
+  CHECK(ph["usable"] == false);  // not shown as checked by the hub, nor usable by control
+  CHECK(ph["value"].is_null());
+  CHECK(ph["reason"]["key"] == "truth.class_mismatch");
+  // Nor can a calibration be made for it through the app instead of the file
+  CHECK(hub.probeCalibration({{"device", "ha.sensor.grow_ph"}, {"kind", "ph"}, {"action", "start"}}).body["error"]["key"] == "probe.not_offered");
+}
+
 TEST_CASE("Home Assistant: an abandoned calibration stops explaining jumps after 30 min but keeps control waiting; a point is retaken, not added (SD-041, RAT-042)") {
   const gc::Catalog cat = ha::catalog();
   ha::HaBus bus({{"sensor.ph_mv", "ph", true}});

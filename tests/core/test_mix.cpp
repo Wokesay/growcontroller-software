@@ -120,6 +120,47 @@ TEST_CASE("EC-Deckel: kleine gelernte Wirkung weitet ihn nicht auf (M5-4, RAT-05
   CHECK(n.steps[0].ml + n.steps[1].ml <= doctest::Approx(1.0 / 0.275 * 20));
 }
 
+TEST_CASE("EC dose: a fixed addition is neither dosed nor scaled; the round goes to the other parts in their ratio (SD-057, RAT-085)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}, {"cm", 0.5, true}}};
+  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
+  REQUIRE(d.ok);
+  REQUIRE(d.steps.size() == 2);
+  for (const auto& s : d.steps) CHECK(s.canister != "cm");
+  // The same round as without the fixed part: 0.8 × gap / effect per ml/L of the scaled parts
+  CHECK(d.steps[0].ml + d.steps[1].ml == doctest::Approx(58.18).epsilon(0.001));
+  CHECK(d.steps[0].ml == doctest::Approx(d.steps[1].ml));
+  // The fixed part's pump plays no part in the round
+  f.pumps["C3"].online = false;
+  f.pumps["C3"].flowMlPerMin = kNaN;
+  CHECK(planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0).ok);
+  // Only fixed parts: nothing to scale, said so
+  f.cfg.recipes[0] = {"r", "Test", "", {{"cm", 0.5, true}}};
+  auto n = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
+  CHECK_FALSE(n.ok);
+  CHECK(n.reason.key == "ec.recipe_no_scaled");
+  CHECK(n.steps.empty());
+}
+
+TEST_CASE("Mix: a fixed addition goes in per litre of fresh water, like every part, and the plan marks it (SD-057, RAT-085, RAT-011)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 2.0}, {"b", 1.0}, {"cm", 0.5, true}}};
+  auto p = f.plan(20);
+  REQUIRE(p.ok);
+  REQUIRE(p.steps.size() == 3);
+  CHECK(p.steps[2].ml == doctest::Approx(10.0));
+  CHECK(p.steps[2].fixed);
+  CHECK_FALSE(p.steps[0].fixed);
+  CHECK(json(p.steps[2])["fixed"] == true);
+  CHECK(json(p.steps[0])["fixed"] == false);
+  // Topping up: on the fresh litres only
+  f.rt.tankVolumeL = 30;
+  auto t = planMix(f.cfg, f.rt, f.pumps, {"r", 10, "topup", false}, 1790000000, false);
+  REQUIRE(t.ok);
+  CHECK(t.steps[0].ml == doctest::Approx(20.0));
+  CHECK(t.steps[2].ml == doctest::Approx(5.0));
+}
+
 TEST_CASE("pH-Gabe: Deckel und Startwirkung (M4-1, M4-5, RAT-050)") {
   auto d = planPhDose(6.5, 5.9, 5.0, 20, 20);
   REQUIRE(d.ok);

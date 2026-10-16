@@ -12,7 +12,7 @@ the sensors from it and shows them with growcontroller's checks.
   their device class and unit.
 - It **switches nothing**: no pump, no plug, no light. It asks Home
   Assistant only for the list of states. That is why there is no
-  emergency stop: the top bar shows **Display only** (German: **Nur
+  Stop button: the top bar shows **Display only** (German: **Nur
   Anzeige**) in its place. In an emergency, switch off in Home Assistant
   or at the device itself, or pull the plug.
 - It learns how often each sensor reports. A value shows as **Outdated**

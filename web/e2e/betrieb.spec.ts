@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Betrieb im eingerichteten System: Übersicht, Not-Halt, Störungen, Verlauf, Funktionen.
+// Operation of a set-up system: overview, Stop, faults, history, functions.
 import { expect, login, scenario, test } from "./helpers";
 
 test.beforeAll(async ({ request }) => {
@@ -16,7 +16,7 @@ test("Übersicht zeigt Überwachung, Messwerte und Regelzeilen", async ({ page }
   // with numbers in the page language.
   await expect(page.getByTestId("watchdog")).toContainText(/Alles in Ordnung|Problem/);
   const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
-  await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Aus|Läuft|Füllt/);
+  await expect.poll(lines).toMatch(/Regelt|Ruht|Wartet|Gesperrt|Freigabe nötig|Aus|Läuft|Füllt/);
   await expect.poll(lines).toMatch(/\d,\d/);
   expect(await lines()).not.toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling/);
   // Events too: the hub stores key and values, the page shows German.
@@ -32,18 +32,18 @@ test("English page: monitoring and control lines come in English from the hub (S
   const lines = () => page.locator(".ctl .line").allTextContents().then((l) => l.join(" "));
   await expect.poll(lines).toMatch(/Controlling|Resting|Waiting|Blocked|Needs release|Running|Filling|Switched off/);
   await expect.poll(lines).toMatch(/\d\.\d/);
-  expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Gerastet|Läuft|Füllt/);
+  expect(await lines()).not.toMatch(/Regelt|Ruht|Wartet|Gesperrt|Freigabe nötig|Läuft|Füllt/);
   await expect(page.getByTestId("event").filter({ hasText: "Signed in" }).first()).toBeVisible();
   await expect(page.getByTestId("event").filter({ hasText: "Angemeldet" })).toHaveCount(0);
 });
 
-test("Not-Halt stoppt alles und lässt sich fortsetzen", async ({ page }) => {
+test("Stop switches everything off and can be resumed", async ({ page }) => {
   await login(page);
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   await page.getByRole("button", { name: "Alles stoppen" }).click();
-  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
-  await page.getByRole("button", { name: "Fortsetzen" }).click();
-  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toHaveCount(0);
 });
 
 test("A Stop reaches the hub from a browser without AbortSignal.timeout (before iOS 16)", async ({ page }) => {
@@ -52,17 +52,17 @@ test("A Stop reaches the hub from a browser without AbortSignal.timeout (before 
   });
   await login(page);
   expect(await page.evaluate(() => "timeout" in AbortSignal)).toBe(false);
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   await page.getByRole("button", { name: "Alles stoppen" }).click();
-  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
-  await page.getByRole("button", { name: "Fortsetzen" }).click();
-  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toHaveCount(0);
 });
 
 test("A Stop that does not reach the hub says so, and the dialog stays open to try again", async ({ page }) => {
   await login(page);
   await page.route(/\/api\/v1\/stop$/, (route) => route.abort());
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Alles stoppen" }).click();
   // In the dialog, with what to do in an emergency, and a button to try again
@@ -79,7 +79,7 @@ test("A Stop that does not reach the hub says so, and the dialog stays open to t
   // Opened again, the dialog starts fresh
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   await expect(dialog.getByRole("button", { name: "Alles stoppen" })).toBeVisible();
   await expect(dialog.getByRole("alert")).toBeEmpty();
   // A switch that gets no answer is not silent either
@@ -94,31 +94,31 @@ test("A Stop that does not reach the hub says so, and the dialog stays open to t
 test("A Stop that arrives after all closes its dialog for good; a Resume that gets no answer says so", async ({ page }) => {
   await login(page);
   await page.route(/\/api\/v1\/stop$/, (route) => route.abort());
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Alles stoppen" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt");
   // The Stop reaches the hub after all (late, or from another device): the dialog goes
   const origin = new URL(page.url()).origin;
   expect((await page.request.post("/api/v1/stop", { data: {}, headers: { Origin: origin } })).ok()).toBe(true);
-  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
   await expect(dialog).toHaveCount(0);
   // A Resume without an answer says so, and the hub stays stopped
   await page.route(/\/api\/v1\/resume$/, (route) => route.abort());
-  await page.getByRole("button", { name: "Fortsetzen" }).click();
+  await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
   await expect(page.getByText("Der Hub antwortet nicht. Ist er eingeschaltet und im selben Netz?")).toBeVisible();
-  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
   // After a Resume that arrives, the old dialog does not come back
   await page.unrouteAll({ behavior: "ignoreErrors" });
-  await page.getByRole("button", { name: "Fortsetzen" }).click();
-  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
 });
 
 test("A Stop closed while it is being sent still says when it failed; a refusal starts with the Stop's text", async ({ page }) => {
   await login(page);
   await page.route(/\/api\/v1\/stop$/, () => undefined);  // never answered
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Alles stoppen" }).click();
   await expect(dialog.getByRole("button", { name: "Stopp wird gesendet …" })).toBeDisabled();
@@ -128,7 +128,7 @@ test("A Stop closed while it is being sent still says when it failed; a refusal 
   // Opened again, nothing old shows; a hub that refuses names its reason after the Stop's text
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await page.route(/\/api\/v1\/stop$/, (route) => route.fulfill({ status: 500 }));
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   await expect(dialog.getByRole("alert")).toBeEmpty();
   await dialog.getByRole("button", { name: "Alles stoppen" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Stopp nicht bestätigt – Fehler 500. Zieh im Notfall");
@@ -212,7 +212,7 @@ test("History: the time axis follows the page's language and the 24-hour clock",
 test("A Stop after the session has run out: the sign-in page says it was not carried out", async ({ page }) => {
   await login(page);
   await page.route(/\/api\/v1\/stop$/, (route) => route.fulfill({ status: 401, json: { error: { key: "auth.required", text: "Bitte anmelden." } } }));
-  await page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus").click();
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
   await page.getByRole("dialog").getByRole("button", { name: "Alles stoppen" }).click();
   await expect(page.getByTestId("session-expired")).toContainText("Hast du gerade etwas angeklickt, hat der Hub es nicht ausgeführt");
   await expect(page.getByTestId("session-expired")).toContainText("Zieh im Notfall den Netzstecker des Hubs und schalte Geräte an Steckdosen direkt aus.");
@@ -237,6 +237,9 @@ test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await expect(page.getByTestId("metric-pH").getByText("Sprungsperre")).toBeVisible({ timeout: 30_000 });
   await page.goto("/#/tank");
   await expect(page.getByText(/sprang ohne Dosierung/).first()).toBeVisible();
+  // the lock list names the reading in words, never the internal key (#143)
+  await expect(page.getByText(/pH im Tank sprang unerwartet – frei nach 15/).first()).toBeVisible();
+  await expect(page.getByText(/jump\.tank\./)).toHaveCount(0);
   await page.request.post("/api/v1/sim/fault", { data: { device: head.id, fault: "none" } });
 });
 
@@ -411,7 +414,7 @@ test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich manuell schal
   await login(page);
   await page.goto("/#/klima");
   await expect(page.getByTestId("metric-VPD")).toBeVisible();
-  // Zustand nicht annehmen (der Not-Halt-Test davor schaltet alles aus): zweimal umschalten
+  // Assume no state (the Stop test before switches everything off): toggle twice
   const row = page.getByTestId("output-zone.exhaust");
   const btn = page.getByTestId("switch-zone.exhaust");
   const before = (await btn.textContent())?.trim();
@@ -602,7 +605,7 @@ test("Recipes: a bottle a recipe uses says where and how to take it out, a pair 
   const editor = page.getByRole("dialog", { name: "Rezept „Wachstum“" });
   await expect(editor).toBeVisible();
   // Following the advice works: the amount cleared and saved, the bottle can go
-  await editor.locator(".step").filter({ hasText: "CalMag" }).locator("input").fill("");
+  await editor.locator(".step").filter({ hasText: "CalMag" }).getByRole("textbox").fill("");
   await editor.getByRole("button", { name: "Speichern" }).click();
   await expect(editor).toHaveCount(0);
   await expect(row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" })).toBeFocused();  // the next step of the advice

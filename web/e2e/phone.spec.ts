@@ -341,7 +341,7 @@ for (const lang of ["de", "en"]) {
     for (const step of await dialog.locator(".step").all()) {
       const label = (await step.locator("strong").textContent()) ?? "";
       const name = (await step.locator("strong").boundingBox())!;
-      const field = (await step.locator("input").boundingBox())!;
+      const field = (await step.getByRole("textbox").boundingBox())!;
       expect(name.y + name.height, label).toBeLessThanOrEqual(field.y);
       for (const other of await step.locator("input, button").all()) {
         const box = await other.boundingBox();

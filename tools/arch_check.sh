@@ -39,6 +39,26 @@ if grep -rn 'set_trusted_proxies' sim/ ha/ firmware/; then
   err "client address from a header (set_trusted_proxies)"
 fi
 
+# #79, #234: session tokens, salts and the setup code take their random
+# numbers from the operating system (sim::randomBytes: getentropy(); the
+# firmware: esp_fill_random()). On Linux x86-64 std::random_device tries
+# RDSEED first, which AMD Zen 5 without AMD's fix answers with zeros
+# (AMD-SB-7055). Our sources use neither it nor the RDSEED and RDRAND
+# instructions, except for the one declaration right after `#ifdef _WIN32`
+# in sim/scenario.cpp, where MSVC's, which the simulator package is built
+# with, calls rand_s (an old mingw's would not be safe). Anything else
+# fails, also a branch this check cannot read.
+rd=$(find core sim ha firmware/main firmware/components -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) -print0 2>/dev/null | sort -z |
+  xargs -0 awk '
+    FNR == 1 { prev = "" }
+    { code = $0; sub(/\/\/.*/, "", code) }  # a comment may name it
+    code ~ /random_device|rdseed|rdrand/ && !(FILENAME == "sim/scenario.cpp" && prev ~ /^#ifdef[ \t]+_WIN32[ \t\r]*$/) { print FILENAME ":" FNR ":" $0 }
+    { prev = code }')
+if [ -n "$rd" ]; then
+  echo "$rd"
+  err "std::random_device, RDSEED or RDRAND outside the Windows branch of sim::randomBytes (#79, #234)"
+fi
+
 # SD-039: a value calibrated elsewhere goes into the history, never into
 # control: Reading::forHistory() is read only where the history is sampled.
 if grep -rnE 'forHistory\(' core/ | grep -vE '^core/include/gc/readmodel\.hpp:|^core/src/hub\.cpp:[0-9]+: +samples\.emplace_back'; then

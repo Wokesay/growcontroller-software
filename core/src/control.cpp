@@ -34,7 +34,6 @@ bool foreignDose(const ControlEnv& env, const char* ownPrefix) {
 }
 
 constexpr double kPhStartEffect = 5.0;    // pH je ml/L pH− (RAT-050: kleinste Dosis)
-constexpr double kEcStartEffect = 0.275;  // mS/cm je ml/L Rezept (RAT-055)
 constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
 constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)
@@ -201,6 +200,21 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     }
   }
 
+  // The queue emptied with no own dose running: the recipe's fixed parts changed under the round
+  // (recipeChanged, RAT-085). What went in settles; with nothing in, the round ends.
+  if (phase_ == Phase::Dosing && queue_.empty()) {
+    const auto& own = env.doser.active();
+    if (!(own && own->id.rfind("ec-", 0) == 0)) {
+      if (mlRound_ > 0) {
+        phase_ = Phase::Settling;
+        settleUntil_ = c.now + minutesParam(p.num("settle_min"), 5);
+        env.truth.expectChange("tank.ec", settleUntil_ + kMinute);
+        env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
+        return;
+      }
+      reset();
+    }
+  }
   if (phase_ == Phase::Dosing) {
     st_.state = "working";
     st_.line = say("ec.dosing", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_}});
@@ -316,6 +330,16 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
     env.truth.expectChange("tank.ec", settleUntil_ + kMinute);
     env.truth.expectChange("tank.ph", settleUntil_ + kMinute);
   }
+}
+
+void EcController::recipeChanged(const RecipeCfg& r) {
+  clean_ = false;
+  queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
+                              [&](const DoseStep& d) {
+                                return std::any_of(r.steps.begin(), r.steps.end(),
+                                                   [&](const RecipeStep& s) { return s.fixed && s.canister == d.canister; });
+                              }),
+               queue_.end());
 }
 
 void EcController::stopRound() {
@@ -567,7 +591,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     bool done = c.now - startedMs_ >= plannedMs_;
     bool sensorStop = level.usable() && *level.value >= p.num("target_l") + 1.0;
     if (!open || !*open) {
-      filling_ = false;  // vom Gateway abgeschaltet (Notgrenze, Zeitlimit, Not-Halt)
+      filling_ = false;  // switched off by the gateway (inlet emergency limit, time limit, Stop)
       st_.state = "latched";
       st_.line = say("refill.stopped");
       return;
