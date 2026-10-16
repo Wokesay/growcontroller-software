@@ -185,14 +185,17 @@ struct JobStep {
 
 struct Job {
   std::string id, type;               // mix | manual | calibration | prime
-  std::string state = "running";      // running | waiting_user | mixing | done | failed | aborted
+  std::string state = "running";      // running | waiting_user | mixing | settling | done | failed | aborted
   std::vector<JobStep> steps;
   size_t index = 0;
   Msg message;
   Epoch startedAt = 0, finishedAt = 0;
-  Ms waitUntil = 0;                   // Durchmischen mit Umwälzpumpe (Countdown)
+  Ms waitUntil = 0;                   // end of mixing between parts or at the end, or of the wait for stirring
   bool guided = true;
   bool circulation = false;           // Umwälzpumpe vom Auftrag eingeschaltet
+  bool unmixed = false;               // the circulation pump stood still while the mix settled at its end
+  bool pumpStands = false;            // … and the card says so now
+  bool cutMarked = false;             // EC and pH were told to settle what went in (Hub::mixCut)
   json info = json::object();         // Rezept, Wasser, Einmessdaten
 };
 void to_json(json& j, const Job& job);

@@ -169,10 +169,19 @@ class Hub {
   void onJobDose(Ctx& c, const DoseProgress& p);
   bool startJobStep(Ctx& c);
   void finishJob(const std::string& state, Msg m);
+  void finishMixDone(Ctx& c, bool unmixed);  // all parts in: the mix's report and "done"
+  Ms mixSettleMs() const;      // how long a mix mixes in at its end
+  bool controlOn() const;      // EC or pH control switched on: something waits for the mixed tank
+  // A mix ending early with nutrients in (or a part cut unbooked): EC and pH settle first (SD-057)
+  void mixCut(bool byStop, bool doseCut = false);
+  void settleControllersFirst(bool byStop);
   json jobJson() const;  // {job, lastJob}: job ist leer, wenn der Auftrag gerade fertig wurde
   double tankVolume() const;
   void endFailedMix();
-  bool userJobActive() const { return job_ && (job_->state == "running" || job_->state == "waiting_user" || job_->state == "mixing"); }
+  // A job of the user's that holds control: dosing, waiting for the user, mixing between parts, or the
+  // mix settling at its end (SD-057). The boot report lists the same states.
+  static bool activeJobState(const std::string& s) { return s == "running" || s == "waiting_user" || s == "mixing" || s == "settling"; }
+  bool userJobActive() const { return job_ && activeJobState(job_->state); }
   std::string newId(const std::string& prefix);
   void detectDevices();
   // Probe sessions each tick: a point of a sensor on its own schedule takes

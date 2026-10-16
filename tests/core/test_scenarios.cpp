@@ -138,13 +138,15 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
     s.step(5000);  // the devices are found again
   };
   std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", true}})["job"]["id"];
-  // Stirring by hand takes its time: 40 minutes at the first prompt, Part A is in
-  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
-  s.step(40 * 60 * 1000);
+  // Stirring by hand takes its time: 20 minutes at each prompt, each within the 30 min a prompt
+  // waits (SD-057); Part A and Part B are in, CalMag comes last
+  for (int prompt = 0; prompt < 2; ++prompt) {
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
+    s.step(20 * 60 * 1000);
+    if (prompt == 0) c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+  }
 
   SUBCASE("finished: counted from its end, also after a restart") {
-    c.ok("POST", "/api/v1/jobs/" + id + "/continue");
-    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
     c.ok("POST", "/api/v1/jobs/" + id + "/continue");
     REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 120000));
     REQUIRE(c.state()["lastJob"]["state"] == "done");
@@ -164,7 +166,7 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
     refusedAsRecent();
   }
   SUBCASE("failed part way: no new mix over it, and counted from when it is ended") {
-    s.world().cap(kB)->blocked = true;
+    s.world().cap(kC)->blocked = true;
     c.ok("POST", "/api/v1/jobs/" + id + "/continue");
     REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
     const auto over = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}});
@@ -176,7 +178,7 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
     refusedAsRecent();
   }
   SUBCASE("failed part way, then a restart: reported as cut off, counted from the restart, and only once") {
-    s.world().cap(kB)->blocked = true;
+    s.world().cap(kC)->blocked = true;
     c.ok("POST", "/api/v1/jobs/" + id + "/continue");
     REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
     s.reboot();
@@ -189,15 +191,15 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
     s.step(31 * 60 * 1000);
     s.reboot();
     signInAgain();
-    s.world().cap(kB)->blocked = false;
+    s.world().cap(kC)->blocked = false;
     CHECK(c.call("POST", "/api/v1/mix/start", mix).first == 200);
   }
   SUBCASE("failed part way, then a pump is primed: the failed mix ends with what is in the tank, and the window counts") {
-    s.world().cap(kB)->blocked = true;
+    s.world().cap(kC)->blocked = true;
     c.ok("POST", "/api/v1/jobs/" + id + "/continue");
     REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
-    s.world().cap(kB)->blocked = false;
-    c.ok("POST", std::string("/api/v1/pumps/") + kB + "/prime", {{"seconds", 3}});
+    s.world().cap(kC)->blocked = false;
+    c.ok("POST", std::string("/api/v1/pumps/") + kC + "/prime", {{"seconds", 3}});
     REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 60000));
     bool reported = false;
     for (const auto& e : findEvents(c, "mix")) reported = reported || e["title"]["key"] == "ev.mix.aborted";
@@ -243,6 +245,359 @@ TEST_CASE("Szenario: Stromausfall im Lauf → alles aus, nicht fortgesetzt, geme
   bool reported = false;
   for (const auto& e : findEvents(again, "mix")) reported = reported || e["title"]["key"] == "ev.mix_reboot";
   CHECK(reported);
+}
+
+namespace {
+std::string dosingPurpose(Client& c) {
+  const json d = c.state()["dosing"];
+  return d.is_null() ? std::string() : d["purpose"].get<std::string>();
+}
+bool logged(Client& c, const std::string& key, const std::string& field = "title") {
+  for (const auto& e : findEvents(c, "mix"))
+    if (e[field]["key"] == key) return true;
+  return false;
+}
+// The demo after its own mix, with no control dose running: a mix does not start over one
+void demoCalm(sim::Simulation& s, Client& c) {
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  REQUIRE(until(s, [&] {
+    const json st = c.state();
+    return st["job"].is_null() && st["dosing"].is_null();
+  }, 60 * 60 * 1000, 5000));
+}
+json startMix(Client& c, double waterL = 20) {
+  return c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", waterL}, {"guided", false}, {"confirmRepeat", true}})["job"];
+}
+}  // namespace
+
+TEST_CASE("Scenario: a mix with the circulation pump ends only once mixed in; control and refill wait for it (SD-057, RAT-052)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"settle_min", 12}}}});
+  c.ok("PATCH", "/api/v1/functions/circulation", {{"enabled", false}});  // only the mix asks for the pump
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  s.world().fill(40, 0.02, 7.0);
+  const std::string id = startMix(c)["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+  const json job = c.state()["job"];
+  CHECK(job["message"]["key"] == "mix.settling");
+  CHECK(job["message"]["args"]["min"] == 12);  // the longer of EC control's 12 and pH control's 5 min
+  CHECK(job["waitLeftS"].get<int>() > 11 * 60);
+  CHECK(job["waitLeftS"].get<int>() <= 12 * 60);
+  CHECK(job["circulating"] == true);
+  CHECK(c.call("POST", "/api/v1/jobs/" + id + "/continue").first == 409);  // it cannot be skipped
+  const auto doneLogged = [&] {
+    for (const auto& e : findEvents(c, "mix"))
+      if (e["title"]["key"] == "ev.mix.done" && e["data"]["job"] == id) return true;
+    return false;
+  };
+  CHECK_FALSE(doneLogged());
+  // Refill wants to start (level below its start), but waits like EC and pH (RAT-055)
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+  bool dosed = false, circOff = false, refilled = false;
+  for (int t = 0; t < 11 * 60; t += 5) {
+    s.step(5000);
+    dosed = dosed || !dosingPurpose(c).empty();
+    circOff = circOff || !s.world().circulating();
+    refilled = refilled || c.state()["outputs"]["tank.inlet"] == true;
+  }
+  CHECK_FALSE(dosed);    // neither EC nor pH
+  CHECK_FALSE(circOff);  // the mix keeps the pump on
+  CHECK_FALSE(refilled);
+  CHECK(c.state()["job"]["state"] == "settling");
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 60 * 1000));
+  CHECK(c.state()["lastJob"]["state"] == "done");
+  CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done");
+  CHECK(doneLogged());
+  CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 2 * 60 * 1000));  // then refill
+}
+
+TEST_CASE("Scenario: a mix mixes in for the longer settle time of the controllers switched on, at least 240 s with pH control and 100 s per 20 L in the tank (SD-057, RAT-052, RAT-058)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/circulation", {{"enabled", false}});
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  const auto settle = [&](const char* fn, json v) { c.ok("PATCH", std::string("/api/v1/functions/") + fn, {{"params", {{"settle_min", v}}}}); };
+  const auto off = [&](const char* fn) { c.ok("PATCH", std::string("/api/v1/functions/") + fn, {{"enabled", false}}); };
+  double level = 20;
+  int expected = 0;
+  std::string text = "mix.settling";
+  SUBCASE("pH's longer settle time") {
+    settle("ec_control", 3);
+    settle("ph_control", 9);
+    expected = 9;
+  }
+  SUBCASE("only the controllers switched on count") {
+    settle("ec_control", 3);
+    settle("ph_control", 9);
+    off("ph_control");
+    expected = 3;
+  }
+  SUBCASE("with no control switched on, 5 min") {
+    off("ec_control");
+    off("ph_control");
+    expected = 5;
+    text = "mix.settling_plain";  // no control to promise: "then you can measure"
+  }
+  SUBCASE("with pH control, 240 s at least") {
+    settle("ec_control", 2);
+    settle("ph_control", 2);
+    expected = 4;
+  }
+  SUBCASE("100 s per 20 L of what the level sensor reads, not of the mix's water") {
+    settle("ec_control", 2);
+    off("ph_control");
+    level = 58;
+    expected = 5;  // 290 s
+  }
+  s.world().fill(level, 0.02, 7.0);
+  // A large step locks the level as a jump until 15 min of quiet (RAT-042), and the pump with it
+  s.step((level > 40 ? 16 : 1) * 60000);
+  REQUIRE(until(s, [&] { return c.state()["dosing"].is_null(); }, 30 * 60 * 1000));  // a mix does not start over a dose
+  startMix(c);
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+  const json job = c.state()["job"];
+  REQUIRE(job["message"]["key"] == text);
+  CHECK(job["message"]["args"].value("min", -1) == expected);
+  CHECK(job["waitLeftS"].get<int>() > expected * 60 - 61);
+  CHECK(job["waitLeftS"].get<int>() <= expected * 60);
+}
+
+TEST_CASE("Scenario: stirring by hand waits 30 min at most; the mix then stops, open to go on or to end, and names the parts of a pair still missing (SD-057, RAT-054)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  const std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", true}})["job"]["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));  // Teil A is in
+  CHECK(c.state()["job"]["waitLeftS"].get<int>() > 29 * 60);
+  s.step(29 * 60 * 1000);
+  CHECK(c.state()["job"]["state"] == "waiting_user");
+  s.step(61 * 1000);
+  json job = c.state()["job"];
+  REQUIRE(job["state"] == "failed");
+  CHECK(job["message"]["key"] == "mix.stir_timeout_pair");
+  CHECK(job["message"]["args"]["min"] == 30);
+  CHECK(job["message"]["args"]["name"] == "Teil A");
+  REQUIRE(job["message"]["args"]["partners"].size() == 1);
+  CHECK(job["message"]["args"]["partners"][0]["args"]["name"] == "Teil B");
+  CHECK(job["message"]["args"]["partners"][0]["args"]["ml"].get<double>() == doctest::Approx(40.0));
+  const auto stopped = [&](const char* severity) {
+    int n = 0;
+    for (const auto& e : findEvents(c, "mix")) n += e["title"]["key"] == "ev.mix.stir_timeout" && e["severity"] == severity;
+    return n;
+  };
+  CHECK(stopped("alarm") == 1);  // a pair half in
+  for (const char* p : {kA, kB, kC}) CHECK(s.world().cap(p)->state != 1);
+  CHECK(c.call("POST", "/api/v1/jobs/" + id + "/continue").first == 409);
+  // Never mixed over (RAT-003)
+  const auto over = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}});
+  CHECK(over.first == 409);
+  CHECK(over.second["error"]["key"] == "mix.failed_open");
+  SUBCASE("going on doses the next part") {
+    c.ok("POST", "/api/v1/jobs/" + id + "/resume");
+    CHECK(logged(c, "ev.mix.resumed.next", "text"));
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));  // Teil B is in
+    s.step(31 * 60 * 1000);
+    job = c.state()["job"];
+    REQUIRE(job["state"] == "failed");
+    CHECK(job["message"]["key"] == "mix.stir_timeout");  // the pair is complete: none to name
+    CHECK(job["message"]["args"]["name"] == "Teil B");
+    CHECK(stopped("warn") == 1);
+    c.ok("POST", "/api/v1/jobs/" + id + "/resume");
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 120000));  // CalMag comes last: no stirring after it
+    CHECK(c.state()["lastJob"]["state"] == "done");
+  }
+  SUBCASE("ending it names the part still missing") {
+    c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+    const json last = c.state()["lastJob"];
+    CHECK(last["state"] == "aborted");
+    CHECK(last["message"]["key"] == "job.aborted_pair");
+    REQUIRE(last["message"]["args"]["partners"].size() == 1);
+    CHECK(last["message"]["args"]["partners"][0]["args"]["name"] == "Teil B");
+  }
+}
+
+TEST_CASE("Scenario: a stop for stirring between the parts of a pair names the part still missing, whatever comes between them (SD-057, RAT-054, RAT-080)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  c.ok("POST", "/api/v1/recipes",
+       {{"id", "wachstum"},
+        {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.5}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}}}});
+  s.world().fill(20, 0.02, 7.0);
+  const std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", true}})["job"]["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));  // Teil A is in
+  c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));  // CalMag is in
+  s.step(31 * 60 * 1000);
+  const json job = c.state()["job"];
+  REQUIRE(job["state"] == "failed");
+  CHECK(job["message"]["key"] == "mix.stir_timeout_pair");
+  CHECK(job["message"]["args"]["name"] == "CalMag");
+  REQUIRE(job["message"]["args"]["partners"].size() == 1);
+  CHECK(job["message"]["args"]["partners"][0]["args"]["name"] == "Teil B");
+}
+
+TEST_CASE("Scenario: a mix cut with nutrients in leaves EC to settle with the circulation pump first, and pH after EC: ended, stopped, failed or restarted (SD-057, SD-073, RAT-004, R6)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  s.world().fill(40, 0.02, 7.5);  // EC low and pH high after the cut: both want to dose
+  const auto relogin = [&] {
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.step(5000);  // the devices are found again
+  };
+  std::string id;
+  bool failedOpen = false;
+  SUBCASE("ended after the first part") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000));
+    c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  }
+  SUBCASE("ended while it mixes in at its end") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+    c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  }
+  SUBCASE("stopped after the first part") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000));
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+  }
+  SUBCASE("stopped while it mixes in at its end") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+  }
+  SUBCASE("a part fails after the first: the mix stays open") {
+    s.world().cap(kB)->blocked = true;
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 10 * 60 * 1000));
+    CHECK(c.state()["job"]["message"]["key"] == "job.pair_failed");
+    failedOpen = true;
+  }
+  SUBCASE("an internal error after the first part") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000));
+    const std::string strip = s.world().netPlugs.front().id;
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", strip}, {"fault", "crash"}});
+    }
+    s.step(2000);
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", strip}, {"fault", "none"}});
+    }
+    s.step(2000);
+    CHECK(c.state()["lastJob"]["message"]["key"] == "job.internal");
+  }
+  SUBCASE("restarted after the first part") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000));
+    s.reboot();
+    relogin();
+    CHECK(logged(c, "ev.mix_reboot"));
+  }
+  SUBCASE("restarted while it mixes in at its end: said so") {
+    id = startMix(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+    s.reboot();
+    relogin();
+    CHECK(logged(c, "ev.reboot.text_settling", "text"));
+  }
+  const json job = c.state()["job"];
+  REQUIRE((failedOpen ? job["state"] == "failed" : job.is_null()));
+  REQUIRE(until(s, [&] { return s.world().circulating(); }, 60000));  // asked for by EC control
+  s.step(5000);
+  CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
+  bool dosed = false;
+  for (int t = 0; t < 14 * 60; t += 5) {  // at least 15 min with the pump running
+    s.step(5000);
+    dosed = dosed || !dosingPurpose(c).empty();
+  }
+  CHECK_FALSE(dosed);
+  // Then EC first, as after every round: pH waits for it (RAT-004). A mix left open with half a pair
+  // holds neither yet (#261), so that case shows only the wait.
+  if (failedOpen) return;
+  std::string first;
+  REQUIRE(until(s, [&] { return !(first = dosingPurpose(c)).empty(); }, 4 * 60 * 1000));
+  CHECK(first == "ec");
+}
+
+TEST_CASE("Scenario: with EC control off, pH carries the mark of a cut mix itself, for at least its own settle time (SD-057)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+  c.ok("PATCH", "/api/v1/functions/ph_control", {{"params", {{"settle_min", 25}}}});
+  s.world().fill(40, 0.02, 7.0);
+  // pH with no round of its own when the mix is cut
+  REQUIRE(until(s, [&] {
+    const json st = c.state();
+    return st["dosing"].is_null() && st["controllers"]["ph"]["state"] != "working";
+  }, 4 * 3600 * 1000, 5000));
+  const std::string id = startMix(c)["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+  c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  REQUIRE(until(s, [&] { return s.world().circulating(); }, 60000));
+  s.step(5000);
+  CHECK(c.state()["controllers"]["ph"]["line"]["key"] == "ph.mixcut_settling");
+  bool dosed = false;
+  for (int t = 0; t < 24 * 60; t += 5) {  // pH's 25 min, longer than the 15 min of a cut
+    s.step(5000);
+    dosed = dosed || !dosingPurpose(c).empty();
+  }
+  CHECK_FALSE(dosed);
+  CHECK(c.state()["controllers"]["ph"]["line"]["key"] == "ph.mixcut_settling");
+  CHECK(until(s, [&] { return c.state()["controllers"]["ph"]["line"]["key"] != "ph.mixcut_settling"; }, 3 * 60 * 1000));  // then it decides
+}
+
+TEST_CASE("Scenario: a mix cut with EC and pH already on target logs no correction of their own (SD-057)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  c.ok("POST", "/api/v1/grow/complete", json::object());  // the phase's targets would win over the functions' (R4)
+  s.world().fill(20, 0.02, 7.0);
+  const std::string id = startMix(c)["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+  s.step(3 * 60 * 1000);  // mixed in: the readings are what the controllers will see
+  const json r = c.state()["readings"];
+  const double ec = r["tank.ec"]["value"], ph = r["tank.ph"]["value"];
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"ec_target", std::round(ec * 20) / 20}, {"ec_tolerance", 0.3}}}});
+  c.ok("PATCH", "/api/v1/functions/ph_control", {{"params", {{"ph_target", std::round(ph * 20) / 20}, {"ph_tolerance", 0.3}}}});
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling"; }, 60000));
+  SUBCASE("left to settle") {}
+  SUBCASE("a Stop while it waits keeps it a wait") {
+    s.step(5 * 60 * 1000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    c.ok("POST", "/api/v1/resume");
+    REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling"; }, 60000));
+  }
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.ok"; }, 20 * 60 * 1000));
+  s.step(60000);
+  CHECK(c.state()["controllers"]["ph"]["line"]["key"] == "ph.ok");
+  const json events = c.ok("GET", "/api/v1/events?limit=500&type=control")["events"];
+  for (const auto& e : events) {
+    if (e["id"].get<std::uint64_t>() <= before) continue;
+    CHECK(e["title"]["key"] != "ev.ec.done");
+    CHECK(e["title"]["key"] != "ev.ph.done");
+  }
 }
 
 TEST_CASE("Szenario: Pumpenkappe am Hub-Port wird nicht freigegeben (PD-012)") {
@@ -559,6 +914,45 @@ std::string circulateOnPlug(sim::Simulation& s, Client& c) {
   return id;
 }
 }  // namespace
+
+TEST_CASE("Scenario: a pump that is not running while a mix mixes in at its end: the card says so, and EC control waits for the pump afterwards (SD-057)") {
+  // The plug goes offline, so the hub reads the pump as unknown and takes it as not running (R5)
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string plug = circulateOnPlug(s, c);  // also switches refill off
+  demoCalm(s, c);
+  s.world().fill(40, 0.02, 7.5);
+  startMix(c);
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000));
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", plug}, {"fault", "offline"}});
+  }
+  REQUIRE(until(s, [&] { return c.state()["job"]["message"]["key"] == "mix.settling_no_circ"; }, 60000));
+  CHECK(c.state()["job"]["circulating"].is_null());  // offline: unknown, never "off" (R5)
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 10 * 60 * 1000));  // the mix still ends
+  CHECK(c.state()["lastJob"]["state"] == "done");
+  CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_unmixed");
+  bool dosed = false;
+  for (int t = 0; t < 3 * 60; t += 5) {
+    s.step(5000);
+    dosed = dosed || !dosingPurpose(c).empty();
+  }
+  CHECK_FALSE(dosed);
+  const std::string line = c.state()["controllers"]["ec"]["line"]["key"];
+  CHECK(line.rfind("ec.mixcut_", 0) == 0);  // blocked, and why
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", plug}, {"fault", "none"}});
+  }
+  REQUIRE(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));
+  for (int t = 0; t < 14 * 60; t += 5) {
+    s.step(5000);
+    dosed = dosed || !dosingPurpose(c).empty();
+  }
+  CHECK_FALSE(dosed);
+  CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
+}
 
 TEST_CASE("Scenario: a dry-run latch from a low level releases itself 5 min after the tank is back above minimum plus margin (SD-022, #27)") {
   sim::Simulation s(test::opts("demo"));
@@ -994,7 +1388,7 @@ TEST_CASE("Szenario: Zulauf – Füllstand fällt aus → Notabschaltung, kein a
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 600000));
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000));  // the demo's mix, mixed in
   s.world().fill(25, 1.3, 5.9);
   // Läuft gerade eine EC-Runde, wartet der Zulauf, bis sie eingeschwungen ist (RAT-055).
   REQUIRE(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 15 * 60 * 1000, 5000));
@@ -2088,7 +2482,7 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
     REQUIRE(until(s, [&] {
       const json now = c.state();
       return now["job"].is_null() && now["dosing"].is_null();
-    }, 10 * 60 * 1000));
+    }, 30 * 60 * 1000));
     c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 5}});
     REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 2000; }, 20000, 200));
     REQUIRE(s.world().circulating());
@@ -2354,8 +2748,12 @@ TEST_CASE("Szenario: Abbruch bucht, was schon gelaufen ist (RAT-070)") {
   double after = st["stock"]["teil-a"];
   CHECK(after < before - 5);  // > 10 s bei 38–53 ml/min
   json m = st["lastJob"]["message"];
-  CHECK(m["key"] == "job.aborted");
+  CHECK(m["key"] == "job.aborted_pair");  // the rest of Teil A and all of Teil B are missing (SD-057, RAT-054)
   CHECK(m["args"]["done"][0]["args"]["name"] == "Teil A");
+  REQUIRE(m["args"]["partners"].size() == 2);
+  CHECK(m["args"]["partners"][0]["args"]["name"] == "Teil A");
+  CHECK(m["args"]["partners"][0]["args"]["ml"].get<double>() == doctest::Approx(40.0 - (before - after)).epsilon(0.05));
+  CHECK(m["args"]["partners"][1]["args"]["name"] == "Teil B");
   CHECK(findEvents(c, "mix").at(0)["title"]["key"] == "ev.mix.aborted");
   bool logged = false;
   for (const auto& e : findEvents(c, "dose"))

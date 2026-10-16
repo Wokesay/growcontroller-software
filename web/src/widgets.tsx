@@ -162,21 +162,30 @@ export const latchLabel = (k: string) => {
   return t("widgets.latch.other");
 };
 
-const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
+const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", settling: "widgets.job.settling", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
 
 export function JobView(p: { job: Job; compact?: boolean }) {
   const j = p.job;
   const dosing = state.value?.dosing;
   const total = j.steps.length;
   const title = j.type === "mix" ? t("widgets.jobMix", { name: j.info.recipeName ?? "", l: num(j.info.waterL, 1) }) : j.type === "calibration" ? t("widgets.jobCalibration") : j.type === "prime" ? t("term.prime") : t("widgets.jobManual");
+  // Mixing in at the end with the pump standing still: said, not shown as mixing (SD-057)
+  const pumpStands = j.state === "settling" && j.circulating !== true;
+  const stateText = pumpStands ? t("widgets.job.waitingPump") : jobStateText[j.state] ? t(jobStateText[j.state]) : "";
+  const mins = (s: number | undefined) => Math.max(1, Math.ceil((s ?? 0) / 60));
   return (
     <div class="stack-sm" data-testid="job">
       <div class="row-between">
         <h3>{title}</h3>
-        <Pill tone={j.state === "failed" ? "bad" : j.state === "done" ? "ok" : j.state === "aborted" ? "neutral" : j.state === "waiting_user" ? "warn" : "info"} dot pulse={j.state === "running" || j.state === "mixing"}>
-          {jobStateText[j.state] && t(jobStateText[j.state])}
+        <Pill tone={j.state === "failed" ? "bad" : j.state === "done" ? "ok" : j.state === "aborted" ? "neutral" : j.state === "waiting_user" || pumpStands ? "warn" : "info"} dot pulse={!pumpStands && (j.state === "running" || j.state === "mixing" || j.state === "settling")}>
+          {stateText}
         </Pill>
       </div>
+      {/* the state, not the minutes, for screen readers: a stopped mix needs an action */}
+      <span class="sr-only" role="status">
+        {title}: {stateText}
+        {j.state === "failed" ? ` ${msg(j.message)}` : ""}
+      </span>
       {!p.compact && (
         <div class="steps">
           {j.steps.map((s, i) => {
@@ -208,6 +217,8 @@ export function JobView(p: { job: Job; compact?: boolean }) {
       )}
       <p class={j.state === "failed" ? "" : "muted"} style={j.state === "failed" ? "color:var(--bad);font-weight:600" : ""}>
         {msg(j.message)}
+        {j.state === "settling" && !pumpStands && j.waitLeftS != null && <> {t("widgets.waitLeft", { min: mins(j.waitLeftS) })}</>}
+        {j.state === "waiting_user" && j.type === "mix" && j.waitLeftS != null && <> {t("widgets.stirLeft", { min: mins(j.waitLeftS) })}</>}
       </p>
       <div class="row">
         {(j.state === "waiting_user" || j.state === "mixing") && j.type === "mix" && (
@@ -215,14 +226,22 @@ export function JobView(p: { job: Job; compact?: boolean }) {
             <Play size={16} /> {j.state === "mixing" ? t("widgets.continueNow") : t("widgets.continueStep", { n: Math.min(j.index + 1, total), total })}
           </Button>
         )}
-        {j.state === "failed" && j.type === "mix" && (
+        {/* a part cut short is completed; after a wait for stirring the mix goes on with the next part */}
+        {j.state === "failed" && j.type === "mix" && j.steps[j.index]?.state === "failed" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/resume`).then(refreshState)}>
             <RotateCcw size={16} /> {t("widgets.redo", { name: j.steps[j.index]?.name ?? "" })}
           </Button>
         )}
+        {j.state === "failed" && j.type === "mix" && j.steps[j.index]?.state !== "failed" && (
+          <Button variant="primary" onClick={() => post(`/jobs/${j.id}/resume`).then(refreshState)}>
+            <Play size={16} /> {t("widgets.resumeMix")}
+          </Button>
+        )}
+        {/* Not while mixing in: nothing is left to dose, and ending it early only makes control wait
+            longer; the Stop stays for an emergency (SD-057) */}
         {(j.state === "running" || j.state === "waiting_user" || j.state === "mixing" || j.state === "failed") && (
           <Button variant="danger-soft" onClick={() => post(`/jobs/${j.id}/abort`).then(refreshState)}>
-            <Square size={14} /> {t("common.cancel")}
+            <Square size={14} /> {j.state === "failed" && j.type === "mix" ? t("widgets.endMix") : t("common.cancel")}
           </Button>
         )}
       </div>
