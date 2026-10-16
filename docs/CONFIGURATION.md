@@ -21,7 +21,10 @@ Device (DB-7A31C0, PHEC-3F2A91 …)        ← detected at the port, accepted by
 ## 2. Catalog (`catalog/catalog.json`)
 
 The catalog is data. It is embedded at build time and ships with the
-firmware. Contents:
+firmware. Its names and texts are English; the web app shows them in
+German from `web/src/lang/cat.ts` by each entry's key (`cat.role.<id>`,
+`cat.class.<id>`, …, SD-083 point 3), and `tools/i18n_keys.test.mjs`
+checks that every name and text shown has its German. Contents:
 
 - **capabilities**: unit, decimal places, plausibility band, freshness
   limit, jump threshold.
@@ -80,7 +83,7 @@ function `unavailable`. It shows "blocked: device not responding".
 config {schemaVersion, revision}
 ├─ system      name, time zone, language, update channel, update check, what the app is to do per area (control, SD-037)
 ├─ limits      cap per manual dose, run-time limits
-├─ devices[]   device ID → class, name, a sign of life (SD-042)   (flat inventory)
+├─ devices[]   device ID → class, name ("" for none: named by its class), a sign of life (SD-042)   (flat inventory)
 ├─ tanks[]     usable volume, minimum level, water, roles{tank.* → device/channel}
 ├─ zones[]     growing area: name, kind (room/tent/greenhouse), tank, roles{zone.* → device/channel}
 ├─ canisters[] name, type (nutrient/pH−/pH+), pump, pair, colour, size

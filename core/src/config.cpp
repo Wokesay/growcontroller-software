@@ -409,13 +409,13 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       if (role.rfind("zone.", 0) == 0) err(say("cfg.role.place_tank", {{"role", role}}));
   std::vector<std::pair<std::string, Binding>> all;
   c.forEachBinding([&](const std::string& r, const Binding& b) { all.emplace_back(r, b); });
-  std::map<std::pair<std::string, int>, std::string> switchUse;  // Kanal → Rolle
+  std::map<std::pair<std::string, int>, json> switchUse;  // Kanal → Rolle
   for (const auto& [role, b] : all) {
     const RoleDef* rd = cat.role(role);
     if (rd && !rd->profile.empty()) {
       auto key = std::make_pair(b.device, b.channel);
-      if (switchUse.count(key)) err(say("cfg.role.shared", {{"label", rd->label}, {"other", switchUse[key]}}));
-      else switchUse[key] = rd->label;
+      if (switchUse.count(key)) err(say("cfg.role.shared", {{"label", nameOf(*rd)}, {"other", switchUse[key]}}));
+      else switchUse[key] = nameOf(*rd);
     }
     if (!rd) {
       err(say("cfg.role.unknown", {{"role", role}}));
@@ -423,16 +423,17 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     }
     const DeviceCfg* d = c.device(b.device);
     if (!d) {
-      err(say("cfg.role.device", {{"label", rd->label}, {"device", b.device}}));
+      err(say("cfg.role.device", {{"label", nameOf(*rd)}, {"device", b.device}}));
       continue;
     }
     const DeviceClassDef* dc = cat.deviceClass(d->cls);
     bool ok = false;
     if (dc)
       for (const auto& p : dc->provides) ok = ok || rd->allows(p);
-    if (!ok) err(say("cfg.role.cap", {{"label", rd->label}, {"device", d->name}}));
+    const json device = deviceName(cat, d->id, d->cls, d->name);
+    if (!ok) err(say("cfg.role.cap", {{"label", nameOf(*rd)}, {"device", device}}));
     const int channels = dc && dc->channels > 0 ? dc->channels : 1;
-    if (b.channel < 0 || b.channel >= channels) err(say("cfg.role.channel", {{"label", rd->label}, {"device", d->name}, {"n", b.channel + 1}}));
+    if (b.channel < 0 || b.channel >= channels) err(say("cfg.role.channel", {{"label", nameOf(*rd)}, {"device", device}, {"n", b.channel + 1}}));
   }
   // A sign of life only for a sensor on its own schedule, whose class says so
   // in code, never by catalog data (SD-042, R7); source and channel as the
@@ -445,7 +446,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     const DeviceClassDef* dc = cat.deviceClass(d.cls);
     if (!dc || !dc->ownReportSchedule || d.life.empty() || d.life.size() > 255 || !lifeChars(d.life, true) ||
         d.lifeChannel.size() > 16 || !lifeChars(d.lifeChannel, false))
-      err(say("cfg.device.life", {{"name", d.name}}));
+      err(say("cfg.device.life", {{"name", deviceName(cat, d.id, d.cls, d.name)}}));
   }
   std::set<std::string> pumps, canIds;
   for (const auto& k : c.canisters) {
@@ -529,7 +530,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   // A finding names the function and the parameter, and for a phase's value the phase too
   auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::optional<std::string>& phase) {
     if (pd.type != "number") return;
-    json args = {{"fn", fd.label}, {"param", pd.label}};
+    json args = {{"fn", nameOf(fd)}, {"param", nameOf(fd, pd)}};
     if (phase) args["phase"] = *phase;
     if (!val.is_number()) {
       err(say(phase ? "cfg.phase.type" : "cfg.param.type", args));
@@ -550,13 +551,13 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       continue;
     }
     if (!f.params.is_object()) {
-      err(say("cfg.params", {{"fn", fd->label}}));
+      err(say("cfg.params", {{"fn", nameOf(*fd)}}));
       continue;
     }
     for (const auto& [key, val] : f.params.items()) {
       const ParamDef* pd = fd->param(key);
       if (!pd) {
-        err(say("cfg.param.unknown", {{"fn", fd->label}, {"param", key}}));
+        err(say("cfg.param.unknown", {{"fn", nameOf(*fd)}, {"param", key}}));
         continue;
       }
       checkParam(*fd, *pd, val, std::nullopt);

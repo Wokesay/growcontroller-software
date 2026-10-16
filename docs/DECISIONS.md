@@ -3967,6 +3967,18 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
    - Not chosen: `labelDe`/`labelEn` beside each entry, as the recipe
      templates have (a second way next to the keys, and events stored in
      the language of their day).
+   - **A device without a name of its own** (decided by the project owner
+     on 2026-10-16) is named by its class in the page's language.
+     Accepting a device without a name stores none. A stored name that is
+     only its class's name, now or as the German catalog had it, counts as
+     none: until this change, a device accepted without a name stored the
+     German class name. The file keeps such a name as it is. Not chosen:
+     keeping such names as names of their own (a hub in use would show
+     German device names on English pages until each is renamed), and
+     clearing them when the file is read (it changes the user's data, and
+     a return to an older version would show empty names).
+   - Only what a page shows has a German text: the catalog's shop texts
+     and a function's group stay English.
 
 ---
 

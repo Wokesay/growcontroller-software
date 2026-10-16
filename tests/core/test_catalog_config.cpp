@@ -356,6 +356,25 @@ TEST_CASE("Konfiguration: Grenzen dürfen nur verschärfen (R7)") {
   CHECK(hasKey("cfg.limits.runs"));
 }
 
+TEST_CASE("Configuration: a finding names a role and a device in the page's language, a device without a name of its own by its class (SD-083)") {
+  Catalog cat = Catalog::builtin();
+  auto finding = [&](const std::string& name) {
+    Config c;
+    c.devices = {{"PH-1", "head_ph_ec", name}};
+    c.tank().roles["tank.ph"] = {"PH-1", 3};  // a head has one channel
+    for (const auto& m : validateConfig(c, cat))
+      if (m.key == "cfg.role.channel") return m;
+    return Msg{};
+  };
+  for (const char* none : {"", "Sensorkopf pH/EC", "pH/EC sensor head"}) {
+    const Msg m = finding(none);
+    REQUIRE(m.key == "cfg.role.channel");
+    CHECK(m.args["label"]["key"] == "cat.role.tank.ph");
+    CHECK(m.args["device"]["key"] == "cat.class.head_ph_ec");
+  }
+  CHECK(finding("Kopf am Tank").args["device"] == "Kopf am Tank");
+}
+
 TEST_CASE("Konfiguration: Phasenparameter im Katalogbereich (RAT-008, RAT-076)") {
   Catalog cat = Catalog::builtin();
   Config c = sample();
@@ -371,7 +390,9 @@ TEST_CASE("Konfiguration: Phasenparameter im Katalogbereich (RAT-008, RAT-076)")
   Msg m = first();
   CHECK(m.key == "cfg.phase.range");
   CHECK(m.args["phase"] == "Blüte");
-  CHECK(m.args.contains("fn"));
+  CHECK(m.args["fn"]["key"] == "cat.fn.ph_control");  // in the page's language by the catalog's key (SD-083)
+  CHECK(m.args["param"]["key"] == "cat.param.ph_control.ph_tolerance");
+  CHECK(m.text.find("\"Tolerance\"") != std::string::npos);  // quoted, so it reads inside the sentence
   CHECK(m.args["unit"] == "");  // the pH tolerance has none, and no space is left for it
   c.grow.phases[0].params = {{"ph_target", 1.0}};
   m = first();

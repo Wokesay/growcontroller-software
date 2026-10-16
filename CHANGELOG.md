@@ -95,6 +95,22 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **The catalog in the page's language** (#143, #18, SD-083 point 3):
+  the names and texts of roles, device classes, functions and their
+  settings, and of the Home Assistant app's sensor classes, show in the
+  page's language, also inside messages and in the event log. The
+  catalog is English; the web app shows German by each entry's key. An
+  event saved before keeps its German names. A device accepted without a
+  name of its own stores none and is named by its class in the page's
+  language; a stored name that is only its class's German name, which a
+  device accepted before got, counts as none, and the file keeps it. For
+  API users: `/catalog` is English; a role's, a device class's, a
+  capability's, a function's and a parameter's name inside a message's
+  `args` is a message with a key (`cat.role.<id>`, `cat.class.<id>`,
+  `cat.cap.<id>`, `cat.fn.<id>`, `cat.param.<function>.<key>`) instead
+  of a German string; a device without a name of its own has an empty
+  `name` in `/state` and is named by its class in events; the list of
+  devices not responding (`watch.devices.offline`, `names`) is a list.
 - **English first** (#143, #18, SD-014, SD-083): a new hub is set to
   English. The first-password page starts with the language choice, set
   to English; what you pick there carries into setup, whose first field
@@ -146,9 +162,7 @@ listed in every release under "Security".
   `req.present` is now `req.assigned`, a level sensor's calibration
   too (`req.calibrate_level`, `req.calibrated_level`), and values in a
   reading's reason are rounded to the reading's decimals and carry their
-  unit (`unit`). The names of roles, functions and device classes
-  inside these texts still come from the German catalog until the
-  catalog gets keys (SD-083 point 3).
+  unit (`unit`).
 - **Refusals in the page's language** (#143, #18, SD-083): a refusal of
   the hub now comes with a key of its own and an English text, and an
   English page shows English, a German page German: signing in and
