@@ -224,6 +224,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await expect(page.getByTestId("watchdog")).toBeVisible();
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.name).toBe("Zelt 1");
+  expect(sys.language).toBe("de");  // the page's, saved to the hub, which started in English (SD-082)
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({ climate: "outside", light: "auto", irrigation: "outside", refill: "outside", circulation: "outside", dosing: "outside" });
   await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way into the dosing setup
@@ -310,6 +311,7 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({});
+  expect(sys.language).toBe("de");  // the page's language still reaches the hub, which started in English (SD-082)
   await page.reload();
   await expect(page.getByTestId("watchdog")).toBeVisible();  // not opened again
   // The overview points to choosing sensors
@@ -337,6 +339,7 @@ test.describe("A new hub and browser", () => {
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     const choice = page.getByTestId("first-lang");
+    await expect(choice.getByRole("tablist", { name: "Language · Sprache" })).toBeVisible();  // the same name in both languages
     await expect(choice.getByRole("tab")).toHaveText(["English", "Deutsch"]);
     await expect(choice.getByRole("tab", { name: "English" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("button", { name: "Set password" })).toBeVisible();
@@ -353,6 +356,19 @@ test.describe("A new hub and browser", () => {
     await expect(first).toContainText("Sprache");
     await expect(first.getByRole("tab", { name: "Deutsch" })).toHaveAttribute("aria-selected", "true");
     expect((await (await page.request.get("/api/v1/config")).json()).system.language).toBe("en");  // the hub's until setup saves it
+    await page.getByTestId("wizard-next").click();
+    await expect.poll(async () => (await (await page.request.get("/api/v1/config")).json()).system.language).toBe("de");
+  });
+
+  test("on a German hub show its language from the sign-in page on, without keeping a choice (SD-082)", async ({ page, request }) => {
+    await scenario(request, "demo");  // the demo's hub speaks German
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await page.locator("input[name=password]").fill("demo-passwort");
+    await page.getByRole("button", { name: "Anmelden" }).click();
+    await expect(page.getByTestId("watchdog")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    expect(await page.evaluate(() => localStorage.getItem("gc.lang"))).toBeNull();  // the hub's language, not a choice of this browser
   });
 });
 

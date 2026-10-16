@@ -2,6 +2,7 @@
 #include "gc/api.hpp"
 
 #include <cctype>
+#include <algorithm>
 #include <cstring>
 #include <optional>
 #include <sstream>
@@ -267,8 +268,14 @@ ApiResponse Api::route(const ApiRequest& req) {
     auto it = req.query.find("series");
     std::stringstream ss(it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second);
     std::string s;
-    while (std::getline(ss, s, ',')) series.push_back(s);
-    // The page's language, else the hub's (RAT-016, SD-055)
+    while (std::getline(ss, s, ',')) {
+      // A series id is lower-case letters, digits, dots and underscores; it heads a column of the file
+      const bool okId = !s.empty() && s.size() <= 64 &&
+                        std::all_of(s.begin(), s.end(), [](unsigned char ch) { return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_'; });
+      if (!okId) return fromResult(Result::fail(422, say("history.series_id")));
+      series.push_back(s);
+    }
+    // The page's language, else the hub's (RAT-016, SD-082)
     auto l = req.query.find("lang");
     const std::string lang = l != req.query.end() && (l->second == "de" || l->second == "en") ? l->second : hub_.language();
     ApiResponse r;

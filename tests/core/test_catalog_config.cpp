@@ -88,6 +88,7 @@ TEST_CASE("Konfiguration: Hin- und Rückweg über JSON, fehlende Zahl bleibt feh
 TEST_CASE("Configuration: a new hub speaks English, a saved file without a language stays German (SD-014)") {
   CHECK(Config{}.system.language == "en");
   CHECK(configFromJson(json{{"system", {{"name", "Zelt"}}}}).system.language == "de");  // saved before English was the default
+  CHECK(configFromJson(json{{"tank", {{"id", "t1"}}}}).system.language == "de");        // also with no system part (schema v0)
   CHECK(configFromJson(json{{"system", {{"language", "en"}}}}).system.language == "en");
   CHECK(configFromJson(json{{"system", {{"language", "de"}}}}).system.language == "de");
 }

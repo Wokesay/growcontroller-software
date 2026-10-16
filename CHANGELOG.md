@@ -95,16 +95,27 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **English first** (#143, #18, SD-014, SD-082): a new hub speaks English,
-  and a browser that has not chosen a language starts in English. The
-  first-password page asks for the language first, and setup and the
-  Home Assistant app's introduction start with it. A hub you already use
-  keeps its language through the update.
-- **The CSV export in the page's language** (RAT-016, SD-082): from an
-  English page it has commas and a decimal point, from a German page
-  semicolons and a decimal comma, as before. Gaps stay empty in both.
-  The settings file is now called `growcontroller-config.json` and the
-  diagnostic bundle `growcontroller-diagnostics-….json`.
+- **English first** (#143, #18, SD-014, SD-082): a new hub is set to
+  English. The first-password page starts with the language choice, set
+  to English; what you pick there carries into setup, whose first field
+  is the language, as in the Home Assistant app's introduction. A browser
+  where you have not picked a language no longer follows the browser's
+  own language: it shows the hub's language, from the sign-in page on. A
+  hub you already use keeps its language through the update.
+- **The CSV export in the page's language** (RAT-016, SD-082): from a
+  German page as before, with semicolons and a decimal comma
+  (`growcontroller-verlauf.csv`); from an English page with commas and a
+  decimal point (`growcontroller-history.csv`). Gaps stay empty in both.
+  A series name in the export's address holds only lower-case letters,
+  digits, dots and underscores.
+- **English file names:** the settings file is now
+  `growcontroller-config.json` (was `growcontroller-konfiguration.json`),
+  the diagnostic bundle `growcontroller-diagnostics-….json` (was
+  `growcontroller-diagnose-….json`).
+- **API:** a refused change's `error` is now its first finding, with
+  `key`, `text` and `args` (the whole list stays in `errors`); `/info`
+  names the hub's language (`language`); `/export.csv` takes `lang=de`
+  or `lang=en` and otherwise uses the hub's.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
@@ -355,9 +366,9 @@ listed in every release under "Security".
 
 ### Fixed
 - **A refused change says why in the page's language** (#18): when the
-  configuration check refused a recipe, for example a chart EC that does
-  not fit the amounts, a German page showed the reason in English. The
-  error now carries the reason's key.
+  configuration check refused a recipe, for example because the chart EC
+  does not fit the amounts, a German page showed the reason in English.
+  It now shows it in German.
 - **The web SBOM lists preact** (#201, SD-075): the release built
   `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
   package a build tool depends on, peers included, so it left out

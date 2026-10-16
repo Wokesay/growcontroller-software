@@ -30,7 +30,7 @@ function initial(): Lang {
 
 export const lang = signal<Lang>(initial());
 
-/** Hat dieser Browser schon eine eigene Wahl? Sonst gilt die Sprache des Hubs. */
+/** Has this browser a choice of its own? Otherwise the hub's language applies. */
 export function hasOwnLang(): boolean {
   try {
     return localStorage.getItem(STORE) !== null;
@@ -48,7 +48,7 @@ export function setLang(l: Lang, remember = true) {
   try {
     localStorage.setItem(STORE, l);
   } catch {
-    // ohne Speicher gilt die Wahl bis zum Neuladen
+    // without storage the choice lasts until the page reloads
   }
 }
 

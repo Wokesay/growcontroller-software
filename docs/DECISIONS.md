@@ -3616,19 +3616,25 @@ confirmed)"; it holds until the product side decides otherwise.
   [3] https://raw.githubusercontent.com/espressif/esp-idf/v5.4.1/docs/en/api-reference/system/random.rst
 
 
-
 ## SD-082: English complete for proto.5: English first, the CSV in the page's language, the catalog with keys
 
-Points 2 and 3 were decided by the project owner on 2026-10-16 in the
-software session; point 1 carries out SD-014 (PD-027, PD-035) as SD-055
-asks for proto.5 (#143, #18, #73).
+Points 2 and 3 and the sign-in page's language in point 1 were decided
+by the project owner on 2026-10-16 in the software session; the rest of
+point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
+(#143, #18, #73).
 
 1. **English first (SD-014):**
    - a new hub speaks English (system language `en`). A saved
-     configuration without a language stays German, as it was saved
-     under the old default; an update never changes a hub's language;
-   - a browser without a choice of its own starts in English, also
-     before the first login, and does not follow the browser's language;
+     configuration whose system part has no language stays German, as it
+     was saved under the old default; an update never changes a hub's
+     language;
+   - a browser without a choice of its own shows the hub's language, from
+     the sign-in page on: the hub names it in `/info`, so a German hub
+     stays German after the update and a new hub starts in English. The
+     browser's own language is no longer used. Not chosen: the
+     browser's language (a German browser would start a new hub in
+     German, against "English preset"), and English on the sign-in page
+     with a switch (German users would switch once in every new browser);
    - the first-password page shows the language choice first, with
      English chosen. The choice stays in the browser and carries into
      setup, whose first field is the language (the Home Assistant app's

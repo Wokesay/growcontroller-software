@@ -369,6 +369,26 @@ test("Rezept-Vorlage: Vorschau, Kanister zuordnen, Rezept anlegen", async ({ pag
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("The CSV links ask for the page's format (RAT-016, SD-082)", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/verlauf");
+  const de = page.getByTestId("history-csv");
+  await expect(de).toHaveAttribute("href", /&lang=de$/);
+  const deRes = await page.request.get((await de.getAttribute("href"))!);
+  expect((await deRes.text()).startsWith("zeit_utc;")).toBe(true);
+  expect(deRes.headers()["content-disposition"]).toContain("growcontroller-verlauf.csv");
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.goto("/#/einstellungen");
+  await page.reload();
+  const link = page.getByTestId("settings-csv");
+  await expect(link).toHaveAttribute("href", /lang=en/);
+  const res = await page.request.get((await link.getAttribute("href"))!);
+  const body = await res.text();
+  expect(body.startsWith("time_utc,")).toBe(true);
+  expect(body.split("\n")[1]).toMatch(/^\d+,(\d+\.\d{3})?(,|$)/);  // a time, then a number with a decimal point or a gap
+  expect(res.headers()["content-disposition"]).toContain("growcontroller-history.csv");
+});
+
 test("Recipe template: an English page stores the English name, even on a German hub (#32)", async ({ page }) => {
   await login(page);
   // This browser chooses English; the hub stays German.

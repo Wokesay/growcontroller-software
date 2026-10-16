@@ -236,6 +236,7 @@ constexpr Entry kMessages[] = {
     {"ev.storage_ok", "Data is being saved again"},
     {"ev.storage_ok.text", "The hub can write to its data folder again."},
     {"store.failed", "Not saved: the hub cannot write to its data folder (full or not writable)."},
+    {"history.series_id", "A series name holds only lower-case letters, digits, dots and underscores."},
     {"ev.tick_fault", "Internal error – pumps and outputs off"},
     {"ev.tick_fault.text", "The hub caught an error and switched off all pumps and outputs. Fans keep running. Reason: {reason}"},
     {"ev.clock.lost", "Clock no longer synced"},

@@ -207,6 +207,7 @@ json migrateConfig(json j) {
 Config configFromJson(const json& in) {
   json j = migrateConfig(in);
   Config c;
+  c.system.language = "de";  // a saved file without a language was saved under the old default (SD-014, SD-082)
   c.schemaVersion = j.value("schemaVersion", kSchemaVersion);
   c.revision = j.value("revision", 0);
   if (j.contains("system")) {
@@ -218,8 +219,7 @@ Config configFromJson(const json& in) {
     // rather than making the file unreadable; an import refuses it (Hub::importConfig).
     if (s.contains("timezone") && s["timezone"].is_string() && isTimeZoneName(s["timezone"].get<std::string>()))
       c.system.timezone = s["timezone"];
-    // German was the default before English (SD-014): a file without the field keeps it
-    c.system.language = s.value("language", std::string("de"));
+    c.system.language = s.value("language", c.system.language);
     c.system.updateCheck = s.value("updateCheck", true);
     c.system.updateChannel = s.value("updateChannel", c.system.updateChannel);
     // Only known areas and modes; anything else is left out rather than refusing the file.

@@ -728,7 +728,8 @@ json Hub::info() const {
           {"setupDone", cfg_.system.setupDone},
           {"hasPassword", auth_.hasPassword()},
           {"setupCode", auth_.setupCodeRequired()},  // the first password needs the code from the log (#79)
-          {"name", cfg_.system.name}};
+          {"name", cfg_.system.name},
+          {"language", cfg_.system.language == "de" ? "de" : "en"}};  // the sign-in page's, before a choice in the browser (SD-082)
 }
 
 json Hub::state() {
@@ -860,8 +861,8 @@ std::string Hub::language() const {
 std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to, const std::string& lang) const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // German: semicolon and decimal comma; English: comma and decimal point, so
-  // a spreadsheet in either language reads the numbers (RAT-016, SD-055)
-  const bool en = lang == "en";
+  // a spreadsheet in either language reads the numbers (RAT-016, SD-082)
+  const bool en = lang != "de";
   const char sep = en ? ',' : ';';
   std::ostringstream os;
   os << (en ? "time_utc" : "zeit_utc");
@@ -1406,8 +1407,7 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
   // differ from the hub's), otherwise in the system language (#32).
   if (!langIn.empty() && langIn != "de" && langIn != "en")
     return Result::fail(422, "recipe.template.lang", "Sprache muss de oder en sein");
-  const std::string& sys = cfg_.system.language;
-  const std::string lang = !langIn.empty() ? langIn : (sys == "de" ? "de" : "en");  // English first (SD-014)
+  const std::string lang = !langIn.empty() ? langIn : language();  // English first (SD-014)
   auto localized = [&](const json& o, const char* key) {
     const std::string en = jstr(o, (std::string(key) + "En").c_str());
     return lang == "en" && !en.empty() ? en : jstr(o, key);

@@ -248,16 +248,16 @@ TEST_CASE("API: Zustand hat die Felder, die die Web-App liest (Vertrag)") {
   CHECK(d.dump().find("salt") == std::string::npos);
 }
 
-TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, SD-055)") {
+TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, SD-082)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   s.step(120000);  // two minutes of readings
-  auto csv = [&](const std::string& q) {
+  auto csv = [&](const std::string& q, const std::string& series = "tank.ph,zone.co2") {
     gc::ApiRequest r;
     r.method = "GET";
     r.path = "/api/v1/export.csv";
-    r.query = {{"series", "tank.ph,zone.co2"}};
+    r.query = {{"series", series}};
     if (!q.empty()) r.query["lang"] = q;
     r.token = c.token;
     std::lock_guard<std::recursive_mutex> l(s.mutex());
@@ -281,6 +281,7 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(en.status == 200);
   CHECK(en.body.rfind("time_utc,tank.ph,zone.co2\n", 0) == 0);
   const std::string enRow = row(en.body);
+  REQUIRE_FALSE(enRow.empty());
   CHECK(enRow.find(';') == std::string::npos);
   CHECK(enRow.find('.') != std::string::npos);  // decimal point
   CHECK(enRow.back() == ',');                    // CO2 left empty, never 0
@@ -288,15 +289,51 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   const auto de = csv("de");
   CHECK(de.body.rfind("zeit_utc;tank.ph;zone.co2\n", 0) == 0);
   const std::string deRow = row(de.body);
+  REQUIRE_FALSE(deRow.empty());
   CHECK(deRow.find(',') != std::string::npos);  // decimal comma
   CHECK(deRow.find('.') == std::string::npos);
   CHECK(deRow.back() == ';');
   CHECK(header(de).find("growcontroller-verlauf.csv") != std::string::npos);
   // Without a language the hub's own decides; the demo's hub speaks German
   CHECK(csv("").body.rfind("zeit_utc;", 0) == 0);
+  CHECK(csv("xx").body.rfind("zeit_utc;", 0) == 0);  // an unknown one counts as none
   c.ok("PUT", "/api/v1/system", {{"language", "en"}});
   CHECK(csv("").body.rfind("time_utc,", 0) == 0);
-  CHECK(csv("xx").body.rfind("time_utc,", 0) == 0);  // an unknown one counts as none
+  // Only a series id heads a column: anything else is refused, nothing is written
+  for (const char* bad : {"=1+1", "tank.ph\n=2", "tank.ph;x", "Tank.PH", "-1", "@a", "\"q\"", "tank ph"}) {
+    const auto r = csv("en", bad);
+    CHECK_MESSAGE(r.status == 422, bad);
+    CHECK_MESSAGE(gc::json::parse(r.body)["error"]["key"] == "history.series_id", bad);
+  }
+  CHECK(csv("en", "tank.ph,zone.vpd,tank.water_temp").status == 200);
+  CHECK(csv("en", "tank.ph,,zone.co2").status == 422);  // an empty id between two
+  CHECK(csv("en", std::string(64, 'a')).status == 200);
+  CHECK(csv("en", std::string(65, 'a')).status == 422);
+  CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
+}
+
+TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-082)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  cfg["system"].erase("language");  // a file saved before the hub wrote one
+  c.ok("POST", "/api/v1/config/import", cfg);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "de");
+  gc::ApiRequest r;
+  r.method = "GET";
+  r.path = "/api/v1/config/export";
+  r.token = c.token;
+  gc::ApiResponse res;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    res = s.api().handle(r);
+  }
+  bool named = false;
+  for (const auto& [k, v] : res.headers) named = named || (k == "Content-Disposition" && v.find("growcontroller-config.json") != std::string::npos);
+  CHECK(named);
 }
 
 TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
@@ -675,10 +712,14 @@ TEST_CASE("Templates: with both names present, the one in the language of the re
 TEST_CASE("System: Sprache nur de oder en") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
+  // A new hub speaks English, and says so before anyone signs in (SD-014, SD-082)
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "en");
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
-  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
-  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
+  c.ok("PUT", "/api/v1/system", {{"language", "de"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
+  CHECK(Client{s}.ok("GET", "/api/v1/info")["language"] == "de");  // the sign-in page of a browser without a choice
   CHECK(c.call("PUT", "/api/v1/system", {{"language", "fr"}}).first == 422);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
 }
 
 TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übernommen") {

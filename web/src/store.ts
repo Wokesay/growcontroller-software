@@ -137,6 +137,8 @@ export async function boot() {
     stopLive();
   });
   info.value = await get<Info>("/info");
+  // Without a choice in this browser, the sign-in page speaks the hub's language (SD-082)
+  if (!hasOwnLang() && (info.value.language === "de" || info.value.language === "en")) setLang(info.value.language, false);
   const s = await get<{ authenticated: boolean }>("/auth/session");
   authed.value = s.authenticated;
   if (s.authenticated) await afterLogin();

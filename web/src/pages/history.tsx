@@ -90,7 +90,7 @@ export function HistoryPage() {
         </div>
         <div class="row">
           <Seg value={range} onChange={setRange} options={RANGES.map(([v, l]) => [v, t(l)] as [string, string])} />
-          <a class="btn sm" href={csv} download>
+          <a class="btn sm" href={csv} download title={t("settings.csvFormat")} data-testid="history-csv">
             <Download size={15} /> CSV
           </a>
         </div>
