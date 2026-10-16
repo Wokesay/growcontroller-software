@@ -95,6 +95,16 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **English first** (#143, #18, SD-014, SD-082): a new hub speaks English,
+  and a browser that has not chosen a language starts in English. The
+  first-password page asks for the language first, and setup and the
+  Home Assistant app's introduction start with it. A hub you already use
+  keeps its language through the update.
+- **The CSV export in the page's language** (RAT-016, SD-082): from an
+  English page it has commas and a decimal point, from a German page
+  semicolons and a decimal comma, as before. Gaps stay empty in both.
+  The settings file is now called `growcontroller-config.json` and the
+  diagnostic bundle `growcontroller-diagnostics-….json`.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
@@ -344,6 +354,10 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A refused change says why in the page's language** (#18): when the
+  configuration check refused a recipe, for example a chart EC that does
+  not fit the amounts, a German page showed the reason in English. The
+  error now carries the reason's key.
 - **The web SBOM lists preact** (#201, SD-075): the release built
   `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
   package a build tool depends on, peers included, so it left out
