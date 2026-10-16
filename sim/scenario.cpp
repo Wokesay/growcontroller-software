@@ -13,6 +13,8 @@
 #include <random>
 #include <vector>
 
+#include "gc/messages.hpp"
+
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -546,24 +548,24 @@ json Simulation::simState() {
 
 json Simulation::control(const std::string& action, const json& b) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  auto err = [](const std::string& t) { return json{{"error", {{"key", "sim"}, {"text", t}}}}; };
+  auto err = [](const gc::Msg& m) { return json{{"error", m}}; };
   if (action == "speed") {
     double s = gc::jnum(b, "speed", 1);
-    if (s < 0 || s > kMaxSpeed) return err("Zeitraffer 0–600");
+    if (s < 0 || s > kMaxSpeed) return err(gc::say("sim.err.speed"));
     speed = s;
   } else if (action == "plug") {
-    if (!world_.plug(b.value("port", 0), b.value("class", std::string()))) return err("Port belegt oder ungültig");
+    if (!world_.plug(b.value("port", 0), b.value("class", std::string()))) return err(gc::say("sim.err.port_busy"));
   } else if (action == "unplug") {
-    if (!world_.unplug(b.value("port", 0))) return err("Port leer");
+    if (!world_.unplug(b.value("port", 0))) return err(gc::say("sim.err.port_empty"));
   } else if (action == "cap") {
     if (!world_.plugCap(b.value("block", std::string()), b.value("slot", -1), b.value("liquid", std::string("grow_a"))))
-      return err("Steckplatz belegt oder ungültig");
+      return err(gc::say("sim.err.slot_busy"));
   } else if (action == "uncap") {
-    if (!world_.unplugCap(b.value("block", std::string()), b.value("slot", -1))) return err("Steckplatz leer");
+    if (!world_.unplugCap(b.value("block", std::string()), b.value("slot", -1))) return err(gc::say("sim.err.slot_empty"));
   } else if (action == "net_add") {
     // Steckdose im WLAN „einschalten“: Plug S (eine Dose) oder Leiste (vier)
     std::string cls = b.value("class", std::string("shelly_plug"));
-    if (cls != "shelly_plug" && cls != "shelly_strip4") return err("Klasse: shelly_plug oder shelly_strip4");
+    if (cls != "shelly_plug" && cls != "shelly_strip4") return err(gc::say("sim.err.plug_class"));
     std::vector<std::pair<std::string, double>> loads;
     for (const auto& ld : b.value("loads", json::array())) loads.emplace_back(ld.value("load", std::string()), ld.value("watts", 0.0));
     std::string id = world_.addNetPlug(cls, loads);
@@ -576,7 +578,7 @@ json Simulation::control(const std::string& action, const json& b) {
     std::string dev = b.value("device", std::string()), f = b.value("fault", std::string());
     if (NetPlug* np = world_.netPlug(dev)) {
       if (f != "none" && f != "offline" && f != "readonly" && f != "ignore" && f != "stuck" && f != "crash")
-        return err("Störung: offline, readonly, ignore, stuck, crash oder none");
+        return err(gc::say("sim.err.fault"));
       np->fault = f == "none" ? "" : f;
     } else if (Cap* c = world_.cap(dev)) {
       c->blocked = f == "blocked";
@@ -593,7 +595,7 @@ json Simulation::control(const std::string& action, const json& b) {
       }
       d->fault = f == "none" ? "" : f;
     } else {
-      return err("Gerät nicht gefunden");
+      return err(gc::say("sim.err.device"));
     }
   } else if (action == "water") {
     world_.fill(gc::jnum(b, "volumeL", world_.tank.volumeL), gc::jnum(b, "ec", 0.02), gc::jnum(b, "ph", 7.0));
@@ -604,26 +606,26 @@ json Simulation::control(const std::string& action, const json& b) {
   } else if (action == "reboot") {
     if ((b.contains("outageMin") && !b["outageMin"].is_number()) || (b.contains("timeSecured") && !b["timeSecured"].is_boolean()) ||
         (b.contains("mainsLost") && !b["mainsLost"].is_boolean()))
-      return err("outageMin: Zahl, timeSecured und mainsLost: true/false");
+      return err(gc::say("sim.err.outage_args"));
     double outageMin = gc::jnum(b, "outageMin", 0);
-    if (!gc::isNum(outageMin) || outageMin < 0 || outageMin > 72 * 60) return err("Ausfall 0–4320 min");
+    if (!gc::isNum(outageMin) || outageMin < 0 || outageMin > 72 * 60) return err(gc::say("sim.err.outage"));
     reboot(static_cast<gc::Ms>(outageMin * 60000.0), gc::jbool(b, "timeSecured", true), gc::jbool(b, "mainsLost", true));
   } else if (action == "time") {
     // Network time arrives or goes away, or the clock is set, without a restart.
     if ((b.contains("secured") && !b["secured"].is_boolean()) || (b.contains("stepS") && !b["stepS"].is_number_integer()))
-      return err("secured: true/false, stepS: ganze Sekunden");
+      return err(gc::say("sim.err.time_args"));
     if (b.contains("secured")) clock_->setSecured(b["secured"].get<bool>());
     if (b.contains("stepS")) clock_->stepWall(b["stepS"].get<gc::Epoch>());
   } else if (action == "scenario") {
     std::string n = b.value("name", std::string("demo"));
-    if (n != "demo" && n != "neu" && n != "stufe1") return err("Szenario: demo, neu oder stufe1");
+    if (n != "demo" && n != "neu" && n != "stufe1") return err(gc::say("sim.err.scenario"));
     loadScenario(n);
   } else if (action == "advance") {
     double hours = gc::jnum(b, "hours", 1);
-    if (hours <= 0 || hours > 72) return err("0–72 h");
+    if (hours <= 0 || hours > 72) return err(gc::say("sim.err.hours"));
     fastForward(hours);
   } else {
-    return err("Unbekannte Aktion");
+    return err(gc::say("sim.err.action"));
   }
   return simState();
 }

@@ -35,8 +35,7 @@ struct Result {
   int status = 200;
   json body = json::object();
   static Result ok(json b = json::object()) { return {200, std::move(b)}; }
-  static Result fail(int st, const std::string& key, const std::string& text, json extra = json::object());
-  // An error that is a message with key and values (SD-032).
+  // An error is a message with key and values, shown in the page's language (SD-032, SD-083).
   static Result fail(int st, const Msg& m, json extra = json::object());
 };
 

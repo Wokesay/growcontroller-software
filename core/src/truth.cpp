@@ -81,45 +81,45 @@ std::optional<PhLine> phLine(const json& calib) {
 
 }  // namespace
 
-std::optional<std::string> SensorTruth::checkCalibration(const std::string& kind, const json& data) {
-  if (!data.is_object()) return std::string("Daten ungültig");
-  if (kind == "ph" && !phLine(data)) return std::string("zwei Pufferpunkte mit plausibler Steigung nötig");
+std::optional<Msg> SensorTruth::checkCalibration(const std::string& kind, const json& data) {
+  if (!data.is_object()) return say("calib.data");
+  if (kind == "ph" && !phLine(data)) return say("calib.ph");
   if (kind == "ec") {
     double f = jnum(data, "factor");
-    if (!isNum(f) || f < 0.5 || f > 2.0) return std::string("Faktor zwischen 0,5 und 2 nötig");
+    if (!isNum(f) || f < 0.5 || f > 2.0) return say("calib.ec");
   }
   if (kind == "tank_curve") {
-    std::string err;
+    Msg err;
     if (!Curve::fromJson(data, err)) return err;
   }
   return std::nullopt;
 }
 
-std::optional<Curve> Curve::fromJson(const json& j, std::string& err) {
+std::optional<Curve> Curve::fromJson(const json& j, Msg& err) {
   if (!j.is_object() || !j.contains("points") || !j["points"].is_array()) {
-    err = "Kennlinie fehlt";
+    err = say("curve.missing");
     return std::nullopt;
   }
   double minGap = jnum(j, "minGap", 0.003);  // 3 mV bei Spannungs-Rohwerten (RAT-078)
   Curve c;
   for (const auto& p : j["points"]) {
     if (!p.is_array() || p.size() != 2 || !p[0].is_number() || !p[1].is_number()) {
-      err = "Stützpunkt ungültig";
+      err = say("curve.point");
       return std::nullopt;
     }
     c.points.emplace_back(p[0].get<double>(), p[1].get<double>());
   }
   if (c.points.size() < 2) {
-    err = "Kennlinie braucht mindestens 2 Stützpunkte";
+    err = say("curve.two");
     return std::nullopt;
   }
   for (size_t i = 1; i < c.points.size(); ++i) {
     if (c.points[i].first - c.points[i - 1].first < minGap) {
-      err = "Stützpunkte nicht streng steigend";
+      err = say("curve.order");
       return std::nullopt;
     }
     if (c.points[i].second < c.points[i - 1].second) {
-      err = "Kennlinie fällt";
+      err = say("curve.falls");
       return std::nullopt;
     }
   }
@@ -157,7 +157,7 @@ std::optional<double> SensorTruth::calibrate(const std::string& cap, double raw,
     return raw * f;
   }
   if (kind == "tank_curve") {
-    std::string err;
+    Msg err;
     auto c = Curve::fromJson(*calib, err);
     if (!c) return std::nullopt;
     return c->map(raw);

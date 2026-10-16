@@ -89,7 +89,7 @@ gc::Result assign(gc::Hub& hub, HaBus& bus, const std::string& role, const std::
     ready = seen();
   }
   std::lock_guard<std::recursive_mutex> l(hub.mutex());
-  const gc::Result accepted = ready ? hub.acceptDevice(device, name) : gc::Result::fail(404, "device.unknown", "");
+  const gc::Result accepted = ready ? hub.acceptDevice(device, name) : gc::Result::fail(404, gc::say("device.not_detected"));
   // bindRole replaces the former binding in one step: the role is never without a sensor.
   gc::Result bound = accepted.status == 200 ? hub.bindRole(role, device, 0) : accepted;
   if (bound.status != 200) {  // undo only what this call added
@@ -146,7 +146,7 @@ gc::Result setLife(gc::Hub& hub, HaBus& bus, const std::string& role, const std:
 }
 
 gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest& req) {
-  if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  if (!api.authorized(req)) return gc::Result::fail(401, gc::say("auth.required"));
   auto asked = [&](const char* key) {
     auto it = req.query.find(key);
     return it != req.query.end() && it->second == "1";
@@ -156,23 +156,23 @@ gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest&
 
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,
                        const std::function<void()>& letHubSee) {
-  if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  if (!api.authorized(req)) return gc::Result::fail(401, gc::say("auth.required"));
   const gc::EventActor actor(api.viaPlatform(req) ? req.user->actor() : std::string());  // the events name who picked it (SD-077)
   const auto body = gc::json::parse(req.body, nullptr, false);
   // "entity" must be given ("" takes the sensor away), so a request that forgot it removes nothing.
   if (!body.is_object() || !body.contains("entity") || !body["entity"].is_string())
-    return gc::Result::fail(400, "api.bad_input", "Eingabe hat das falsche Format");
+    return gc::Result::fail(400, gc::say("api.bad_input"));
   return assign(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "entity"), letHubSee);
 }
 
 gc::Result lifeRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req) {
-  if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  if (!api.authorized(req)) return gc::Result::fail(401, gc::say("auth.required"));
   const gc::EventActor actor(api.viaPlatform(req) ? req.user->actor() : std::string());
   const auto body = gc::json::parse(req.body, nullptr, false);
   // "source" must be given ("" removes it), so a request that forgot it removes nothing
   if (!body.is_object() || !body.contains("source") || !body["source"].is_string() ||
       (body.contains("channel") && !body["channel"].is_string()))
-    return gc::Result::fail(400, "api.bad_input", "Eingabe hat das falsche Format");
+    return gc::Result::fail(400, gc::say("api.bad_input"));
   return setLife(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "source"), gc::jstr(body, "channel"));
 }
 

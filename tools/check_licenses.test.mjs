@@ -130,6 +130,9 @@ test("comments and look-alikes do not hide an import (#102)", () => {
     '/* import "gone-too"; */',
     // strings keep their slashes, the import after them still counts
     'const url = "https://example.org/*not-a-comment"; import s from "s";',
+    // a key that ends in "import" or "from" in a text table loads nothing
+    '  "config.import": "Diese Datei lässt sich nicht laden ({reason})",',
+    'export const m = { "a.from": "y" };',
   ].join("\n");
   assert.deepEqual(runtimeImports(source).sort(), ["a", "pkg/data.json", "s", "t1", "t2", "tick"]);
 });

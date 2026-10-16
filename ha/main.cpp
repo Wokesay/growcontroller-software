@@ -421,10 +421,11 @@ int main(int argc, char** argv) {
   const bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
   if (webErr) std::cerr << "The web app in " << web << " cannot be read; growcontroller runs without it. Detail: " << webErr.message() << ".\n";
 
-  const auto jsonError = [](httplib::Response& res, int status, const char* key, const char* text) {
+  // A refusal of the transport, in the core's shape and with the table's text
+  const auto jsonError = [](httplib::Response& res, int status, const gc::Msg& m) {
     res.status = status;
     res.set_header("Cache-Control", "no-store");
-    res.set_content(gc::json{{"error", {{"key", key}, {"text", text}}}}.dump(), "application/json");
+    res.set_content(gc::json{{"error", m}}.dump(), "application/json");
   };
   std::mutex assigning;  // one pick at a time, also from two browser tabs
   // Both listeners serve the same hub; how a request is signed in is the
@@ -466,23 +467,22 @@ int main(int argc, char** argv) {
         const bool hostForm = hostHeader.size() <= 255 &&
                               std::none_of(hostHeader.begin(), hostHeader.end(), [](char c) { return static_cast<unsigned char>(c) <= 0x20 || c == 0x7f; });
         if (!fromSupervisor || !hostForm) {
-          jsonError(res, 403, "api.ingress", "Only Home Assistant's Supervisor reaches this port");
+          jsonError(res, 403, gc::say("api.ingress"));
           return httplib::Server::HandlerResponse::Handled;
         }
         if (!(req.method == "GET" && req.path == "/api/v1/info") && !ingressUser(req)) {
-          const gc::Msg m = gc::say("api.ingress_user");
-          jsonError(res, 403, m.key.c_str(), m.text.c_str());
+          jsonError(res, 403, gc::say("api.ingress_user"));
           return httplib::Server::HandlerResponse::Handled;
         }
         if (!gc::writeAllowed(req.method, req.get_header_value("Sec-Fetch-Site"), req.get_header_value("Origin"), hostHeader)) {
-          jsonError(res, 403, "api.origin", "Request from a foreign origin refused");
+          jsonError(res, 403, gc::say("api.origin"));
           return httplib::Server::HandlerResponse::Handled;
         }
         return httplib::Server::HandlerResponse::Unhandled;
       }
       if (!gc::hostAllowed(hostHeader, host) ||
           !gc::writeAllowed(req.method, req.get_header_value("Sec-Fetch-Site"), req.get_header_value("Origin"), hostHeader)) {
-        jsonError(res, 403, "api.origin", "Request from a foreign origin refused");
+        jsonError(res, 403, gc::say("api.origin"));
         return httplib::Server::HandlerResponse::Handled;
       }
       if (app) {  // the direct port of the app: nothing but a notice until a password for it is set
@@ -493,8 +493,7 @@ int main(int argc, char** argv) {
         }
         if (!open) {
           if (req.path.rfind("/api/", 0) == 0) {
-            const gc::Msg m = gc::say("api.ingress_only");
-            jsonError(res, 404, m.key.c_str(), m.text.c_str());
+            jsonError(res, 404, gc::say("api.ingress_only"));
           } else {
             res.status = 200;
             res.set_header("Cache-Control", "no-store");
@@ -523,7 +522,7 @@ int main(int argc, char** argv) {
       {
         std::lock_guard<std::recursive_mutex> l(hub.mutex());
         if (!api.authorized(who)) {
-          jsonError(res, 401, "auth.required", "Bitte anmelden");
+          jsonError(res, 401, gc::say("auth.required"));
           return;
         }
       }
@@ -558,7 +557,7 @@ int main(int argc, char** argv) {
     });
     svr.Post("/api/v1/ha/assign", [&, way, reply](const httplib::Request& req, httplib::Response& res) {
       const gc::ApiRequest areq = toApi(req, way);
-      if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));  // before any lock or write
+      if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, gc::say("auth.required")));  // before any lock or write
       std::lock_guard<std::mutex> one(assigning);
       // The hub's configuration is on disk when the pick returns (#68)
       gc::Result r = ha::assignRoute(api, hub, bus, areq, [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
@@ -567,7 +566,7 @@ int main(int argc, char** argv) {
     });
     svr.Post("/api/v1/ha/life", [&, way, reply](const httplib::Request& req, httplib::Response& res) {
       const gc::ApiRequest areq = toApi(req, way);
-      if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));
+      if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, gc::say("auth.required")));
       std::lock_guard<std::mutex> one(assigning);
       gc::Result r = ha::lifeRoute(api, hub, bus, areq);
       if (r.status == 200) r.body = {{"ok", true}};
