@@ -1266,3 +1266,20 @@ test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the
   await expect(changelog).toBeFocused();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("A refusal from the hub shows in the page's language: a backup from a newer version (SD-083)", async ({ page }) => {
+  await login(page);
+  const newer = { name: "growcontroller-config.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ schemaVersion: 99 })) };
+  const restore = async () => {
+    await page.goto("/#/einstellungen");
+    await page.locator('input[type=file][accept="application/json"]').setInputFiles(newer);
+    return page.locator(".toast.error").last();
+  };
+  await expect(await restore()).toHaveText("Diese Sicherung stammt aus einer neueren Version – aktualisiere zuerst den Hub, dann lade sie");
+  // The same refusal on an English page: the hub's English text, no German
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  const en = await restore();
+  await expect(en).toHaveText("This backup comes from a newer version – update the hub first, then restore it");
+  await expect(en).not.toContainText("Sicherung");
+});

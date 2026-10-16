@@ -22,8 +22,8 @@ bool sameHash(const std::string& a, const std::string& b) {
 }  // namespace
 
 Msg Auth::checkStrength(const std::string& pw) {
-  if (pw.size() < 8) return {"auth.too_short", "Mindestens 8 Zeichen", json::object()};
-  if (pw.size() > 128) return {"auth.too_long", "Höchstens 128 Zeichen", json::object()};
+  if (pw.size() < 8) return say("auth.too_short");
+  if (pw.size() > 128) return say("auth.too_long");
   return {};
 }
 
@@ -53,7 +53,7 @@ bool Auth::logWrongSetupCode(Ms now) {
 }
 
 Msg Auth::setInitialPassword(const std::string& pw, const std::string& code, Ms now) {
-  if (hasPassword()) return {"auth.exists", "Passwort ist bereits gesetzt", json::object()};
+  if (hasPassword()) return say("auth.exists");
   if (setupCodeRequired()) {  // before the password's hash: a wrong code costs nothing
     std::string typed;  // as it comes from the log: any case, dashes or white space between the groups
     for (char ch : code)
@@ -80,7 +80,7 @@ Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw, Ms 
   if (locked(a, now, err)) return err;  // before hashing
   if (!hasPassword() || !sameHash(hashOf(oldPw, salt_, iterations_), hash_)) {
     failed(a, now);  // a stolen session must not guess the password freely
-    return {"auth.wrong", "Altes Passwort stimmt nicht", json::object()};
+    return say("auth.wrong_old");
   }
   Msg m = checkStrength(newPw);
   if (!m.key.empty()) return m;
@@ -101,8 +101,7 @@ Auth::Attempts& Auth::attemptsOf(const std::string& client) {
 
 bool Auth::locked(const Attempts& a, Ms now, Msg& err) {
   if (now >= a.lockedUntil) return false;
-  err = {"auth.locked", "Zu viele Fehlversuche. Bitte " + std::to_string((a.lockedUntil - now) / 1000 + 1) + " s warten.",
-         {{"waitS", (a.lockedUntil - now) / 1000 + 1}}};
+  err = say("auth.locked", {{"waitS", (a.lockedUntil - now) / 1000 + 1}});
   return true;
 }
 
@@ -126,14 +125,14 @@ void Auth::remember(const std::string& client, Ms now) {
 
 std::optional<std::string> Auth::login(const std::string& pw, Ms now, Msg& err, const std::string& client) {
   if (!hasPassword()) {
-    err = {"auth.no_password", "Noch kein Passwort gesetzt", json::object()};
+    err = say("auth.no_password");
     return std::nullopt;
   }
   Attempts& a = attemptsOf(client);
   if (locked(a, now, err)) return std::nullopt;  // before hashing
   if (!sameHash(hashOf(pw, salt_, iterations_), hash_)) {
     failed(a, now);
-    err = {"auth.wrong", "Passwort falsch", json::object()};
+    err = say("auth.wrong");
     return std::nullopt;
   }
   remember(client, now);

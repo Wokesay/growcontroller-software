@@ -116,12 +116,13 @@ const TYPE_ONLY = /^(?:import|export)\s+type\s+(?:\{|\*|[A-Za-z_$][\w$]*\s+from\
 export function runtimeImports(source) {
   const code = stripComments(source);
   const specs = [];
-  for (const m of code.matchAll(/\bfrom\s*(["'])([^"'\n]+)\1/g)) {
+  for (const m of code.matchAll(/(?<![.\w$])from\s*(["'])([^"'\n]+)\1/g)) {
     // the statement this `from` belongs to: the nearest import or export before it
     const start = [...code.slice(0, m.index).matchAll(/\b(?:import|export)\b/g)].at(-1);
     if (start && !TYPE_ONLY.test(code.slice(start.index, m.index + m[0].length))) specs.push(m[2]);
   }
-  for (const m of code.matchAll(/\bimport\s*(["'])([^"'\n]+)\1/g)) specs.push(m[2]);
+  // not a key or a property named import, as in a text table's "config.import": "…"
+  for (const m of code.matchAll(/(?<![.\w$])import\s*(["'])([^"'\n]+)\1/g)) specs.push(m[2]);
   for (const m of code.matchAll(/\bimport\s*\(\s*(["'`])([^"'`\n]+)\1/g)) specs.push(m[2]);
   return specs;
 }

@@ -81,9 +81,9 @@ UI can do, an integration can do as well.
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
-| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
+| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`); at most 16 series, none twice (else 422 `history.series_many`, `history.series_twice`), each id as for `/export.csv` |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column), at most 16 series and none twice as for `/history`: `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
@@ -102,14 +102,23 @@ UI can do, an integration can do as well.
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
 | POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes, whose steps may be `fixed` (a fixed addition, never one of a pair: `cfg.recipe.fixed_pair`, RAT-085; a step without it counts as not fixed, anything but true or false is 422 `recipe.fixed`), with the chart's `refEc` (mS/cm) and `ph` `[low, high]`: a missing key keeps them, `null` clears them, another type is 422 `recipe.ref_ec` or `recipe.ph`, an EC that does not fit the amounts or a range out of order is refused by the configuration check (`cfg.recipe.ref_far`, `cfg.recipe.ref_strong`, `cfg.recipe.ref_range`, `cfg.recipe.ph_band`, SD-057); a template brings its chart EC and pH range; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
-| PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
-| POST | `/config/import` | validated, actuators off first |
+| PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 `function.not_ready` with what is missing in `args.reason`) |
+| POST | `/config/import` | validated, actuators off first; 422 `config.newer` for a file from a newer version, `config.import` for one that cannot be read; 409 `config.busy` while dosing or mixing |
 
 Errors come as `{"error":{"key","text","args"},"errors":[…]}` (`args`
 only when there are any). When the
 configuration check refuses a change (422), `error` is the first of its
 findings in `errors`, with its key and arguments, so a page can show it
-in its own language.
+in its own language. `errors` lists at most 50 findings; `more` counts
+the rest. A refusal has a key of its own and an English text: those of
+the API, the sign-in, the configuration check, a calibration, the
+import, the checks of a job request, the transport's (`api.origin`,
+`api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
+(SD-083). Still German until their work follows: the reasons a mix plan
+or a dose split gives (`mix.*`, `dose.no_flow`, `dose.too_small`, …;
+with SD-057), a reading's reasons and the checklists (also nested in
+`function.not_ready`; #73), and the text a smart plug's or a pump's
+connection gives inside `role.net.write` and `cal.write`.
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
@@ -121,8 +130,8 @@ events (`title`, `text`) and errors are messages; a reading's label is
 the catalog label without a key until the catalog follows. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a
-state saved before keeps its plain text; jump locks have no `why`). The other texts follow under #18 and are still
-German until then.
+state saved before keeps its plain text; jump locks have no `why`). The
+texts named above as still German follow with their work.
 
 When the dosing of a job step cannot start or go on (`/mix/start`,
 `/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
@@ -130,7 +139,8 @@ When the dosing of a job step cannot start or go on (`/mix/start`,
 key `job.start_failed` and the cause as the message in `args.reason`,
 for example `dose.too_small` or `act.stopped` in `args.reason.key`.
 Checks of the request itself keep their own keys (for example
-`job.busy`, `dose.hand_limit`, `job.state`); a mix started during a Stop
+`job.busy` for another job, `job.dosing` while EC or pH control doses,
+`dose.hand_limit`, `job.state`); a mix started during a Stop
 is refused with `act.stopped` itself. Job messages (`job.message`) use their own keys,
 for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 `job.emergency_stop`.

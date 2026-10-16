@@ -119,6 +119,31 @@ listed in every release under "Security".
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
   names the hub's language (`language`); `/export.csv` takes `lang=de`
   or `lang=en` and otherwise uses the hub's.
+- **Refusals in the page's language** (#143, #18, SD-083): a refusal of
+  the hub now comes with a key of its own and an English text, and an
+  English page shows English, a German page German: signing in and
+  changing the password, adding devices and assigning roles, bottles,
+  recipes and templates, starting a mix, manual doses, pump calibration
+  and tube priming, probe and tank-curve calibration, grow cycles,
+  maintenance mode, updates, the configuration check and the import, and
+  the simulator panel. Still German until their work follows: the
+  reasons a mix plan or a dose split gives (with SD-057), a reading's
+  reasons and the checklists (#73), and a smart plug's or a pump's own
+  error text inside a refusal. For API users, some keys are new where
+  one key had several texts: `device.not_detected` (was `device.unknown`
+  when adding a device), `config.busy`, `config.newer`, `job.state_amount`,
+  `job.state_resume`, `job.dosing` (EC or pH control dosing, before a
+  manual dose, a calibration or priming), `recipe.template.unknown`,
+  `auth.wrong_old`, `update.busy_back`, `probe.reference_range`,
+  `probe.points_max`, `probe.points_two` and `probe.points_one` (were
+  `probe.points`), `cfg.role.place_tank`, `cfg.params`, `cfg.phase.type`,
+  `cfg.phase.range`, `cfg.calibration.offered`, and `curve.*` (was
+  `probe.curve`) and `calib.*` for a tank curve or a calibration a probe
+  step or an import refuses; the simulator panel's `sim.err.*` (was
+  `sim`).
+- **History and CSV export:** a request names at most 16 series and none
+  twice; each series id follows the CSV export's rule.
+- **A refused change lists at most 50 findings**; `more` counts the rest.
 - **The menu is grouped by topic** (#143, SD-056): below Overview and
   History come small headings for the nutrient solution (mixing, tank
   and control, recipes and bottles, watering), the room (climate,
