@@ -8,14 +8,16 @@ test.beforeAll(async ({ request }) => {
   await scenario(request, "demo");
 });
 
-// The demo recipe "Wachstum" is 2 + 2 + 0.6 ml/L
+// The demo recipe "Wachstum" is 2 + 2 + 0.6 ml/L. Sets its chart values, with no part fixed, so each case
+// starts from the same recipe whatever ran before
 const saveChart = (page: Page, name: string, chart: { refEc: number | null; ph: [number, number] | null }) =>
   page.evaluate(
     async ([n, c]) => {
       const cfg = await (await fetch("/api/v1/config")).json();
-      const id = cfg.recipes.find((r: { name: string }) => r.name === n).id;
-      const r = await fetch("/api/v1/recipes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...c }) });
-      return r.status;
+      const r = cfg.recipes.find((x: { name: string }) => x.name === n);
+      const steps = r.steps.map((s: { canister: string; mlPerL: number }) => ({ canister: s.canister, mlPerL: s.mlPerL, fixed: false }));
+      const res = await fetch("/api/v1/recipes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, steps, ...c }) });
+      return res.status;
     },
     [name, chart] as const,
   );
@@ -23,6 +25,7 @@ const saveChart = (page: Page, name: string, chart: { refEc: number | null; ph: 
 test("A recipe keeps its chart EC and pH range; an EC that does not fit the amounts is named before saving, with the EC that would (SD-057)", async ({ page }) => {
   await login(page);
   expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  await page.reload();
   await page.goto("/#/rezepte");
   const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) });
   await expect(card.getByTestId("recipe-chart")).toHaveCount(0);
@@ -52,9 +55,44 @@ test("A recipe keeps its chart EC and pH range; an EC that does not fit the amou
   await expect(card.getByTestId("recipe-chart")).toHaveText("EC 1,25 mS/cm laut Plan · pH 5,8–6,2");
   // Changed amounts under a chart EC ask whether it still matches
   await card.getByTitle("Bearbeiten").click();
-  await dialog.getByLabel("Menge für CalMag").fill("1");
+  await dialog.getByRole("textbox", { name: /^Menge für CalMag/ }).fill("1");
   await expect(dialog.getByText("Mengen geändert – stimmt die EC laut Plan noch?")).toBeVisible();
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
+});
+
+test("A bottle that is not one of a pair can have a fixed amount; card, mix plan and the bottle editor say so (SD-057, RAT-085)", async ({ page }) => {
+  await login(page);
+  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  await page.reload();
+  await page.goto("/#/rezepte");
+  const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) });
+  await card.getByTitle("Bearbeiten").click();
+  const dialog = page.getByRole("dialog");
+  // Only CalMag offers it, named per bottle: Teil A and Teil B are a pair, which goes in together
+  await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+  const fixed = dialog.getByRole("checkbox", { name: "Feste Menge für CalMag" });
+  await fixed.check();
+  // The chart EC fits over the parts EC control scales: 0.29 over 4 ml/L, which over 4.6 ml/L it would not
+  await dialog.getByLabel("EC laut Plan").fill("0,29");
+  await expect(dialog.locator("#recipe-problems")).toHaveCount(0);
+  await fixed.uncheck();
+  await expect(dialog.locator("#recipe-problems")).toContainText("Zu diesen Mengen (4,6 ml/L zusammen) passt");
+  await fixed.check();
+  await dialog.getByLabel("EC laut Plan").fill("");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(card.getByText("CalMag · feste Menge")).toBeVisible();
+  const steps = await page.evaluate(async () => (await (await fetch("/api/v1/config")).json()).recipes.find((r: { name: string }) => r.name === "Wachstum").steps);
+  expect(steps.map((s: { canister: string; fixed: boolean }) => [s.canister, s.fixed])).toEqual([["teil-a", false], ["teil-b", false], ["calmag", true]]);
+  // Pairing CalMag now is named before saving: a fixed amount cannot join a pair
+  await page.locator(".rtable tbody tr").filter({ hasText: "CalMag" }).getByTitle("Bearbeiten").click();
+  const bottle = page.getByRole("dialog");
+  await bottle.getByRole("textbox", { name: /^Paar/ }).fill("AB");
+  await expect(bottle.locator("#bottle-problems")).toContainText("„CalMag“ ist in „Wachstum“ eine feste Menge.");
+  await bottle.getByRole("button", { name: "Abbrechen" }).click();
+  await page.goto("/#/mischen");
+  await page.getByLabel("Rezept").selectOption({ label: "Wachstum" });
+  await page.locator("input[name=water]").fill("20");
+  await expect(page.getByTestId("mix-preview").getByText("feste Menge")).toBeVisible();
 });
 
 test("Without a grow the overview names the target ranges that apply, and the grow dialog proposes each phase's targets from its recipe (SD-057)", async ({ page }) => {
@@ -62,6 +100,7 @@ test("Without a grow the overview names the target ranges that apply, and the gr
   expect(await saveChart(page, "Wachstum", { refEc: 1.25, ph: [5.8, 6.2] })).toBe(200);
   expect(await saveChart(page, "Blüte", { refEc: null, ph: null })).toBe(200);
   expect(await page.evaluate(async () => (await fetch("/api/v1/grow/complete", { method: "POST" })).status)).toBe(200);
+  await page.reload();
   await page.goto("/#/");
   // The demo's functions: pH 5.8 ± 0.15, EC 1.4 ± 0.1
   await expect(page.getByTestId("default-targets")).toHaveText("Ohne Durchgang gelten die Zielbereiche unter Funktionen: pH 5,65–5,95 · EC 1,3–1,5 mS/cm.");

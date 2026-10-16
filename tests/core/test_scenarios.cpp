@@ -10,6 +10,7 @@
 #include <functional>
 #include <optional>
 #include <random>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -294,6 +295,52 @@ TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
   CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.gate");
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+}
+
+TEST_CASE("Scenario: an EC round doses the recipe's parts but never a fixed addition (SD-057, RAT-085)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(60000);
+  // CalMag in the demo's recipe becomes a fixed addition
+  c.ok("POST", "/api/v1/recipes",
+       {{"id", "wachstum"},
+        {"steps",
+         {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}});
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    return st["job"].is_null() && st["dosing"].is_null();
+  }, 4 * 3600 * 1000, 5000));
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  const double calmagBefore = c.state()["stock"]["calmag"].get<double>();
+  s.world().fill(40, 0.6, 5.9);  // EC well below the target 1.4: an EC round follows
+  std::set<std::string> dosed;
+  // Until the round has dosed and settles: a dose is logged when it ends, and CalMag would come last
+  REQUIRE(until(s, [&] {
+    for (const auto& e : findEvents(c, "dose"))
+      if (e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec") dosed.insert(e["data"]["canister"].get<std::string>());
+    return dosed.count("teil-a") && dosed.count("teil-b") && c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling";
+  }, 2 * 3600 * 1000, 10000));
+  CHECK(dosed.count("calmag") == 0);
+  CHECK(c.state()["stock"]["calmag"].get<double>() == doctest::Approx(calmagBefore));
+  // A recipe of fixed amounts only gives EC control nothing to raise the EC with, and its line says so
+  const gc::json only = c.ok("POST", "/api/v1/recipes", {{"name", "Nur CalMag"}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}})["id"];
+  c.ok("POST", "/api/v1/grow/complete", json::object());  // the phase's recipe would win over the function's (R4)
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", only}}}});
+  s.world().fill(40, 0.6, 5.9);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.plan"; }, 2 * 3600 * 1000, 10000));
+  CHECK(c.state()["controllers"]["ec"]["line"]["args"]["reason"]["key"] == "ec.recipe_no_scaled");
+  // Fixed right after a round was planned, before its first dose: the round's queue empties, and it
+  // ends instead of staying "dosing" and holding pH and refill
+  auto calmagOnly = [&](bool fixed) {
+    c.ok("POST", "/api/v1/recipes", {{"id", only}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", fixed}}}}});
+  };
+  calmagOnly(false);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.start"; }, 3600 * 1000, 1000));
+  REQUIRE(c.state()["dosing"].is_null());
+  calmagOnly(true);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.plan"; }, 60 * 1000, 1000));
+  CHECK_FALSE(c.state()["controllers"]["ec"]["state"] == "working");
 }
 
 TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereignis sichtbar") {

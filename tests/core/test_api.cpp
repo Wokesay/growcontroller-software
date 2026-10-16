@@ -444,6 +444,68 @@ TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears the
   CHECK(recipe(id)["refEc"].get<double>() == doctest::Approx(2.0));
 }
 
+TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes or no; fixing one scales the learned effect up (SD-057, RAT-085)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto steps = [](bool calmagFixed, const gc::json& aFixed) {
+    return gc::json::array({{{"canister", "teil-a"}, {"mlPerL", 2.0}, {"fixed", aFixed}},
+                            {{"canister", "teil-b"}, {"mlPerL", 2.0}},
+                            {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", calmagFixed}}});
+  };
+  auto [st1, e1] = c.call("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, true)}});
+  CHECK(st1 == 422);
+  CHECK(e1.dump().find("cfg.recipe.fixed_pair") != std::string::npos);
+  for (const gc::json& wrong : {gc::json("true"), gc::json(1)}) {
+    auto [st, e] = c.call("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, wrong)}});
+    CHECK(st == 422);
+    CHECK(e["error"]["key"] == "recipe.fixed");
+  }
+  // EC control's recipe: CalMag (0.6 of 4.6 ml/L) fixed leaves the learned effect on 4.0 ml/L, so it grows
+  // by 4.6 / 4.0 and the next round doses less; unticking it again keeps the larger effect
+  for (int h = 0; h < 12 && !c.state()["effects"]["ec"].is_number(); ++h) s.fastForward(1);
+  REQUIRE(c.state()["effects"]["ec"].is_number());
+  const double learned = c.state()["effects"]["ec"].get<double>();
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  CHECK(c.state()["effects"]["ec"].get<double>() == doctest::Approx(learned * 4.6 / 4.0));
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, false)}});
+  CHECK(c.state()["effects"]["ec"].get<double>() == doctest::Approx(learned * 4.6 / 4.0));
+  auto effect = [&] { return c.state()["effects"]["ec"].get<double>(); };
+  auto idOf = [&](const std::string& name) {
+    const gc::json cfg = c.ok("GET", "/api/v1/config");
+    for (const auto& r : cfg["recipes"])
+      if (r["name"] == name) return r["id"].get<std::string>();
+    return std::string();
+  };
+  // A recipe EC control does not use leaves its effect alone
+  double e = effect();
+  c.ok("POST", "/api/v1/recipes",
+       {{"id", idOf("Blüte")},
+        {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}, {"fixed", true}}}}});
+  CHECK(effect() == doctest::Approx(e));
+  // Ticked while a round settles: that round was planned on the old parts and learns nothing
+  s.world().fill(40, 0.6, 5.9);
+  auto line = [&] { return c.state()["controllers"]["ec"]["line"]["key"].get<std::string>(); };
+  for (int i = 0; i < 2 * 720 && line() != "ec.settling"; ++i) s.step(5000);
+  REQUIRE(line() == "ec.settling");
+  e = effect();
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  const double scaled = e * 4.6 / 4.0;
+  CHECK(effect() == doctest::Approx(scaled));
+  for (int i = 0; i < 720 && line() == "ec.settling"; ++i) s.step(5000);
+  CHECK(line() != "ec.settling");
+  CHECK(effect() == doctest::Approx(scaled));
+  // EC control set to a recipe that was deleted uses the first one, and so does the scaling
+  c.ok("POST", "/api/v1/grow/complete", gc::json::object());  // the phase's recipe would win (R4)
+  const gc::json gone = c.ok("POST", "/api/v1/recipes", {{"name", "Weg"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 1.0}}, {{"canister", "teil-b"}, {"mlPerL", 1.0}}}}})["id"];
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", gone}}}});
+  CHECK(c.call("DELETE", "/api/v1/recipes/" + gone.get<std::string>()).first == 200);
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, false)}});
+  e = effect();
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  CHECK(effect() == doctest::Approx(e * 4.6 / 4.0));
+}
+
 TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
