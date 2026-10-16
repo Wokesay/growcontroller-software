@@ -95,6 +95,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+
+- **Core tests on every core** (#260): `tools/ci.sh`, and with it CI's
+  `checks` job, runs the C++ tests with `tools/core_tests.sh`: each test
+  case in a process and a temporary folder of its own, as many at once
+  as there are cores, the scenarios first. On four cores they took
+  about 9 min in a local run instead of about 34 in one process. A test
+  case that fails, crashes, does not end or runs other than one case
+  fails the run; its output is shown after all have ended, with the
+  command to run it again. A passing run names the five slowest cases.
+  `build/gc_tests` alone still runs everything in one process, as the
+  app image's job does.
 - **The catalog in the page's language** (#143, #18, SD-083 point 3):
   the names and texts of roles, device classes, functions and their
   settings, and of the Home Assistant app's sensor classes, show in the
@@ -461,6 +472,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A missing saved state on a hub that ran before keeps everything
+  stopped** (#238, SD-086): when `state.json` was gone (deleted, or a
+  damaged entry the flash reports as not found) but the hub's events were
+  there, the hub started as a new one: not stopped, with no locks or
+  latches, so a Stop in force was lost and control started again without
+  Resume. Now it starts as with a broken state (stopped, a second mix
+  right after the start needs confirmation, a dry-run latch in the first
+  hour holds) and says "Saved state missing".
 - **A cold refill no longer locks the water temperature** (#272,
   RAT-042): while the inlet is open and for 5 min after it closes, the
   hub now counts a change of the water temperature as expected, as it
