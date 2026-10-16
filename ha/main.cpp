@@ -125,9 +125,7 @@ class HostClock : public gc::IClock {
 
 // The hub's session: a bearer token, or the cookie gc_session by its exact name
 std::string tokenOf(const httplib::Request& req) {
-  auto auth = req.get_header_value("Authorization");
-  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
-  return gc::sessionCookieValue(req.get_header_value("Cookie"));
+  return gc::sessionToken(req.get_header_value("Authorization"), req.get_header_value("Cookie"));
 }
 
 // The two ways into the Home Assistant app (SD-077): Ingress, where Home

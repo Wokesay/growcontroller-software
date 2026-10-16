@@ -126,14 +126,17 @@ small, .small { font-size: 0.85rem; }
 
 /* ---------- Gerüst */
 .shell { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
-.side { position: sticky; top: 0; height: 100vh; padding: 18px 12px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
+.side { position: sticky; top: 0; height: 100vh; overflow-x: hidden; overflow-y: auto; padding: 18px 12px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 16px; font-weight: 700; font-size: 1.05rem; }
 .brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; color: var(--on-accent); }
 .brand small { display: block; font-weight: 500; color: var(--faint); font-size: 0.75rem; }
 .nav a { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 10px; color: var(--muted); font-weight: 550; text-decoration: none; }
 .nav a:hover { background: var(--surface-2); color: var(--text); }
 .nav a.active { background: var(--accent-weak); color: var(--accent); }
-.nav .sep { height: 1px; background: var(--border); margin: 8px 10px; }
+/* The menu's topics (SD-056): a small heading above each group */
+.nav-group { display: grid; gap: 2px; }
+.nav-head { padding: 14px 12px 4px; font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; color: var(--muted); }
+.modal .nav-group:first-child .nav-head { padding-top: 0; }
 .side-foot { margin-top: auto; padding: 10px; display: grid; gap: 8px; color: var(--faint); font-size: 0.8rem; }
 .main { min-width: 0; display: flex; flex-direction: column; }
 /* The top bar and, on phones, the offline bar below it stay in view */
@@ -158,7 +161,7 @@ small, .small { font-size: 0.85rem; }
   .content { padding: 16px 16px 96px; }
   .bottom-nav { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
   .bottom-nav a, .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.7rem; color: var(--muted); padding: 4px; background: none; border: 0; font-family: inherit; text-decoration: none; }
-  .bottom-nav a.active { color: var(--accent); }
+  .bottom-nav a.active, .bottom-nav button.active { color: var(--accent); }
   .hide-sm { display: none !important; }
   .only-sm { display: block; }
   .lost-bar .btn { min-height: 44px; }

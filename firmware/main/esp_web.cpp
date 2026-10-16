@@ -87,9 +87,7 @@ std::string header(httpd_req_t* req, const char* name) {
 }
 
 std::string tokenOf(httpd_req_t* req) {
-  std::string auth = header(req, "Authorization");
-  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
-  return gc::sessionCookieValue(header(req, "Cookie"));
+  return gc::sessionToken(header(req, "Authorization"), header(req, "Cookie"));
 }
 
 // The peer's address from the socket, never from a header (SD-051); "" when

@@ -1,6 +1,6 @@
 # API v1
 
-As of 2026-10-06. REST with JSON under `/api/v1`, transport-neutral in the
+As of 2026-10-15. REST with JSON under `/api/v1`, transport-neutral in the
 core (`core/src/api.cpp`). The web app uses only this API. So whatever the
 UI can do, an integration can do as well.
 
@@ -34,8 +34,10 @@ UI can do, an integration can do as well.
   may ignore. The hub ends a session
   after 12 hours without a request, on a restart and on a password change;
   with 16 sessions, a 17th sign-in ends the one used longest ago.
-- Everything else requires a session (cookie or `Authorization: Bearer`),
-  otherwise 401.
+- Everything else requires a session, otherwise 401. A header
+  `Authorization: Bearer <token>` comes first; without it the session
+  comes from the cookie named exactly `gc_session`, and only when the
+  `Cookie` header holds exactly one cookie of that name.
 - Security headers on the server: CSP `default-src 'self'`,
   `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
 

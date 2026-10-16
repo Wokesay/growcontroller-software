@@ -33,7 +33,7 @@ struct ApiRequest {
   std::string method, path;
   std::map<std::string, std::string> query;
   std::string body;
-  std::string token;  // aus Cookie gc_session oder "Authorization: Bearer"
+  std::string token;  // the session token, from sessionToken()
   std::string client;  // the peer's address as clientKey() gives it, never from a header; "" when unknown
   std::optional<PlatformUser> user;  // counts only with platformSignIn() on
 };
@@ -46,9 +46,10 @@ bool hostAllowed(const std::string& hostHeader, const std::string& extraHost = "
 // (Sec-Fetch-Site, sonst Origin gegen Host). Ohne beide Köpfe: kein Browser.
 bool writeAllowed(const std::string& method, const std::string& secFetchSite, const std::string& origin,
                   const std::string& hostHeader);
-// The session token from a Cookie header: the cookie gc_session by its exact
-// name; "" without one.
-std::string sessionCookieValue(const std::string& cookieHeader);
+// The session token of a request: a header "Authorization: Bearer <token>"
+// wins; else the cookie named exactly gc_session, "" when there is none or
+// more than one. Every platform's server takes the token from here.
+std::string sessionToken(const std::string& authorization, const std::string& cookie);
 
 struct ApiResponse {
   int status = 200;

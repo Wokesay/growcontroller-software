@@ -95,6 +95,23 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **The menu is grouped by topic** (#143, SD-056): below Overview and
+  History come small headings for the nutrient solution (mixing, tank
+  and control, recipes and bottles, watering), the room (climate,
+  light) and the system (devices, functions, settings). Watering is now
+  in the same group as the tank it draws from, and recipes in the same
+  group as mixing. On a phone the bottom bar stays as it was, and "More"
+  shows the same headings.
+- **Climate, light and watering say they work by hand** (#143, SD-056):
+  each page is marked "Manual mode" ("Handbetrieb" in German). The hub
+  switches on only when you tap and controls nothing by itself, apart
+  from exhaust and circulation fans, which come back on after a power
+  cut. So keep your own timer or controller running: a light on a hub
+  plug goes off at every restart, and only a pump the hub switches is
+  protected from running dry. With nothing assigned, the page says what
+  to connect and where, and how to add a smart plug if none is added
+  yet. The Home Assistant app is unchanged, as it switches nothing
+  there.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
@@ -772,6 +789,12 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The session comes only from a cookie named exactly `gc_session`**
+  (Home Assistant app, simulator and firmware): the servers now split the
+  browser's `Cookie` header into its name=value pairs and take the session
+  only from the pair of that name, and only when there is exactly one such
+  pair; two cookies of that name count as none. This happens in one place
+  in the core (`gc::sessionToken`).
 - **Three security fixes are guarded against coming back** (#234); each
   check fails when its fix is taken out:
   - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED

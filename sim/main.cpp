@@ -45,9 +45,7 @@ std::atomic<bool> g_running{true};
 void onSignal(int) { g_running = false; }
 
 std::string tokenOf(const httplib::Request& req) {
-  auto auth = req.get_header_value("Authorization");
-  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
-  return gc::sessionCookieValue(req.get_header_value("Cookie"));
+  return gc::sessionToken(req.get_header_value("Authorization"), req.get_header_value("Cookie"));
 }
 
 gc::ApiRequest toApi(const httplib::Request& req) {

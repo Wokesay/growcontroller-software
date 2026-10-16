@@ -3,7 +3,9 @@
 
 #include <cctype>
 #include <cstring>
+#include <optional>
 #include <sstream>
+#include <string_view>
 
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -67,6 +69,28 @@ bool Api::authorized(const ApiRequest& req) {
   return true;
 }
 
+std::string sessionToken(const std::string& authorization, const std::string& cookie) {
+  if (authorization.rfind("Bearer ", 0) == 0) return authorization.substr(7);
+  // name=value pairs split by ';' (RFC 6265, 4.2.1); the name must match whole
+  auto trim = [](std::string_view s) {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
+    return s;
+  };
+  std::optional<std::string_view> found;
+  std::string_view rest = cookie;
+  while (!rest.empty()) {
+    auto semi = rest.find(';');
+    std::string_view pair = rest.substr(0, semi);
+    rest = semi == std::string_view::npos ? std::string_view{} : rest.substr(semi + 1);
+    auto eq = pair.find('=');
+    if (eq == std::string_view::npos || trim(pair.substr(0, eq)) != "gc_session") continue;
+    if (found) return {};  // more than one: their order says nothing about which is ours
+    found = trim(pair.substr(eq + 1));
+  }
+  return found ? std::string(*found) : std::string();
+}
+
 bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {
   std::string h = hostHeader;
   if (h.empty()) return true;  // HTTP/1.0 ohne Host: kein Browser
@@ -94,18 +118,6 @@ bool writeAllowed(const std::string& method, const std::string& secFetchSite, co
     return p != std::string::npos && origin.substr(p + 3) == hostHeader;
   }
   return true;
-}
-
-std::string sessionCookieValue(const std::string& cookieHeader) {
-  for (size_t pos = 0; pos < cookieHeader.size();) {
-    size_t end = cookieHeader.find(';', pos);
-    if (end == std::string::npos) end = cookieHeader.size();
-    size_t a = pos;
-    while (a < end && cookieHeader[a] == ' ') ++a;
-    if (cookieHeader.compare(a, 11, "gc_session=") == 0 && a + 11 <= end) return cookieHeader.substr(a + 11, end - a - 11);
-    pos = end + 1;
-  }
-  return {};
 }
 
 ApiResponse Api::handle(const ApiRequest& req) {

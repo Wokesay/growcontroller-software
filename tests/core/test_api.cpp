@@ -269,6 +269,42 @@ TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
   CHECK(gc::writeAllowed("POST", "", "", "192.168.1.20"));  // kein Browser (curl, Integrationen)
 }
 
+TEST_CASE("API: the session token comes from a bearer header or the cookie named exactly gc_session") {
+  CHECK(gc::sessionToken("Bearer abc", "gc_session=def") == "abc");
+  CHECK(gc::sessionToken("", "gc_session=abc") == "abc");
+  CHECK(gc::sessionToken("", "theme=dark; gc_session=abc; lang=de") == "abc");
+  CHECK(gc::sessionToken("", "theme=dark;gc_session=abc") == "abc");
+  CHECK(gc::sessionToken("", "") == "");
+  CHECK(gc::sessionToken("Basic abc", "") == "");
+  // Only that name counts: not a name that ends in it, nor a value that holds it
+  CHECK(gc::sessionToken("", "xgc_session=other") == "");
+  CHECK(gc::sessionToken("", "xgc_session=other; gc_session=abc") == "abc");
+  CHECK(gc::sessionToken("", "note=gc_session=other") == "");
+  CHECK(gc::sessionToken("", "note=gc_session=other; gc_session=abc") == "abc");
+  // More than one gc_session: neither counts, as the order says nothing about which is ours
+  CHECK(gc::sessionToken("", "gc_session=abc; gc_session=def") == "");
+  CHECK(gc::sessionToken("", "gc_session=; gc_session=abc") == "");
+  CHECK(gc::sessionToken("", "gc_session=") == "");
+  // A bearer header comes first, also an empty one; its scheme is matched as written
+  CHECK(gc::sessionToken("Bearer ", "gc_session=abc") == "");
+  CHECK(gc::sessionToken("bearer abc", "gc_session=def") == "def");
+  // The name matches whole and in its case
+  CHECK(gc::sessionToken("", "GC_SESSION=abc") == "");
+  CHECK(gc::sessionToken("", "gc_session") == "");
+  CHECK(gc::sessionToken("", "gc_session; theme=a") == "");
+  CHECK(gc::sessionToken("", "=abc; gc_session=def") == "def");
+  // Spaces, tabs and empty pairs around it
+  CHECK(gc::sessionToken("", " gc_session = abc ") == "abc");
+  CHECK(gc::sessionToken("", "\tgc_session=abc") == "abc");
+  CHECK(gc::sessionToken("", ";;gc_session=abc;;") == "abc");
+  // The value as sent: not unquoted, an '=' in it kept
+  CHECK(gc::sessionToken("", "gc_session=\"abc\"") == "\"abc\"");
+  CHECK(gc::sessionToken("", "gc_session=a=b") == "a=b");
+  // A long header of separators only
+  CHECK(gc::sessionToken("", std::string(8192, ';')) == "");
+  CHECK(gc::sessionToken("", std::string(8192, '=')) == "");
+}
+
 TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines Auftrags (R7)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
@@ -991,17 +1027,6 @@ TEST_CASE("Bottles: saving a bottle whose stock is unknown leaves it unknown, al
   CHECK(c.state()["stock"][blank].is_null());
   const std::string full = c.ok("POST", "/api/v1/canisters", {{"name", "Silizium"}, {"kind", "nutrient"}, {"capacityMl", 1000}})["id"];
   CHECK(c.state()["stock"][full].get<double>() == doctest::Approx(1000));
-}
-
-TEST_CASE("API: the session token comes from the cookie gc_session by its exact name") {
-  CHECK(gc::sessionCookieValue("gc_session=abc") == "abc");
-  CHECK(gc::sessionCookieValue("theme=dark; gc_session=abc; lang=de") == "abc");
-  CHECK(gc::sessionCookieValue("theme=dark;gc_session=abc") == "abc");
-  CHECK(gc::sessionCookieValue("xgc_session=evil") == "");
-  CHECK(gc::sessionCookieValue("old_gc_session=evil; gc_session=abc") == "abc");
-  CHECK(gc::sessionCookieValue("a=gc_session=evil") == "");
-  CHECK(gc::sessionCookieValue("gc_session=") == "");
-  CHECK(gc::sessionCookieValue("") == "");
 }
 
 // ---- Behind a platform's own sign-in: Home Assistant's Ingress (SD-077)
