@@ -8,6 +8,21 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
+  bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
+  amount", for an addition the maker gives a fixed amount per litre for,
+  such as a cleanser. It goes in per litre of fresh water in every mix, as
+  all parts do today, but EC control never doses or scales it: its rounds
+  go to the other parts in their ratio, and the effect it learns, like the
+  chart EC's check, counts only those. Marking a part of EC control's
+  recipe this way scales the learned effect up, so the next round doses
+  less, never more; a round running then doses no part that is fixed now
+  and learns nothing, and one left with nothing to dose settles or ends. The recipe card and the mix plan mark it; the bottle
+  editor says before saving that such a bottle cannot join a pair. A
+  recipe of fixed amounts only cannot raise the EC, and the editor and
+  the control line say so. EC control's reasons for not dosing (tank
+  volume or effect unknown, no amounts, EC not below the target) now come
+  in English too.
 - **A recipe keeps its chart's EC and pH range, and a grow proposes them**
   (#143, SD-057, step 1): the recipe editor has "Chart EC" and "pH
   range", and the recipe templates fill them in (2.1 and 2.3 mS/cm

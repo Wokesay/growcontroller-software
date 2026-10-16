@@ -64,6 +64,10 @@ class EcController {
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle || wantsCirc_; }
   Epoch lastDoseAt() const { return lastDoseAt_; }
+  // The recipe's fixed parts changed under a running round: it doses no part that is fixed now and
+  // learns nothing, so the effect stays on the parts EC control scales now (RAT-085, RAT-057). A fixed
+  // part is never one of a pair, so no pair is split.
+  void recipeChanged(const RecipeCfg& r);
   // The wall clock stepped by `d`: keep the distance of the pauses.
   void shiftClock(Epoch d) {
     if (lastDoseAt_ > 0) lastDoseAt_ += d;

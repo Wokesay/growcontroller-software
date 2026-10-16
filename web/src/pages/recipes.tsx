@@ -216,6 +216,8 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
       })
     : [];
   const holding = p.can && v.kind !== "nutrient" ? recipes.value.filter((r) => has(r, p.can!.id)) : [];
+  // A bottle a recipe holds as a fixed amount cannot join a pair (RAT-085, RAT-054)
+  const fixedIn = p.can && newPair ? recipes.value.filter((r) => r.steps.some((s) => s.canister === p.can!.id && s.fixed)) : [];
   const problems: string[] = [];
   if (!v.name.trim()) problems.push(t("recipes.bottleNoName"));
   if (half.length) {
@@ -228,7 +230,8 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
     const args = { name: p.can!.name, recipes: quotedList(holding.map((r) => r.name)) };
     problems.push(holding.length === 1 ? t("recipes.phInRecipe", args) : t("recipes.phInRecipeMany", args));
   }
-  const conflict = half.length > 0 || holding.length > 0;
+  if (fixedIn.length) problems.push(t("recipes.fixedInPair", { name: p.can!.name, recipes: quotedList(fixedIn.map((r) => r.name)) }));
+  const conflict = half.length > 0 || holding.length > 0 || fixedIn.length > 0;
   const described = [unpairs && "bottle-unpairs", problems.length > 0 && "bottle-problems"].filter(Boolean).join(" ");
   return (
     <Modal
@@ -347,7 +350,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
   );
 }
 
-type Step = { canister: string; mlPerL: number | null };
+type Step = { canister: string; mlPerL: number | null; fixed?: boolean };
 // Only a bottle with an amount is in the recipe; the hub takes nothing else. An empty field or 0
 // leaves it out; a negative or endless number is said to be invalid.
 const filled = (s: Step) => s.mlPerL !== null && Number.isFinite(s.mlPerL) && s.mlPerL > 0;
@@ -419,7 +422,8 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
   const ecDef = paramDef("ec_control", "ec_target");
   const phDef = paramDef("ph_control", "ph_target");
   if (refEc !== null) {
-    const sum = steps.filter(filled).reduce((a, s) => a + (s.mlPerL ?? 0), 0);
+    // Over the parts EC control scales, as on the hub (RAT-085)
+    const sum = steps.filter((s) => filled(s) && !s.fixed).reduce((a, s) => a + (s.mlPerL ?? 0), 0);
     const lo = ecDef?.min ?? 0, hi = ecDef?.max ?? Infinity;
     if (!Number.isFinite(refEc) || refEc <= 0 || refEc < lo || refEc > hi) {
       problems.push(t("recipes.refRange", { min: numUpTo(lo, 2), max: numUpTo(Number.isFinite(hi) ? hi : null, 2) }));
@@ -428,14 +432,18 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
       // The EC that would fit these amounts, within the target's range where it can be
       let [fitLo, fitHi] = [REF_EFFECT_BAND[0] * sum, REF_EFFECT_BAND[1] * sum];
       if (Math.max(fitLo, lo) <= Math.min(fitHi, hi)) [fitLo, fitHi] = [Math.max(fitLo, lo), Math.min(fitHi, hi)];
-      const args = { ec: numUpTo(refEc, 2), sum: numUpTo(sum, 2), lo: numUpTo(fitLo, 2), hi: numUpTo(fitHi, 2) };
+      const anyFixed = steps.some((s) => filled(s) && s.fixed);
+      const amounts = t(anyFixed ? "recipes.amountsScaled" : "recipes.amounts", { sum: numUpTo(sum, 2) });
+      const args = { ec: numUpTo(refEc, 2), amounts, lo: numUpTo(fitLo, 2), hi: numUpTo(fitHi, 2) };
       problems.push(refEc / sum < REF_EFFECT_BAND[0] ? t("recipes.refFar", args) : t("recipes.refStrong", args));
       conflict = true;
     }
   }
   // Amounts changed under a chart EC: does it still match? A note, not a problem
-  const amountsOf = (list: Step[]) => JSON.stringify(list.filter(filled).map((s) => [s.canister, s.mlPerL]));
+  const amountsOf = (list: Step[]) => JSON.stringify(list.filter(filled).map((s) => [s.canister, s.mlPerL, !!s.fixed]));
   const amountsChanged = !!p.recipe && refEc !== null && amountsOf(p.recipe.steps) !== amountsOf(steps);
+  // Fixed amounts only: EC control could not raise the EC with this recipe. A note, Save stays on
+  const onlyFixed = inRecipe.size > 0 && steps.filter(filled).every((s) => s.fixed);
   if (phLow !== null || phHigh !== null) {
     const lo = phDef?.min ?? 0, hi = phDef?.max ?? 14;
     if (phLow === null || phHigh === null || phLow > phHigh || phLow < lo || phHigh > hi) {
@@ -459,7 +467,10 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
             disabled={problems.length > 0}
             aria-describedby={problems.length ? "recipe-problems" : undefined}
             onClick={async () => {
-              await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter(filled), refEc, ph: phLow !== null && phHigh !== null ? [phLow, phHigh] : null });
+              // A bottle of a pair is never a fixed amount (RAT-054): a flag from an import goes on saving
+              const paired = new Set(cans.filter((k) => k.pair).map((k) => k.id));
+              const saved = steps.filter(filled).map((s) => ({ ...s, fixed: !!s.fixed && !paired.has(s.canister) }));
+              await post("/recipes", { id: p.recipe?.id, name, note, steps: saved, refEc, ph: phLow !== null && phHigh !== null ? [phLow, phHigh] : null });
               await refreshConfig();
               toast(t("recipes.recipeSaved"));
               p.onClose();
@@ -472,7 +483,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
     >
       {/* Present from the start, so a screen reader reads each change */}
       <div class="sr-only" role="status">
-        {problems.join(" ")}
+        {[...problems, onlyFixed ? t("recipes.onlyFixed") : ""].filter(Boolean).join(" ")}
       </div>
       <div class="form-grid">
         <Field label={t("common.name")}>
@@ -498,10 +509,25 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
               <span class="n" style={hidden}>
                 {on ? steps.slice(0, i + 1).filter(filled).length : ""}
               </span>
-              <div class="row">
-                <span class="swatch" style={`background:${k?.color}`} />
-                <strong>{label}</strong>
-                {k?.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
+              <div class="stack-sm" style="gap:2px">
+                <div class="row">
+                  <span class="swatch" style={`background:${k?.color}`} />
+                  <strong>{label}</strong>
+                  {k?.pair && <span class="muted small">{t("recipes.pairOf", { p: k.pair })}</span>}
+                </div>
+                {/* A fixed addition, never one of a pair: a pair goes in together (SD-057, RAT-054) */}
+                {on && !k?.pair && (
+                  <label class="row small" style="gap:6px;min-height:32px">
+                    <input
+                      type="checkbox"
+                      aria-label={t("recipes.fixedOf", { name: label })}
+                      aria-describedby="recipe-fixed-note"
+                      checked={!!s.fixed}
+                      onChange={(e) => setSteps((cur) => cur.map((x) => (x.canister === s.canister ? { ...x, fixed: (e.target as HTMLInputElement).checked } : x)))}
+                    />
+                    {t("recipes.fixed")}
+                  </label>
+                )}
               </div>
               <div class="row">
                 <div style="width:130px">
@@ -540,6 +566,11 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
           </small>
         </div>
       </div>
+      {onlyFixed && <p class="small warn-text">{t("recipes.onlyFixed")}</p>}
+      <p class="muted small" id="recipe-fixed-note">
+        {t("recipes.fixedNote")}
+        {pairs.length > 0 && ` ${t("recipes.fixedNoPair")}`}
+      </p>
       <p class="muted small">
         {t("recipes.mixNote")}
         {pairs.length > 0 && ` ${t("recipes.pairsComplete")}`}
@@ -699,7 +730,10 @@ export function RecipesPage() {
                       <div class="item">
                         <span class="faint small">{i + 1}</span>
                         <span class="swatch" style={`background:${k?.color}`} />
-                        <span class="grow">{k?.name ?? s.canister}</span>
+                        <span class="grow">
+                          {k?.name ?? s.canister}
+                          {s.fixed && <span class="faint small"> · {t("recipes.fixedTag")}</span>}
+                        </span>
                         <span class="num">{num(s.mlPerL, 2)} ml/L</span>
                       </div>
                     );

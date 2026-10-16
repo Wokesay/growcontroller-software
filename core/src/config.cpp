@@ -150,7 +150,7 @@ void to_json(json& j, const Config& c) {
   j["recipes"] = json::array();
   for (const auto& r : c.recipes) {
     json steps = json::array();
-    for (const auto& s : r.steps) steps.push_back({{"canister", s.canister}, {"mlPerL", numOrNull(s.mlPerL)}});
+    for (const auto& s : r.steps) steps.push_back({{"canister", s.canister}, {"mlPerL", numOrNull(s.mlPerL)}, {"fixed", s.fixed}});
     // A range only as two values, a missing one as null (R5)
     json ph = isNum(r.phLow) && isNum(r.phHigh) ? json::array({r.phLow, r.phHigh}) : json(nullptr);
     j["recipes"].push_back(
@@ -284,7 +284,7 @@ Config configFromJson(const json& in) {
     rc.id = jstr(r, "id");
     rc.name = jstr(r, "name");
     rc.note = jstr(r, "note");
-    for (const auto& s : r.value("steps", json::array())) rc.steps.push_back({jstr(s, "canister"), numOrNaN(s, "mlPerL")});
+    for (const auto& s : r.value("steps", json::array())) rc.steps.push_back({jstr(s, "canister"), numOrNaN(s, "mlPerL"), jbool(s, "fixed", false)});
     rc.refEc = numOrNaN(r, "refEc");
     const json ph = r.value("ph", json());
     if (ph.is_array() && ph.size() == 2 && ph[0].is_number() && ph[1].is_number()) {
@@ -439,6 +439,8 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       if (k->kind != "nutrient") err("cfg.recipe.ph", "Rezept " + r.name + ": " + k->name + " ist kein Nährstoff (pH kommt zuletzt)");
       if (!isNum(s.mlPerL) || s.mlPerL <= 0) err("cfg.recipe.amount", "Rezept " + r.name + ": Menge für " + k->name + " fehlt");
       if (!k->pair.empty()) pairsInRecipe.insert(k->pair);
+      // A fixed part of a pair would leave its partner scaled alone (RAT-054)
+      if (s.fixed && !k->pair.empty()) out.push_back(say("cfg.recipe.fixed_pair", {{"name", r.name}, {"part", k->name}}));
     }
     for (const auto& p : pairsInRecipe) {
       int inRecipe = 0;
@@ -454,8 +456,8 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!std::isnan(r.refEc)) {
       const ParamDef* pd = paramOf("ec_control", "ec_target");
       const double lo = pd && isNum(pd->min) ? pd->min : 0.0, hi = pd && isNum(pd->max) ? pd->max : kNaN;
-      double sum = 0;
-      for (const auto& s : r.steps) sum += isNum(s.mlPerL) && s.mlPerL > 0 ? s.mlPerL : 0;
+      double sum = 0;  // the parts EC control scales: the effect is per ml/L of those (RAT-085)
+      for (const auto& s : r.steps) sum += !s.fixed && isNum(s.mlPerL) && s.mlPerL > 0 ? s.mlPerL : 0;
       if (!isNum(r.refEc) || r.refEc <= 0 || r.refEc < lo || (isNum(hi) && r.refEc > hi))
         out.push_back(say("cfg.recipe.ref_range", {{"name", r.name}, {"min", lo}, {"max", numOrNull(hi)}}));
       else if (sum > 0) {
@@ -465,7 +467,13 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
           fitLo = std::max(fitLo, lo);
           if (isNum(hi)) fitHi = std::min(fitHi, hi);
         }
-        const json args = {{"name", r.name}, {"ec", r.refEc}, {"sum", sum}, {"lo", fitLo}, {"hi", fitHi}};
+        const bool anyFixed = std::any_of(r.steps.begin(), r.steps.end(), [](const RecipeStep& s) { return s.fixed; });
+        const json args = {{"name", r.name},
+                           {"ec", r.refEc},
+                           {"sum", sum},
+                           {"amounts", say(anyFixed ? "cfg.recipe.amounts_scaled" : "cfg.recipe.amounts", {{"sum", sum}})},
+                           {"lo", fitLo},
+                           {"hi", fitHi}};
         if (effect < kRefEffectMin * kEcStartEffect) out.push_back(say("cfg.recipe.ref_far", args));
         else if (effect > kRefEffectMax * kEcStartEffect) out.push_back(say("cfg.recipe.ref_strong", args));
       }

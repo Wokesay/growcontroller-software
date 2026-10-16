@@ -84,7 +84,7 @@ config {schemaVersion, revision}
 ├─ tanks[]     usable volume, minimum level, water, roles{tank.* → device/channel}
 ├─ zones[]     growing area: name, kind (room/tent/greenhouse), tank, roles{zone.* → device/channel}
 ├─ canisters[] name, type (nutrient/pH−/pH+), pump, pair, colour, size
-├─ recipes[]   steps in dosing order (canister, ml/L); the chart's EC at these amounts (refEc) and its pH range (ph [low, high]), each null when not given (SD-057)
+├─ recipes[]   steps in dosing order (canister, ml/L, fixed: a fixed addition per litre of fresh water, never scaled by EC control, RAT-085); the chart's EC at these amounts (refEc) and its pH range (ph [low, high]), each null when not given (SD-057)
 ├─ functions{} enabled, parameters
 ├─ calibrations{device → ph | ec | tank_curve}
 └─ grow        cultivation run: none | running | completed; phases = parameter sets

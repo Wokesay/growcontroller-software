@@ -34,6 +34,7 @@ function Preview(p: { plan: MixPlan | null; loading: boolean }) {
                   <span class="swatch" style={`background:${s.color}`} />
                   {s.name}
                   {s.pair && <span class="faint small">{t("mix.pair", { pair: s.pair })}</span>}
+                  {s.fixed && <span class="faint small">{t("mix.fixed")}</span>}
                 </span>
               </td>
               <td class="num">{num(s.mlPerL, 2)}</td>

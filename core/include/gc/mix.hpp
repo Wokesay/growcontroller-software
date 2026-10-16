@@ -30,6 +30,7 @@ struct DoseStep {
   double ml = kNaN;
   double flowMlPerMin = kNaN;
   std::vector<Ms> runs;  // Teilläufe in ms, gleich groß
+  bool fixed = false;    // a fixed addition: per litre of fresh water, never scaled (SD-057, RAT-085)
 };
 void to_json(json& j, const DoseStep& s);
 
@@ -61,6 +62,8 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
 
 // EC anheben mit dem Rezept: Gabe = 0,8 × Lücke / Wirkung × V, Deckel in EC
 // je Runde, alle Rezeptbestandteile gemeinsam skaliert (RAT-055, RAT-054).
+// Fixed additions are left out: the round and the effect count the scaled
+// parts only (SD-057, RAT-085).
 struct EcDose {
   bool ok = false;
   Msg reason;
