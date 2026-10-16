@@ -5,7 +5,8 @@
 // still honours --data, --host, --web and --port. Started as root, it gives
 // up root before it opens its port (#80). The first password needs
 // the setup code the start prints (#79). Values that a stand-in Home
-// Assistant reports reach the hub's readings (#112). A --config it cannot
+// Assistant reports reach the hub's readings (#112), with the session
+// taken from the one cookie named exactly gc_session. A --config it cannot
 // read or a number out of range ends with a message, not a crash (#213). Runs the built
 // server (tools/ci.sh builds it first; the app image's own server in
 // .github/workflows/app.yml).
@@ -414,6 +415,15 @@ test("values from Home Assistant reach the hub: a number, an unavailable sensor,
     const setup = await fetch(`${base}/api/v1/auth/setup`, { method: "POST", headers: json, body: JSON.stringify({ password: "stand-in-password-1", code }) });
     assert.equal(setup.status, 200, out);
     const cookie = (setup.headers.get("set-cookie") ?? "").split(";")[0];
+    // the session comes from the one cookie named exactly gc_session
+    const status = async (c) => (await fetch(`${base}/api/v1/state`, { headers: { Cookie: c } })).status;
+    assert.equal(await status(`theme=dark; ${cookie}; lang=en`), 200);
+    assert.equal(await status(`x${cookie}`), 401);
+    assert.equal(await status(`note=${cookie}`), 401);
+    assert.equal(await status(`${cookie}; ${cookie}`), 401);
+    const token = cookie.slice("gc_session=".length);
+    const bearer = await fetch(`${base}/api/v1/state`, { headers: { Authorization: `Bearer ${token}`, Cookie: "gc_session=other" } });
+    assert.equal(bearer.status, 200);
     // a sensor can be picked once the hub has read it from Home Assistant
     const wanted = ["sensor.grow_ph", "sensor.grow_rh", "sensor.grow_ec"];
     let listed = [];
