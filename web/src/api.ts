@@ -42,7 +42,7 @@ export type Job = {
   id: string; type: "mix" | "manual" | "calibration" | "prime";
   state: "running" | "waiting_user" | "mixing" | "settling" | "done" | "failed" | "aborted";
   index: number; steps: JobStep[]; message: Msg; startedAt: number; finishedAt: number; guided: boolean;
-  waitLeftS?: number; circulating?: boolean | null;
+  waitLeftS?: number; circulating?: boolean | null; pumpStands?: boolean;
   info: Record<string, any>;
 };
 

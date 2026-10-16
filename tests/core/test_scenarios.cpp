@@ -288,6 +288,7 @@ TEST_CASE("Scenario: a mix with the circulation pump ends only once mixed in; co
   CHECK(job["waitLeftS"].get<int>() > 11 * 60);
   CHECK(job["waitLeftS"].get<int>() <= 12 * 60);
   CHECK(job["circulating"] == true);
+  CHECK(job["pumpStands"] == false);
   CHECK(c.call("POST", "/api/v1/jobs/" + id + "/continue").first == 409);  // it cannot be skipped
   const auto doneLogged = [&] {
     for (const auto& e : findEvents(c, "mix"))
@@ -444,6 +445,8 @@ TEST_CASE("Scenario: catching up the last part of a guided mix ends the mix when
   c.ok("POST", "/api/v1/jobs/" + id + "/resume");  // the rest counts as in, and the mix ends with it
   CHECK(c.state()["job"].is_null());
   CHECK(c.state()["lastJob"]["state"] == "done");
+  CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done");
+  CHECK(findEvents(c, "mix").at(0)["title"]["key"] == "ev.mix.done");  // no "resumed" after it
 }
 
 TEST_CASE("Scenario: a stop for stirring between the parts of a pair names the part still missing, whatever comes between them (SD-057, RAT-054, RAT-080)") {
@@ -596,9 +599,12 @@ TEST_CASE("Scenario: after a cut mix both controllers wait for the longer settle
   REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 40 * 60 * 1000, 5000));
   c.ok("POST", "/api/v1/jobs/" + id + "/abort");
   REQUIRE(until(s, [&] { return s.world().circulating(); }, 60000));
+  const auto doses = lastDoseId(c);
   s.step(20 * 60 * 1000);  // past EC's 15 min of a cut, short of pH's 25
   CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
+  CHECK(lastDoseId(c) == doses);
   CHECK(c.state()["dosing"].is_null());
+  CHECK(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] != "ec.mixcut_settling"; }, 8 * 60 * 1000, 5000));  // then it decides
 }
 
 TEST_CASE("Scenario: a mix cut with EC and pH already on target logs no correction of their own (SD-057)") {
@@ -961,30 +967,86 @@ TEST_CASE("Scenario: a pump that is not running while a mix mixes in at its end:
   s.world().fill(40, 0.02, 7.5);
   startMix(c);
   REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000, 5000));
-  {
+  const auto plugFault = [&](const char* fault) {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
-    s.control("fault", {{"device", plug}, {"fault", "offline"}});
+    s.control("fault", {{"device", plug}, {"fault", fault}});
+  };
+  SUBCASE("a dropout under 10 s is no pump standing still: the mix ends mixed") {
+    plugFault("offline");
+    for (int t = 0; t < 8; ++t) {
+      s.step(1000);
+      const json job = c.state()["job"];
+      CHECK(job["message"]["key"] == "mix.settling");
+      CHECK(job["pumpStands"] == false);
+      CHECK(job["circulating"].is_null());  // what it reads: unknown (R5)
+    }
+    plugFault("none");
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 10 * 60 * 1000, 5000));
+    CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done");
+    const std::string line = c.state()["controllers"]["ec"]["line"]["key"];
+    CHECK(line.rfind("ec.mixcut_", 0) != 0);
   }
-  REQUIRE(until(s, [&] { return c.state()["job"]["message"]["key"] == "mix.settling_no_circ"; }, 60000));
-  CHECK(c.state()["job"]["circulating"].is_null());  // offline: unknown, never "off" (R5)
-  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 10 * 60 * 1000, 5000));  // the mix still ends
-  CHECK(c.state()["lastJob"]["state"] == "done");
-  CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_unmixed");
-  const auto doses = lastDoseId(c);
-  s.step(3 * 60 * 1000);
-  CHECK(lastDoseId(c) == doses);
-  CHECK(c.state()["dosing"].is_null());
+  SUBCASE("off for 10 s: the card says so, says it again when the pump runs, and the mix ends not mixed yet") {
+    plugFault("offline");
+    REQUIRE(until(s, [&] { return c.state()["job"]["message"]["key"] == "mix.settling_no_circ"; }, 60000));
+    CHECK(c.state()["job"]["pumpStands"] == true);
+    CHECK(c.state()["job"]["circulating"].is_null());  // offline: unknown, never "off" (R5)
+    plugFault("none");
+    REQUIRE(until(s, [&] { return c.state()["job"]["message"]["key"] == "mix.settling_resumed"; }, 30000));
+    CHECK(c.state()["job"]["pumpStands"] == false);
+    CHECK(c.state()["job"]["circulating"] == true);
+    CHECK_FALSE(c.state()["job"]["message"]["args"].contains("min"));  // no minutes that stop counting
+    plugFault("offline");
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 10 * 60 * 1000, 5000));  // the mix still ends
+    CHECK(c.state()["lastJob"]["state"] == "done");
+    CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_unmixed");
+    const auto doses = lastDoseId(c);
+    s.step(3 * 60 * 1000);
+    CHECK(lastDoseId(c) == doses);
+    CHECK(c.state()["dosing"].is_null());
+    const std::string line = c.state()["controllers"]["ec"]["line"]["key"];
+    CHECK(line.rfind("ec.mixcut_", 0) == 0);  // blocked, and why
+    plugFault("none");
+    REQUIRE(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));
+    s.step(14 * 60 * 1000);
+    CHECK(lastDoseId(c) == doses);
+    CHECK(c.state()["dosing"].is_null());
+    CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
+  }
+}
+
+TEST_CASE("Scenario: a locked controller waits for a person, not for the mixed tank: the mix's texts promise no control, and a cut marks none (SD-057)") {
+  const auto dir = std::filesystem::temp_directory_path() / "gc-test-mix-locked-controller";
+  std::filesystem::remove_all(dir);
+  auto o = test::opts("demo");
+  o.dataDir = dir.string();
+  {
+    sim::Simulation s(o);
+    Client c{s};
+    demoCalm(s, c);
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+    c.ok("PATCH", "/api/v1/functions/ph_control", {{"enabled", false}});
+  }
+  {
+    const auto file = dir / "state.json";
+    json st = json::parse(std::ifstream(file));
+    st["latches"]["ec.no_effect"] = {{"at", o.startEpoch}};  // as EC control leaves it when its doses do nothing
+    std::ofstream(file) << st.dump();
+  }
+  sim::Simulation s(o);
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(5000);  // the devices are found again
+  REQUIRE(c.state()["latches"].contains("ec.no_effect"));
+  s.world().fill(40, 0.02, 7.0);
+  const std::string id = startMix(c)["id"];
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 20 * 60 * 1000, 5000));
+  CHECK(c.state()["job"]["message"]["key"] == "mix.settling_plain");
+  c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+  s.step(60000);
   const std::string line = c.state()["controllers"]["ec"]["line"]["key"];
-  CHECK(line.rfind("ec.mixcut_", 0) == 0);  // blocked, and why
-  {
-    std::lock_guard<std::recursive_mutex> l(s.mutex());
-    s.control("fault", {{"device", plug}, {"fault", "none"}});
-  }
-  REQUIRE(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));
-  s.step(14 * 60 * 1000);
-  CHECK(lastDoseId(c) == doses);
-  CHECK(c.state()["dosing"].is_null());
-  CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.mixcut_settling");
+  CHECK(line.rfind("ec.mixcut_", 0) != 0);  // no mark: it waits for a person
+  std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("Scenario: a dry-run latch from a low level releases itself 5 min after the tank is back above minimum plus margin (SD-022, #27)") {
@@ -1461,15 +1523,12 @@ void demoAt(sim::Simulation& s, Client& c, double litres, double start = gc::kNa
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 10000));  // the demo's mix, mixed in
   if (gc::isNum(start)) c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"start_below_l", start}, {"target_l", target}}}});
-  // A drop above the level's jump threshold (20 L) is drained by hand in maintenance mode, which
-  // explains it; unexplained, it would lock the level for 15 min (RAT-042)
-  const bool drained = std::abs(s.world().tank.volumeL - litres) > 20.0;
-  if (drained) c.ok("POST", "/api/v1/maintenance", {{"minutes", 30}});
+  // A change above the level's jump threshold (20 L) is made by hand in a minute of maintenance mode,
+  // which explains it and then runs out; unexplained, it would lock the level for 15 min (RAT-042)
+  const bool byHand = std::abs(s.world().tank.volumeL - litres) > 20.0;
+  if (byHand) c.ok("POST", "/api/v1/maintenance", {{"minutes", 1}});
   s.world().fill(litres, 1.3, 5.9);
-  if (drained) {
-    s.step(10000);
-    c.ok("POST", "/api/v1/maintenance", {{"minutes", 0}});
-  }
+  if (byHand) s.step(61000);
 }
 void freezeLevel(sim::Simulation& s) {
   s.step(10000, 5000);  // the reading has followed the new volume
