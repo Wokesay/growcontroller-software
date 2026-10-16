@@ -2049,8 +2049,8 @@ void Hub::tickJob(Ctx& c) {
       finishMixDone(c, unmixed);
       if (unmixed) settleControllersFirst(false);
     } else if (stands != j.pumpStands) {
-      // Back on (only a running pump ends standing still), it says how the mix will end: not mixed
-      // yet, and mixed once more by control
+      // Says when it stands still; back on (only a running pump ends standing still), it says how the
+      // mix will end: not mixed yet, and mixed once more by control
       j.pumpStands = stands;
       const bool ctl = controlOn();
       if (stands) j.message = ctl ? say("mix.settling_no_circ") : say("mix.settling_no_circ_plain");
