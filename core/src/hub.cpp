@@ -151,7 +151,7 @@ void Hub::boot() {
   doser_.setBootTag(newId("b"));  // Bus-Job-IDs über Neustarts eindeutig
   // A file that is there but cannot be read (no permission, a read error) is
   // kept as it is: the hub starts as with a broken one, says so, and does not
-  // write over it (SD-080). state.json is written anew at a Stop or Resume or
+  // write over it (SD-081). state.json is written anew at a Stop or Resume or
   // a new lock or latch, job.json by the next job. A snapshot and its journal
   // go together: neither is written while the other is kept, from the moment
   // it is read.
@@ -241,7 +241,7 @@ void Hub::boot() {
       log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", *broken}}));
     }
   } else if (kept_.count(kStateFile)) {
-    unknownState();  // as with a broken one (SD-080)
+    unknownState();  // as with a broken one (SD-081)
   }
   const bool stateKept = kept_.count(kStateFile) > 0;
 
@@ -352,7 +352,7 @@ void Hub::storageFailed(const std::string& name) {
 bool Hub::writeJob(const std::string& data) {
   jobOnDisk_ = data;  // written again from here if it fails, also once the job has ended
   // A job of this run replaces a job.json kept unread: its old content no longer tells what is
-  // in the tank, and a restart during the new job must report it (R6, RAT-003, SD-080)
+  // in the tank, and a restart during the new job must report it (R6, RAT-003, SD-081)
   kept_.erase(kJobFile);
   return writeFile(kJobFile, data);
 }
@@ -369,7 +369,7 @@ const std::vector<std::string>& Hub::brokenCopies() {
 }
 
 // A file kept at the start is not written while it is kept; that was said once then. state.json
-// and job.json stop being kept when the hub must write them anew (SD-080).
+// and job.json stop being kept when the hub must write them anew (SD-081).
 bool Hub::writeFile(const std::string& name, const std::string& data) {
   return !kept_.count(name) && stored(store_.write(name, data), name);
 }
@@ -419,7 +419,7 @@ void Hub::retryUnsaved(Epoch epoch) {
 void Hub::saveEvents() {
   const std::uint64_t last = log_.lastId();
   if (last == savedEventId_ || unsaved_.count(kEventsLog)) return;  // a failed journal is replaced by a snapshot
-  if (kept_.count(kEventsLog)) {  // kept as it is (SD-080): these events stay in memory
+  if (kept_.count(kEventsLog)) {  // kept as it is (SD-081): these events stay in memory
     savedEventId_ = last;
     return;
   }
@@ -461,7 +461,7 @@ void Hub::saveConfig(const std::optional<Msg>& what) {
 
 void Hub::saveState() {
   // A state.json kept unread started this run with no lock or latch, so any is new: written anew,
-  // with the Stop, a restart keeps both (RAT-044, RAT-063, SD-080)
+  // with the Stop, a restart keeps both (RAT-044, RAT-063, SD-081)
   if (!rt_.latches.empty() || !rt_.jumpLocks.empty()) stopKeepingState();
   rt_.clock = clock_.stamp();
   writeFile(kStateFile, json(rt_).dump());
@@ -469,7 +469,7 @@ void Hub::saveState() {
 }
 
 // A state.json kept unread is written anew from here on, and that is said once: its locks and
-// stock levels are gone for good (SD-080)
+// stock levels are gone for good (SD-081)
 bool Hub::stopKeepingState() {
   if (!kept_.erase(kStateFile)) return false;
   log_.add(clock_.epoch(), "system", "warn", say("ev.kept.state_replaced"), say("ev.kept.state_replaced.text", {{"file", kStateFile}}));
@@ -2236,7 +2236,7 @@ Result Hub::stop(const Msg& who) {
   rt_.stopped = true;
   const Ms stopAt = clock_.nowMs();
   act_.stopAll(cat_, cfg_, stopAt);
-  const bool wasKept = stopKeepingState();  // so the Stop holds (SD-080)
+  const bool wasKept = stopKeepingState();  // so the Stop holds (SD-081)
   saveState();  // at once: a power loss while the dose is booked keeps the stop
   Ctx c = ctx();
   c.now = stopAt;  // a run counts until the stop, not until the sockets were switched

@@ -440,7 +440,7 @@ TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is
   CHECK(h.state()["stopped"] == false);
 }
 
-TEST_CASE("Restart: a run-time state that cannot be read keeps everything stopped and is kept until Stop or Resume (SD-080)") {
+TEST_CASE("Restart: a run-time state that cannot be read keeps everything stopped and is kept until Stop or Resume (SD-081)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk);
@@ -505,7 +505,7 @@ TEST_CASE("Restart: a run-time state that cannot be read keeps everything stoppe
   }
 }
 
-TEST_CASE("Restart: a run-time state that is broken or cannot be read errs on the safe side against mixing twice and a dry run (RAT-003, SD-067, SD-080)") {
+TEST_CASE("Restart: a run-time state that is broken or cannot be read errs on the safe side against mixing twice and a dry run (RAT-003, SD-067, SD-081)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk);
@@ -533,7 +533,7 @@ TEST_CASE("Restart: a run-time state that is broken or cannot be read errs on th
   CHECK(released.get<gc::Epoch>() <= bootAt + 60);
 }
 
-TEST_CASE("Restart: an unknown run-time state counts a mix as just ended also with the clock at 0 (RAT-003, SD-080)") {
+TEST_CASE("Restart: an unknown run-time state counts a mix as just ended also with the clock at 0 (RAT-003, SD-081)") {
   // a device right after power-on: no secured time, nothing saved with a time
   LockedStorage store;
   test::Clock clk;
@@ -550,7 +550,7 @@ TEST_CASE("Restart: an unknown run-time state counts a mix as just ended also wi
   CHECK(mixNeedsConfirmation(h));
 }
 
-TEST_CASE("Restart: each file the hub reads, when it cannot be read, is said once and never written over, nor its journal or snapshot (SD-080)") {
+TEST_CASE("Restart: each file the hub reads, when it cannot be read, is said once and never written over, nor its journal or snapshot (SD-081)") {
   // a snapshot and its journal belong together: neither is written without the other
   const std::map<std::string, std::string> partner = {
       {"events.json", "events.log"}, {"events.log", "events.json"}, {"history.bin", "history.log"}, {"history.log", "history.bin"}};
@@ -591,7 +591,7 @@ TEST_CASE("Restart: each file the hub reads, when it cannot be read, is said onc
   }
 }
 
-TEST_CASE("Restart: a journal is not written while its snapshot is kept, also before the start ends (SD-080)") {
+TEST_CASE("Restart: a journal is not written while its snapshot is kept, also before the start ends (SD-081)") {
   // Factory settings with a password on the card: the start marks the
   // password as set and saves the settings, with the events, before it
   // reads the history.
@@ -626,7 +626,7 @@ TEST_CASE("Restart: a journal is not written while its snapshot is kept, also be
   }
 }
 
-TEST_CASE("Restart: a current job that cannot be read counts as a mix cut off by the restart against mixing twice (RAT-003, SD-080)") {
+TEST_CASE("Restart: a current job that cannot be read counts as a mix cut off by the restart against mixing twice (RAT-003, SD-081)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk);
@@ -649,7 +649,7 @@ TEST_CASE("Restart: a current job that cannot be read counts as a mix cut off by
   CHECK_FALSE(mixNeedsConfirmation(h));
 }
 
-TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kept writes it anew, with the Stop (RAT-044, SD-080)") {
+TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kept writes it anew, with the Stop (RAT-044, SD-081)") {
   // a pH probe taken out to be cleaned while everything is off: the jump locks it
   LockedStorage store;
   test::Clock clk;
@@ -691,7 +691,7 @@ TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kep
   CHECK(h->state()["readings"]["tank.ph"]["quality"] == "jump");
 }
 
-TEST_CASE("Restart: a job started while job.json is kept writes it anew, so a restart during it is reported (R6, RAT-003, SD-080)") {
+TEST_CASE("Restart: a job started while job.json is kept writes it anew, so a restart during it is reported (R6, RAT-003, SD-081)") {
   LockedStorage store;
   test::Clock clk;
   gc::Config cfg;
@@ -723,7 +723,7 @@ TEST_CASE("Restart: a job started while job.json is kept writes it anew, so a re
   CHECK(mixNeedsConfirmation(h));  // the window counts from the restart
 }
 
-TEST_CASE("Restart: a password file that cannot be read locks the first password and never says to reset (SD-080)") {
+TEST_CASE("Restart: a password file that cannot be read locks the first password and never says to reset (SD-081)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk, true);

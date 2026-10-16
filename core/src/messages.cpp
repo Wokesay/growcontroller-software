@@ -233,7 +233,7 @@ constexpr Entry kMessages[] = {
     {"ev.tick_ok.text", "Automation is running without errors again."},
     {"ev.storage_failed", "Data is not being saved"},
     {"ev.storage_failed.text", "The hub cannot write {file} to its data folder (full or not writable). It keeps running, but changes are lost on a restart. Free some space."},
-    // A file that is there but cannot be read, kept as it is (SD-080)
+    // A file that is there but cannot be read, kept as it is (SD-081)
     {"ev.kept.config", "Settings can't be read"},
     {"ev.kept.config.text", "The hub runs with factory settings; yours stay safe in {file}. Don't set anything up again – it won't be saved. Restart the hub; if this comes back, report a problem under Settings."},
     {"ev.kept.state", "Saved state can't be read"},

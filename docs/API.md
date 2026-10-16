@@ -50,7 +50,7 @@ UI can do, an integration can do as well.
   If `auth.json` is there but cannot be read, it refuses with 423
   `auth.kept` first, whether or not a password is known to be set: the
   file is kept, and a restart that can read it again brings it back
-  (SD-080).
+  (SD-081).
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
   Exception: an unknown area or mode in `system.control` is left out, as

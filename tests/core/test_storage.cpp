@@ -452,7 +452,7 @@ TEST_CASE("Storage: a hub file the simulator cannot read runs it in memory only,
   CHECK(files() == before);
 }
 
-TEST_CASE("Storage: a file that is there but cannot be read is told from one that is not there (SD-080)") {
+TEST_CASE("Storage: a file that is there but cannot be read is told from one that is not there (SD-081)") {
   TempDir dir;
   sim::FileStorage store(dir.path.string());
   CHECK_FALSE(store.unreadable("config.json"));  // not there
@@ -471,7 +471,7 @@ TEST_CASE("Storage: a file that is there but cannot be read is told from one tha
   CHECK_FALSE(none.unreadable("config.json"));
 }
 
-TEST_CASE("Storage: a file that cannot be opened or read to the end is neither a missing nor a shorter one (SD-080)") {
+TEST_CASE("Storage: a file that cannot be opened or read to the end is neither a missing nor a shorter one (SD-081)") {
   // A folder in its place stands in for a read error of the disk: it opens
   // and reading it fails, or it does not open (Windows)
   TempDir dir;

@@ -130,7 +130,7 @@ std::optional<std::string> FileStorage::readLocked(const std::string& name) {
   if (it != cache_.end()) return it->second;
   if (dir_.empty()) return std::nullopt;
   // A file that is there but cannot be opened or read to the end is neither a missing nor a
-  // shorter one: unreadable() says so, and the hub keeps it (SD-080)
+  // shorter one: unreadable() says so, and the hub keeps it (SD-081)
   errno = 0;
   std::FILE* f = std::fopen((fs::path(dir_) / name).string().c_str(), "rb");
   if (!f) {

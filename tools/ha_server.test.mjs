@@ -132,7 +132,7 @@ test("a number option out of range names the range (#213)", { skip }, () => {
   }
 });
 
-test("a state.json it cannot read is kept: the hub starts and never writes over it (SD-080)", { skip }, async () => {
+test("a state.json it cannot read is kept: the hub starts and never writes over it (SD-081)", { skip }, async () => {
   const dir = mkdtempSync(join(tmp, "kept-"));
   const config = join(dir, "ha.json");
   writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));

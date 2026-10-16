@@ -130,7 +130,7 @@ class IStorage {
   // Without a real append the whole file is rewritten; storages that can append override this.
   virtual bool append(const std::string& name, const std::string& data) { return write(name, read(name).value_or("") + data); }
   // The file is there but cannot be read (no permission, a read error):
-  // read() gives no value for it, as for one that is not there (#211, SD-080).
+  // read() gives no value for it, as for one that is not there (#211, SD-081).
   virtual bool unreadable(const std::string& name) {
     (void)name;
     return false;

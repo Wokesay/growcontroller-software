@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
   gc::Hub hub(cat, bus, store, clock, sim::randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
-  // Also here, where who runs it looks: the hub's alarm needs a sign-in (SD-080)
+  // Also here, where who runs it looks: the hub's alarm needs a sign-in (SD-081)
   for (const std::string& name : hub.unreadableFiles())
     std::cerr << (std::filesystem::path(data) / name).string() << ": cannot be read (" << store.readError(name).value_or("unknown")
               << "), so it is kept as it is and not written over. Check its owner and permissions, or the disk, then restart.\n";

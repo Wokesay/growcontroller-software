@@ -33,7 +33,7 @@ std::optional<std::string> EspStorage::read(const std::string& name) {
   // SPIFFS kann nicht über eine bestehende Datei umbenennen; zwischen remove und
   // rename liegt nur die fertige .tmp. Ein Stromausfall genau dort verliert nichts.
   // Only for a file that is not there: one there but not opened (a read error
-  // of the flash) is kept, and never written over (SD-080).
+  // of the flash) is kept, and never written over (SD-081).
   if (!f && errno == ENOENT) {
     errno = 0;
     f = std::fopen(pathOf(name + ".tmp").c_str(), "rb");
