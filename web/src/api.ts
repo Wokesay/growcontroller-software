@@ -45,7 +45,7 @@ export type Job = {
   info: Record<string, any>;
 };
 
-export type Check = { level: "hardware" | "setup" | "runtime"; ok: boolean; soft: boolean; text: string; fix: string; shop: string[] };
+export type Check = { level: "hardware" | "setup" | "runtime"; ok: boolean; soft: boolean; text: Msg; fix: string; shop: string[] };
 export type FunctionState = {
   id: string; label: string; group: string; text: string; stage: number;
   setup: "unavailable" | "needs_setup" | "limited" | "ready"; enabled: boolean; alwaysOn: boolean;

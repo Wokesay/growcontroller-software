@@ -236,9 +236,11 @@ test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await page.request.post("/api/v1/sim/fault", { data: { device: head.id, fault: "jump" } });
   await expect(page.getByTestId("metric-pH").getByText("Sprungsperre")).toBeVisible({ timeout: 30_000 });
   await page.goto("/#/tank");
-  await expect(page.getByText(/sprang ohne Dosierung/).first()).toBeVisible();
+  // The simulator's jump is a rise, never the hub's own dose, which only lowers pH (RAT-041, #162)
+  await expect(page.getByText(/Der Wert stieg von .+ auf .+\. Hat jemand ohne Pflegemodus am Tank gearbeitet\? Wenn nicht, prüf die Sonde mit einer Handmessung/).first()).toBeVisible();
+  await expect(page.getByText(/Der Wert fiel von/)).toHaveCount(0);
   // the lock list names the reading in words, never the internal key (#143)
-  await expect(page.getByText(/pH im Tank sprang unerwartet – frei nach 15/).first()).toBeVisible();
+  await expect(page.getByText(/pH im Tank sprang unerwartet – die Sperre löst sich nach 15/).first()).toBeVisible();
   await expect(page.getByText(/jump\.tank\./)).toHaveCount(0);
   await page.request.post("/api/v1/sim/fault", { data: { device: head.id, fault: "none" } });
 });
@@ -249,6 +251,16 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await expect(page.getByTestId("fn-ph_control")).toBeVisible();
   await page.getByTestId("fn-climate_watch").click();
   await expect(page.getByTestId("fn-climate_watch")).not.toContainText("Dafür brauchst du");  // Demo hat einen Klima-Kopf
+  await expect(page.getByTestId("fn-climate_watch")).toContainText("zugeordnet");  // the checklist in the page's language (SD-083)
+  await expect(page.locator("body")).not.toContainText(/Next:|You need|Ready, switched off|Switched on/);  // the summaries too
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await page.getByTestId("fn-climate_watch").click();
+  await expect(page.getByTestId("fn-climate_watch")).toContainText("assigned");
+  await expect(page.getByTestId("fn-climate_watch")).not.toContainText("zugeordnet");
+  await expect(page.locator("body")).not.toContainText(/Als Nächstes|Dafür brauchst du|Bereit, ausgeschaltet|Eingeschaltet/);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
+  await page.reload();
   await page.goto("/#/verlauf");
   await expect(page.locator(".chart canvas").first()).toBeVisible();
   await expect(page.locator(".u-legend").first()).toContainText("Zeit");
@@ -283,7 +295,15 @@ test("Fehlsteckung: Pumpe am Hub-Anschluss wird mit Klartext gemeldet", async ({
   await login(page);
   await page.request.post("/api/v1/sim/plug", { data: { port: 2, class: "pump_cap" } });
   await page.goto("/#/geraete");
-  await expect(page.getByTestId("ports").getByText("Bitte auf den Dosierblock stecken")).toBeVisible();
+  // In the page's language, the tooltip too (SD-083)
+  const line = "Pumpe direkt am Hub – steck sie auf den Dosierblock";
+  await expect(page.getByTestId("ports").getByText(line)).toBeVisible();
+  await expect(page.getByTestId("ports").locator(`[title="${line}"]`)).toHaveCount(1);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await expect(page.getByTestId("ports").getByText("Pump plugged straight into the hub – plug it onto the dosing block")).toBeVisible();
+  await expect(page.getByTestId("ports").getByText(line)).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
   await page.request.post("/api/v1/sim/unplug", { data: { port: 2 } });
 });
 

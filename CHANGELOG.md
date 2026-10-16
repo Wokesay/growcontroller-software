@@ -119,6 +119,36 @@ listed in every release under "Security".
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
   names the hub's language (`language`); `/export.csv` takes `lang=de`
   or `lang=en` and otherwise uses the hub's.
+- **Reasons and checklists in the page's language** (#143, #73, SD-083):
+  why a reading is not valid (not assigned, no answer, stale, frozen,
+  outside its range, a jump lock), what a function still needs and its
+  short state on Functions and in setup now come in the page's language.
+  A jump lock names only causes that can be true (#162, RAT-041,
+  RAT-042), and no longer says "without dosing": a pH fall says to
+  measure by hand and raise pH yourself, as the hub only lowers it, and
+  names the hub's own pH dose as one possible cause; a pH rise names work
+  at the tank and the probe; a level jump asks about filling or draining
+  by hand without maintenance mode; a reading of the grow area names work
+  near the plants, one of the tank work at the tank. Each says the lock
+  lifts after 15 min steady, in at most 200 characters. An event saved
+  before these texts is shown as it was saved, also a reason inside it.
+  The simulator's port lines (a pump plugged straight into the hub) and
+  a device's own error text inside a refusal or a failed dose are
+  English; the device's text has no key. For
+  API users: a function's `checks[].text` is now a message object (`req.*`
+  keys) instead of a string; its `summary` names the first open item and
+  how many more (`fn.needs_setup`, `fn.needs_setup_more`,
+  `fn.unavailable`, `fn.unavailable_more`) and splits "switched on"
+  (`fn.on`) from "ready, switched off" (`fn.ready`); a pH rise, a pH fall,
+  a level jump and a jump in the grow area have keys of their own
+  (`truth.jump_ph`, `truth.jump_ph_fall`, `truth.jump_level`,
+  `truth.jump_zone`), three soft requirements' reasons too (`req.why.*`),
+  `req.present` is now `req.assigned`, a level sensor's calibration
+  too (`req.calibrate_level`, `req.calibrated_level`), and values in a
+  reading's reason are rounded to the reading's decimals and carry their
+  unit (`unit`). The names of roles, functions and device classes
+  inside these texts still come from the German catalog until the
+  catalog gets keys (SD-083 point 3).
 - **Refusals in the page's language** (#143, #18, SD-083): a refusal of
   the hub now comes with a key of its own and an English text, and an
   English page shows English, a German page German: signing in and
@@ -126,10 +156,8 @@ listed in every release under "Security".
   recipes and templates, starting a mix, manual doses, pump calibration
   and tube priming, probe and tank-curve calibration, grow cycles,
   maintenance mode, updates, the configuration check and the import, and
-  the simulator panel. Still German until their work follows: the
-  reasons a mix plan or a dose split gives (with SD-057), a reading's
-  reasons and the checklists (#73), and a smart plug's or a pump's own
-  error text inside a refusal. For API users, some keys are new where
+  the simulator panel. Still German until its work follows: the
+  reasons a mix plan or a dose split gives (with SD-057). For API users, some keys are new where
   one key had several texts: `device.not_detected` (was `device.unknown`
   when adding a device), `config.busy`, `config.newer`, `job.state_amount`,
   `job.state_resume`, `job.dosing` (EC or pH control dosing, before a

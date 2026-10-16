@@ -116,9 +116,14 @@ import, the checks of a job request, the transport's (`api.origin`,
 `api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
 (SD-083). Still German until their work follows: the reasons a mix plan
 or a dose split gives (`mix.*`, `dose.no_flow`, `dose.too_small`, …;
-with SD-057), a reading's reasons and the checklists (also nested in
-`function.not_ready`; #73), and the text a smart plug's or a pump's
-connection gives inside `role.net.write` and `cal.write`.
+with SD-057), and the catalog's labels and texts inside messages (a
+role's or a function's name, a function's `text`; SD-083 point 3); the
+reasons of the three soft requirements have keys (`req.why.*`). A
+device's own error text inside `act.bus`,
+`act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
+`dose.failed` is English and has no key. A message an event saved
+under an older template that no longer fits keeps its own text (no
+key), also one nested in its arguments.
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
@@ -126,7 +131,13 @@ message as an object) and `text` is English for every key in
 `core/src/messages.cpp`. The web app shows German from
 `web/src/lang/msg.ts`. Controller lines, checklist entries, the
 watchdog (`headline`, each item's `label` and `text`), job messages,
-events (`title`, `text`) and errors are messages; a reading's label is
+events (`title`, `text`), errors, a reading's `reason` (its values
+rounded to the reading's decimals, `unit` with its no-break space; a
+jump lock: a pH rise `truth.jump_ph`, a pH fall `truth.jump_ph_fall`,
+a level `truth.jump_level`, a reading of the grow area
+`truth.jump_zone`, any other `truth.jump`) and each function's
+`summary` (the first open item and how many more) and checklist entries (`checks[].text`, keys `req.*`; a
+string before #73) are messages; a reading's label is
 the catalog label without a key until the catalog follows. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <set>
 
+#include "gc/messages.hpp"
 #include "gc/events.hpp"
 #include "gc/history.hpp"
 
@@ -80,6 +81,33 @@ TEST_CASE("Event log: key and values survive a restart, old plain texts stay rea
   CHECK(oe.text.text == "Version 0.1");
   json j = oe;
   CHECK(j["title"]["text"] == "Hub gestartet");
+  // A jump lock saved before its template had a unit: shown as it was saved, not with "–" for the unit
+  json jumped = {{"next", 2}, {"events", {{{"id", 1}, {"ts", 100}, {"type", "block"}, {"severity", "warn"}, {"title", {{"key", "ev.plain"}, {"text", "Sprungsperre"}}},
+                                           {"text", {{"key", "truth.jump"}, {"text", "pH sprang ohne Dosierung von 6,01 auf 7,23."}, {"args", {{"until", 900}, {"from", 6.012371}, {"to", 7.226804}}}}}}}}};
+  EventLog jl;
+  jl.load(jumped);
+  const auto je = jl.query(0, 1000, "", 1).at(0);
+  CHECK(je.text.key.empty());
+  CHECK(je.text.text == "pH sprang ohne Dosierung von 6,01 auf 7,23.");
+  // Today's message with all its values keeps its key
+  CHECK(gc::fitsTemplate("truth.jump", {{"label", "EC"}, {"until", 900}, {"from", nullptr}, {"to", 2.4}, {"unit", "\u00a0mS/cm"}}));
+  CHECK_FALSE(gc::fitsTemplate("truth.jump", {{"label", "EC"}, {"until", 900}, {"from", 1.2}, {"to", 2.4}}));
+  // A reading's reason inside a saved line, under its older template: the line keeps its key, the reason its saved text
+  json nested = {{"next", 2}, {"events", {{{"id", 1}, {"ts", 100}, {"type", "block"}, {"severity", "warn"}, {"title", {{"key", "ev.circ.off"}, {"text", "Circulation pump off"}}},
+                                          {"text", {{"key", "ev.circ.off.text"}, {"text", "Kein gültiger Füllstand: Letzter Wert vor 3 min"},
+                                                    {"args", {{"reason", {{"key", "truth.stale"}, {"text", "Letzter Wert vor 3 min"}, {"args", {{"ageS", 180}, {"limitS", 60}}}}}}}}}}}}};
+  EventLog nl;
+  nl.load(nested);
+  const auto ne = nl.query(0, 1000, "", 1).at(0);
+  CHECK(ne.text.key == "ev.circ.off.text");
+  CHECK(ne.text.args["reason"]["key"] == "");
+  CHECK(ne.text.args["reason"]["text"] == "Letzter Wert vor 3 min");
+  // One that fits keeps its key, also nested
+  json fits = nested;
+  fits["events"][0]["text"]["args"]["reason"]["args"]["min"] = 3;
+  EventLog fl;
+  fl.load(fits);
+  CHECK(fl.query(0, 1000, "", 1).at(0).text.args["reason"]["key"] == "truth.stale");
 }
 
 TEST_CASE("Event log: a damaged events.json loads as empty messages, never throws (SD-032)") {
@@ -102,7 +130,7 @@ TEST_CASE("Event log: a damaged events.json loads as empty messages, never throw
   // newest first: the long one, then the one with array args, then the bad types
   CHECK(all[0].title.text.size() == 2048);
   CHECK(all[0].text.key.size() == 64);
-  CHECK(all[1].title.key == "ev.plain");
+  CHECK(all[1].title.key.empty());  // its arguments were damaged: shown with the text it was saved with
   CHECK(all[1].title.text == "ok");
   CHECK(all[1].title.args.empty());
   for (size_t i = 2; i < all.size(); ++i) {

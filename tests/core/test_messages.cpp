@@ -60,3 +60,9 @@ TEST_CASE("Messages: an unknown key shows the key, never an empty text") {
   CHECK_FALSE(knownMessage("no.such.key"));
   CHECK(say("no.such.key").text == "no.such.key");
 }
+
+TEST_CASE("Messages: a function's summary names the first open item and how many more (SD-083)") {
+  CHECK(gc::say("fn.needs_setup_more", {{"first", gc::say("req.add_recipe")}, {"more", 2}}).text == "Next: Add a recipe (then 2 more)");
+  CHECK(gc::say("fn.needs_setup", {{"first", gc::say("req.add_recipe")}}).text == "Next: Add a recipe");
+  CHECK(gc::say("req.needs_one_of", {{"items", {"Head A", "Head B"}}}).text == "You need one of: Head A, Head B");
+}

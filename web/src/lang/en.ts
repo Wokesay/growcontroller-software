@@ -111,7 +111,7 @@ const base: Record<keyof typeof deBase, string> = {
   "term.latched": "Locked until released",
   "help.latched": "A safety check switched a running device off. It stays off until you fix the cause and tap \"Release\".",
   "term.jumpLock": "Jump lock",
-  "help.jumpLock": "A reading jumped for no reason. Dosing resumes once it is steady.",
+  "help.jumpLock": "A reading jumped unexpectedly. The hub uses it again once it has been steady for 15\u00a0min – you don't need to release it.",
   "term.maintenance": "Maintenance mode",
   "help.maintenance": "For tank changes and cleaning: no dosing or refilling, jumps are expected.",
   "term.phase": "Phase",
