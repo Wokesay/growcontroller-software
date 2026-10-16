@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <set>
 
 #include "client.hpp"
@@ -396,6 +397,66 @@ TEST_CASE("Grow cycle: a saved phase outside its list never moves on to a phase 
     CHECK(cfg["grow"]["phaseStartedAt"] == 1790000000);
     CHECK(h.events(0, 4000000000, "", 100).dump().find("ev.grow.phase") == std::string::npos);
   }
+}
+
+TEST_CASE("Grow cycle: a value saved before these checks blocks changes only while its cycle runs, and finishing it is the way out") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  auto boot = [&](gc::MemoryStorage& store, test::FakeBus& bus, test::Clock& clk, const gc::json& grow) {
+    store.write("config.json", gc::json{{"schemaVersion", gc::kSchemaVersion}, {"grow", grow}}.dump());
+    auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+    h->boot();
+    return h;
+  };
+  const gc::json phases = {{{"name", "W"}, {"days", 14}}, {{"name", "B"}, {"days", 56}}};
+  SUBCASE("a running phase outside its phases") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    auto h = boot(store, bus, clk, {{"state", "running"}, {"name", "A"}, {"phase", 5}, {"phases", phases}});
+    const gc::Result r = h->putTank({{"capacityL", 40}});
+    CHECK(r.status == 422);
+    CHECK_MESSAGE(r.body["errors"].dump().find("\"cfg.grow.phase\"") != std::string::npos, r.body.dump());
+    CHECK(h->growComplete().status == 200);
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+    CHECK(h->growStart({{"name", "B"}, {"phases", phases}}).status == 200);
+    CHECK(h->configJson()["grow"]["phase"] == 0);
+  }
+  SUBCASE("days below 0 in a running cycle") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    gc::json bad = phases;
+    bad[0]["days"] = -3;
+    auto h = boot(store, bus, clk, {{"state", "running"}, {"name", "A"}, {"phase", 0}, {"phases", bad}});
+    const gc::Result r = h->putTank({{"capacityL", 40}});
+    CHECK(r.status == 422);
+    CHECK_MESSAGE(r.body["errors"].dump().find("\"cfg.phase.days\"") != std::string::npos, r.body.dump());
+    CHECK(h->growComplete().status == 200);
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+  }
+  SUBCASE("days that are no whole number in a finished cycle block nothing") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    gc::json bad = phases;
+    bad[0]["days"] = 14.5;
+    auto h = boot(store, bus, clk, {{"state", "completed"}, {"name", "A"}, {"phase", 1}, {"phases", bad}});
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+  }
+}
+
+TEST_CASE("Restart: a saved schema version that is no whole number starts with the factory settings and keeps the file") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  const std::string file = gc::json{{"schemaVersion", 2.5}, {"system", {{"name", "Zelt"}}}}.dump();
+  store.write("config.json", file);
+  gc::Hub h(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+  h.boot();
+  CHECK(h.configJson()["system"]["name"] != "Zelt");
+  CHECK(store.read("config.broken.json") == std::optional<std::string>(file));
+  CHECK(h.events(0, 4000000000, "", 100).dump().find("ev.config_unreadable") != std::string::npos);
 }
 
 TEST_CASE("Devices: a calibration time from a file that the hub cannot have written shows as not set") {

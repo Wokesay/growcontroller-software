@@ -150,7 +150,11 @@ is readable again reads it as it was.
 
 1. Structure, when reading: a count or index (phase, days, channel,
    schema version) is a whole number, never null or a fraction cut to
-   one; a time the hub cannot have written reads as not set.
+   one; a time the hub cannot have written reads as not set. A saved
+   file with such a value still loads (a schema version that is no whole
+   number starts the factory settings, as a broken file does); the next
+   change is refused with the reason, and for a grow cycle's phase or
+   days only while that cycle runs: finishing it is the way out.
 2. References: role → device with a matching capability; recipe →
    canister.
 3. Domain and safety:
@@ -160,7 +164,7 @@ is readable again reads it as it was.
    - a canister only once per recipe;
    - roles in the right place (`tank.*` on the tank, `zone.*` on the zone), at most one zone, and it has a name;
    - a switched output for one role only, channel within the device's range;
-   - a running grow cycle's phase is one of its phases, a phase's days 0 or more;
+   - a running grow cycle's phase is one of its phases, and its phases' days are 0 or more;
    - parameters within range, tolerance never 0.
 
 **Phases:** effective parameters = catalog default ⊕ setting ⊕ active

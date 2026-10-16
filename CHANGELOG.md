@@ -367,7 +367,10 @@ listed in every release under "Security".
   to be one of its phases), a phase's days, a device's channel and the
   schema version. A time in the file that the hub cannot have written
   reads as not set. "Next phase" checks the current phase too and says
-  how to go on: finish the cycle and start a new one.
+  how to go on: finish the cycle and start a new one. A hub whose saved
+  settings already hold such a phase or such days keeps running; while
+  that cycle runs, a change says the same, and once it is finished
+  nothing is blocked.
 - **A large refill no longer latches the inlet** (#155, SD-082): a
   refill planned longer than the valve may stay open ("Ventil höchstens
   offen", 15 min by default) ran into that limit, which shut the inlet as

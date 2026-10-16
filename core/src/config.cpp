@@ -553,11 +553,15 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       checkParam(*fd, *pd, val, "");
     }
   }
-  // The running phase is one of the phases; a phase's days a whole number, 0 or more
+  // A running grow cycle: its phase is one of its phases, each phase's days a
+  // whole number, 0 or more. A finished cycle is only shown, so a value saved
+  // before these checks never blocks a change once the cycle is finished.
   const auto& g = c.grow;
-  if (g.state == "running" && (g.phase < 0 || static_cast<size_t>(g.phase) >= g.phases.size())) out.push_back(say("cfg.grow.phase"));
-  for (const auto& ph : g.phases)
-    if (ph.days < 0) out.push_back(say("cfg.phase.days", {{"phase", ph.name}}));
+  if (g.state == "running") {
+    if (g.phase < 0 || static_cast<size_t>(g.phase) >= g.phases.size()) out.push_back(say("cfg.grow.phase"));
+    for (const auto& ph : g.phases)
+      if (ph.days < 0) out.push_back(say("cfg.phase.days", {{"phase", ph.name}}));
+  }
   // Phasen liefern Parameter (R4): dieselben Bereiche wie in den Einstellungen.
   for (const auto& ph : g.phases) {
     const std::string where = "Phase „" + ph.name + "“, ";
