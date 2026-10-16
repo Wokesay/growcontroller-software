@@ -759,12 +759,13 @@ TEST_CASE("Home Assistant: pH is shown, but not used for control until the hub h
   std::map<std::string, int> explained;
   for (const auto& f : st["functions"])
     for (const auto& c : f["checks"]) {
-      const std::string text = c["text"];
-      if (text.find("außerhalb des Hubs kalibriert") != std::string::npos) {
+      // One line with its own key, in the language of the page that reads it (SD-083)
+      if (c["text"]["key"] == "req.external") {
         ++explained[f["id"].get<std::string>()];
         CHECK(c["fix"] == "");
       }
-      CHECK(text.find("Calibrated outside") == std::string::npos);
+      // and no other line says it again inside a reading's reason
+      if (c["text"]["key"] == "req.reason") CHECK(c["text"]["args"]["reason"]["key"] != "truth.external");
     }
   CHECK(explained["ph_control"] == 1);
   CHECK(explained["monitor_tank"] == 1);

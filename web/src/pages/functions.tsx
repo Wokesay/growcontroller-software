@@ -80,7 +80,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <div>
             <h3>{p.f.label}</h3>
-            <div class="muted small">{p.f.setup === "ready" ? p.f.text : p.f.summary.text}</div>
+            <div class="muted small">{p.f.setup === "ready" ? p.f.text : msg(p.f.summary)}</div>
           </div>
         </div>
         <div class="row" onClick={(e) => e.stopPropagation()}>
@@ -111,7 +111,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("functions.hardware")}</div>
               {hw.map((c) => (
-                <CheckRow ok={c.ok} text={c.text} fix={c.fix} />
+                <CheckRow ok={c.ok} text={msg(c.text)} fix={c.fix} />
               ))}
             </div>
           )}
@@ -119,7 +119,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("nav.setup")}</div>
               {setup.map((c) => (
-                <CheckRow ok={c.ok} soft={c.soft} text={c.text} fix={c.fix} />
+                <CheckRow ok={c.ok} soft={c.soft} text={msg(c.text)} fix={c.fix} />
               ))}
             </div>
           )}
@@ -127,7 +127,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("functions.now")}</div>
               {runtime.map((c) => (
-                <CheckRow ok={c.ok} text={c.text} />
+                <CheckRow ok={c.ok} text={msg(c.text)} />
               ))}
               {ctl && p.f.enabled && <p class="muted small">{msg(ctl.line)}</p>}
             </div>

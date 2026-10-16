@@ -157,18 +157,36 @@ test("a hand-written refusal has its key's English text", () => {
 });
 
 // The hub sends English and the web app translates by key (SD-083): the
-// refusals of the API, the sign-in and the configuration check hold no
-// German text of their own.
-test("the API, the sign-in and the configuration check send no German text", () => {
+// refusals of the API, the sign-in and the configuration check, a reading's
+// reasons, the checklists and the simulator's port lines hold no German text
+// of their own.
+test("the API, the sign-in, the configuration check, a reading's reasons and the checklists send no German text", () => {
   const german = /"(?:[^"\\\n]|\\.)*[äöüßÄÖÜ„“](?:[^"\\\n]|\\.)*"/;
-  for (const f of ["api.cpp", "auth.cpp", "config.cpp", "hub.cpp"]) {
-    const lines = readFileSync(join(coreSrc, f), "utf8").split("\n");
+  const files = ["api.cpp", "auth.cpp", "config.cpp", "hub.cpp", "truth.cpp", "resolver.cpp"].map((f) => join(coreSrc, f));
+  for (const f of [...files, join(coreSrc, "../../sim/simbus.cpp")]) {
+    const lines = readFileSync(f, "utf8").split("\n");
     for (const [i, line] of lines.entries()) {
       const code = line.replace(/\/\/.*$/, "");
       assert.doesNotMatch(code, german, `${f}:${i + 1}: ${line.trim()}`);
     }
   }
   assert.match('x = "Gerät";', german);
+});
+
+// A jump lock's reason is the text of its alarm, later also of a
+// notification: at most 200 characters with the longest values (RAT-045)
+test("a jump lock's reason fits a notification in both languages", () => {
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  const german = new Map();
+  for (const m of readFileSync(join(dir, "msg.ts"), "utf8").matchAll(/^\s*"([^"]+)": ("(?:[^"\\]|\\.)*"),$/gm)) german.set(m[1], JSON.parse(m[2]));
+  const longest = { from: "999.5", to: "999.5", unit: "\u00a0mS/cm" };
+  const keys = [...core.keys()].filter((k) => k.startsWith("truth.jump"));
+  assert.ok(keys.length >= 5, "the jump lock reasons read");
+  for (const k of keys)
+    for (const [lang, tmpl] of [["en", JSON.parse(`"${core.get(k)}"`)], ["de", german.get(k)]]) {
+      const text = tmpl.replace(/\{(\w+)\}/g, (_, name) => longest[name] ?? "");
+      assert.ok(text.length <= 200, `${k} (${lang}): ${text.length} characters`);
+    }
 });
 
 test("German and English use the same placeholders", () => {

@@ -23,7 +23,7 @@ struct ReqResult {
   std::string level;  // hardware | setup | runtime
   bool ok = false;
   bool soft = false;
-  std::string text;   // was erfüllt ist bzw. was fehlt
+  Msg text;           // what is met or what is missing, in the page's language (SD-083)
   std::string fix;    // Ziel in der UI, z. B. "devices", "canisters", "calibrate:PH-1"
   std::vector<std::string> shop;  // Geräteklassen, die das liefern würden
 };
