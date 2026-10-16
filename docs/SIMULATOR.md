@@ -69,7 +69,9 @@ default password (EN 18031-1).
 - **Chemistry:** the model is rough. It is meant to make sequences and
   texts testable, not to predict recipes.
 - **Measurements missing:** the initial effects in nutrient solution
-  (RAT-081) and the mixing time by volume (M-3) are open.
+  (RAT-081) and the mixing time by volume (M-3) are open. The core's
+  floor for mixing in at the end of a mix (100 s per 20 L, `Hub::mixSettleMs`)
+  rests on the same assumption, so no simulator test can confirm it.
 - **Bus not modelled:** the Modbus bus itself, i.e. timing, timeouts and
   CRC, is not modelled. That belongs in the firmware's driver tests.
 
