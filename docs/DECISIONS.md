@@ -1983,6 +1983,10 @@ needs the whole repository.
 
 ## SD-066: Product requirement (from PD-187 to PD-190): one dosing pump type with speed stages, feedback and an ID chip
 
+**Replaced in part by SD-084** (2026-10-16): the product side answered
+Q1 to Q16 and replaced the pump with speed stages by dosing modules with
+a fixed rate (PD-223).
+
 Recorded on 2026-10-13 from #132 (SD-029). The project owner decided in
 the software session to plan it now and build it after 0.1.0-proto.5 as
 part of M1, simulator first. `domain` checked the requirement against
@@ -3967,6 +3971,262 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
    - Not chosen: `labelDe`/`labelEn` beside each entry, as the recipe
      templates have (a second way next to the keys, and events stored in
      the language of their day).
+
+
+## SD-084: Product requirement (from PD-222 to PD-239, PD-260 to PD-273): dosing modules with a fixed rate, caps from the usable volume, runs into a cup, bucket mixing
+
+Recorded on 2026-10-16 from the product decisions of 2026-10-15 and
+2026-10-16 on #132 (SD-029), which answer SD-066's questions Q1 to Q16
+and decide more. Where the two differ, the later one applies. PD-223
+replaces PD-187 at its core: SD-066's pump with speed stages and
+feedback is dropped. Where this entry says nothing, SD-066 stands, its
+proposals decided as noted below. The issue's comments hold the full
+behaviour; this entry says what applies to the software. Built after
+0.1.0-proto.5 as part of M1, simulator first, as SD-066 says.
+
+- **Dosing modules have a fixed rate** (PD-223, PD-227, PD-262 to PD-266).
+  - **No speed control:** a shop module has no speed signal and no
+    feedback. SD-066's speed stages, calibration per stage, pulse checks
+    and their latches, the plausibility from revolutions and the speed
+    signal at standstill are dropped; Q11 and Q13 no longer apply.
+  - **Two models:**
+    - "Fine": about 12 ml/min, with its limits at a fixed maximum rate of
+      about 16.6 ml/min, for nutrients, additives and pH in tanks up to
+      about 150 L. Its choice depends on sample tests and supplier
+      documents; if it fails, the product side asks again.
+    - "Large": about 220 ml/min, recommended from about 100 L.
+  - **By tank size:** above about 150 L only Large doses nutrients;
+    whether setup blocks Fine there or only warns is open. With Fine at
+    a large volume the app shows the expected mixing time (about 2 h for
+    150 L).
+  - **The user sets each module's role** (pH−, pH+, A, B, CalMag,
+    additive) and may change it; all modules of a model are alike. Limits
+    follow the role, the usable volume and the model's maximum rate. A
+    role the user sets never widens the catalogue role used for the
+    emergency dose without a probe.
+  - **Large in a pH role** only after a warning in the app that
+    recommends Fine and that the user confirms; automatic pH− with Large
+    from about 84 L. Whether the warning repeats on every role change is
+    open.
+- **Limits use the model's fixed maximum rate**, held in the firmware
+  (Q7).
+  - **A calibration value is never the limit.** It counts only inside its
+    model's window; a value from the module may only tighten the limit.
+  - **Outside the window:**
+    - a value above it treats the module like a third-party pump, and its
+      limit then uses that value;
+    - a value below it is rejected, and the app asks to measure again.
+  - **Third-party pumps** (no module ID) have no fixed maximum, so their
+    limit depends on run time and the calibration value. Their reserve is
+    still open (a residual risk).
+  - **Limits use the tube fitted at the factory;** replacement tubes come
+    only in that size (PD-261).
+- **Runs and jobs** (PD-222, PD-265; Q4 as SD-066 proposed).
+  - **Hardware cut-off:** the board cuts every pump run after about 90 s
+    (worst case about 103 s, about 28 ml with Fine), independent of the
+    firmware. RAT-007 and RAT-018, which say board v0.1 has no such
+    cut-off, are brought in line in the step that builds it.
+  - **A job is runs of at most 60 s.** The limit per job is raised from
+    about 20 min, so one job can still deliver about 0.9 L (up to about
+    55 min with Fine). The exact value is the firmware's.
+- **Minimum run time and short doses** (Q3, Q6).
+  - **1.0 s:** with Fine, automatic pH− works from about 5 L usable
+    volume. If samples show 1 s doses are too inaccurate, the minimum is
+    2.5 s and pH− starts at about 12 L.
+  - **No dose under 1 s.** Whether start and run-on volume need a
+    correction is measured on samples.
+- **Every dose has a cap from the usable volume** (PD-232; Q1, Q8).
+  - **Per purpose:** pH, EC round, hand dose, mixing. A mix part's plan
+    is at most the product's maximum ml/L times the usable volume; its
+    cap is the plan plus one EC step (RAT-056).
+  - **The fixed hard caps in code stay**, also for the largest allowed
+    tank; caps derived from the volume sit below them (R7).
+  - **The tank volume becomes a safety value:** a change needs a
+    confirmation, is notified, and is checked for plausibility against
+    the level.
+  - **Open:** values per purpose and product; the reserve for third-party
+    pumps; plausibility without a level sensor.
+- **Bookings** (PD-239; Q5 and Q16 as SD-066 proposed).
+  - **What is booked before the start:** only the safety budget. Stock
+    and mixing progress are booked from the actual run time.
+  - **Saved between runs:** each run's booking is saved in the pause
+    before the next run, with no pump running. This changes SD-045's
+    "a write waits for the job's end" for that pause.
+  - **Open:** a run whose run time is unknown after a power loss (the
+    product side's proposal: it counts as fully run for mixing
+    progress).
+- **Priming, calibration and test runs go into a cup, never into the
+  tank** (PD-233, Q9).
+  - The app asks first whether the outlet is in the cup.
+  - Nothing pumped this way counts as a dose into the tank.
+  - **Open:** the canister-change flow; what happens if priming is
+    skipped; whether a "poured back" action corrects the stock (RAT-040,
+    RAT-070).
+- **Calibration** (PD-234, PD-261, PD-264, Q6).
+  - **At the factory:** every shop module is calibrated before shipping.
+    Its value is stored in the module with date and origin "factory",
+    through a factory page in the firmware:
+    - two timed runs, with the grams entered;
+    - the mean is computed;
+    - values outside the window, and two runs that disagree, are
+      rejected;
+    - the value is written to the module and read back.
+  - **What the app shows:** each module's value in ml/min, who measured
+    it and when.
+  - **No valid value, no dose into the tank:** such a pump runs only for
+    priming and calibration, into a cup, and the app guides the user
+    through calibrating it.
+  - **The user's calibration:**
+    - prime into a cup;
+    - two timed runs into a measuring cylinder, then enter the volume;
+    - a third run if the two disagree;
+    - for shop modules, the window check.
+  - **When to recalibrate:**
+    - recommended on the first canister of a thick concentrate;
+    - required after "tube changed" (a new pump head counts as one)
+      before the next dose into the tank.
+  - **Through Home Assistant,** calibrating needs a short BOOT press
+    (PD-229).
+  - **Open:**
+    - whether a user value replaces the factory value or sits next to it;
+    - a reminder by time or by the tube counter;
+    - measuring in ml or by weight with density;
+    - a rejected new value against the existing one;
+    - returning to the factory value after a tube change;
+    - the run length with the new Fine;
+    - how the factory page is protected in shipped firmware, a security
+      point.
+- **Tube counter** (Q12): it counts run time. It lives on the board,
+  keyed by the module's ID, so it follows the module between ports.
+  Its threshold comes from the pump maker and sample measurements.
+- **Supply voltage** (PD-260): no dosing pump runs while the supply is
+  above about 13.2 V ("check power supply"). Threshold, hysteresis, a
+  lower limit and a rise in the middle of a run are open.
+- **Changing a role to or from pH− or pH+** (PD-268, PD-270, PD-273).
+  - **Guided flushing into a cup:** empty the tube, run water through,
+    fill with the new liquid, using the empty and fill flows; it counts
+    on the cup window.
+    - At the pH− container with a usable probe and running circulation,
+      it runs in stages with check pauses.
+    - Through Home Assistant it needs BOOT.
+    - Until it is done, the module doses nothing into the tank in any
+      role; afterwards its tube counts as filled.
+  - **Between nutrient roles,** the app only shows a hint to flush.
+  - **Locks stay through every role change,** also back and forth: the
+    pH jump lock, "outlet checked", the release after the hardware
+    cut-off, no pH− until "fill", "tube not filled".
+  - **Without a usable probe or running circulation,** this flushing
+    needs a short BOOT press and "outlet in cup" on every path, also on
+    the local network. Otherwise it stays blocked, and the app says what
+    is missing. If circulation is set up but off, the app offers to
+    switch it on first.
+  - **What it counts against:** with Fine, such flushing counts only on
+    the cup window, not on the daily pH− limit; with Large on the daily
+    limit until decided otherwise.
+- **A recipe without a pH probe doses nutrients only**, never pH
+  (PD-272).
+- **Mixing and irrigation** (PD-236, Q15).
+  - An irrigation time inside a running mix waits until the mix,
+    including its pH step, is finished.
+  - Nothing irrigates in the pauses between a mix's runs: the
+    irrigation pump's smart plug stays off, and a three-way valve does
+    not switch.
+  - A delay is reported.
+  - **Open:** irrigation from a tank whose mix was aborted.
+- **Low stock** (PD-237, RAT-071; Q10 in PD-239).
+  - **A warning** when a canister's stock does not cover the next mix
+    with the current recipe and usable volume; 150 ml and 20 ml stay as a
+    floor, with no setting per canister.
+  - **A mix does not start** if the stock does not cover it, also into a
+    bucket. EC and pH rounds and hand doses only warn.
+- **Mixing into a bucket or watering can** (PD-238, Q14) is part of
+  stage 0.
+  - **What it doses:** nutrients by recipe, Fine modules only, no pH
+    dosing (a hand measurement and a hint).
+  - **Before and during:** the app asks "Bucket with water underneath?"
+    first and pauses between parts ("stirred?"), since nothing
+    circulates.
+  - **Caps** use the bucket's volume as they use the tank's. A tank mix
+    never runs into the bucket, nor the other way round. The data model
+    gets a second vessel next to the tank.
+  - **Open:**
+    - getting the outlets back into the tank afterwards;
+    - the smallest bucket for which Fine is accurate enough;
+    - how the bucket volume is protected;
+    - whether users with only Large modules see the mode;
+    - jobs through Home Assistant (also remote and in maintenance mode)
+      while the outlets are in the bucket, and confirmations given
+      without seeing the system, a security point.
+- **Values from the old Fine rate are being recalculated** on the
+  product side: its hung-run volume, the cup window, the emergency dose
+  without a probe and similar. No limit is loosened because of the lower
+  rate until the product side confirms the new values.
+- **What changes in SD-066's steps:**
+  - Step 1's stage table becomes a table per model: the maximum rate and
+    the calibration window.
+  - Step 2's simulator gets the two models and the board's cut-off.
+  - Step 5 keeps only the cut-offs, the latches and the supply voltage;
+    the feedback checks are dropped.
+  - Steps 3 to 7 still change when doses are refused, the gateway or
+    protective cut-offs: they need `security` and the project owner's
+    "mergen" (SD-033).
+- **Still open on the product side:**
+  - pH+ without a probe, including a role change;
+  - whether the BOOT exception also applies to a canister change,
+    calibration, first setup and flushing for removal at the pH−
+    container without a probe (until decided: no);
+  - the tube volume per model;
+  - whether "6 free runs per hour" counts jobs or single runs;
+  - the recalculated limits for Fine and for Large in the pH roles;
+  - the residual risks for the risk assessment, and their texts.
+
+
+## SD-085: Product requirement (from PD-235, PD-239): the hub's own pH dose and the jump lock
+
+Recorded on 2026-10-16 from the product answers of 2026-10-15 to P1–P3
+on #162 (SD-029). Built after 0.1.0-proto.5. `domain` checked the
+software side in #278, which carried out S2: a jump lock names only
+causes that can be true.
+
+- **P1, both parts (PD-239).**
+  - **A fixed cap per litre for the hub's own pH doses,** derived from
+    the jump threshold, so an own dose cannot reach a jump: about 1.0 pH
+    ÷ 5.0 pH per ml/L = 0.2 ml/L (RAT-050).
+    - At the measured 5.0 pH per ml/L (RAT-050), 0.2 ml/L reaches the
+      threshold exactly; a stronger effect in soft water still goes past
+      it.
+    - Whether the cap keeps a margin below the threshold goes to the
+      product side as a question when it is built.
+  - **After a lock in the direction of the hub's own dose, the learned
+    pH effect resets to its start value.**
+    - The hub has to know that the lock came from its own dose: a pH fall
+      while an own pH dose doses or settles, up to 1 min after.
+    - That is stored with the lock, so it survives a restart. It also
+      lets the lock's reason name the dose for certain, which #278 names
+      only as one possible cause.
+  - RAT-050 and RAT-057 get the cap and the reset when this is built.
+- **P2 (PD-239).** How far an EC round moves pH is measured on the
+  product side: at the largest EC step, at EC 0.5 and at working EC.
+  - **Until then, the safe side:** an EC round announces `tank.ph` from
+    its start, as it already does `tank.ec`. Today it announces `tank.ph`
+    only from its settle time on.
+  - **A round cut by a Stop** that settles after Resume does the same:
+    `tank.ph` from the start of its settle, `tank.ec` from its first tick
+    (from the review of #191).
+  - **If the measured change is clearly below 1.0,** the announcement of
+    `tank.ph` is dropped, as for the hub's own pH doses (RAT-042).
+  - This explains more pH changes during a round, so it changes a
+    protective function: it needs `security` and the project owner's
+    "mergen" (SD-033).
+- **P3 (PD-235): the lock still lifts by itself.**
+  - A pH jump lock still lifts after 15 min steady, without the user's
+    acknowledgement; RAT-039 and RAT-044 stay as they are.
+  - The residual risk goes into the risk assessment and the manual: a
+    probe fault with a lasting offset lets control dose towards the
+    offset once the lock has lifted, within the per-dose caps.
+  - Whether S1's tails (#162) also belong in the risk assessment is still
+    open on the product side.
+- **S1 stays a software item** (#162): the tails of other announcements.
 
 ---
 

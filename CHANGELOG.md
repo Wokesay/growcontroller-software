@@ -305,21 +305,27 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
-- **Plan: one dosing pump type with speed stages** (SD-066, #132): after
+- **Plan: dosing modules with a fixed rate** (SD-066, SD-084, #132): after
   0.1.0-proto.5, as part of the work for the carrier board, growcontroller
-  will support one pump type that runs at several speeds, reports its
-  speed back and keeps its calibration on a chip in the module. Proposed:
-  a long dose of up to about 20 min runs as many short runs, and the
-  firmware's safety limit ends each run after at most 60 s, so if control
-  fails during a dose, at most one run's amount goes in. Board v0.1 has
-  no time cut-off for the pumps in hardware, which RAT-007 and RAT-018 now
-  say. The safety limits always count as if the pump ran at full speed,
-  and a slow speed is used only where that worst case stays within the
-  dose's limit. With a pump of about 200 ml/min this rules out automatic
-  pH dosing below about 56–139 L, depending on its shortest run, and with
-  the longer one also hand doses up to the default 5 ml, so a low-flow pump for pH− is
-  proposed. Some details are still to be decided. The simulator docs now
-  mark how mixing time grows with the tank as an assumption.
+  will support dosing modules that each run at one fixed rate and keep
+  their calibration on a chip in the module. "Fine" (about 12 ml/min) is
+  for nutrients, additives and pH in tanks up to about 150 L. "Large"
+  (about 220 ml/min) is for tanks from about 100 L. Every dose has a cap
+  derived from the tank's usable volume, below the fixed caps in code. A
+  long dose runs as runs of at most 60 s, and the board ends every run
+  after about 90 s on its own. Priming, calibration and test runs go into
+  a cup, never into the tank, and every module is calibrated at the
+  factory. A mix does not start when a canister's stock does not cover
+  it. Besides the tank, you will be able to mix into a bucket or watering
+  can: nutrients only, no pH. Some details are still to be decided. The
+  simulator docs now mark how mixing time grows with the tank as an
+  assumption.
+- **Plan: the hub's own pH dose and the jump lock** (SD-085, #162): after
+  0.1.0-proto.5, the hub's own pH doses get a fixed cap per litre, so one
+  dose cannot move pH as far as a jump. A lock in the direction of the
+  hub's own dose resets the learned pH effect. Until it is measured how
+  far an EC round moves pH, a round explains a pH change from its start.
+  A pH jump lock still lifts by itself after 15 min steady.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
   SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
   web app can be reached only in the home network (preselected), viewed
