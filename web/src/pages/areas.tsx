@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Bereiche der Anlage: Klima, Licht, Bewässerung. Jede Seite zeigt die
-// Messwerte des Bereichs und seine Schaltausgänge zum manuellen Schalten. Alle
-// Sperren gelten auch hier (Aktor-Gateway); eine abgelehnte Schaltung zeigt
-// den Grund. Automatische Funktionen kommen auf diese Seiten, sobald es sie
-// gibt. In the Home Assistant app nothing is switched here; the page says what
-// was chosen for the area instead (SD-037).
+// Areas of the grow: climate, light, watering. Each page shows the area's
+// readings and its outputs to switch by hand. Every lock applies here too
+// (actuator gateway); a refused switch shows the reason. Automatic functions
+// come to these pages once they exist; until then each page says "manual"
+// (SD-056). In the Home Assistant app nothing is switched here; the page says
+// what was chosen for the area instead (SD-037).
 import type { ComponentChildren } from "preact";
-import { Droplets, Fan, Sun, Thermometer, Zap } from "lucide-preact";
+import { Droplets, Fan, Hand, Sun, Thermometer, Zap } from "lucide-preact";
 import { post, put, type ControlArea, type ControlMode } from "../api";
 import { num } from "../format";
 import { t, type TextKey } from "../i18n";
-import { binding, catalog, config, readOnly, refreshConfig, refreshState, state, toast, toastError } from "../store";
+import { binding, catalog, config, hasRole, readOnly, refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { Banner, Button, Card, Empty, Pill, Term } from "../ui";
 import { MetricTile, useSparks } from "../widgets";
 
@@ -65,16 +65,57 @@ export function OutputRow(p: { role: string; compact?: boolean }) {
   );
 }
 
-function Outputs(p: { roles: string[]; title: TextKey; icon: ComponentChildren }) {
+/** A smart plug has been added: on its card under Devices the user chooses what is plugged in. */
+const plugAdded = () => !!config.value?.devices.some((d) => catalog.value?.deviceClasses[d.class]?.provides.includes("switch.mains"));
+
+type ManualArea = Extract<ControlArea, "climate" | "light" | "irrigation">;
+
+/** The outputs of an area; with none of them assigned, what to connect and where to assign it (SD-056). */
+function Outputs(p: { roles: string[]; title: TextKey; icon: (size: number) => ComponentChildren; area: ManualArea; note?: TextKey }) {
+  if (!p.roles.some(hasRole)) {
+    const plug = plugAdded();
+    return (
+      <Card title={t(p.title)} icon={p.icon(18)}>
+        <div data-testid={`area-empty-${p.area}`}>
+          <Empty
+            icon={p.icon(34)}
+            title={t(`area.empty.${p.area}`)}
+            text={
+              <>
+                {t(`area.empty.${p.area}Text`)}
+                {!plug && <> {t("area.noPlug")}</>}
+              </>
+            }
+            action={
+              <a class="btn" href="#/geraete">
+                {t(plug ? "area.assign" : "area.toDevices")}
+              </a>
+            }
+          />
+        </div>
+      </Card>
+    );
+  }
   return (
-    <Card title={t(p.title)} icon={p.icon}>
+    <Card title={t(p.title)} icon={p.icon(18)}>
       <div class="list">
         {p.roles.map((r) => (
           <OutputRow role={r} />
         ))}
       </div>
-      <p class="faint small">{t("area.manualNote")}</p>
+      {p.note && <p class="muted small">{t(p.note)}</p>}
     </Card>
+  );
+}
+
+/** Climate, light and watering only show values and switch by hand so far: the page says so, and what to keep running (SD-056). */
+function ManualNote(p: { area: ManualArea }) {
+  return (
+    <Banner icon={<Hand size={18} />}>
+      <div data-testid={`manual-${p.area}`}>
+        <strong>{t("area.manual")}:</strong> {t(`area.manual.${p.area}`)}
+      </div>
+    </Banner>
   );
 }
 
@@ -139,6 +180,7 @@ export function ClimatePage() {
   const hasSensor = shown("zone.air_temp") || shown("zone.humidity");
   return (
     <div class="stack">
+      {!readOnly.value && <ManualNote area="climate" />}
       <Card title={t("area.climate")} icon={<Thermometer size={18} />}>
         {hasSensor ? (
           <div class="stack">
@@ -167,7 +209,7 @@ export function ClimatePage() {
       {readOnly.value ? (
         <ControlNote area="climate" title="area.climateDevices" icon={<Fan size={18} />} />
       ) : (
-        <Outputs roles={["zone.exhaust", "zone.circulation_fan", "zone.humidifier", "zone.dehumidifier"]} title="area.climateDevices" icon={<Fan size={18} />} />
+        <Outputs roles={["zone.exhaust", "zone.circulation_fan", "zone.humidifier", "zone.dehumidifier"]} title="area.climateDevices" icon={(n) => <Fan size={n} />} area="climate" note="area.climateNote" />
       )}
     </div>
   );
@@ -177,8 +219,8 @@ export function LightPage() {
   if (readOnly.value) return <ControlNote area="light" title="nav.light" icon={<Sun size={18} />} />;
   return (
     <div class="stack">
-      <Outputs roles={["zone.light"]} title="nav.light" icon={<Sun size={18} />} />
-      <Banner>{t("area.lightNote")}</Banner>
+      <ManualNote area="light" />
+      <Outputs roles={["zone.light"]} title="nav.light" icon={(n) => <Sun size={n} />} area="light" />
     </div>
   );
 }
@@ -190,14 +232,17 @@ export function IrrigationPage() {
       {readOnly.value ? (
         <ControlNote area="irrigation" title="nav.irrigation" icon={<Droplets size={18} />} />
       ) : (
-        <Outputs roles={["zone.irrigation_pump"]} title="nav.irrigation" icon={<Droplets size={18} />} />
+        <>
+          <ManualNote area="irrigation" />
+          <Outputs roles={["zone.irrigation_pump"]} title="nav.irrigation" icon={(n) => <Droplets size={n} />} area="irrigation" />
+        </>
       )}
       {shown("tank.level") ? (
         <div class="grid-3">
           <MetricTile label={t("area.tankLevel")} reading={st.readings["tank.level"]} color="--level" />
         </div>
       ) : (
-        !readOnly.value && <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>  // no pump here to protect
+        !readOnly.value && hasRole("zone.irrigation_pump") && <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>  // only a pump the hub switches is protected
       )}
     </div>
   );

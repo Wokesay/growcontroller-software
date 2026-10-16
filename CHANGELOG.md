@@ -95,6 +95,20 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **The menu is grouped by topic** (#143, SD-056): below Overview and
+  History come small headings for the nutrient solution (mixing, tank
+  and control, recipes and bottles, watering), the room (climate,
+  light) and the system (devices, functions, settings). Watering is now
+  in the same group as the tank it draws from, and recipes in the same
+  group as mixing. On a phone the bottom bar stays as it was, and "More"
+  shows the same headings.
+- **Climate, light and watering say they work by hand** (SD-056): each
+  page is marked "Manual mode". The hub switches on only when you tap and
+  controls nothing by itself, so keep your own timer or controller
+  running: a light on a hub plug goes off at every restart, and only a
+  pump the hub switches is protected from running dry. With nothing
+  assigned, the page says what to connect and where. The Home Assistant
+  app is unchanged, as it switches nothing there.
 - **Plain words instead of developer terms** (#143, SD-055): in German,
   locks now say "Freigabe nötig" and "Freigeben", as the help and the
   English texts do, instead of "Gerastet" and "quittieren". The lock list

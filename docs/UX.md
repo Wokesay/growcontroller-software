@@ -1,6 +1,6 @@
 # Interaction design of the web app
 
-As of 2026-10-06. Basis: the grower view (agent `anwender`) and the
+As of 2026-10-15. Basis: the grower view (agent `anwender`) and the
 outside view of the customer (agent `kunde`, with a critique of
 competitors' apps). Implemented in the prototype unless noted otherwise.
 
@@ -40,21 +40,38 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
 
 ## 2. Navigation
 
-| Section | Content |
-|---|---|
-| Overview | Monitoring, tank with readings and 6-h trend, control lines, running job, stock, cultivation run, latest events |
-| Mixing | Recipe, water, "New batch"/"Top up", preview in ml, guided sequence; manual dose |
-| Tank & control | Control lines with checklist, monitoring in detail, acknowledging latches, tank, outputs, maintenance mode, cultivation run and phases |
-| Climate | Air temperature, humidity, VPD, CO2; exhaust, circulation fan, humidifier, dehumidifier in manual mode (control follows) |
-| Light | Light output in manual mode (light schedule and dimming follow) |
-| Irrigation | Irrigation pump in manual mode with dry-run protection (irrigation schedule follows) |
-| History | pH, EC, water temperature, level with target band and dosing markers; air temperature, humidity, VPD, CO2; events with filters; CSV |
-| Recipes & bottles | Bottle ↔ pump, pairs, stock, "Bottle changed"; recipes, templates |
-| Devices | Ports with test measurement, devices, adding devices, pump and probe calibration; assignment; Expand |
-| Functions | Configuration tree by stage: state, what is missing, switches, settings |
-| Settings | System, access, updates with "What's new", report a problem, data, display |
+The menu is grouped by topic, with a small heading above each group
+(SD-056): Overview and History first, then **Nutrient solution**,
+**Room** and **System**.
 
-On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
+| Group | Section | Content |
+|---|---|---|
+| – | Overview | Monitoring, tank with readings and 6-h trend, control lines, running job, stock, cultivation run, latest events |
+| – | History | pH, EC, water temperature, level with target band and dosing markers; air temperature, humidity, VPD, CO2; events with filters; CSV |
+| Nutrient solution | Mixing | Recipe, water, "New batch"/"Top up", preview in ml, guided sequence; manual dose |
+| Nutrient solution | Tank & control | Control lines with checklist, monitoring in detail, acknowledging latches, tank, outputs, maintenance mode, cultivation run and phases |
+| Nutrient solution | Recipes & bottles | Bottle ↔ pump, pairs, stock, "Bottle changed"; recipes, templates |
+| Nutrient solution | Watering | Watering pump in manual mode with dry-run protection (watering schedule follows); in the same group as the tank, as it draws from it |
+| Room | Climate | Air temperature, humidity, VPD, CO2; exhaust, circulation fan, humidifier, dehumidifier in manual mode (control follows) |
+| Room | Light | Light output in manual mode (light schedule and dimming follow) |
+| System | Devices | Ports with test measurement, devices, adding devices, pump and probe calibration; assignment; Expand |
+| System | Functions | Configuration tree by stage: state, what is missing, switches, settings |
+| System | Settings | System, access, updates with "What's new", report a problem, data, display |
+
+Climate, light and watering carry the label "Handbetrieb" (manual mode)
+as long as they only show values and switch by hand. The hub switches on
+only when tapped and, at every restart, off everything but the fans (R6,
+PD-050): the light page advises plugging the light straight into the
+grower's own timer for fixed light hours, and the watering page says the
+dry-run lock protects only a pump the hub switches. With nothing
+assigned, the page says what to connect and links to Devices, where the
+smart plug's card takes the choice, and says how to add a plug while
+none has been added. The
+Home Assistant app switches nothing there and shows the choice per area
+instead (SD-037).
+
+On a phone: Overview, Mixing, Tank, History, More; "More" lists the
+other pages under the same headings. The **STOP** button
 is always at the top right, except where nothing is
 switched (the Home Assistant trial): there "Nur Anzeige" (display only)
 says why there is no Stop and how to switch off in an emergency (SD-040).

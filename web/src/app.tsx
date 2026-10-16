@@ -23,20 +23,71 @@ import { Welcome } from "./pages/welcome";
 import { SimPanel } from "./pages/sim";
 import { ClimatePage, IrrigationPage, LightPage } from "./pages/areas";
 
-type NavItem = { path: string; label: TextKey; icon: ComponentChildren; mobile?: boolean };
-const NAV: NavItem[] = [
-  { path: "/", label: "nav.overview", icon: <LayoutDashboard size={19} />, mobile: true },
-  { path: "/mischen", label: "nav.mix", icon: <Beaker size={19} />, mobile: true },
-  { path: "/tank", label: "nav.tank", icon: <Droplets size={19} />, mobile: true },
-  { path: "/klima", label: "nav.climate", icon: <Thermometer size={19} /> },
-  { path: "/licht", label: "nav.light", icon: <Sun size={19} /> },
-  { path: "/bewaesserung", label: "nav.irrigation", icon: <Waves size={19} /> },
-  { path: "/verlauf", label: "nav.history", icon: <History size={19} />, mobile: true },
-  { path: "/rezepte", label: "nav.recipes", icon: <FlaskConical size={19} /> },
-  { path: "/geraete", label: "nav.devices", icon: <Cpu size={19} /> },
-  { path: "/funktionen", label: "nav.functions", icon: <SlidersHorizontal size={19} /> },
-  { path: "/einstellungen", label: "nav.settings", icon: <Settings size={19} /> },
+type NavItem = { path: string; label: TextKey; icon: ComponentChildren };
+// The menu by topic, with small headings (SD-056)
+const NAV_GROUPS: { head?: TextKey; items: NavItem[] }[] = [
+  {
+    items: [
+      { path: "/", label: "nav.overview", icon: <LayoutDashboard size={19} /> },
+      { path: "/verlauf", label: "nav.history", icon: <History size={19} /> },
+    ],
+  },
+  {
+    head: "nav.group.nutrient",
+    items: [
+      { path: "/mischen", label: "nav.mix", icon: <Beaker size={19} /> },
+      { path: "/tank", label: "nav.tank", icon: <Droplets size={19} /> },
+      { path: "/rezepte", label: "nav.recipes", icon: <FlaskConical size={19} /> },
+      { path: "/bewaesserung", label: "nav.irrigation", icon: <Waves size={19} /> },
+    ],
+  },
+  {
+    head: "nav.group.room",
+    items: [
+      { path: "/klima", label: "nav.climate", icon: <Thermometer size={19} /> },
+      { path: "/licht", label: "nav.light", icon: <Sun size={19} /> },
+    ],
+  },
+  {
+    head: "nav.group.system",
+    items: [
+      { path: "/geraete", label: "nav.devices", icon: <Cpu size={19} /> },
+      { path: "/funktionen", label: "nav.functions", icon: <SlidersHorizontal size={19} /> },
+      { path: "/einstellungen", label: "nav.settings", icon: <Settings size={19} /> },
+    ],
+  },
 ];
+// The bar at the bottom on phones, in its own order; "More" has the rest
+const MOBILE = ["/", "/mischen", "/tank", "/verlauf"];
+const NAV = NAV_GROUPS.flatMap((g) => g.items);
+
+/** The menu's links under their headings; `skip` leaves out pages shown elsewhere. */
+function NavGroups(p: { idPrefix: string; current?: string; skip?: string[]; onClick?: () => void }) {
+  return (
+    <>
+      {NAV_GROUPS.map((g, i) => {
+        const items = g.items.filter((n) => !p.skip?.includes(n.path));
+        if (!items.length) return null;
+        const headId = g.head ? `${p.idPrefix}-${i}` : undefined;
+        return (
+          <div class="nav-group" role={g.head ? "group" : undefined} aria-labelledby={headId}>
+            {g.head && (
+              <div class="nav-head" id={headId}>
+                {t(g.head)}
+              </div>
+            )}
+            {items.map((n) => (
+              <a href={`#${n.path}`} class={p.current === n.path ? "active" : ""} aria-current={p.current === n.path ? "page" : undefined} onClick={p.onClick}>
+                {n.icon}
+                {t(n.label)}
+              </a>
+            ))}
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
 const PAGES: Record<string, { title: TextKey; el: () => ComponentChildren }> = {
   "/": { title: "nav.overview", el: () => <Overview /> },
@@ -239,16 +290,11 @@ function LiveBadge() {
   );
 }
 
-function MoreSheet(p: { onClose: () => void }) {
+function MoreSheet(p: { current: string; onClose: () => void }) {
   return (
     <Modal title={t("common.more")} onClose={p.onClose}>
       <nav class="nav stack-sm">
-        {NAV.filter((n) => !n.mobile).map((n) => (
-          <a href={`#${n.path}`} onClick={p.onClose}>
-            {n.icon}
-            {t(n.label)}
-          </a>
-        ))}
+        <NavGroups idPrefix="more-nav" current={p.current} skip={MOBILE} onClick={p.onClose} />
       </nav>
     </Modal>
   );
@@ -296,20 +342,8 @@ export function App() {
             <small>{config.value.system.name !== "growcontroller" ? config.value.system.name : t("app.tagline")}</small>
           </div>
         </div>
-        <nav class="nav">
-          {NAV.slice(0, 6).map((n) => (
-            <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
-              {n.icon}
-              {t(n.label)}
-            </a>
-          ))}
-          <div class="sep" />
-          {NAV.slice(6).map((n) => (
-            <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
-              {n.icon}
-              {t(n.label)}
-            </a>
-          ))}
+        <nav class="nav" aria-label={t("nav.label")}>
+          <NavGroups idPrefix="side-nav" current={r.path} />
         </nav>
         <div class="side-foot">
           {readOnly.value ? (  // the setup is for the hub's own dosing hardware
@@ -348,18 +382,19 @@ export function App() {
         </main>
       </div>
       <nav class="bottom-nav">
-        {NAV.filter((n) => n.mobile).map((n) => (
-          <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""}>
+        {MOBILE.map((path) => NAV.find((n) => n.path === path)!).map((n) => (
+          <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""} aria-current={r.path === n.path ? "page" : undefined}>
             {n.icon}
             {t(n.label).split(" ")[0]}
           </a>
         ))}
-        <button onClick={() => setMore(true)}>
+        {/* "More" is marked while one of its pages is open */}
+        <button class={MOBILE.includes(r.path) ? "" : "active"} aria-haspopup="dialog" onClick={() => setMore(true)}>
           <MoreHorizontal size={19} />
           {t("common.more")}
         </button>
       </nav>
-      {more && <MoreSheet onClose={() => setMore(false)} />}
+      {more && <MoreSheet current={r.path} onClose={() => setMore(false)} />}
       {simulated.value && <SimPanel />}
       <Toasts />
     </div>

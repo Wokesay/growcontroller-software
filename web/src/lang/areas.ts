@@ -25,6 +25,22 @@ export const de = {
   "area.noClimateSensorHa": "Kein Klimasensor gewählt",
   "area.noClimateSensorHaText": "Wähle unter Geräte › Zuordnung einen Sensor für Lufttemperatur und Luftfeuchte aus Home Assistant.",
   "area.chooseSensor": "Sensor wählen",
+  // Climate, light and watering only show values and switch by hand so far (SD-056)
+  "area.manual": "Handbetrieb",
+  "area.manual.climate": "Der Hub regelt das Klima noch nicht und schaltet nur ein, wenn du tippst. Was dein Klimaregler steuert, lass vorerst daran. Befeuchter und Entfeuchter am Hub gehen bei jedem Neustart aus.",
+  "area.manual.light": "Der Hub schaltet das Licht nur ein, wenn du tippst, und bei jedem Neustart aus. Für feste Lichtzeiten steck es vorerst direkt in deine Zeitschaltuhr, nicht in eine Steckdose des Hubs.",
+  "area.manual.irrigation": "Der Hub schaltet die Gießpumpe nur ein, wenn du tippst, und gießt noch nicht nach Plan. Lass deine Bewässerungssteuerung laufen; eine Pumpe daran schützt der Hub aber nicht vor Trockenlauf.",
+  // Nothing assigned: what to connect, and where to assign it
+  "area.empty.climate": "Keine Klimageräte zugeordnet",
+  "area.empty.climateText": "Steck jedes Gerät, das der Hub schalten soll (Abluft, Umluft, Befeuchter, Entfeuchter), in eine eigene schaltbare WLAN-Steckdose (Shelly). Unter Geräte wählst du an der Steckdose, was eingesteckt ist.",
+  "area.empty.light": "Kein Licht zugeordnet",
+  "area.empty.lightText": "Zum Schalten von Hand steck das Licht in eine schaltbare WLAN-Steckdose (Shelly) und wähle unter Geräte an der Steckdose „Licht“.",
+  "area.empty.irrigation": "Keine Gießpumpe zugeordnet",
+  "area.empty.irrigationText": "Steck die Gießpumpe in eine schaltbare WLAN-Steckdose (Shelly) und wähle unter Geräte an der Steckdose „Gießpumpe“.",
+  // No smart plug added yet: the way there goes through Devices
+  "area.noPlug": "Noch keine Steckdose am Hub: Bring sie mit der Shelly-App in dein WLAN, dann erscheint sie unter Geräte zum Übernehmen.",
+  "area.toDevices": "Zu den Geräten",
+  "area.climateNote": "Alle Sperren gelten auch von Hand, z. B. nie Befeuchter und Entfeuchter zugleich.",
 } as const;
 
 export const en: Record<keyof typeof de, string> = {
@@ -49,4 +65,17 @@ export const en: Record<keyof typeof de, string> = {
   "area.noClimateSensorHa": "No climate sensor chosen",
   "area.noClimateSensorHaText": "Choose a Home Assistant sensor for air temperature and humidity under Devices › Assignment.",
   "area.chooseSensor": "Choose sensor",
+  "area.manual": "Manual mode",
+  "area.manual.climate": "The hub does not control the climate yet and switches on only when you tap. Leave what your climate controller runs on it. A humidifier or dehumidifier on the hub goes off at every restart.",
+  "area.manual.light": "The hub switches the light on only when you tap, and off at every restart. For fixed light hours, plug it straight into your own timer for now, not into a hub plug.",
+  "area.manual.irrigation": "The hub switches the watering pump on only when you tap and does not water on a schedule yet. Keep your watering controller running, but the hub does not protect a pump on it from running dry.",
+  "area.empty.climate": "No climate devices assigned",
+  "area.empty.climateText": "Plug each device the hub should switch (exhaust, circulation fan, humidifier, dehumidifier) into its own smart plug (Shelly). Under Devices, choose on the plug what is plugged in.",
+  "area.empty.light": "No light assigned",
+  "area.empty.lightText": "To switch it by hand, plug the light into a smart plug (Shelly) and, under Devices, choose the light as what is plugged in.",
+  "area.empty.irrigation": "No watering pump assigned",
+  "area.empty.irrigationText": "Plug the watering pump into a smart plug (Shelly) and, under Devices, choose it as what is plugged in.",
+  "area.noPlug": "No smart plug on the hub yet: add it to your Wi-Fi with the Shelly app, and it shows up under Devices for you to add.",
+  "area.toDevices": "Go to Devices",
+  "area.climateNote": "All safety locks apply when you switch by hand too, e.g. never humidifier and dehumidifier together.",
 };

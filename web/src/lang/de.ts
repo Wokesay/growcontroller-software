@@ -79,6 +79,11 @@ export const deBase = {
   "nav.functions": "Funktionen",
   "nav.settings": "Einstellungen",
   "nav.setup": "Einrichtung",
+  // Headings of the menu by topic (SD-056)
+  "nav.group.nutrient": "Nährlösung",
+  "nav.group.room": "Raum",
+  "nav.group.system": "System",
+  "nav.label": "Menü",
 
   // Begriffe mit Erklärung (Glossar)
   "term.usableVolume": "Nutzvolumen",
@@ -285,13 +290,11 @@ export const deBase = {
   "area.unknown": "unbekannt",
   "area.turnOn": "Einschalten",
   "area.turnOff": "Ausschalten",
-  "area.manualNote": "Manuell schalten: Alle Sperren gelten, z. B. nie Befeuchter und Entfeuchter zugleich. Automatische Regelung ist noch nicht verfügbar.",
   "area.airTemp": "Luft",
   "area.humidity": "Feuchte",
   "area.noClimateSensor": "Kein Klimasensor",
   "area.noClimateSensorText": "Mit dem Sensorkopf Klima misst der Hub Lufttemperatur und Luftfeuchte und berechnet daraus den VPD.",
   "area.expand": "Was fehlt?",
-  "area.lightNote": "Das Licht lässt sich hier manuell schalten. Einen Lichtplan nach Phase gibt es noch nicht; bis dahin bleibt es nach einem Neustart aus.",
   "area.tankLevel": "Füllstand",
   "area.irrigationNeedsLevel": "Die Gießpumpe läuft nur mit gültigem Füllstand über dem Mindestfüllstand – sonst läuft sie trocken. Dafür braucht es den Füllstandssensor.",
 } as const;

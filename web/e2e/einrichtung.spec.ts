@@ -235,6 +235,8 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
     await expect(page.getByTestId(`control-note-${area}`)).toBeVisible();
     await expect(page.locator('[data-testid^="output-"]')).toHaveCount(0);
     await expect(page.getByText(/Manuell schalten|manuell schalten|Gießpumpe läuft nur/)).toHaveCount(0);
+    await expect(page.getByTestId(`manual-${area}`)).toHaveCount(0);  // nothing is switched here, by hand or otherwise (SD-056)
+    await expect(page.locator('[data-testid^="area-empty-"]')).toHaveCount(0);
   }
   await page.goto("/#/licht");
   await expect(page.getByTestId("control-note-light")).toContainText("„Automatisch“ ist vorgemerkt. Diese Version schaltet noch nichts");
@@ -327,6 +329,26 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   await expect(page.getByTestId("control-note-irrigation")).toContainText("Du schaltest das in Home Assistant oder am Gerät.");
   expect((await (await page.request.get("/api/v1/config")).json()).system.control).toEqual({ irrigation: "outside" });
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Without a smart plug, climate, light and watering say how to add one and lead to Devices (SD-056)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  // The demo's power strip taken out: no smart plug left
+  const origin = new URL(page.url()).origin;
+  const cfg = await (await page.request.get("/api/v1/config")).json();
+  for (const d of cfg.devices.filter((x: { class: string }) => x.class.startsWith("shelly_")))
+    expect((await page.request.delete(`/api/v1/devices/${d.id}`, { headers: { Origin: origin } })).ok()).toBe(true);
+  await page.reload();  // the page reads the configuration again
+  for (const [path, area] of [["licht", "light"], ["klima", "climate"], ["bewaesserung", "irrigation"]]) {
+    await page.goto(`/#/${path}`);
+    const empty = page.getByTestId(`area-empty-${area}`);
+    await expect(empty).toContainText("Noch keine Steckdose am Hub");
+    await expect(empty.getByRole("link", { name: "Zuordnen" })).toHaveCount(0);
+    await expect(empty.getByRole("link", { name: "Zu den Geräten" })).toHaveAttribute("href", "#/geraete");
+  }
+  await page.getByTestId("area-empty-irrigation").getByRole("link", { name: "Zu den Geräten" }).click();
+  await expect(page).toHaveURL(/#\/geraete$/);
 });
 
 test("A hub with its own hardware has no introduction of the Home Assistant app", async ({ page, request }) => {
