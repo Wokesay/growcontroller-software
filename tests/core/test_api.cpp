@@ -248,7 +248,7 @@ TEST_CASE("API: Zustand hat die Felder, die die Web-App liest (Vertrag)") {
   CHECK(d.dump().find("salt") == std::string::npos);
 }
 
-TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, SD-082)") {
+TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, SD-083)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -312,7 +312,7 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
 }
 
-TEST_CASE("API: history and CSV name at most 16 series, none twice, each a series id (SD-082)") {
+TEST_CASE("API: history and CSV name at most 16 series, none twice, each a series id (SD-083)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -343,7 +343,7 @@ TEST_CASE("API: history and CSV name at most 16 series, none twice, each a serie
   CHECK(c.ok("GET", "/api/v1/history?series=")["series"].empty());  // none named, none read
 }
 
-TEST_CASE("API: a refused import names at most 50 findings and counts the rest; a newer schema says so (SD-082)") {
+TEST_CASE("API: a refused import names at most 50 findings and counts the rest; a newer schema says so (SD-083)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
@@ -363,7 +363,7 @@ TEST_CASE("API: a refused import names at most 50 findings and counts the rest; 
   }
 }
 
-TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-082)") {
+TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-083)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
@@ -763,7 +763,7 @@ TEST_CASE("Templates: with both names present, the one in the language of the re
 TEST_CASE("System: Sprache nur de oder en") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
-  // A new hub speaks English, and says so before anyone signs in (SD-014, SD-082)
+  // A new hub speaks English, and says so before anyone signs in (SD-014, SD-083)
   CHECK(c.ok("GET", "/api/v1/info")["language"] == "en");
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   c.ok("PUT", "/api/v1/system", {{"language", "de"}});

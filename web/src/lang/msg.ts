@@ -515,7 +515,7 @@ export const msgDe: Record<string, string> = {
   "ev.irrigation.off.text": "{why}.",
   "ev.max_on": "{label} aus: Höchstlaufzeit",
   "ev.max_on.text": "Höchstlaufzeit {min:0}\u00a0min erreicht.",
-  // Refusals of the API and the configuration check (SD-082)
+  // Refusals of the API and the configuration check (SD-083)
   "system.language": "Wähl Deutsch oder Englisch",
   "system.channel": "Kanal muss stable oder beta sein",
   "system.hand": "Die Grenze je manueller Gabe muss zwischen 0,5 und 50\u00a0ml liegen",

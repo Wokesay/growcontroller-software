@@ -3616,7 +3616,7 @@ confirmed)"; it holds until the product side decides otherwise.
   [3] https://raw.githubusercontent.com/espressif/esp-idf/v5.4.1/docs/en/api-reference/system/random.rst
 
 
-## SD-082: English complete for proto.5: English first, the CSV in the page's language, the catalog with keys
+## SD-083: English complete for proto.5: English first, the CSV in the page's language, the catalog with keys
 
 Points 2 and 3 and the sign-in page's language in point 1 were decided
 by the project owner on 2026-10-16 in the software session; the rest of

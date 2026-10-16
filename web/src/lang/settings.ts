@@ -57,7 +57,7 @@ export const de = {
   "settings.restored": "Einstellungen geladen",
   "settings.importNotJson": "Diese Datei ist keine gesicherte Konfiguration.",
   "settings.historyCsv": "Verlauf (CSV, 7 Tage)",
-  // The CSV follows the page's language (RAT-016, SD-082)
+  // The CSV follows the page's language (RAT-016, SD-083)
   "settings.csvFormat": "Für eine Tabellenkalkulation auf Deutsch: Semikolon und Dezimalkomma. Für Komma und Dezimalpunkt stell die Seite auf Englisch.",
 
   // Display and info

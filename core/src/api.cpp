@@ -288,7 +288,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     auto it = req.query.find("series");
     if (auto e = parseSeries(it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second, series))
       return fail(422, *e);
-    // The page's language, else the hub's (RAT-016, SD-082)
+    // The page's language, else the hub's (RAT-016, SD-083)
     auto l = req.query.find("lang");
     const std::string lang = l != req.query.end() && (l->second == "de" || l->second == "en") ? l->second : hub_.language();
     ApiResponse r;

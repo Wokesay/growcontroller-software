@@ -9,7 +9,7 @@ UI can do, an integration can do as well.
 - `GET /info` is public: version, platform, whether a password is set,
   whether the first password needs a setup code (`setupCode`, #79) and
   the hub's language (`language`, `de` or `en`; a new hub is `en`), which
-  a sign-in page without a choice of its own uses (SD-082).
+  a sign-in page without a choice of its own uses (SD-083).
 - `POST /auth/setup {password, code}` sets the initial password, exactly
   once (otherwise 409). Where the platform armed a setup code (the Home
   Assistant app prints it to its log, SD-068), `code` from the JSON body
@@ -101,7 +101,7 @@ the rest. Every refusal has a key of its own and an English
 text: those of the API, the sign-in, the configuration check, a
 calibration and the import, also the transport's (`api.origin`,
 `api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
-(SD-082).
+(SD-083).
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested

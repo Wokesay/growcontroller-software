@@ -95,14 +95,14 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
-- **English first** (#143, #18, SD-014, SD-082): a new hub is set to
+- **English first** (#143, #18, SD-014, SD-083): a new hub is set to
   English. The first-password page starts with the language choice, set
   to English; what you pick there carries into setup, whose first field
   is the language, as in the Home Assistant app's introduction. A browser
   where you have not picked a language no longer follows the browser's
   own language: it shows the hub's language, from the sign-in page on. A
   hub you already use keeps its language through the update.
-- **The CSV export in the page's language** (RAT-016, SD-082): from a
+- **The CSV export in the page's language** (RAT-016, SD-083): from a
   German page as before, with semicolons and a decimal comma
   (`growcontroller-verlauf.csv`); from an English page with commas and a
   decimal point (`growcontroller-history.csv`). Gaps stay empty in both.
@@ -116,7 +116,7 @@ listed in every release under "Security".
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
   names the hub's language (`language`); `/export.csv` takes `lang=de`
   or `lang=en` and otherwise uses the hub's.
-- **Refusals in the page's language** (#143, #18, SD-082): every refusal
+- **Refusals in the page's language** (#143, #18, SD-083): every refusal
   of the hub now comes with a key of its own and an English text, and an
   English page shows English, a German page German: signing in and
   changing the password, adding devices and assigning roles, bottles,

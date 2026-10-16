@@ -135,7 +135,7 @@ test("no other core text uses a key of the table", () => {
   }
 });
 
-// The hub sends English and the web app translates by key (SD-082): the
+// The hub sends English and the web app translates by key (SD-083): the
 // refusals of the API, the sign-in and the configuration check hold no
 // German text of their own.
 test("the API, the sign-in and the configuration check send no German text", () => {
@@ -218,7 +218,7 @@ test("durations and ages join the number and its unit with a no-break space", ()
   // No other text joins a placeholder and a unit of time with a plain space
   const plain = /\}[ \t]+(s|min|h|Tage|Tagen|days)\b/;
   for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, plain, `messages.cpp: ${k}`);
-  // The hub's messages: a written number and its unit of time too (SD-082)
+  // The hub's messages: a written number and its unit of time too (SD-083)
   const written = /\d[ \t]+(s|min|h)\b/;
   for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, written, `messages.cpp: ${k}`);
   for (const line of msg.split("\n")) assert.doesNotMatch(line, written, `msg.ts: ${line.trim()}`);

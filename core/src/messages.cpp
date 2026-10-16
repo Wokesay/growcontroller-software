@@ -534,7 +534,7 @@ constexpr Entry kMessages[] = {
     {"ev.irrigation.off.text", "{why}."},
     {"ev.max_on", "{label} off: maximum run time"},
     {"ev.max_on.text", "Maximum run time of {min:0}\u00a0min reached."},
-    // Refusals of the API and the configuration check (SD-082)
+    // Refusals of the API and the configuration check (SD-083)
     {"system.language", "Choose English or German"},
     {"system.channel", "Choose the update channel Stable or Beta"},
     {"system.hand", "The limit per manual dose must be between 0.5 and 50\u00a0ml"},

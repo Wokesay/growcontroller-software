@@ -207,7 +207,7 @@ json migrateConfig(json j) {
 Config configFromJson(const json& in) {
   json j = migrateConfig(in);
   Config c;
-  c.system.language = "de";  // a saved file without a language was saved under the old default (SD-014, SD-082)
+  c.system.language = "de";  // a saved file without a language was saved under the old default (SD-014, SD-083)
   c.schemaVersion = j.value("schemaVersion", kSchemaVersion);
   c.revision = j.value("revision", 0);
   if (j.contains("system")) {

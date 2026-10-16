@@ -731,7 +731,7 @@ json Hub::info() const {
           {"hasPassword", auth_.hasPassword()},
           {"setupCode", auth_.setupCodeRequired()},  // the first password needs the code from the log (#79)
           {"name", cfg_.system.name},
-          {"language", cfg_.system.language == "de" ? "de" : "en"}};  // the sign-in page's, before a choice in the browser (SD-082)
+          {"language", cfg_.system.language == "de" ? "de" : "en"}};  // the sign-in page's, before a choice in the browser (SD-083)
 }
 
 json Hub::state() {
@@ -863,7 +863,7 @@ std::string Hub::language() const {
 std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to, const std::string& lang) const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   // German: semicolon and decimal comma; English: comma and decimal point, so
-  // a spreadsheet in either language reads the numbers (RAT-016, SD-082)
+  // a spreadsheet in either language reads the numbers (RAT-016, SD-083)
   const bool en = lang != "de";
   const char sep = en ? ',' : ';';
   std::ostringstream os;
