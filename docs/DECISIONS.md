@@ -3991,7 +3991,6 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
      and a function's group stay English.
 
 
-
 ## SD-084: Product requirement (from PD-222, PD-223, PD-227, PD-232 to PD-234, PD-236 to PD-239, PD-260 to PD-266, PD-268, PD-270, PD-272, PD-273): dosing modules with a fixed rate, caps from the usable volume, runs into a cup, bucket mixing
 
 Recorded on 2026-10-16 from the product decisions of 2026-10-15 and
