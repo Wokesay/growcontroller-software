@@ -54,16 +54,16 @@ function StepBasics(p: { step: number; next: () => void }) {
       <h2 tabIndex={-1}>{t("welcome.basics.h")}</h2>
       <p class="muted">{t("welcome.basics.intro")}</p>
       <div class="form-grid">
+        <div class="field">
+          <span>{t("common.language")}</span>
+          <Seg<Lang> value={lang.value} onChange={setLang} options={[["en", "English"], ["de", "Deutsch"]]} />
+        </div>
         <Field label={t("welcome.basics.name")} hint={t("welcome.basics.nameHint")}>
           <input class="input" name="hubname" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </Field>
         <Field label={t("setup.start.tz")} hint={state.value!.setupDone ? undefined : t("setup.start.tzHint")}>
           <input class="input" value={tz} disabled />
         </Field>
-        <div class="field">
-          <span>{t("common.language")}</span>
-          <Seg<Lang> value={lang.value} onChange={setLang} options={[["de", "Deutsch"], ["en", "English"]]} />
-        </div>
         <div class="field">
           <span>{t("settings.theme")}</span>
           <Seg<Theme>

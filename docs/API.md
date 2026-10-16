@@ -66,7 +66,7 @@ UI can do, an integration can do as well.
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
 | GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to` | CSV |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history: `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
@@ -88,7 +88,10 @@ UI can do, an integration can do as well.
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 
-Errors come as `{"error":{"key","text"},"errors":[…]}`.
+Errors come as `{"error":{"key","text","args"},"errors":[…]}`. When the
+configuration check refuses a change (422), `error` is the first of its
+findings in `errors`, with its key and arguments, so a page can show it
+in its own language.
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested

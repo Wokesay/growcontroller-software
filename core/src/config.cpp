@@ -218,7 +218,8 @@ Config configFromJson(const json& in) {
     // rather than making the file unreadable; an import refuses it (Hub::importConfig).
     if (s.contains("timezone") && s["timezone"].is_string() && isTimeZoneName(s["timezone"].get<std::string>()))
       c.system.timezone = s["timezone"];
-    c.system.language = s.value("language", c.system.language);
+    // German was the default before English (SD-014): a file without the field keeps it
+    c.system.language = s.value("language", std::string("de"));
     c.system.updateCheck = s.value("updateCheck", true);
     c.system.updateChannel = s.value("updateChannel", c.system.updateChannel);
     // Only known areas and modes; anything else is left out rather than refusing the file.

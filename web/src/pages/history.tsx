@@ -5,7 +5,7 @@ import { Download, History, LineChart } from "lucide-preact";
 import { get, type HubEvent, type SeriesData } from "../api";
 import { TimeChart, type Marker } from "../chart";
 import { hasRole, readOnly, state } from "../store";
-import { msg, t, type TextKey } from "../i18n";
+import { lang, msg, t, type TextKey } from "../i18n";
 import { Card, Seg } from "../ui";
 import { EventList } from "../widgets";
 import { ROLES } from "../ha";
@@ -80,7 +80,7 @@ export function HistoryPage() {
   const markers = (purposes: string[]): Marker[] =>
     doses.filter((e) => purposes.includes(e.data?.purpose)).map((e) => ({ t: e.ts, label: msg(e.title), color: e.data?.purpose === "ph" ? "--ph" : "--ec" }));
   const now = st.now;
-  const csv = `/api/v1/export.csv?series=${series.join(",")}&from=${now - span}&to=${now}`;
+  const csv = `/api/v1/export.csv?series=${series.join(",")}&from=${now - span}&to=${now}&lang=${lang.value}`;  // the page's format (RAT-016)
 
   return (
     <div class="stack">

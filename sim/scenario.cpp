@@ -368,6 +368,7 @@ void Simulation::configureDemo() {
   if (opts_.password.empty()) opts_.password = "demo-passwort";
   h.auth().setInitialPassword(opts_.password);
   if (h.saveAuth()) h.markPasswordSet();  // on disk before the long prefill: a start cut short must not leave setup open
+  h.setSystem({{"language", "de"}});  // its names and recipes are German; a new hub speaks English (SD-014)
   h.acceptDevice("DB-7A31C0", "Dosierblock 1");
   h.acceptDevice("CAP-1F02A4", "Pumpe grün");
   h.acceptDevice("CAP-1F02B7", "Pumpe orange");

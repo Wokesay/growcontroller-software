@@ -138,7 +138,7 @@ function Report() {
     const blob = new Blob([JSON.stringify({ ...diag, beschreibung: text }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `growcontroller-diagnose-${diag.reportId}.json`;
+    a.download = `growcontroller-diagnostics-${diag.reportId}.json`;
     a.click();
   };
   const issue = diag
@@ -309,7 +309,7 @@ export function SettingsPage() {
                   }}
                 />
               </label>
-              <a class="btn" href="/api/v1/export.csv" download>
+              <a class="btn" href={`/api/v1/export.csv?lang=${lang.value}`} download>
                 <Download size={15} /> {t("settings.historyCsv")}
               </a>
             </div>
@@ -334,7 +334,7 @@ export function SettingsPage() {
                   await put("/system", { language: l });
                   await refreshConfig();
                 }}
-                options={[["de", "Deutsch"], ["en", "English"]]}
+                options={[["en", "English"], ["de", "Deutsch"]]}
               />
             </div>
             <div class="divider" />

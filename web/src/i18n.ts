@@ -23,9 +23,9 @@ function initial(): Lang {
     const saved = localStorage.getItem(STORE);
     if (saved === "de" || saved === "en") return saved;
   } catch {
-    // privater Modus: Browser-Sprache
+    // private mode: no saved choice
   }
-  return (navigator.language || "de").toLowerCase().startsWith("de") ? "de" : "en";
+  return "en";  // English first until a choice is made here or on the hub (SD-014)
 }
 
 export const lang = signal<Lang>(initial());

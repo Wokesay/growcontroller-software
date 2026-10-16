@@ -78,7 +78,9 @@ class Hub {
   json history(const std::string& series, Epoch from, Epoch to, size_t points) const;
   json events(Epoch from, Epoch to, const std::string& type, size_t limit) const;
   json diagnostics();
-  std::string exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to) const;
+  std::string language() const;  // the hub's own, "de" or "en" (SD-014)
+  // lang "en": comma and decimal point; otherwise German, semicolon and decimal comma
+  std::string exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to, const std::string& lang) const;
 
   // ---- Einrichtung
   Result completeSetup();

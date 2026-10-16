@@ -152,13 +152,13 @@ function StepStart(p: { step: number; next: () => void }) {
       <p class="muted">{t("setup.start.intro")}</p>
       <Banner>{t("setup.start.pw")}</Banner>
       <div class="form-grid">
+        <div class="field">
+          <span>{t("common.language")}</span>
+          <Seg<Lang> value={lang.value} onChange={pick} options={[["en", "English"], ["de", "Deutsch"]]} />
+        </div>
         <Field label={t("setup.start.name")} hint={t("setup.start.nameHint")}>
           <input class="input" name="hubname" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </Field>
-        <div class="field">
-          <span>{t("common.language")}</span>
-          <Seg<Lang> value={lang.value} onChange={pick} options={[["de", "Deutsch"], ["en", "English"]]} />
-        </div>
         <div class="field">
           <span>{t("setup.start.zoneKind")}</span>
           <Seg<ZoneKind>

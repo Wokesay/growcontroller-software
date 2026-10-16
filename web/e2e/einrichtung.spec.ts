@@ -329,6 +329,33 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test.describe("A new hub and browser", () => {
+  test.use({ pageLang: null });
+
+  test("start in English with the language first; German chosen there carries into setup (SD-014)", async ({ page, request }) => {
+    await scenario(request, "neu");
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    const choice = page.getByTestId("first-lang");
+    await expect(choice.getByRole("tab")).toHaveText(["English", "Deutsch"]);
+    await expect(choice.getByRole("tab", { name: "English" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "Set password" })).toBeVisible();
+    // The choice is the first thing on the page, above the password
+    const [langBox, pwBox] = [await choice.boundingBox(), await page.locator("input[name=password]").boundingBox()];
+    expect(langBox && pwBox && langBox.y < pwBox.y).toBe(true);
+    await choice.getByRole("tab", { name: "Deutsch" }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await page.locator("input[name=password]").fill("mein-passwort");
+    await page.locator("input[name=password2]").fill("mein-passwort");
+    await page.getByRole("button", { name: "Passwort festlegen" }).click();
+    // Setup opens with the language as its first field, still German
+    const first = page.locator(".form-grid > *").first();
+    await expect(first).toContainText("Sprache");
+    await expect(first.getByRole("tab", { name: "Deutsch" })).toHaveAttribute("aria-selected", "true");
+    expect((await (await page.request.get("/api/v1/config")).json()).system.language).toBe("en");  // the hub's until setup saves it
+  });
+});
+
 test("A hub with its own hardware has no introduction of the Home Assistant app", async ({ page, request }) => {
   await scenario(request, "neu");
   await page.goto("/");

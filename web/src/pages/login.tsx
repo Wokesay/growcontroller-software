@@ -5,9 +5,9 @@ import { useState } from "preact/hooks";
 import { KeyRound, Sprout } from "lucide-preact";
 import { post } from "../api";
 import { afterLogin, errorText, hasPlugs, info, sessionExpired } from "../store";
-import { t } from "../i18n";
+import { lang, setLang, t, type Lang } from "../i18n";
 import { sourceUrl } from "../source";
-import { Banner, Field } from "../ui";
+import { Banner, Field, Seg } from "../ui";
 
 export function Login() {
   const first = !info.value?.hasPassword;
@@ -55,6 +55,11 @@ export function Login() {
         )}
         {first ? (
           <>
+            {/* The language comes first, English chosen until the user picks another (SD-014) */}
+            <div class="field" data-testid="first-lang">
+              <span>{t("common.language")}</span>
+              <Seg<Lang> value={lang.value} onChange={(l) => setLang(l)} options={[["en", "English"], ["de", "Deutsch"]]} />
+            </div>
             <div>
               <h2>{t("setup.start.h")}</h2>
               <p class="muted">{t("login.firstText")}</p>

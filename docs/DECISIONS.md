@@ -3616,6 +3616,47 @@ confirmed)"; it holds until the product side decides otherwise.
   [3] https://raw.githubusercontent.com/espressif/esp-idf/v5.4.1/docs/en/api-reference/system/random.rst
 
 
+
+## SD-082: English complete for proto.5: English first, the CSV in the page's language, the catalog with keys
+
+Points 2 and 3 were decided by the project owner on 2026-10-16 in the
+software session; point 1 carries out SD-014 (PD-027, PD-035) as SD-055
+asks for proto.5 (#143, #18, #73).
+
+1. **English first (SD-014):**
+   - a new hub speaks English (system language `en`). A saved
+     configuration without a language stays German, as it was saved
+     under the old default; an update never changes a hub's language;
+   - a browser without a choice of its own starts in English, also
+     before the first login, and does not follow the browser's language;
+   - the first-password page shows the language choice first, with
+     English chosen. The choice stays in the browser and carries into
+     setup, whose first field is the language (the Home Assistant app's
+     introduction too); setup saves it as the hub's language;
+   - the simulator's demo scenarios stay German, as their names and
+     recipes are German;
+   - a recipe template in an unknown system language falls back to
+     English.
+2. **The CSV export follows the page's language** (extends RAT-016):
+   - German: semicolons, a decimal comma, the header `zeit_utc`, the
+     file `growcontroller-verlauf.csv`;
+   - English: commas, a decimal point, the header `time_utc`, the file
+     `growcontroller-history.csv`;
+   - without a language from the page, the hub's decides. A gap stays an
+     empty field in both, never 0.
+   - Not chosen: always semicolons and a decimal comma (an English
+     spreadsheet does not read the numbers), always commas and a decimal
+     point (a German one does not).
+3. **The catalog in both languages with keys** (a later pull request):
+   - `catalog/catalog.json` becomes English; the German names come from
+     a table in the web app by catalog id, as the messages do (SD-032);
+   - the hub sends a catalog name as a nested message with a key, so an
+     event shows in the language of the page that reads it, also later;
+   - a test checks that every catalog id has both languages.
+   - Not chosen: `labelDe`/`labelEn` beside each entry, as the recipe
+     templates have (a second way next to the keys, and events stored in
+     the language of their day).
+
 ---
 
 ## Drafts (waiting for "entschieden")
