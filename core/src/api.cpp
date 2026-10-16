@@ -180,6 +180,8 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("POST", {"auth", "setup"})) {
     // Pflichtpasswort bei der Ersteinrichtung; danach nur noch mit Anmeldung änderbar.
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    // A password file it cannot read is kept: no new password over it, and no factory reset advised (SD-081)
+    if (hub_.passwordUnreadable()) return fromResult(Result::fail(423, say("auth.kept", {{"file", "auth.json"}})));
     if (hub_.credentialsLost())
       return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
     const Auth before = hub_.auth();
@@ -238,6 +240,8 @@ ApiResponse Api::route(const ApiRequest& req) {
       return fail(403, e.key, e.text);
     }
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    // A password file the hub cannot read is kept as it is (SD-081): nothing is written over it
+    if (hub_.passwordUnreadable()) return fromResult(Result::fail(423, say("auth.kept.direct", {{"file", "auth.json"}})));
     if (m == "DELETE") {
       // Also one whose file could not be read: removed, it is no longer missing
       if (!hub_.auth().hasPassword() && !hub_.credentialsLost()) return jsonResp(200, {{"ok", true}});

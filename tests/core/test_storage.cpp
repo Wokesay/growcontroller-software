@@ -452,6 +452,37 @@ TEST_CASE("Storage: a hub file the simulator cannot read runs it in memory only,
   CHECK(files() == before);
 }
 
+TEST_CASE("Storage: a file that is there but cannot be read is told from one that is not there (SD-081)") {
+  TempDir dir;
+  sim::FileStorage store(dir.path.string());
+  CHECK_FALSE(store.unreadable("config.json"));  // not there
+  { std::ofstream(dir.path / "config.json") << "{}"; }
+  CHECK_FALSE(store.unreadable("config.json"));
+  fs::create_symlink("state.json", dir.path / "state.json");  // a link to itself
+  CHECK_FALSE(store.read("state.json"));
+  CHECK(store.unreadable("state.json"));
+  { std::ofstream(dir.path / "auth.json") << "{}"; }
+  fs::permissions(dir.path / "auth.json", fs::perms::none);
+  if (std::ifstream(dir.path / "auth.json"))
+    MESSAGE("a file it may not open: not checked, this process reads any file (root or equivalent)");
+  else
+    CHECK(store.unreadable("auth.json"));
+  sim::FileStorage none("");  // memory only: nothing on disk to be unreadable
+  CHECK_FALSE(none.unreadable("config.json"));
+}
+
+TEST_CASE("Storage: a file that cannot be opened or read to the end is neither a missing nor a shorter one (SD-081)") {
+  // A folder in its place stands in for a read error of the disk: it opens
+  // and reading it fails, or it does not open (Windows)
+  TempDir dir;
+  fs::create_directories(dir.path / "state.json");
+  sim::FileStorage store(dir.path.string());
+  CHECK_FALSE(store.read("state.json"));  // not "" (a broken file to replace)
+  CHECK(store.unreadable("state.json"));
+  CHECK_FALSE(store.readError("state.json").value_or("").empty());  // why, for the server's output
+  CHECK_FALSE(store.readError("config.json"));  // not there
+}
+
 TEST_CASE("Storage: a first setup that failed does not keep the alarm once the card takes files again (#68)") {
   TempDir dir;
   sim::Options o = test::opts("neu");

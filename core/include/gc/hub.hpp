@@ -10,6 +10,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "gc/auth.hpp"
 #include "gc/clock.hpp"
@@ -50,6 +51,10 @@ class Hub {
     act_.setNet(n);
   }
   void setPlatform(json p) { platform_ = std::move(p); }
+  // The files the hub reads from its storage, and the copies of broken ones
+  // it writes: one list for all who handle its folder (#212).
+  static const std::vector<std::string>& files();
+  static const std::vector<std::string>& brokenCopies();
   void boot();
   void tick();
   void flush();     // saves what is not on disk yet: password, state, new events
@@ -65,6 +70,10 @@ class Hub {
   const Config& config() const { return cfg_; }
   // Passwort war gesetzt, auth.json fehlt aber: kein Setup über das Netz.
   bool credentialsLost() const { return cfg_.system.passwordSet && !auth_.hasPassword(); }
+  // auth.json is there but cannot be read: no first password over it (SD-081)
+  bool passwordUnreadable() const;
+  // The files that were there but could not be read at the start (SD-081)
+  const std::vector<std::string>& unreadableFiles() const { return unreadable_; }
   void markPasswordSet();
   // A password removed on purpose (SD-077): no longer missing, so no alarm.
   void clearPasswordSet();
@@ -145,6 +154,7 @@ class Hub {
   void watchClock(Ms now);
   void shiftDeadlines(Epoch jump, Epoch epoch);
   void saveState();
+  bool stopKeepingState();  // a state.json kept unread is written anew from here (SD-081)
   void saveJob();
   void saveEvents();    // appends the new events to the journal
   void saveSnapshot();  // history and events whole; empties their journals
@@ -229,6 +239,8 @@ class Hub {
   std::uint64_t savedEventId_ = 0;
   std::uint64_t journaledEvents_ = 0;  // in the events journal since its snapshot
   std::set<std::string> unsaved_;      // files whose last write failed
+  std::set<std::string> kept_;         // not written: unreadable at the start, or its partner, until written anew (SD-081)
+  std::vector<std::string> unreadable_;  // there but unreadable at the start
   Epoch lastRetry_ = 0, snapshotRetryAt_ = 0, snapshotBackoffS_ = 10;
   std::string jobOnDisk_;  // what job.json should hold
   bool authCleared_ = false;  // auth.json emptied on purpose (SD-077), written so again if that fails

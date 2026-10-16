@@ -68,7 +68,9 @@ The app has two ways in; the listener decides which, never the request.
   SAMEORIGIN` (Home Assistant shows the app in its own frame).
 - A password file the app cannot read leaves the direct port closed, with
   an alarm that points to setting a new password through Ingress; the
-  way through Ingress keeps working.
+  way through Ingress keeps working. One that is there but cannot be read
+  is kept (SD-081): `PUT` and `DELETE /auth/direct` answer 423
+  `auth.kept.direct` until it can be read again.
 - **Origin:** the `Host` header must be an IP, `localhost` or a name in the
   home network (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`;
   against DNS rebinding). Write requests from a browser are accepted only
@@ -78,6 +80,10 @@ The app has two ways in; the listener decides which, never the request.
   `api.internal`; the server keeps running. If the password is lost
   (`auth.json` is missing although a password was set), `/auth/setup`
   refuses with 423 `auth.lost`: a factory reset on the device is needed.
+  If `auth.json` is there but cannot be read, it refuses with 423
+  `auth.kept` first, whether or not a password is known to be set: the
+  file is kept, and a restart that can read it again brings it back
+  (SD-081).
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
   Exception: an unknown area or mode in `system.control` is left out, as

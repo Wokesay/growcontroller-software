@@ -691,6 +691,48 @@ TEST_CASE("Home Assistant: as the app, a password file it cannot read points to 
   CHECK(alarmText({{"kind", "home-assistant"}}) == "ev.credentials_lost.text");  // its own login (the ESP's too): a reset on the device
 }
 
+TEST_CASE("Home Assistant: as the app, a password file it cannot read is kept, and the direct password waits for it (SD-077, SD-081)") {
+  // A password file that is there but cannot be read (SD-081)
+  struct UnreadableAuth : gc::MemoryStorage {
+    std::optional<std::string> read(const std::string& name) override {
+      return name == "auth.json" ? std::nullopt : gc::MemoryStorage::read(name);
+    }
+    bool unreadable(const std::string& name) override { return name == "auth.json"; }
+  };
+  const gc::Catalog cat = ha::catalog();
+  UnreadableAuth store;
+  test::Clock clk;
+  ha::HaBus bus;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.setPlatform({{"kind", "home-assistant"}, {"signIn", "home-assistant"}});
+  hub.boot();
+  const json evs = hub.events(0, 4000000000, "", 50)["events"];  // kept: a loop over a temporary's part would dangle
+  std::string alarm;
+  for (const auto& e : evs)
+    if (e["title"]["key"] == "ev.kept.auth") alarm = e["text"]["key"].get<std::string>();
+  CHECK(alarm == "ev.kept.auth.platform");  // signing in through Home Assistant still works
+  gc::Api api(hub, clk);
+  api.platformSignIn(true);
+  gc::ApiRequest set;
+  set.method = "PUT";
+  set.path = "/api/v1/auth/direct";
+  set.user = gc::PlatformUser{"0123456789abcdef0123456789abcdef", "Alex"};
+  set.body = json{{"password", "direkt-passwort"}}.dump();
+  const gc::ApiResponse put = api.handle(set);
+  CHECK(put.status == 423);
+  CHECK(json::parse(put.body)["error"]["key"] == "auth.kept.direct");
+  gc::ApiRequest remove = set;
+  remove.method = "DELETE";
+  remove.body.clear();
+  CHECK(api.handle(remove).status == 423);
+  CHECK(store.gc::MemoryStorage::read("auth.json") == std::nullopt);  // nothing written over it
+  gc::ApiRequest state = set;
+  state.method = "GET";
+  state.path = "/api/v1/state";
+  state.body.clear();
+  CHECK(api.handle(state).status == 200);  // the way through Home Assistant keeps working
+}
+
 TEST_CASE("Home Assistant: states become samples in the hub's units; missing stays missing (R5)") {
   ha::HaBus bus({{"sensor.ph", "ph"}, {"sensor.ec", "ec"}, {"sensor.temp", "water_temp"}, {"sensor.level", "level"}, {"sensor.ec2", "ec"}});
   const gc::Ms now = 600000;

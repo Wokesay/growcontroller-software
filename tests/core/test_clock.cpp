@@ -4,10 +4,15 @@
 // intervals that an outage never stretches.
 #include <doctest/doctest.h>
 
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "client.hpp"
 #include "fakes.hpp"
+#include "gc/api.hpp"
 #include "gc/clock.hpp"
 #include "gc/hub.hpp"
 
@@ -34,6 +39,85 @@ bool hasEvent(Client& c, const std::string& title) {
 void fakeRandom(std::uint8_t* p, size_t n) {
   static std::uint8_t x = 7;
   for (size_t i = 0; i < n; ++i) p[i] = x += 31;
+}
+
+// A storage whose locked files are there but cannot be read (as root's files
+// after a start with sudo, or a read error of the flash): read() gives no
+// value for them, as for a missing file. Every write to one is noted; a file
+// written whole is the hub's own again and can be read.
+struct LockedStorage : gc::MemoryStorage {
+  std::set<std::string> locked;
+  std::vector<std::string> writtenOver;
+  std::optional<std::string> read(const std::string& n) override { return locked.count(n) ? std::nullopt : MemoryStorage::read(n); }
+  bool unreadable(const std::string& n) override { return locked.count(n) > 0; }
+  bool write(const std::string& n, const std::string& d) override {
+    if (locked.erase(n)) writtenOver.push_back(n);
+    return MemoryStorage::write(n, d);
+  }
+  bool append(const std::string& n, const std::string& d) override {
+    if (locked.count(n)) writtenOver.push_back(n);
+    return MemoryStorage::append(n, d);
+  }
+  std::optional<std::string> held(const std::string& n) { return MemoryStorage::read(n); }  // what is on "disk"
+};
+
+// The first password through the API, as the web app sets it.
+int setupPassword(gc::Hub& h, test::Clock& clk, std::string* key = nullptr) {
+  gc::Api api(h, clk);
+  gc::ApiRequest r;
+  r.method = "POST";
+  r.path = "/api/v1/auth/setup";
+  r.body = R"({"password":"mein-passwort"})";
+  const gc::ApiResponse res = api.handle(r);
+  if (key) *key = json::parse(res.body, nullptr, false).value("/error/key"_json_pointer, std::string());
+  return res.status;
+}
+
+// The files a hub leaves after a run (settings, state, events and history,
+// snapshots and journals; with a password, auth.json).
+void finishedRun(gc::IStorage& store, test::Clock& clk, bool password = false) {
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub first(cat, bus, store, clk, fakeRandom);
+  first.boot();
+  if (password) REQUIRE(setupPassword(first, clk) == 200);
+  for (int i = 0; i < 5; ++i) {
+    clk.ms += 60000;
+    first.tick();
+  }
+  first.flush();
+}
+
+// Whether a mix now needs the confirmation against mixing twice (RAT-003);
+// adds a bottle and a recipe the first time.
+bool mixNeedsConfirmation(gc::Hub& h) {
+  if (h.configJson()["recipes"].empty()) {
+    REQUIRE(h.putCanister({{"name", "Teil A"}, {"capacityMl", 1000}}).status == 200);
+    REQUIRE(h.putRecipe({{"name", "Wachstum"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 1.0}}}}}).status == 200);
+  }
+  const json plan = h.mixPlan({{"recipe", "wachstum"}, {"waterL", 10}}).body;
+  for (const auto& e : plan["errors"])
+    if (e.value("key", std::string()) == "mix.recent") return true;
+  return false;
+}
+
+// How often the hub said this event (since this time).
+int said(gc::Hub& h, const std::string& title, gc::Epoch since = 0) {
+  const json events = h.events(since, 9999999999, "", 2000)["events"];  // held: a loop over a temporary's part dangles
+  int n = 0;
+  for (const auto& e : events) n += sameEvent(e, title);
+  return n;
+}
+
+// How often the hub said that this file cannot be read and is kept: by what
+// it holds (config, state, auth, job, events, history), naming the file.
+int keptSaid(gc::Hub& h, const std::string& file, gc::Epoch since = 0) {
+  const std::string kind = file.substr(0, file.find('.'));
+  const json events = h.events(since, 9999999999, "", 2000)["events"];
+  int n = 0;
+  for (const auto& e : events)
+    n += sameEvent(e, "ev.kept." + kind) && e["text"]["args"].value("file", std::string()).find(file) != std::string::npos;
+  return n;
 }
 
 }  // namespace
@@ -354,6 +438,364 @@ TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is
   CHECK(alarm);
   REQUIRE(h.resume().status == 200);
   CHECK(h.state()["stopped"] == false);
+}
+
+TEST_CASE("Restart: a run-time state that cannot be read keeps everything stopped and is kept until Stop or Resume (SD-081)") {
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk);
+  const auto kept = store.held("state.json");
+  REQUIRE(kept);
+  store.locked = {"state.json"};
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Epoch since = 0;  // what the last start said is said from here
+  const auto restart = [&] {
+    clk.ms += 60000;
+    auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+    h->boot();
+    since = h->state()["now"];
+    return h;
+  };
+  auto h = restart();
+  CHECK(h->state()["stopped"] == true);  // whether a Stop was in force is unknown (PD-076)
+  CHECK(keptSaid(*h, "state.json", since) == 1);
+  CHECK(said(*h, "ev.stop_kept", since) == 0);  // the alarm says why everything stays off
+  for (int i = 0; i < 30; ++i) {
+    clk.ms += 60000;
+    h->tick();
+  }
+  h->flush();
+  CHECK(store.writtenOver.empty());
+  CHECK(store.held("state.json") == kept);
+
+  SUBCASE("still unreadable after a restart: still stopped, still kept") {
+    h = restart();
+    CHECK(h->state()["stopped"] == true);
+    CHECK(keptSaid(*h, "state.json", since) == 1);
+    h->flush();
+    CHECK(store.writtenOver.empty());
+    CHECK(store.held("state.json") == kept);
+  }
+  SUBCASE("readable again: the restart goes on from it") {
+    store.locked.clear();
+    h = restart();
+    CHECK(h->state()["stopped"] == false);
+    CHECK(keptSaid(*h, "state.json", since) == 0);
+  }
+  SUBCASE("a Stop writes it anew: the Stop holds over a restart (PD-076)") {
+    REQUIRE(h->stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);
+    CHECK(store.writtenOver == std::vector<std::string>{"state.json"});
+    CHECK(said(*h, "ev.stop", since) == 1);  // logged, though the hub was stopped already (RAT-036)
+    CHECK(said(*h, "ev.kept.state_replaced", since) == 1);  // the old locks and stock levels are gone
+    h = restart();
+    CHECK(h->state()["stopped"] == true);
+    CHECK(keptSaid(*h, "state.json", since) == 0);
+    CHECK(said(*h, "ev.stop_kept", since) == 1);
+  }
+  SUBCASE("Resume writes it anew, and from then on it is saved as usual") {
+    REQUIRE(h->resume().status == 200);
+    CHECK(store.writtenOver == std::vector<std::string>{"state.json"});
+    REQUIRE(h->stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);
+    h = restart();
+    CHECK(h->state()["stopped"] == true);
+    REQUIRE(h->resume().status == 200);
+    h = restart();
+    CHECK(h->state()["stopped"] == false);
+  }
+}
+
+TEST_CASE("Restart: a run-time state that is broken or cannot be read errs on the safe side against mixing twice and a dry run (RAT-003, SD-067, SD-081)") {
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk);
+  SUBCASE("cannot be read") { store.locked = {"state.json"}; }
+  SUBCASE("broken") { store.MemoryStorage::write("state.json", "[1, 2"); }
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  const gc::Epoch bootAt = h.state()["now"];
+  REQUIRE(h.resume().status == 200);
+  clk.ms += 1000;
+  h.tick();  // the first tick, a second after the start
+  // a mix may have ended just before the restart: the window counts from the start
+  CHECK(mixNeedsConfirmation(h));
+  clk.ms += 31 * 60000;
+  h.tick();
+  CHECK_FALSE(mixNeedsConfirmation(h));
+  // when a dry-run latch last released itself is unknown, it counts as the start: a dry-run
+  // latch within the hour after it holds for a person (SD-067)
+  const json saved = json::parse(store.held("state.json").value_or("{}"), nullptr, false);
+  const json released = saved.value("/selfReleased/circulation.dry"_json_pointer, json());
+  REQUIRE(released.is_number());
+  CHECK(released.get<gc::Epoch>() >= bootAt);
+  CHECK(released.get<gc::Epoch>() <= bootAt + 60);
+}
+
+TEST_CASE("Restart: an unknown run-time state counts a mix as just ended also with the clock at 0 (RAT-003, SD-081)") {
+  // a device right after power-on: no secured time, nothing saved with a time
+  LockedStorage store;
+  test::Clock clk;
+  clk.start = 0;
+  clk.isSecured = false;
+  store.MemoryStorage::write("state.json", "{}");
+  store.locked = {"state.json"};
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  REQUIRE(h.resume().status == 200);
+  CHECK(h.state()["lastMixAt"].get<gc::Epoch>() > 0);  // 0 would mean "never mixed"
+  CHECK(mixNeedsConfirmation(h));
+}
+
+TEST_CASE("Restart: each file the hub reads, when it cannot be read, is said once and never written over, nor its journal or snapshot (SD-081)") {
+  // a snapshot and its journal belong together: neither is written without the other
+  const std::map<std::string, std::string> partner = {
+      {"events.json", "events.log"}, {"events.log", "events.json"}, {"history.bin", "history.log"}, {"history.log", "history.bin"}};
+  for (const std::string& name : gc::Hub::files()) {
+    CAPTURE(name);
+    LockedStorage store;
+    test::Clock clk;
+    finishedRun(store, clk, true);
+    if (!store.held(name)) store.MemoryStorage::write(name, "{}");  // one the run did not leave
+    std::set<std::string> kept = {name};
+    if (partner.count(name)) kept.insert(partner.at(name));
+    std::map<std::string, std::optional<std::string>> before;
+    for (const std::string& f : gc::Hub::files()) before[f] = store.held(f);
+    store.locked = {name};  // only this one cannot be read
+    gc::Catalog cat = gc::Catalog::builtin();
+    test::FakeBus bus;
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    CHECK(keptSaid(h, name) == 1);
+    for (const auto& [f, other] : partner)
+      if (f != name && kept.count(f)) CHECK(keptSaid(h, f) == 0);  // one entry for the pair (docs/UX.md §1)
+    // what would write each file: a change to the settings, a password, the ticks, the way out
+    CHECK(h.setSystem({{"name", "Zelt 2"}}).status == 200);
+    h.saveAuth();  // with auth.json kept, there is no password to save
+    for (int i = 0; i < 30; ++i) {
+      clk.ms += 60000;
+      h.tick();
+    }
+    h.flush();
+    CHECK(store.writtenOver.empty());
+    for (const std::string& f : kept) CHECK_MESSAGE(store.held(f) == before[f], f);
+    // the others are still saved
+    if (name != "config.json") CHECK(store.held("config.json") != before["config.json"]);
+    if (name != "state.json") CHECK(store.held("state.json") != before["state.json"]);
+    if (!kept.count("events.log")) CHECK(store.held("events.log") != before["events.log"]);
+    CHECK(said(h, "ev.storage_failed") == 0);  // said once as kept, not as a full card
+    CHECK(said(h, "ev.credentials_lost") == 0);  // a factory reset would wipe what is kept
+  }
+}
+
+TEST_CASE("Restart: a journal is not written while its snapshot is kept, also before the start ends (SD-081)") {
+  // Factory settings with a password on the card: the start marks the
+  // password as set and saves the settings, with the events, before it
+  // reads the history.
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk, true);
+  store.MemoryStorage::write("config.json", "not json");
+  for (const auto& [snapshot, journal] : {std::pair{"events.json", "events.log"}, std::pair{"history.bin", "history.log"}}) {
+    CAPTURE(snapshot);
+    LockedStorage copy = store;
+    const auto snapshotBefore = copy.held(snapshot), journalBefore = copy.held(journal);
+    copy.locked = {snapshot};
+    gc::Catalog cat = gc::Catalog::builtin();
+    test::FakeBus bus;
+    gc::Hub h(cat, bus, copy, clk, fakeRandom);
+    h.boot();
+    CHECK(keptSaid(h, snapshot) == 1);
+    h.flush();
+    CHECK(copy.writtenOver.empty());
+    CHECK(copy.held(snapshot) == snapshotBefore);
+    CHECK(copy.held(journal) == journalBefore);
+  }
+  SUBCASE("both of a pair unreadable: one entry, naming both (docs/UX.md §1)") {
+    store.locked = {"events.json", "events.log"};
+    gc::Catalog cat = gc::Catalog::builtin();
+    test::FakeBus bus;
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    CHECK(said(h, "ev.kept.events") == 1);
+    CHECK(keptSaid(h, "events.json") == 1);
+    CHECK(keptSaid(h, "events.log") == 1);
+  }
+}
+
+TEST_CASE("Restart: a current job that cannot be read counts as a mix cut off by the restart against mixing twice (RAT-003, SD-081)") {
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk);
+  store.MemoryStorage::write("job.json", "{}");
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  {
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    CHECK(h.state()["lastMixAt"] == 0);  // what the window counts from without the file
+  }
+  store.locked = {"job.json"};
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(keptSaid(h, "job.json") == 1);
+  CHECK(h.state()["lastMixAt"] == h.state()["now"]);
+  CHECK(mixNeedsConfirmation(h));  // within 30 min of the start
+  clk.ms += 31 * 60000;
+  h.tick();
+  CHECK_FALSE(mixNeedsConfirmation(h));
+}
+
+TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kept writes it anew, with the Stop (RAT-044, SD-081)") {
+  // a pH probe taken out to be cleaned while everything is off: the jump locks it
+  LockedStorage store;
+  test::Clock clk;
+  gc::Config cfg;
+  cfg.devices = {{"PH-1", "head_ph_ec", "pH/EC"}};
+  cfg.tank().roles["tank.ph"] = {"PH-1", 0};
+  cfg.calibrations["PH-1"]["ph"] = {{"points", {{7.18, 7.0}, {4.27, 4.0}}}};
+  store.MemoryStorage::write("config.json", json(cfg).dump());
+  store.MemoryStorage::write("state.json", R"({"stopped": false})");  // what it held: running
+  store.locked = {"state.json"};
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  bus.head("PH-1");
+  auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  REQUIRE(h->state()["stopped"] == true);
+  for (int i = 0; i < 6; ++i) {
+    bus.set("PH-1", "measure.ph", 6.18 + 0.001 * i, clk.ms);  // about pH 6.0
+    clk.ms += 5000;
+    h->tick();
+  }
+  CHECK(store.writtenOver.empty());  // nothing new yet: still kept
+  bus.set("PH-1", "measure.ph", 7.40, clk.ms);
+  clk.ms += 1000;
+  h->tick();
+  REQUIRE(h->state()["readings"]["tank.ph"]["quality"] == "jump");
+  CHECK(store.writtenOver == std::vector<std::string>{"state.json"});
+  CHECK(said(*h, "ev.kept.state_replaced") == 1);
+  const json saved = json::parse(store.held("state.json").value_or("{}"), nullptr, false);
+  CHECK(saved.value("stopped", false) == true);
+  CHECK(saved.value("/jumpLocks/tank.ph"_json_pointer, json()).is_number());
+  // a restart that reads it keeps both: stopped, and the reading locked
+  h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  CHECK(h->state()["stopped"] == true);
+  bus.set("PH-1", "measure.ph", 7.401, clk.ms);
+  clk.ms += 1000;
+  h->tick();
+  CHECK(h->state()["readings"]["tank.ph"]["quality"] == "jump");
+}
+
+TEST_CASE("Restart: a job started while job.json is kept writes it anew, so a restart during it is reported (R6, RAT-003, SD-081)") {
+  LockedStorage store;
+  test::Clock clk;
+  gc::Config cfg;
+  cfg.devices = {{"CAP-1", "pump_cap", "Pumpe"}};
+  store.MemoryStorage::write("config.json", json(cfg).dump());
+  store.MemoryStorage::write("job.json", R"({"type":"mix","state":"done"})");  // what it held: a job that ended
+  store.locked = {"job.json"};
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  bus.head("CAP-1", true, "pump_cap");
+  bus.devs.back().info = {{"flowMlPerMin", 60.0}};  // calibrated
+  {
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    clk.ms += 1000;
+    h.tick();  // the pump is found
+    REQUIRE(h.putCanister({{"name", "Teil A"}, {"pump", "CAP-1"}, {"capacityMl", 1000}}).status == 200);
+    REQUIRE(h.putRecipe({{"name", "Wachstum"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 1.0}}}}}).status == 200);
+    const gc::Result started = h.mixStart({{"recipe", "wachstum"}, {"waterL", 10}, {"guided", true}, {"confirmRepeat", true}});
+    REQUIRE_MESSAGE(started.status == 200, started.body.dump());
+    CHECK(store.writtenOver == std::vector<std::string>{"job.json"});
+  }  // the power is cut while it runs
+  clk.ms += 60000;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  const gc::Epoch since = h.state()["now"];
+  CHECK(keptSaid(h, "job.json", since) == 0);
+  CHECK(said(h, "ev.mix_reboot", since) == 1);  // reported as cut off
+  CHECK(mixNeedsConfirmation(h));  // the window counts from the restart
+}
+
+TEST_CASE("Restart: a password file that cannot be read locks the first password and never says to reset (SD-081)") {
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk, true);
+  const auto kept = store.held("auth.json");
+  REQUIRE(kept);
+  SUBCASE("settings readable: the password is known to be set") {}
+  SUBCASE("settings unreadable too: factory settings, the password is not known to be set") { store.locked.insert("config.json"); }
+  store.locked.insert("auth.json");
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(keptSaid(h, "auth.json") == 1);
+  CHECK(said(h, "ev.credentials_lost") == 0);  // its advice, a factory reset, would wipe the password
+  CHECK(h.armSetupCode().empty());  // no code for a setup that cannot happen (#79)
+  std::string key;
+  CHECK(setupPassword(h, clk, &key) == 423);
+  CHECK(key == "auth.kept");
+  h.flush();
+  CHECK(store.held("auth.json") == kept);
+  CHECK(store.writtenOver.empty());
+}
+
+TEST_CASE("Restart: the hub reads exactly the files it lists (#212)") {
+  // what the simulator checks and removes (SD-074) comes from this list
+  struct Reads : gc::MemoryStorage {
+    std::set<std::string> names;
+    std::optional<std::string> read(const std::string& n) override {
+      names.insert(n);
+      return MemoryStorage::read(n);
+    }
+  } store;
+  test::Clock clk;
+  finishedRun(store, clk);
+  store.names.clear();
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(store.names == std::set<std::string>(gc::Hub::files().begin(), gc::Hub::files().end()));
+}
+
+TEST_CASE("Restart: the hub writes only the files it lists and the copies of broken ones (#212)") {
+  // what the simulator removes on a scenario change (SD-074) comes from these lists
+  struct Writes : gc::MemoryStorage {
+    std::set<std::string> names;
+    bool write(const std::string& n, const std::string& d) override {
+      names.insert(n);
+      return MemoryStorage::write(n, d);
+    }
+    bool append(const std::string& n, const std::string& d) override {
+      names.insert(n);
+      return MemoryStorage::append(n, d);
+    }
+  } store;
+  test::Clock clk;
+  finishedRun(store, clk, true);
+  for (const char* broken : {"config.json", "state.json", "history.bin"}) store.MemoryStorage::write(broken, "not what it should be");
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  REQUIRE(h.resume().status == 200);
+  for (int i = 0; i < 30; ++i) {
+    clk.ms += 60000;
+    h.tick();
+  }
+  h.flush();
+  std::set<std::string> own(gc::Hub::files().begin(), gc::Hub::files().end());
+  own.insert(gc::Hub::brokenCopies().begin(), gc::Hub::brokenCopies().end());
+  for (const std::string& n : store.names) CHECK_MESSAGE(own.count(n), n);
+  for (const std::string& copy : gc::Hub::brokenCopies()) CHECK_MESSAGE(store.names.count(copy), copy);  // each one written here
 }
 
 TEST_CASE("Restart: unreadable settings start with factory settings and name the reason (SD-032)") {

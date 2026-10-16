@@ -121,6 +121,17 @@ is being saved again" comes once all of them are on disk. A new password is
 refused with "Not saved" instead of pretending. The Home Assistant server
 does not start with a data folder it cannot write.
 
+Reading (SD-081): a file that is there but cannot be read (no permission,
+a read error) is kept as it is. The hub starts as with a broken file, says
+so with one alarm per kind of data, and does not write over the file while
+it is kept; a snapshot and its journal are kept together. `state.json`: the
+hub starts stopped, and the first Stop or Resume, or a new lock or latch,
+writes it anew ("Saved state replaced"). `config.json`: factory settings. `auth.json`: no first
+password over it (423 `auth.kept`). `job.json`: a second mix within 30
+minutes of the start needs confirmation, and the next job writes it anew.
+Changes the kept files would hold stay in memory; a restart after the file
+is readable again reads it as it was.
+
 **Versioning:**
 
 - `schemaVersion` is an integer. Migrations are pure functions
@@ -130,7 +141,8 @@ does not start with a data folder it cannot write.
     history from before the update stays under `tent.*`.
 - If the file cannot be read, the hub starts with factory settings and all
   actuators off. It reports this loudly and saves the broken file as
-  `config.broken.json`.
+  `config.broken.json`. A file it cannot open or read at all is kept as
+  it is instead, and not written over in that run (SD-081).
 - `revision` counts every change. It is meant as an ETag against
   concurrent editing.
 

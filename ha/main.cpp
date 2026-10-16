@@ -398,6 +398,10 @@ int main(int argc, char** argv) {
   if (app) platform["signIn"] = "home-assistant";  // the web app's way in: Home Assistant's, through Ingress (SD-077)
   hub.setPlatform(platform);
   hub.boot();
+  // Also here, where who runs it looks: the hub's alarm needs a sign-in (SD-081)
+  for (const std::string& name : hub.unreadableFiles())
+    std::cerr << (std::filesystem::path(data) / name).string() << ": cannot be read (" << store.readError(name).value_or("unknown")
+              << "), so it is kept as it is and not written over. Check its owner and permissions, or the disk, then restart.\n";
   ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
   // Without --app the first password needs a code that only who reads this
   // output sees (#79). As an app there is no first password over the
