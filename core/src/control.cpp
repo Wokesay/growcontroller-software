@@ -545,7 +545,7 @@ void PhController::stopRound() {
 
 namespace {
 
-// A refill in steps with a check of each rise (SD-080). Assumptions, not measured (RAT-038):
+// A refill in steps with a check of each rise (SD-081). Assumptions, not measured (RAT-038):
 constexpr Epoch kRefillPauseS = 10 * 60;   // pause after each fill; its rise is checked at the end
 constexpr double kOpenMarginMin = 1.0;     // a fill closes this much before max_open_min
 constexpr double kRiseShare = 0.5;         // the level must rise by at least this share of what flowed in
@@ -587,7 +587,7 @@ Irrigation irrigation(const Ctx& c, const ControlEnv& env) {
   return !on ? Irrigation::Unknown : *on ? Irrigation::On : Irrigation::None;
 }
 
-// The saved record is read without throwing: a damaged one never stops the hub (SD-080)
+// The saved record is read without throwing: a damaged one never stops the hub (SD-081)
 double jnumOr(const json& j, const char* key, double fallback) {
   return j.is_object() && j.contains(key) && j[key].is_number() ? j[key].get<double>() : fallback;
 }
@@ -599,7 +599,7 @@ Epoch jepoch(const json& j, const char* key) {
 
 // A check added to the fills not confirmed before it: from where the first began, what flowed in all and
 // how long the valve was open, on the curve the check's readings were taken on. A value not known stays
-// so (R5), and the fills are then judged as damaged (SD-080)
+// so (R5), and the fills are then judged as damaged (SD-081)
 json unconfirmedOf(const json& k, const json& u) {
   const bool earlier = u.is_object();
   const double fillL = jnumOr(k, "expectedL", kNaN);
@@ -639,7 +639,7 @@ void RefillController::toCheck(const Ctx& c, double expectedL, double openMin) {
 void RefillController::levelCommitted(RuntimeState& rt, const json& curve) {
   // A level calibration committed a new curve during a person's work: its points needed a sensor
   // that follows the tank, so a move across this curve counts. A session cancelled, or a curve
-  // imported, shows nothing of the sensor (SD-080)
+  // imported, shows nothing of the sensor (SD-081)
   if (rt.refill.is_object() && rt.refill.contains("unconfirmed") && rt.refill["unconfirmed"].is_object() &&
       rt.refill["unconfirmed"].contains("personL"))
     rt.refill["unconfirmed"]["calibrated"] = curve;
@@ -679,7 +679,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
   // happened before it is not known, and so does a Stop: a person may be at the tank. Only irrigation
   // may end the wait early: it reads the level too high, so a fill comes out smaller; a hand fill or
-  // draining could make it larger (RAT-038, SD-080).
+  // draining could make it larger (RAT-038, SD-081).
   if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
   const Ms settleSince = settleSince_;
@@ -733,7 +733,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   // A mix or a hand dose ends the steps, also one that runs only during a fill or the pause after it:
-  // the next step would dilute it (SD-080)
+  // the next step would dilute it (SD-081)
   if (env.userJob && step_ < steps_) {
     endSteps();
     if (rec.contains("check")) rec["check"]["more"] = false;
@@ -779,7 +779,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       checkLine();
       return;
     }
-    // Seen open, saved once a minute: a restart then counts what may have flowed until then (SD-080)
+    // Seen open, saved once a minute: a restart then counts what may have flowed until then (SD-081)
     if (rec.contains("fill") && c.epoch - jepoch(rec["fill"], "seenAt") >= 60) rec["fill"]["seenAt"] = c.epoch;
     const bool done = c.now - startedMs_ >= plannedMs_;
     const bool sensorStop = level.usable() && *level.value >= targetL_ + 1.0;
@@ -810,7 +810,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
         keepForPerson(c, levelNow);  // a person stopped it or works at the tank: not judged now
         return;
       }
-      // Judged at the end of the pause, against what flowed while the valve was open (SD-080)
+      // Judged at the end of the pause, against what flowed while the valve was open (SD-081)
       toCheck(c, done ? plannedL_ : flowedL, ranMin);
       rec["check"]["more"] = step_ < steps_;
       checkLine();
@@ -826,7 +826,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // A person at the tank (Stop, maintenance, and above the function switched off): a rise checked now
   // would say nothing, but what flowed is kept, with the level read now. A reading that has moved from
   // it by the next fill follows the tank, as after a water change; one that stays, as a stuck sensor
-  // does, holds the next fill to what is left (SD-080)
+  // does, holds the next fill to what is left (SD-081)
   if (!automation(c, st_)) {
     endSteps();
     keepForPerson(c, levelNow);
@@ -842,12 +842,12 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   // A person calibrating the level may fill or drain the tank: kept as through a Stop, from the level
-  // read when it began (#256, SD-080)
+  // read when it began (#256, SD-081)
   if (env.levelCalibrating) keepForPerson(c, levelNow);
 
   // At the end of the pause: did the level rise by at least half of what flowed in? If not, a leak,
   // an empty supply, a stuck valve or a level sensor that does not follow look the same: the inlet
-  // waits for a person (RAT-031, SD-080). Fills whose rise is not confirmed yet (too small to judge,
+  // waits for a person (RAT-031, SD-081). Fills whose rise is not confirmed yet (too small to judge,
   // or not judged) are added up from where the first began; two not judged in a row latch too.
   if (rec.contains("check")) {
     json& k = rec["check"];
@@ -959,7 +959,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   }
   // The valve may stay open max_open_min, the inlet's fault limit (RAT-031, RAT-032): a fill planned
   // longer would end as a fault. One fill keeps it open a minute less (half as long, if that is
-  // shorter), so a late tick still closes it first; the rest comes in steps (#155, SD-080).
+  // shorter), so a late tick still closes it first; the rest comes in steps (#155, SD-081).
   const double openFitsMin = isNum(maxOpen) ? maxOpen - std::min(kOpenMarginMin, maxOpen / 2) : std::numeric_limits<double>::infinity();
   const double fits = flow * openFitsMin;
   if (fits < 0.5) {
@@ -982,7 +982,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   // Every fill is judged from the level when it opens: not while the reading still follows irrigation,
-  // draining or a valve opened by hand (RAT-038, SD-080). A reading that never settles for half an hour
+  // draining or a valve opened by hand (RAT-038, SD-081). A reading that never settles for half an hour
   // (irrigation every few minutes) does not keep the tank short: the fill goes ahead, marked as irrigated.
   bool unsettled = false;
   if (c.now - disturbedMs_ < kSettleMs) {

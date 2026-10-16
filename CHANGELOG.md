@@ -312,7 +312,7 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
-- **A large refill no longer latches the inlet** (#155, SD-080): a
+- **A large refill no longer latches the inlet** (#155, SD-081): a
   refill planned longer than the valve may stay open ("Ventil höchstens
   offen", 15 min by default) ran into that limit, which shut the inlet as
   a fault and waited for a person, after every refill from a nearly empty
@@ -733,7 +733,7 @@ Safety and robustness fixes, no vulnerability:
 A protective cut-off added:
 
 - **A refill after which the level did not rise latches the inlet**
-  (#155, SD-080, RAT-031): no refill checked that water arrived. With an
+  (#155, SD-081, RAT-031): no refill checked that water arrived. With an
   empty supply, a leak, a stuck valve or a level sensor that does not
   follow, the inlet opened again after every pause for as long as the
   level read below the start level. Now, at the end of each fill's pause,
@@ -766,7 +766,7 @@ A protective cut-off added:
 A protective cut-off relaxed on purpose:
 
 - **A large refill no longer ends in the open-time latch** (#155,
-  SD-080): a fill planned longer than the valve may stay open used to be
+  SD-081): a fill planned longer than the valve may stay open used to be
   cut by that limit, which latched the inlet. That also stopped a large
   refill from a level reading wrongly low after one fill. A fill now
   stops a minute before the limit and the rest follows in steps, also

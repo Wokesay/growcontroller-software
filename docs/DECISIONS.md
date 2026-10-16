@@ -3271,7 +3271,7 @@ The software side's proposals, as decided:
   `ha/app/DOCS.md`, the link in the web app and the weekly job.
 
 
-## SD-080: A refill stays within the inlet's open time, checks its rise and fills in steps
+## SD-081: A refill stays within the inlet's open time, checks its rise and fills in steps
 
 Decided by the project owner on 2026-10-15 in the software session
 (#155), on the proposal of `domain`.
@@ -3444,7 +3444,7 @@ Decided by the project owner on 2026-10-15 in the software session
     and latch: it belongs bound as `zone.irrigation_pump` (#233).
   - A valve opened at the device itself (its button, its own app) gets no
     open-time limit from the hub, only its own auto-off and the capacity
-    and level cut-offs (older than SD-080, #228).
+    and level cut-offs (older than SD-081, #228).
   - A person who closes the inlet in the app sees the refill open it again
     after the pause, if the level is still low (#233).
 - **One pull request:** the cap alone would have widened a gap. Before
