@@ -183,6 +183,8 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("POST", {"auth", "setup"})) {
     // Pflichtpasswort bei der Ersteinrichtung; danach nur noch mit Anmeldung änderbar.
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    // A password file it cannot read is kept: no new password over it, and no factory reset advised (SD-081)
+    if (hub_.passwordUnreadable()) return fromResult(Result::fail(423, say("auth.kept", {{"file", "auth.json"}})));
     if (hub_.credentialsLost())
       return fail(423, say("auth.lost"));
     const Auth before = hub_.auth();

@@ -33,6 +33,10 @@ constexpr const char* kJobFile = "job.json";
 // journal that only grows, so an SD card is not rewritten for every value.
 constexpr const char* kHistoryLog = "history.log";
 constexpr const char* kEventsLog = "events.log";
+// Copies of a broken file, written once at the start and never read
+constexpr const char* kConfigBroken = "config.broken.json";
+constexpr const char* kStateBroken = "state.broken.json";
+constexpr const char* kHistoryBroken = "history.broken.bin";
 constexpr Epoch kSnapshotS = 24 * 3600;
 // Never more events in the journal than the log keeps, so failed logins
 // (refused cheaply while locked) cannot fill the card.
@@ -150,15 +154,34 @@ void Hub::logEvent(const std::string& type, const std::string& sev, Msg title, M
 void Hub::boot() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   doser_.setBootTag(newId("b"));  // Bus-Job-IDs über Neustarts eindeutig
-  if (auto s = store_.read(kEventsFile)) {
+  // A file that is there but cannot be read (no permission, a read error) is
+  // kept as it is: the hub starts as with a broken one, says so, and does not
+  // write over it (SD-081). state.json is written anew at a Stop or Resume or
+  // a new lock or latch, job.json by the next job. A snapshot and its journal
+  // go together: neither is written while the other is kept, from the moment
+  // it is read.
+  const auto read = [&](const char* name) {
+    std::optional<std::string> s = store_.read(name);
+    if (!s && store_.unreadable(name)) {
+      unreadable_.push_back(name);
+      kept_.insert(name);
+      for (const auto& [snapshot, journal] : {std::pair{kEventsFile, kEventsLog}, std::pair{kHistoryFile, kHistoryLog}})
+        if (name == std::string(snapshot) || name == std::string(journal)) {
+          kept_.insert(snapshot);
+          kept_.insert(journal);
+        }
+    }
+    return s;
+  };
+  if (auto s = read(kEventsFile)) {
     auto j = json::parse(*s, nullptr, false);
     if (!j.is_discarded()) log_.load(j);
   }
-  if (auto s = store_.read(kEventsLog)) log_.replay(*s);
+  if (auto s = read(kEventsLog)) log_.replay(*s);
   savedEventId_ = log_.lastId();
   // Time base first (PD-069): without a secured time the clock continues
   // from the moment saved last; a newer event moves it forward by at most 1 h.
-  const std::optional<std::string> stateRaw = store_.read(kStateFile);
+  const std::optional<std::string> stateRaw = read(kStateFile);
   const json stateJson = stateRaw ? json::parse(*stateRaw, nullptr, false) : json();
   const bool stateObj = stateJson.is_object();
   const std::uint32_t boot = stateObj && stateJson.contains("bootCount") && stateJson["bootCount"].is_number_unsigned()
@@ -170,7 +193,7 @@ void Hub::boot() {
   bootMs_ = clock_.nowMs();
   lastTickEpoch_ = bootEpoch_;
   lastTickMs_ = bootMs_;
-  if (auto s = store_.read(kConfigFile)) {
+  if (auto s = read(kConfigFile)) {
     auto j = json::parse(*s, nullptr, false);
     std::optional<Msg> broken;
     if (j.is_discarded()) {
@@ -192,12 +215,20 @@ void Hub::boot() {
     if (broken) {
       // Mit der letzten guten Konfiguration ist hier nichts mehr zu retten:
       // Werkseinstellung, alle Aktoren aus, laut melden (Vorschlag architekt).
-      writeFile("config.broken.json", *s);
+      writeFile(kConfigBroken, *s);
       cfg_ = Config{};
       log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", *broken}}));
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
+  // A run-time state that is broken or cannot be read is unknown: what
+  // protects the tank errs on the safe side
+  const auto unknownState = [&] {
+    rt_ = RuntimeState{};
+    rt_.stopped = true;  // whether an emergency stop was active is unknown: stopped until someone resumes (PD-076)
+    rt_.lastMixAt = std::max<Epoch>(bootEpoch_, 1);  // a mix may have just ended: a second one needs confirmation (RAT-003)
+    rt_.selfReleased["circulation.dry"] = 0;  // when a dry run last released itself is unknown: the next one holds (SD-067)
+  };
   if (stateRaw) {
     std::optional<Msg> broken;
     if (!stateObj) {
@@ -210,24 +241,25 @@ void Hub::boot() {
       }
     }
     if (broken) {
-      // Whether a Stop was active is unknown: keep everything
-      // stopped until someone resumes (fail-safe, PD-076).
-      writeFile("state.broken.json", *stateRaw);
-      rt_ = RuntimeState{};
-      rt_.stopped = true;
+      writeFile(kStateBroken, *stateRaw);
+      unknownState();
       log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", *broken}}));
     }
+  } else if (kept_.count(kStateFile)) {
+    unknownState();  // as with a broken one (SD-081)
   }
-  if (auto s = store_.read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
+  const bool stateKept = kept_.count(kStateFile) > 0;
+
+  if (auto s = read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
   if (auth_.hasPassword() && !cfg_.system.passwordSet) {
     cfg_.system.passwordSet = true;  // Geräte von vor dieser Kennzeichnung nachziehen
     saveConfig({});
   }
-  if (credentialsLost())
+  if (credentialsLost() && !passwordUnreadable())  // its advice, a factory reset, would wipe a kept one
     log_.add(bootEpoch_, "system", "alarm", say("ev.credentials_lost"), say("ev.credentials_lost.text"));
-  if (auto s = store_.read(kHistoryFile))
-    if (!history_.load(*s)) writeFile("history.broken.bin", *s);  // kept: the snapshot at the end of boot replaces it
-  if (auto s = store_.read(kHistoryLog)) {
+  if (auto s = read(kHistoryFile))
+    if (!history_.load(*s)) writeFile(kHistoryBroken, *s);  // kept: the snapshot at the end of boot replaces it
+  if (auto s = read(kHistoryLog)) {
     std::set<std::string> ids = {"tank.volume"};  // only series the hub records
     for (const auto& [roleId, role] : cat_.roles)
       if (role.series) ids.insert(roleId);
@@ -240,16 +272,16 @@ void Hub::boot() {
   // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
-  if (stopped_)
+  if (stopped_ && !stateKept)  // a kept state says why everything stays off
     log_.add(bootEpoch_, "system", "alarm", say("ev.stop_kept"), say("ev.stop_kept.text"));
-  if (auto s = store_.read(kJobFile)) {
+  if (auto s = read(kJobFile)) {
     auto j = json::parse(*s, nullptr, false);
     const std::string state = jstr(j, "state");
     const bool mix = jstr(j, "type") == "mix";
     // A mix cut off by the restart, or left failed, ends now: reported with what is in the tank, and
     // the window against mixing twice counts from here, not from its start (RAT-003)
     if (state == "running" || state == "waiting_user" || state == "mixing" || (mix && state == "failed")) {
-      if (mix) rt_.lastMixAt = std::max(rt_.lastMixAt, bootEpoch_);
+      if (mix) rt_.lastMixAt = std::max<Epoch>({rt_.lastMixAt, bootEpoch_, 1});  // 1: a clock at 0 still counts (lastMixAt 0 is "never")
       double idxNum = jnum(j, "index", 0);
       size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
       const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
@@ -266,6 +298,30 @@ void Hub::boot() {
       j["message"] = say("job.reboot");
       writeJob(j.dump());
     }
+  }
+  // A mix it may have held was cut off by the restart, as far as anyone knows:
+  // the window against mixing twice counts from here (RAT-003)
+  if (kept_.count(kJobFile)) rt_.lastMixAt = std::max<Epoch>({rt_.lastMixAt, bootEpoch_, 1});
+  // One entry per kind of data, naming the files that cannot be read (docs/UX.md §1)
+  std::vector<std::pair<std::string, std::string>> keptKinds;  // its first file, the files
+  for (const std::string& name : unreadable_) {
+    const std::string kind = name == kEventsLog ? kEventsFile : name == kHistoryLog ? kHistoryFile : name;
+    auto it = std::find_if(keptKinds.begin(), keptKinds.end(), [&](const auto& k) { return k.first == kind; });
+    if (it == keptKinds.end()) keptKinds.emplace_back(kind, name);
+    else it->second += ", " + name;
+  }
+  for (const auto& [kind, names] : keptKinds) {
+    const bool config = kind == kConfigFile, state = kind == kStateFile, auth = kind == kAuthFile, job = kind == kJobFile,
+               events = kind == kEventsFile;
+    log_.add(bootEpoch_, "system", "alarm",
+             say(config ? "ev.kept.config" : state ? "ev.kept.state" : auth ? "ev.kept.auth" : job ? "ev.kept.job" : events ? "ev.kept.events" : "ev.kept.history"),
+             say(config  ? "ev.kept.config.text"
+                 : state ? "ev.kept.state.text"
+                 : auth  ? "ev.kept.auth.text"
+                 : job   ? "ev.kept.job.text"
+                 : events ? "ev.kept.events.text"
+                          : "ev.kept.history.text",
+                 {{"file", names}}));
   }
   log_.add(bootEpoch_, "system", "info", say("ev.started"), say("ev.started.text", {{"version", embedded::kVersion}}));
   saveState();  // the boot count and the stop are durable from the start
@@ -300,11 +356,31 @@ void Hub::storageFailed(const std::string& name) {
 
 bool Hub::writeJob(const std::string& data) {
   jobOnDisk_ = data;  // written again from here if it fails, also once the job has ended
+  // A job of this run replaces a job.json kept unread: its old content no longer tells what is
+  // in the tank, and a restart during the new job must report it (R6, RAT-003, SD-081)
+  kept_.erase(kJobFile);
   return writeFile(kJobFile, data);
 }
 
-bool Hub::writeFile(const std::string& name, const std::string& data) { return stored(store_.write(name, data), name); }
-bool Hub::appendFile(const std::string& name, const std::string& data) { return stored(store_.append(name, data), name); }
+const std::vector<std::string>& Hub::files() {
+  static const std::vector<std::string> kFiles = {kConfigFile, kAuthFile,   kStateFile,   kJobFile,
+                                                  kEventsFile, kEventsLog,  kHistoryFile, kHistoryLog};
+  return kFiles;
+}
+
+const std::vector<std::string>& Hub::brokenCopies() {
+  static const std::vector<std::string> kCopies = {kConfigBroken, kStateBroken, kHistoryBroken};
+  return kCopies;
+}
+
+// A file kept at the start is not written while it is kept; that was said once then. state.json
+// and job.json stop being kept when the hub must write them anew (SD-081).
+bool Hub::writeFile(const std::string& name, const std::string& data) {
+  return !kept_.count(name) && stored(store_.write(name, data), name);
+}
+bool Hub::appendFile(const std::string& name, const std::string& data) {
+  return !kept_.count(name) && stored(store_.append(name, data), name);
+}
 
 bool Hub::stored(bool ok, const std::string& name) {
   // One alarm while any file is not on disk; "saved again" only once every
@@ -333,7 +409,7 @@ void Hub::retryUnsaved(Epoch epoch) {
   if (has(kAuthFile)) saveAuth();
   if (has(kConfigFile)) writeFile(kConfigFile, json(cfg_).dump(1));  // the same revision, written again
   if (has(kJobFile)) jobOnDisk_.empty() ? stored(true, kJobFile) : writeJob(jobOnDisk_);
-  static const std::set<std::string> kKnown = {kStateFile, kAuthFile, kConfigFile, kJobFile, kEventsFile, kEventsLog, kHistoryFile, kHistoryLog};
+  static const std::set<std::string> kKnown(files().begin(), files().end());
   for (const std::string& name : names)  // a copy of a broken file, or one the hub does not keep, cannot be made again
     if (!kKnown.count(name)) stored(true, name);
   const bool events = has(kEventsFile) || has(kEventsLog), history = has(kHistoryFile) || has(kHistoryLog);
@@ -348,6 +424,10 @@ void Hub::retryUnsaved(Epoch epoch) {
 void Hub::saveEvents() {
   const std::uint64_t last = log_.lastId();
   if (last == savedEventId_ || unsaved_.count(kEventsLog)) return;  // a failed journal is replaced by a snapshot
+  if (kept_.count(kEventsLog)) {  // kept as it is (SD-081): these events stay in memory
+    savedEventId_ = last;
+    return;
+  }
   const std::uint64_t count = last - savedEventId_;
   // Snapshots keep failing while appends work: the journal stops growing,
   // the snapshot that works at last takes these events.
@@ -385,9 +465,20 @@ void Hub::saveConfig(const std::optional<Msg>& what) {
 }
 
 void Hub::saveState() {
+  // A state.json kept unread started this run with no lock or latch, so any is new: written anew,
+  // with the Stop, a restart keeps both (RAT-044, RAT-063, SD-081)
+  if (!rt_.latches.empty() || !rt_.jumpLocks.empty()) stopKeepingState();
   rt_.clock = clock_.stamp();
   writeFile(kStateFile, json(rt_).dump());
   stateDirty_ = false;
+}
+
+// A state.json kept unread is written anew from here on, and that is said once: its locks and
+// stock levels are gone for good (SD-081)
+bool Hub::stopKeepingState() {
+  if (!kept_.erase(kStateFile)) return false;
+  log_.add(clock_.epoch(), "system", "warn", say("ev.kept.state_replaced"), say("ev.kept.state_replaced.text", {{"file", kStateFile}}));
+  return true;
 }
 
 void Hub::saveJob() {
@@ -556,7 +647,7 @@ void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
     if (plausibleEpoch(at)) at = std::min(at + jump, epoch);  // never in the future; an implausible one counts as now (SD-067)
   ec_.shiftClock(jump);
   ph_.shiftClock(jump);
-  refill_.shiftClock(jump);
+  refill_.shiftClock(rt_, jump);
 }
 
 void Hub::tickImpl() {
@@ -628,8 +719,11 @@ void Hub::tickImpl() {
   env.volumeL = tankVolume();
   env.lastEcDoseAt = ec_.lastDoseAt();
   env.circulationOn = act_.roleState(cfg_, "tank.circulation").value_or(false);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
   env.calibrating = !probeSessions_.empty();
+  if (const Binding* lb = cfg_.binding("tank.level"))
+    for (const auto& [key, sess] : probeSessions_)
+      env.levelCalibrating = env.levelCalibrating || (!sess.value("idle", false) && jstr(sess, "kind") == "tank_curve" && jstr(sess, "device") == lb->device);
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
     if (id.rfind("ec-", 0) == 0) ec_.onDoseFinished(c, env, *fin);
@@ -643,8 +737,12 @@ void Hub::tickImpl() {
   // und hält dann neue EC- und pH-Runden an (RAT-055).
   env.ecBusy = ec_.busy();
   env.phBusy = ph_.busy();
+  const json refillBefore = rt_.refill;
+  const auto latchesBeforeRefill = rt_.latches;
   refill_.tick(c, env);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  // A latch or a pending check the refill set is saved at once, also when a later step throws (RAT-063, SD-082)
+  if (rt_.refill != refillBefore || rt_.latches != latchesBeforeRefill) stateDirty_ = true;
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
   // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
   env.phBusy = ph_.busy() || ph_.pending();
   ec_.tick(c, env);
@@ -714,9 +812,11 @@ Epoch Hub::now() const {
   return clock_.epoch();
 }
 
+bool Hub::passwordUnreadable() const { return kept_.count(kAuthFile) > 0; }
+
 std::string Hub::armSetupCode(Ms validFor) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  return credentialsLost() ? std::string() : auth_.armSetupCode(clock_.nowMs(), validFor);
+  return credentialsLost() || passwordUnreadable() ? std::string() : auth_.armSetupCode(clock_.nowMs(), validFor);
 }
 
 json Hub::info() const {
@@ -2138,6 +2238,10 @@ Result Hub::probeCalibration(const json& j) {
     }
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
+    if (const Binding* lb = cfg_.binding("tank.level"); kind == "tank_curve" && lb && lb->device == dev) {
+      RefillController::levelCommitted(rt_, data);
+      stateDirty_ = true;
+    }
     const Msg kindMsg = kindName(kind);
     saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", cfg_.device(dev)->name}}));
     log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
@@ -2168,6 +2272,7 @@ Result Hub::stop(const Msg& who) {
   rt_.stopped = true;
   const Ms stopAt = clock_.nowMs();
   act_.stopAll(cat_, cfg_, stopAt);
+  const bool wasKept = stopKeepingState();  // so the Stop holds (SD-081)
   saveState();  // at once: a power loss while the dose is booked keeps the stop
   Ctx c = ctx();
   c.now = stopAt;  // a run counts until the stop, not until the sockets were switched
@@ -2202,7 +2307,7 @@ Result Hub::stop(const Msg& who) {
   ph_.stopRound();
   if (job_) finishJob("aborted", say("job.emergency_stop"));
   saveState();
-  if (first) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
+  if (first || wasKept) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));
   // Calibration and priming runs book no stock (RAT-070), so there is nothing to say for them
   if (unbooked && unbooked->purpose != "calibration" && unbooked->purpose != "prime")
     log_.add(clock_.epoch(), "system", "warn", say("ev.stop.unbooked"),
@@ -2223,6 +2328,7 @@ Result Hub::resume() {
   }
   stopped_ = false;
   rt_.stopped = false;
+  stopKeepingState();
   saveState();
   saveEvents();
   return Result::ok();

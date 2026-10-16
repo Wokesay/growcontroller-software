@@ -133,6 +133,39 @@ test("a number option out of range names the range (#213)", { skip }, () => {
   }
 });
 
+test("a state.json it cannot read is kept: the hub starts and never writes over it (SD-081)", { skip }, async () => {
+  const dir = mkdtempSync(join(tmp, "kept-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  const data = join(dir, "hub");
+  mkdirSync(data, { mode: 0o700 });
+  symlinkSync("state.json", join(data, "state.json"));  // a link to itself: it cannot be read, also as root
+  const port = await freePort();
+  const child = spawn(bin, ["--config", config, "--data", data, "--host", "127.0.0.1", "--port", String(port)], {
+    env: env({ GC_HA_TOKEN: "t" }),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (out += c));
+  const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+  try {
+    let body = null;
+    for (let i = 0; i < 60 && !body; i++) {
+      body = await info(port);
+      if (!body) await new Promise((r) => setTimeout(r, 250));
+    }
+    assert.ok(body, `the server answers on ${port}:\n${out}`);
+  } finally {
+    child.kill("SIGTERM");
+  }
+  assert.deepEqual(await ended, { code: 0, signal: null }, out);
+  // said where who runs it looks, with the reason (its wording is the C library's)
+  const kept = `${join(data, "state.json")}: cannot be read (`;
+  assert.ok(out.split("\n").some((l) => l.startsWith(kept) && /\(.+\), so it is kept as it is/.test(l)), out);
+  assert.ok(lstatSync(join(data, "state.json")).isSymbolicLink(), "state.json is still the link it was");
+});
+
 test("an option's value --app does not switch to the app", { skip }, () => {
   // Taken for the app, this would start with the Supervisor's token.
   const r = run(["--data", "--app"], { SUPERVISOR_TOKEN: "t" });

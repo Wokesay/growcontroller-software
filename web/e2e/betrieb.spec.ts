@@ -430,6 +430,56 @@ test("Messwert-Kacheln bei Sensorausfall: nichts ragt aus der Kachel", async ({ 
   await page.request.post("/api/v1/sim/speed", { data: { speed: 1 } });
 });
 
+test("Menu by topic: headings group the pages in the side menu (SD-056)", async ({ page }) => {
+  await login(page);
+  const side = page.locator("aside.side nav");
+  const groups: [string, string[]][] = [
+    ["Nährlösung", ["Mischen", "Tank & Regelung", "Rezepte & Kanister", "Bewässerung"]],
+    ["Raum", ["Klima", "Licht"]],
+    ["System", ["Geräte", "Funktionen", "Einstellungen"]],
+  ];
+  for (const [head, links] of groups) await expect(side.getByRole("group", { name: head }).getByRole("link")).toHaveText(links);
+  await expect(side.getByRole("link")).toHaveText(["Übersicht", "Verlauf", ...groups.flatMap(([, links]) => links)]);
+  await side.getByRole("link", { name: "Bewässerung" }).click();
+  await expect(page).toHaveURL(/#\/bewaesserung/);
+  await expect(side.getByRole("link", { name: "Bewässerung" })).toHaveAttribute("aria-current", "page");
+  // An unknown address shows the Overview, and the menu marks it
+  await page.goto("/#/gibtsnicht");
+  await expect(side.getByRole("link", { name: "Übersicht" })).toHaveAttribute("aria-current", "page");
+});
+
+test("Climate, light and watering say they work by hand and what to keep running; with nothing assigned, what to connect (SD-056)", async ({ page }) => {
+  await login(page);
+  const keep = {
+    climate: ["Klimaregler", "Befeuchter und Entfeuchter am Hub gehen bei jedem Neustart aus"],
+    light: ["Zeitschaltuhr", "nicht in eine WLAN-Steckdose des Hubs"],  // a hub plug is off after every restart (R6)
+    irrigation: ["Bewässerungssteuerung", "nicht vor Trockenlauf"],  // the dry-run lock covers only a pump the hub switches (RAT-068)
+  };
+  for (const [path, area] of [["klima", "climate"], ["licht", "light"], ["bewaesserung", "irrigation"]] as const) {
+    await page.goto(`/#/${path}`);
+    const note = page.getByTestId(`manual-${area}`);
+    await expect(note).toContainText("Handbetrieb:");
+    for (const text of keep[area]) await expect(note).toContainText(text);
+  }
+  // The demo has no watering pump: the page says what to connect, and where; on the plug it can be chosen
+  await expect(page.locator('[data-testid^="output-"]')).toHaveCount(0);
+  const empty = page.getByTestId("area-empty-irrigation");
+  await expect(empty).toContainText("Keine Gießpumpe zugeordnet");
+  await expect(empty).toContainText("schaltbare WLAN-Steckdose");
+  await expect(empty).not.toContainText("Noch keine WLAN-Steckdose");
+  await empty.getByRole("link", { name: "Zuordnen" }).click();
+  await expect(page).toHaveURL(/#\/geraete\?tab=geraete$/);
+  await expect(page.locator('[data-testid^="outlets-"] select').first().locator("option", { hasText: "Gießpumpe" })).toHaveCount(1);
+  // Climate and light have devices: their switches, no empty state; a role not assigned shows as such
+  await page.goto("/#/klima");
+  await expect(page.getByTestId("output-zone.exhaust")).toBeVisible();
+  await expect(page.getByTestId("output-zone.dehumidifier")).toContainText("Nicht zugeordnet");
+  await expect(page.getByTestId("area-empty-climate")).toHaveCount(0);
+  await page.goto("/#/licht");
+  await expect(page.getByTestId("output-zone.light")).toBeVisible();
+  await expect(page.getByTestId("area-empty-light")).toHaveCount(0);
+});
+
 test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich manuell schalten", async ({ page }) => {
   await login(page);
   await page.goto("/#/klima");
@@ -446,8 +496,6 @@ test("Bereiche: Klima zeigt Messwerte und VPD, Geräte lassen sich manuell schal
   await expect(row).toContainText("Abluft");
   await page.goto("/#/licht");
   await expect(page.getByTestId("output-zone.light")).toContainText("Leiste");
-  await page.goto("/#/bewaesserung");
-  await expect(page.getByTestId("output-zone.irrigation_pump")).toContainText("Nicht zugeordnet");
   await page.goto("/#/verlauf");
   await expect(page.getByText("VPD (Luft)")).toBeVisible();
   await page.goto("/");
