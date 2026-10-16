@@ -383,6 +383,24 @@ listed in every release under "Security".
   folder. The port search stops at 65535. The download's smoke test also
   starts it plainly with a data folder it cannot read (SD-074) and with no
   folder for the data, on macOS and Linux (#214).
+- **The hub keeps a file it cannot read** (#211, SD-081): a file of the
+  hub that is there but cannot be read (no permission, for example root's
+  files after a start with `sudo`, or a read error of the disk or flash)
+  was taken as missing: the hub started without the Stop that was in
+  force and without its settings or password, and later saved over the
+  file. Now it starts as with a broken file and does not write over it,
+  a snapshot and its journal together. One alarm per kind of data says
+  what this means: a run-time state it cannot read keeps everything
+  stopped and is written anew at the first Stop or Resume or a new lock;
+  settings it cannot read give the factory settings; a password file it
+  cannot read refuses a first password over it and no longer advises a
+  factory reset; a job it cannot read counts as a mix cut off by the
+  restart, and the next job writes it anew. A run-time state that is
+  broken or cannot be read also makes a second mix right after the start
+  need confirmation and holds a dry-run latch in the first hour for a
+  person. This applies to the Home Assistant server, which also prints
+  such a file at the start with the reason, and, through its storage, to
+  the device. The hub's files are listed in one place (#212).
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example

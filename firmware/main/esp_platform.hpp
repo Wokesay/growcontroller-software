@@ -5,6 +5,7 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include "gc/api.hpp"
@@ -34,6 +35,10 @@ class EspStorage : public gc::IStorage {
   std::optional<std::string> read(const std::string& name) override;
   bool write(const std::string& name, const std::string& data) override;
   bool append(const std::string& name, const std::string& data) override;  // journals (#68)
+  bool unreadable(const std::string& name) override;  // there but cannot be read (SD-081)
+
+ private:
+  std::set<std::string> failed_;  // read last and could not be (not missing)
 };
 
 // Bus des Hubs. Stand Gerüst: nur die zwei 12-V-Ausgänge. Modbus je Port mit

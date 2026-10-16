@@ -49,6 +49,10 @@ UI can do, an integration can do as well.
   `api.internal`; the server keeps running. If the password is lost
   (`auth.json` is missing although a password was set), `/auth/setup`
   refuses with 423 `auth.lost`: a factory reset on the device is needed.
+  If `auth.json` is there but cannot be read, it refuses with 423
+  `auth.kept` first, whether or not a password is known to be set: the
+  file is kept, and a restart that can read it again brings it back
+  (SD-081).
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
   Exception: an unknown area or mode in `system.control` is left out, as

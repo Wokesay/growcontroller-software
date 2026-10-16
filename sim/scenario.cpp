@@ -9,10 +9,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <optional>
 #include <random>
-#include <sstream>
 #include <vector>
 
 #ifdef _WIN32
@@ -35,12 +33,19 @@ using gc::json;
 
 namespace {
 
-// The hub's files in the data folder (core/src/hub.cpp); the simulator adds
-// world.json.
-constexpr const char* kHubFiles[] = {"config.json", "auth.json",   "state.json",  "job.json",
-                                     "events.json", "events.log",  "history.bin", "history.log"};
-
 std::error_code lastError() { return {errno ? errno : EIO, std::generic_category()}; }
+
+// Why this file cannot be read, if it is there and cannot: its status cannot
+// be read (a folder it may not enter, a link loop) or it cannot be opened.
+std::optional<std::string> cannotRead(const fs::path& p) {
+  std::error_code ec;
+  if (!fs::exists(p, ec)) return ec ? std::optional<std::string>(ec.message()) : std::nullopt;  // or not there
+  errno = 0;
+  std::ifstream f(p, std::ios::binary);
+  const int err = errno;
+  if (f) return std::nullopt;
+  return err ? std::generic_category().message(err) : std::string("cannot be opened");
+}
 
 // For the owner only; a planted link in the folder is not followed.
 std::FILE* openForOwner(const fs::path& path, bool atEnd) {
@@ -106,6 +111,15 @@ FileStorage::~FileStorage() {
   release();
 }
 
+bool FileStorage::unreadable(const std::string& name) { return readError(name).has_value(); }
+
+std::optional<std::string> FileStorage::readError(const std::string& name) {
+  std::lock_guard<std::mutex> l(m_);
+  if (dir_.empty() || cache_.count(name)) return std::nullopt;
+  if (auto it = readFailed_.find(name); it != readFailed_.end()) return it->second;
+  return cannotRead(fs::path(dir_) / name);
+}
+
 std::optional<std::string> FileStorage::read(const std::string& name) {
   std::lock_guard<std::mutex> l(m_);
   return readLocked(name);
@@ -115,12 +129,29 @@ std::optional<std::string> FileStorage::readLocked(const std::string& name) {
   auto it = cache_.find(name);
   if (it != cache_.end()) return it->second;
   if (dir_.empty()) return std::nullopt;
-  std::ifstream f(fs::path(dir_) / name, std::ios::binary);
-  if (!f) return std::nullopt;
-  std::stringstream ss;
-  ss << f.rdbuf();
-  cache_[name] = ss.str();
-  return cache_[name];
+  // A file that is there but cannot be opened or read to the end is neither a missing nor a
+  // shorter one: unreadable() says so, and the hub keeps it (SD-081)
+  errno = 0;
+  std::FILE* f = std::fopen((fs::path(dir_) / name).string().c_str(), "rb");
+  if (!f) {
+    const int err = errno;
+    if (err != ENOENT && err != ENOTDIR) readFailed_[name] = std::generic_category().message(err ? err : EIO);
+    else readFailed_.erase(name);  // not there (any more)
+    return std::nullopt;
+  }
+  std::string data;
+  char buf[4096];
+  size_t n;
+  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) data.append(buf, n);
+  const int err = std::ferror(f) ? (errno ? errno : EIO) : 0;
+  std::fclose(f);
+  if (err) {
+    readFailed_[name] = std::generic_category().message(err);
+    return std::nullopt;
+  }
+  readFailed_.erase(name);
+  cache_[name] = data;
+  return data;
 }
 
 bool FileStorage::write(const std::string& name, const std::string& data) {
@@ -161,7 +192,7 @@ bool FileStorage::ready() {
   fs::remove(fs::path(dir_) / ".write-test", ec);
   used_ = true;  // from here a folder that goes away is a failed write, not memory only
 #ifndef _WIN32
-  for (const char* f : kHubFiles)
+  for (const std::string& f : gc::Hub::files())
     if (fs::exists(fs::path(dir_) / f, ec)) fs::permissions(fs::path(dir_) / f, fs::perms::owner_read | fs::perms::owner_write, ec);
 #endif
   return true;
@@ -247,21 +278,11 @@ gc::Epoch realNow() {
 // Why the data in this folder cannot be read, if it cannot: the status of
 // one of its files fails (a folder it may not enter, a link loop), or a file
 // there cannot be opened (e.g. root's after a start with sudo).
-std::optional<std::string> unreadable(const fs::path& dir) {
-  std::vector<std::string> names(std::begin(kHubFiles), std::end(kHubFiles));
+std::optional<std::string> whyUnreadable(const fs::path& dir) {
+  std::vector<std::string> names = gc::Hub::files();
   names.push_back("world.json");
-  for (const auto& name : names) {
-    const fs::path p = dir / name;
-    std::error_code ec;
-    if (!fs::exists(p, ec)) {
-      if (ec) return p.string() + ": " + ec.message();
-      continue;  // not there
-    }
-    errno = 0;
-    std::ifstream f(p, std::ios::binary);
-    const int err = errno;
-    if (!f) return p.string() + ": " + (err ? std::generic_category().message(err) : "cannot be opened");
-  }
+  for (const auto& name : names)
+    if (auto why = cannotRead(dir / name)) return (dir / name).string() + ": " + *why;
   return std::nullopt;
 }
 
@@ -287,7 +308,7 @@ void randomBytes(std::uint8_t* p, size_t n) {
 Simulation::Simulation(Options o) : opts_(std::move(o)), catalog_(gc::Catalog::builtin()) {
   bool fresh = true;
   if (!opts_.dataDir.empty()) {
-    if (auto why = unreadable(opts_.dataDir)) {
+    if (auto why = whyUnreadable(opts_.dataDir)) {
       // It may hold data: said once, then memory only, so nothing is read,
       // written or removed there (SD-074).
       std::cerr << "Data cannot be read (" << *why << "). Running in memory only.\n";
@@ -502,9 +523,11 @@ void Simulation::loadScenario(const std::string& name) {
   if (!opts_.dataDir.empty()) {
     // Nur die eigenen Dateien löschen, nie den ganzen Ordner.
     std::error_code ec;
-    for (const char* f : {"config.json", "config.broken.json", "state.json", "state.broken.json", "auth.json", "events.json",
-                          "events.log", "history.bin", "history.log", "history.broken.bin", "job.json", "world.json"})
-      for (const std::string& file : {std::string(f), std::string(f) + ".tmp"})
+    std::vector<std::string> own = gc::Hub::files();
+    own.insert(own.end(), gc::Hub::brokenCopies().begin(), gc::Hub::brokenCopies().end());
+    own.push_back("world.json");
+    for (const std::string& f : own)
+      for (const std::string& file : {f, f + ".tmp"})
         fs::remove(fs::path(opts_.dataDir) / file, ec);
   }
   opts_.scenario = name;

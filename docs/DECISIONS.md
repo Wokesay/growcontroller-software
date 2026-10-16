@@ -3618,6 +3618,111 @@ confirmed)"; it holds until the product side decides otherwise.
 
 ---
 
+## SD-081: A file of the hub that cannot be read is kept like a broken one
+
+Decided by the project owner on 2026-10-15 in the software session (#211;
+#212 gives the one list of the hub's files it needs); when a kept
+`state.json` or `job.json` is written anew was decided the same day after
+two rounds of reviews. Follows SD-074, which covers the simulator's whole
+data folder, for the hub itself: the Home Assistant server and, later,
+the device.
+
+- **When:** a file of the hub is there but cannot be read: no
+  permission (for example root's files after a start with `sudo`), a
+  read error of the disk or the flash. `IStorage::read` gave no value for
+  it, the same as for a missing file; `IStorage::unreadable` now tells
+  them apart. A file that is not there is not this case.
+- **What the hub does**, as with a file whose content is broken, with
+  one alarm per kind of data that names the files and says what to do:
+  - `state.json`: it starts stopped, everything off, since whether a
+    Stop was in force is unknown (PD-076); locks and stock levels are
+    unknown, so the alarm says to restart first and to check the tank
+    and bottles before Resume;
+  - `config.json`: it starts with the factory settings;
+  - `auth.json`: no first password can be set over it (423 `auth.kept`),
+    no setup code is armed, and the alarm for lost sign-in data is left
+    out: its advice, a factory reset, would wipe the password that is
+    kept;
+  - `job.json`: a mix it may have held counts as cut off by the restart,
+    so a second mix within 30 minutes of the start needs confirmation
+    (RAT-003);
+  - the events and the history: earlier entries are missing, new ones
+    stay in memory (so do sign-ins, failed logins and other security
+    events while the events are kept);
+  - the Home Assistant server also prints each such file at the start,
+    with the reason.
+- **An unknown run-time state errs on the safe side**, whether it is
+  broken or cannot be read: besides starting stopped, a mix counts as
+  having ended at the start (RAT-003), and a dry-run self-release as
+  having happened then, so a dry-run latch in the first hour holds for a
+  person (SD-067).
+- **The file is kept:** the hub does not write over it while it is kept,
+  also not by a later save. A snapshot and its journal (`events.json` and
+  `events.log`, `history.bin` and `history.log`) are kept together from
+  the moment one of them is read. Changes they would hold stay in memory;
+  a restart after the file is readable again reads it as it was.
+- **Written anew when keeping it would lose something that protects the
+  tank:**
+  - `state.json` at the first Stop or Resume, and when a new lock or
+    latch is set while the hub is stopped (for example a jump of a probe
+    taken out to be cleaned). From then on a Stop, latches, jump locks
+    and stock levels are saved as usual and survive a power loss
+    (PD-076); the new file holds the Stop, so the next start needs
+    Resume. Kept for the whole run, a Stop or a lock set in it would be
+    lost once the file can be read again, and the hub could run on
+    without Resume. The hub started with no lock or latch, so any one it
+    holds when it saves the state is new. "Saved state replaced" says
+    that the old locks and stock levels are gone, and a Stop that ends
+    the keeping is logged, also when the hub was stopped already.
+  - `job.json` when a job of this run is written: its old content no
+    longer says what is in the tank, and a restart during the new job
+    must be reported (R6, RAT-003).
+  - Entries made while the state is kept (a stock, an acknowledged
+    latch) are lost by a restart before that.
+- **Why:** before, such a file was taken as missing. The hub started
+  without the Stop that was in force, without its settings or password,
+  and later saved over the old files, so their content was lost without
+  a word.
+- **Not chosen:**
+  - running in memory only as a whole, as the simulator does since
+    SD-074: on the device one bad file would stop all saving, history
+    and settings included;
+  - refusing to start: the device would have no interface and no
+    control at all;
+  - for `state.json`, writing a new stopped state at once, as for a
+    broken file: simpler, but a read error that a restart would clear
+    would lose the locks and stock levels;
+  - for `job.json`, refusing every job while it is kept: on the device
+    mixing would wait for a factory reset (#219).
+- **Storage:** the simulator's and the Home Assistant server's storage
+  reads with `fopen`/`fread` and reports a file it cannot open (other
+  than not there) or read to the end as unreadable, with the reason, not
+  as a missing or shorter one. The firmware's (`EspStorage`) does the
+  same and falls back to the `.tmp` only for a file that is not there
+  (ENOENT). ESP-IDF 5.4's SPIFFS gives ENOENT for a file not found, but
+  also for a deleted entry or one that is not a file, which the file
+  layer cannot tell apart
+  (https://raw.githubusercontent.com/espressif/esp-idf/v5.4.1/components/spiffs/esp_spiffs.c,
+  `spiffs_res_to_errno`, retrieved 2026-10-15). A scenario change in the
+  simulator still removes a kept file: it is the user's own wipe.
+- **Not covered yet:**
+  - the web app does not show a kept file before the user sets up again
+    or signs in, and settings changed while `config.json` is kept answer
+    as saved (#217);
+  - on the device, a file that stays unreadable is kept at every start,
+    and the only way out is a factory reset (#219);
+  - with `config.json` kept and `auth.json` missing or broken as well,
+    whether a password was set is unknown and the first password stays
+    open (to whoever has the setup code on the Home Assistant server); as
+    before this decision, until SD-076's marker exists;
+  - when SD-076, SD-077 and SD-080 are built: a kept `auth.json` counts
+    as a password set (no password window, no countdown, no advice to
+    reset), and setting, changing or removing a password through Ingress,
+    or an access reset, answers `auth.kept` first instead of a new
+    password that cannot be saved.
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |
