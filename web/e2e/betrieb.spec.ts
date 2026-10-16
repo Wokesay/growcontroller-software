@@ -423,14 +423,17 @@ test("Menu by topic: headings group the pages in the side menu (SD-056)", async 
   await side.getByRole("link", { name: "Bewässerung" }).click();
   await expect(page).toHaveURL(/#\/bewaesserung/);
   await expect(side.getByRole("link", { name: "Bewässerung" })).toHaveAttribute("aria-current", "page");
+  // An unknown address shows the Overview, and the menu marks it
+  await page.goto("/#/gibtsnicht");
+  await expect(side.getByRole("link", { name: "Übersicht" })).toHaveAttribute("aria-current", "page");
 });
 
 test("Climate, light and watering say they work by hand and what to keep running; with nothing assigned, what to connect (SD-056)", async ({ page }) => {
   await login(page);
   const keep = {
     climate: ["Klimaregler", "Befeuchter und Entfeuchter am Hub gehen bei jedem Neustart aus"],
-    light: ["Zeitschaltuhr", "nicht in eine Steckdose des Hubs"],  // a hub plug is off after every restart (R6)
-    irrigation: ["Bewässerungssteuerung", "nicht vor Trockenlauf"],  // the dry-run lock covers only a pump the hub switches
+    light: ["Zeitschaltuhr", "nicht in eine WLAN-Steckdose des Hubs"],  // a hub plug is off after every restart (R6)
+    irrigation: ["Bewässerungssteuerung", "nicht vor Trockenlauf"],  // the dry-run lock covers only a pump the hub switches (RAT-068)
   };
   for (const [path, area] of [["klima", "climate"], ["licht", "light"], ["bewaesserung", "irrigation"]] as const) {
     await page.goto(`/#/${path}`);
@@ -443,9 +446,9 @@ test("Climate, light and watering say they work by hand and what to keep running
   const empty = page.getByTestId("area-empty-irrigation");
   await expect(empty).toContainText("Keine Gießpumpe zugeordnet");
   await expect(empty).toContainText("schaltbare WLAN-Steckdose");
-  await expect(empty).not.toContainText("Noch keine Steckdose");
+  await expect(empty).not.toContainText("Noch keine WLAN-Steckdose");
   await empty.getByRole("link", { name: "Zuordnen" }).click();
-  await expect(page).toHaveURL(/#\/geraete$/);
+  await expect(page).toHaveURL(/#\/geraete\?tab=geraete$/);
   await expect(page.locator('[data-testid^="outlets-"] select').first().locator("option", { hasText: "Gießpumpe" })).toHaveCount(1);
   // Climate and light have devices: their switches, no empty state; a role not assigned shows as such
   await page.goto("/#/klima");

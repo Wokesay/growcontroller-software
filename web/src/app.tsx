@@ -330,6 +330,7 @@ export function App() {
       </>
     );
   const page = PAGES[r.path] ?? PAGES["/"];
+  const cur = PAGES[r.path] ? r.path : "/";  // an unknown path shows the Overview, so the menus mark it
   return (
     <div class="shell">
       <aside class="side">
@@ -343,7 +344,7 @@ export function App() {
           </div>
         </div>
         <nav class="nav" aria-label={t("nav.label")}>
-          <NavGroups idPrefix="side-nav" current={r.path} />
+          <NavGroups idPrefix="side-nav" current={cur} />
         </nav>
         <div class="side-foot">
           {readOnly.value ? (  // the setup is for the hub's own dosing hardware
@@ -383,18 +384,18 @@ export function App() {
       </div>
       <nav class="bottom-nav">
         {MOBILE.map((path) => NAV.find((n) => n.path === path)!).map((n) => (
-          <a href={`#${n.path}`} class={r.path === n.path ? "active" : ""} aria-current={r.path === n.path ? "page" : undefined}>
+          <a href={`#${n.path}`} class={cur === n.path ? "active" : ""} aria-current={cur === n.path ? "page" : undefined}>
             {n.icon}
             {t(n.label).split(" ")[0]}
           </a>
         ))}
         {/* "More" is marked while one of its pages is open */}
-        <button class={MOBILE.includes(r.path) ? "" : "active"} aria-haspopup="dialog" onClick={() => setMore(true)}>
+        <button class={MOBILE.includes(cur) ? "" : "active"} aria-haspopup="dialog" onClick={() => setMore(true)}>
           <MoreHorizontal size={19} />
           {t("common.more")}
         </button>
       </nav>
-      {more && <MoreSheet current={r.path} onClose={() => setMore(false)} />}
+      {more && <MoreSheet current={cur} onClose={() => setMore(false)} />}
       {simulated.value && <SimPanel />}
       <Toasts />
     </div>

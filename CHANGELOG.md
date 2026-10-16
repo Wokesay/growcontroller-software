@@ -102,13 +102,16 @@ listed in every release under "Security".
   in the same group as the tank it draws from, and recipes in the same
   group as mixing. On a phone the bottom bar stays as it was, and "More"
   shows the same headings.
-- **Climate, light and watering say they work by hand** (SD-056): each
-  page is marked "Manual mode". The hub switches on only when you tap and
-  controls nothing by itself, so keep your own timer or controller
-  running: a light on a hub plug goes off at every restart, and only a
-  pump the hub switches is protected from running dry. With nothing
-  assigned, the page says what to connect and where. The Home Assistant
-  app is unchanged, as it switches nothing there.
+- **Climate, light and watering say they work by hand** (#143, SD-056):
+  each page is marked "Manual mode" ("Handbetrieb" in German). The hub
+  switches on only when you tap and controls nothing by itself, apart
+  from exhaust and circulation fans, which come back on after a power
+  cut. So keep your own timer or controller running: a light on a hub
+  plug goes off at every restart, and only a pump the hub switches is
+  protected from running dry. With nothing assigned, the page says what
+  to connect and where, and how to add a smart plug if none is added
+  yet. The Home Assistant app is unchanged, as it switches nothing
+  there.
 - **Plain words instead of developer terms** (#143, SD-055): in German,
   locks now say "Freigabe nötig" and "Freigeben", as the help and the
   English texts do, instead of "Gerastet" and "quittieren". The lock list

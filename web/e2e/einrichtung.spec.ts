@@ -234,7 +234,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
     await page.goto(`/#/${path}`);
     await expect(page.getByTestId(`control-note-${area}`)).toBeVisible();
     await expect(page.locator('[data-testid^="output-"]')).toHaveCount(0);
-    await expect(page.getByText(/Manuell schalten|manuell schalten|Gießpumpe läuft nur/)).toHaveCount(0);
+    await expect(page.getByText(/Handbetrieb|Gießpumpe läuft nur/)).toHaveCount(0);
     await expect(page.getByTestId(`manual-${area}`)).toHaveCount(0);  // nothing is switched here, by hand or otherwise (SD-056)
     await expect(page.locator('[data-testid^="area-empty-"]')).toHaveCount(0);
   }
@@ -343,12 +343,33 @@ test("Without a smart plug, climate, light and watering say how to add one and l
   for (const [path, area] of [["licht", "light"], ["klima", "climate"], ["bewaesserung", "irrigation"]]) {
     await page.goto(`/#/${path}`);
     const empty = page.getByTestId(`area-empty-${area}`);
-    await expect(empty).toContainText("Noch keine Steckdose am Hub");
+    await expect(empty).toContainText("Noch keine WLAN-Steckdose übernommen");
     await expect(empty.getByRole("link", { name: "Zuordnen" })).toHaveCount(0);
-    await expect(empty.getByRole("link", { name: "Zu den Geräten" })).toHaveAttribute("href", "#/geraete");
+    await expect(empty.getByRole("link", { name: "Zu den Geräten" })).toHaveAttribute("href", "#/geraete?tab=geraete");
   }
   await page.getByTestId("area-empty-irrigation").getByRole("link", { name: "Zu den Geräten" }).click();
-  await expect(page).toHaveURL(/#\/geraete$/);
+  await expect(page).toHaveURL(/#\/geraete\?tab=geraete$/);
+});
+
+test("Watering warns about the level only once the hub switches a pump (SD-056, RAT-068)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const headers = { Origin: new URL(page.url()).origin };
+  expect((await page.request.delete("/api/v1/roles/tank.level", { headers })).ok()).toBe(true);
+  await page.goto("/#/bewaesserung");
+  await page.reload();
+  const warning = page.getByText("Die Gießpumpe läuft nur mit gültigem Füllstand");
+  await expect(page.getByTestId("area-empty-irrigation")).toBeVisible();
+  await expect(warning).toHaveCount(0);  // no pump the hub could protect
+  // The pump on the strip's fourth outlet: now the hub switches it, and it warns
+  const cfg = await (await page.request.get("/api/v1/config")).json();
+  const strip = cfg.devices.find((d: { class: string }) => d.class.startsWith("shelly_"));
+  expect((await page.request.delete("/api/v1/roles/zone.humidifier", { headers })).ok()).toBe(true);
+  expect((await page.request.put("/api/v1/roles/zone.irrigation_pump", { data: { device: strip.id, channel: 3 }, headers })).ok()).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("output-zone.irrigation_pump")).toBeVisible();
+  await expect(warning).toBeVisible();
+  await expect(page.getByTestId("area-empty-irrigation")).toHaveCount(0);
 });
 
 test("A hub with its own hardware has no introduction of the Home Assistant app", async ({ page, request }) => {

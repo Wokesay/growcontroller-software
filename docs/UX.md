@@ -66,9 +66,8 @@ grower's own timer for fixed light hours, and the watering page says the
 dry-run lock protects only a pump the hub switches. With nothing
 assigned, the page says what to connect and links to Devices, where the
 smart plug's card takes the choice, and says how to add a plug while
-none has been added. The
-Home Assistant app switches nothing there and shows the choice per area
-instead (SD-037).
+none has been added. The Home Assistant app switches nothing there and
+shows the choice per area instead (SD-037).
 
 On a phone: Overview, Mixing, Tank, History, More; "More" lists the
 other pages under the same headings. The **STOP** button

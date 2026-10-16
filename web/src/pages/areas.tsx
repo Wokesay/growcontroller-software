@@ -32,7 +32,7 @@ export function OutputRow(p: { role: string; compact?: boolean }) {
           <strong>{rd.label}</strong>
           <div class="muted small">{t("area.unassigned")}</div>
         </span>
-        <a class="btn sm" href="#/geraete">
+        <a class="btn sm" href="#/geraete?tab=geraete">
           {t("area.assign")}
         </a>
       </div>
@@ -83,11 +83,16 @@ function Outputs(p: { roles: string[]; title: TextKey; icon: (size: number) => C
             text={
               <>
                 {t(`area.empty.${p.area}Text`)}
-                {!plug && <> {t("area.noPlug")}</>}
+                {!plug && (
+                  <>
+                    <br />
+                    {t("area.noPlug")}
+                  </>
+                )}
               </>
             }
             action={
-              <a class="btn" href="#/geraete">
+              <a class="btn" href="#/geraete?tab=geraete">
                 {t(plug ? "area.assign" : "area.toDevices")}
               </a>
             }
@@ -242,7 +247,7 @@ export function IrrigationPage() {
           <MetricTile label={t("area.tankLevel")} reading={st.readings["tank.level"]} color="--level" />
         </div>
       ) : (
-        !readOnly.value && hasRole("zone.irrigation_pump") && <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>  // only a pump the hub switches is protected
+        !readOnly.value && hasRole("zone.irrigation_pump") && <Banner tone="warn">{t("area.irrigationNeedsLevel")}</Banner>  // only a pump the hub switches is protected (RAT-068)
       )}
     </div>
   );

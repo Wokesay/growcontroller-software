@@ -104,6 +104,10 @@ test("The bottom bar keeps its four pages; More groups the others under the menu
   await login(page);
   const bar = page.locator("nav.bottom-nav");
   await expect(bar.getByRole("link")).toHaveText(["Übersicht", "Mischen", "Tank", "Verlauf"]);
+  // An unknown address shows the Overview: the bar marks it, not "More"
+  await page.goto("/#/gibtsnicht");
+  await expect(bar.getByRole("link", { name: "Übersicht" })).toHaveAttribute("aria-current", "page");
+  await expect(bar.getByRole("button", { name: "Mehr" })).not.toHaveClass(/active/);
   await bar.getByRole("button", { name: "Mehr" }).click();
   const sheet = page.getByRole("dialog", { name: "Mehr" });
   for (const [head, links] of [["Nährlösung", ["Rezepte & Kanister", "Bewässerung"]], ["Raum", ["Klima", "Licht"]], ["System", ["Geräte", "Funktionen", "Einstellungen"]]] as const)
