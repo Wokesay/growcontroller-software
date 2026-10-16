@@ -116,6 +116,25 @@ listed in every release under "Security".
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
   names the hub's language (`language`); `/export.csv` takes `lang=de`
   or `lang=en` and otherwise uses the hub's.
+- **Refusals in the page's language** (#143, #18, SD-082): every refusal
+  of the hub now comes with a key of its own and an English text, and an
+  English page shows English, a German page German: signing in and
+  changing the password, adding devices and assigning roles, bottles,
+  recipes and templates, mixing, hand doses, pump calibration and tube
+  priming, probe and tank-curve calibration, grow cycles, maintenance
+  mode, updates, the configuration check and the import, and the
+  simulator panel. For API users, some keys are new where one key had
+  several texts: `device.not_detected`, `config.busy`, `config.not_object`,
+  `config.newer`, `job.state_amount`, `job.state_resume`, `job.dosing`
+  (the control dosing, before a hand dose, a calibration or priming),
+  `recipe.template.unknown`, `auth.wrong_old`, `update.busy_back`,
+  `probe.reference_range`, `probe.points_max`, `probe.points_two`,
+  `probe.points_one`, `cfg.role.place_tank`, `cfg.params`,
+  `cfg.phase.type`, `cfg.phase.range`, `cfg.calibration.offered` and
+  `curve.*`, `calib.*` for a tank curve or calibration a probe step or an
+  import refuses.
+- **History and CSV export:** a request names at most 16 series and none
+  twice; each series id follows the CSV export's rule.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for

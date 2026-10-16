@@ -62,7 +62,7 @@ TEST_CASE("Anmeldung: Sitzung läuft ab, Passwortwechsel meldet alle ab") {
   auto t2 = a.login("geheim-123", 0, e, "");
   CHECK(a.changePassword("geheim-123", "neu-geheim-456", 0, "").key.empty());
   CHECK_FALSE(a.check(*t2, 1));
-  CHECK(a.changePassword("falsch", "x-123456789", 0, "").key == "auth.wrong");
+  CHECK(a.changePassword("falsch", "x-123456789", 0, "").key == "auth.wrong_old");
 }
 
 TEST_CASE("Sign-in: a session in use stays signed in; one unused for 12 hours ends (SD-064)") {
@@ -182,7 +182,7 @@ TEST_CASE("Password change: a wrong old password counts as a failed attempt; a c
   Msg e;
   REQUIRE(a.login("geheim-123", 0, e, "192.168.1.20"));
   REQUIRE(a.login("geheim-123", 0, e, "192.168.1.21"));  // a second device
-  for (int i = 0; i < 5; ++i) CHECK(a.changePassword("falsch", "neu-geheim-456", 1000, "192.168.1.20").key == "auth.wrong");
+  for (int i = 0; i < 5; ++i) CHECK(a.changePassword("falsch", "neu-geheim-456", 1000, "192.168.1.20").key == "auth.wrong_old");
   CHECK(a.changePassword("geheim-123", "neu-geheim-456", 2000, "192.168.1.20").key == "auth.locked");
   CHECK(a.changePassword("geheim-123", "neu-geheim-456", 2000 + 31 * kSecond, "192.168.1.20").key.empty());
   // Someone guessing now: the device that changed the password signs in again

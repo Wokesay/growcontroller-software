@@ -129,9 +129,25 @@ test("no other core text uses a key of the table", () => {
   const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
   for (const f of readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")) {
     const text = readFileSync(join(coreSrc, f), "utf8");
-    const outside = text.replace(/\bsay\(\s*(?:"[^"]*"|[^,)]*)/g, "say(");
+    // A key compared with another one is no text of its own
+    const outside = text.replace(/\bsay\(\s*(?:"[^"]*"|[^,)]*)/g, "say(").replace(/\bkey\s*[!=]=\s*"[^"]*"/g, "key ==");
     for (const k of core.keys()) assert.ok(!outside.includes(`"${k}"`), `${f}: "${k}" used outside say()`);
   }
+});
+
+// The hub sends English and the web app translates by key (SD-082): the
+// refusals of the API, the sign-in and the configuration check hold no
+// German text of their own.
+test("the API, the sign-in and the configuration check send no German text", () => {
+  const german = /"(?:[^"\\\n]|\\.)*[äöüßÄÖÜ„“](?:[^"\\\n]|\\.)*"/;
+  for (const f of ["api.cpp", "auth.cpp", "config.cpp", "hub.cpp"]) {
+    const lines = readFileSync(join(coreSrc, f), "utf8").split("\n");
+    for (const [i, line] of lines.entries()) {
+      const code = line.replace(/\/\/.*$/, "");
+      assert.doesNotMatch(code, german, `${f}:${i + 1}: ${line.trim()}`);
+    }
+  }
+  assert.match('x = "Gerät";', german);
 });
 
 test("German and English use the same placeholders", () => {

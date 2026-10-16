@@ -132,7 +132,7 @@ TEST_CASE("Sensorwahrheit: stillstehender Rohwert wird erkannt (RAT-023)") {
 }
 
 TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)") {
-  std::string err;
+  gc::Msg err;
   auto c = Curve::fromJson({{"points", {{0.5, 0.0}, {0.59, 3.0}, {1.07, 15.0}, {2.39, 48.0}}}}, err);
   REQUIRE(c);
   CHECK(c->map(0.4) == doctest::Approx(0.0));
@@ -140,8 +140,16 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK(c->map(0.83) == doctest::Approx(9.0));
   CHECK(c->map(2.79) == doctest::Approx(58.0));  // über dem letzten Punkt mit dessen Steigung
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {0.502, 3.0}}}}, err));  // < 3 mV
+  CHECK(err.key == "curve.order");
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}}}}, err));
+  CHECK(err.key == "curve.two");
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 5.0}, {1.0, 3.0}}}}, err));
+  CHECK(err.key == "curve.falls");
+  CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {"x", 3.0}}}}, err));
+  CHECK(err.key == "curve.point");
+  CHECK_FALSE(Curve::fromJson(gc::json::object(), err));
+  CHECK(err.key == "curve.missing");
+  CHECK(err.text == "The curve is missing");  // the hub's text is English; the page translates by the key (SD-082)
 }
 
 TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)") {

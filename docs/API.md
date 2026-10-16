@@ -68,9 +68,9 @@ UI can do, an integration can do as well.
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
-| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
+| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`); at most 16 series, none twice (else 422 `history.series_many`, `history.series_twice`), each id as for `/export.csv` |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_` (else 422 `history.series_id`): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column), at most 16 series and none twice as for `/history`: `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
@@ -96,7 +96,11 @@ Errors come as `{"error":{"key","text","args"},"errors":[…]}` (`args`
 only when there are any). When the
 configuration check refuses a change (422), `error` is the first of its
 findings in `errors`, with its key and arguments, so a page can show it
-in its own language.
+in its own language. Every refusal has a key of its own and an English
+text: those of the API, the sign-in, the configuration check, a
+calibration and the import, also the transport's (`api.origin`,
+`api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
+(SD-082).
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
@@ -108,8 +112,9 @@ events (`title`, `text`) and errors are messages; a reading's label is
 the catalog label without a key until the catalog follows. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a
-state saved before keeps its plain text; jump locks have no `why`). The other texts follow under #18 and are still
-German until then.
+state saved before keeps its plain text; jump locks have no `why`). The
+reasons of a reading and the checklists' entries follow (#73) and are
+still German until then.
 
 When the dosing of a job step cannot start or go on (`/mix/start`,
 `/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,

@@ -312,6 +312,37 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
 }
 
+TEST_CASE("API: history and CSV name at most 16 series, none twice, each a series id (SD-082)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto list = [](int n) {
+    std::string out;
+    for (int i = 0; i < n; ++i) out += (i ? "," : "") + std::string("s") + std::to_string(i);
+    return out;
+  };
+  for (const char* route : {"/api/v1/history?series=", "/api/v1/export.csv?lang=en&series="}) {
+    CAPTURE(route);
+    auto [ok, okBody] = c.call("GET", route + list(16));
+    CHECK(ok == 200);
+    auto [many, manyBody] = c.call("GET", route + list(17));
+    CHECK(many == 422);
+    CHECK(manyBody["error"]["key"] == "history.series_many");
+    CHECK(manyBody["error"]["args"]["max"] == 16);
+    auto [twice, twiceBody] = c.call("GET", route + std::string("tank.ph,tank.ec,tank.ph"));
+    CHECK(twice == 422);
+    CHECK(twiceBody["error"]["key"] == "history.series_twice");
+    CHECK(twiceBody["error"]["args"]["id"] == "tank.ph");
+    for (const char* bad : {"tank.ph,", ",tank.ph", "tank.ph,,tank.ec", "Tank.PH", "=1+1"}) {
+      auto [st, body] = c.call("GET", route + std::string(bad));
+      CHECK_MESSAGE(st == 422, bad);
+      CHECK_MESSAGE(body["error"]["key"] == "history.series_id", bad);
+    }
+  }
+  CHECK(c.ok("GET", "/api/v1/history?series=tank.ph,zone.vpd")["series"].size() == 2);
+  CHECK(c.ok("GET", "/api/v1/history?series=")["series"].empty());  // none named, none read
+}
+
 TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-082)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

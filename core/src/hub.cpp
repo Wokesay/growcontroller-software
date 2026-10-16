@@ -14,10 +14,6 @@
 
 namespace gc {
 
-Result Result::fail(int st, const std::string& key, const std::string& text, json extra) {
-  return fail(st, Msg{key, text, json::object()}, std::move(extra));
-}
-
 Result Result::fail(int st, const Msg& m, json extra) {
   json b = {{"error", m}};
   for (auto& [k, v] : extra.items()) b[k] = v;
@@ -945,18 +941,18 @@ Result Hub::setSystem(const json& j) {
   }
   if (j.contains("language") && j["language"].is_string()) {
     std::string lang = j["language"];
-    if (lang != "de" && lang != "en") return Result::fail(422, "system.language", "Sprache muss de oder en sein");
+    if (lang != "de" && lang != "en") return Result::fail(422, say("system.language"));
     sys.language = lang;
   }
   if (j.contains("updateCheck") && j["updateCheck"].is_boolean()) sys.updateCheck = j["updateCheck"];
   if (j.contains("updateChannel") && j["updateChannel"].is_string()) {
     std::string ch = j["updateChannel"];
-    if (ch != "stable" && ch != "beta") return Result::fail(422, "system.channel", "Kanal muss stable oder beta sein");
+    if (ch != "stable" && ch != "beta") return Result::fail(422, say("system.channel"));
     sys.updateChannel = ch;
   }
   if (j.contains("handDoseMaxMl") && j["handDoseMaxMl"].is_number()) {
     double v = j["handDoseMaxMl"];
-    if (v < 0.5 || v > 50) return Result::fail(422, "system.hand", "Grenze je Handgabe 0,5–50 ml");
+    if (v < 0.5 || v > 50) return Result::fail(422, say("system.hand"));
     lim.handDoseMaxMl = v;
   }
   if (j.contains("control")) {
@@ -983,8 +979,8 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
   const DeviceReport* d = nullptr;
   for (const auto& x : devices_)
     if (x.id == id) d = &x;
-  if (!d) return Result::fail(404, "device.unknown", "Gerät nicht erkannt");
-  if (!cat_.deviceClass(d->cls)) return Result::fail(422, "device.class", "Unbekannte Geräteklasse – Update nötig");
+  if (!d) return Result::fail(404, say("device.not_detected"));
+  if (!cat_.deviceClass(d->cls)) return Result::fail(422, say("device.class"));
   if (cfg_.device(id)) return Result::ok();
   const DeviceClassDef* dc = cat_.deviceClass(d->cls);
   cfg_.devices.push_back({id, d->cls, name.empty() ? dc->label : utf8Prefix(name, 40)});
@@ -1031,14 +1027,14 @@ Result Hub::renameDevice(const std::string& id, const std::string& name) {
       saveConfig(say("ev.cfg.device_renamed", {{"name", d.name}}));
       return Result::ok();
     }
-  return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  return Result::fail(404, say("device.unknown"));
 }
 
 Result Hub::setDeviceLife(const std::string& id, const std::string& source, const std::string& channel) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   Config next = cfg_;
   auto d = std::find_if(next.devices.begin(), next.devices.end(), [&](const DeviceCfg& x) { return x.id == id; });
-  if (d == next.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  if (d == next.devices.end()) return Result::fail(404, say("device.unknown"));
   const std::string ch = source.empty() ? std::string() : channel;
   if (d->life == source && d->lifeChannel == ch) return Result::ok();
   d->life = source;
@@ -1054,7 +1050,7 @@ Result Hub::setDeviceLife(const std::string& id, const std::string& source, cons
 Result Hub::removeDevice(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = std::find_if(cfg_.devices.begin(), cfg_.devices.end(), [&](const DeviceCfg& d) { return d.id == id; });
-  if (it == cfg_.devices.end()) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  if (it == cfg_.devices.end()) return Result::fail(404, say("device.unknown"));
   for (auto p = probeSessions_.begin(); p != probeSessions_.end();)  // a calibration ends with its device
     p = jstr(p->second, "device") == id ? probeSessions_.erase(p) : std::next(p);
   std::string name = it->name;
@@ -1099,10 +1095,10 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
-      return Result::fail(502, "role.net.write", "Schutzeinstellung nicht geschrieben: " + e);
+      return Result::fail(502, say("role.net.write", {{"reason", e}}));
     auto got = net_->readConfig(device, channel);
     if (!got || !sameSafety(*got, want))
-      return Result::fail(502, "role.net.verify", "Schutzeinstellung im Gerät nicht bestätigt – nicht zugeordnet");
+      return Result::fail(502, say("role.net.verify"));
     const bool on = want.powerOn == PowerOn::On;
     Msg text = isNum(want.autoOffS) ? say(on ? "ev.net.power_on_auto" : "ev.net.power_off_auto", {{"min", want.autoOffS / 60}})
                                     : say(on ? "ev.net.power_on" : "ev.net.power_off");
@@ -1126,7 +1122,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
 Result Hub::switchRole(const std::string& role, bool on) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const RoleDef* rd = cat_.role(role);
-  if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
+  if (!rd || rd->profile.empty()) return Result::fail(404, say("role.unknown"));
   Ctx c = ctx();
   Msg e;
   if (!act_.setRole(c, role, on, say("who.manual"), e)) return Result::fail(409, e);
@@ -1139,7 +1135,7 @@ Result Hub::switchRole(const std::string& role, bool on) {
 Result Hub::testRole(const std::string& role) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const RoleDef* rd = cat_.role(role);
-  if (!rd || rd->profile.empty()) return Result::fail(404, "role.unknown", "Kein Schaltausgang");
+  if (!rd || rd->profile.empty()) return Result::fail(404, say("role.unknown"));
   if (act_.roleState(cfg_, role).value_or(false)) return Result::ok();  // läuft schon: nicht nach 3 s abschalten
   Ctx c = ctx();
   Msg e;
@@ -1257,7 +1253,7 @@ Result Hub::putCanister(const json& j) {
   if (j.contains("pair")) k->pair = jstr(j, "pair");
   if (j.contains("color")) k->color = jstr(j, "color");
   if (j.contains("capacityMl")) k->capacityMl = j["capacityMl"].is_number() ? j["capacityMl"].get<double>() : kNaN;
-  if (k->name.empty()) return Result::fail(422, "canister.name", "Name fehlt");
+  if (k->name.empty()) return Result::fail(422, say("canister.name"));
   // A bottle that leaves its pair takes the label from a partner left alone, as removing it does
   const std::string unpaired = k->pair != oldPair ? unpairLone(next, oldPair) : "";
   auto errs = validateConfig(next, cat_);
@@ -1288,9 +1284,9 @@ Result Hub::deleteCanister(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   for (const auto& r : cfg_.recipes)
     for (const auto& s : r.steps)
-      if (s.canister == id) return Result::fail(409, "canister.used", "Wird im Rezept „" + r.name + "“ verwendet");
+      if (s.canister == id) return Result::fail(409, say("canister.used", {{"recipe", r.name}}));
   auto it = std::find_if(cfg_.canisters.begin(), cfg_.canisters.end(), [&](const CanisterCfg& k) { return k.id == id; });
-  if (it == cfg_.canisters.end()) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
+  if (it == cfg_.canisters.end()) return Result::fail(404, say("canister.unknown"));
   const std::string name = it->name, pair = it->pair;
   cfg_.canisters.erase(it);
   rt_.stockMl.erase(id);
@@ -1304,7 +1300,7 @@ Result Hub::deleteCanister(const std::string& id) {
 Result Hub::setStock(const std::string& id, double ml) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const CanisterCfg* k = cfg_.canister(id);
-  if (!k) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
+  if (!k) return Result::fail(404, say("canister.unknown"));
   if (!isNum(ml) || ml < 0) return Result::fail(422, say("canister.stock"));
   rt_.stockMl[id] = ml;
   stateDirty_ = true;
@@ -1353,7 +1349,7 @@ Result Hub::putRecipe(const json& j) {
       return Result::fail(422, say("recipe.ph"));
     }
   }
-  if (r->name.empty()) return Result::fail(422, "recipe.name", "Name fehlt");
+  if (r->name.empty()) return Result::fail(422, say("recipe.name"));
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
@@ -1394,7 +1390,7 @@ Result Hub::putRecipe(const json& j) {
 Result Hub::deleteRecipe(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = std::find_if(cfg_.recipes.begin(), cfg_.recipes.end(), [&](const RecipeCfg& r) { return r.id == id; });
-  if (it == cfg_.recipes.end()) return Result::fail(404, "recipe.unknown", "Rezept nicht gefunden");
+  if (it == cfg_.recipes.end()) return Result::fail(404, say("recipe.unknown"));
   std::string name = it->name;
   cfg_.recipes.erase(it);
   saveConfig(say("ev.cfg.recipe_removed", {{"name", name}}));
@@ -1406,7 +1402,7 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
   // Name, note and part names in the language of the page that asks (it can
   // differ from the hub's), otherwise in the system language (#32).
   if (!langIn.empty() && langIn != "de" && langIn != "en")
-    return Result::fail(422, "recipe.template.lang", "Sprache muss de oder en sein");
+    return Result::fail(422, say("recipe.template.lang"));
   const std::string lang = !langIn.empty() ? langIn : language();  // English first (SD-014)
   auto localized = [&](const json& o, const char* key) {
     const std::string en = jstr(o, (std::string(key) + "En").c_str());
@@ -1441,15 +1437,11 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
         continue;
       }
       if (!used.insert(k->id).second)
-        return Result::fail(422, "recipe.template.twice", "Kanister „" + k->name + "“ ist zwei Teilen der Vorlage zugeordnet");
+        return Result::fail(422, say("recipe.template.twice", {{"name", k->name}}));
       if (!jstr(s, "pair").empty()) pairs[k->id] = jstr(s, "pair");
       steps.push_back({{"canister", k->id}, {"mlPerL", jnum(s, "mlPerL")}});
     }
-    if (!missing.empty()) {
-      std::string m;
-      for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
-      return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
-    }
+    if (!missing.empty()) return Result::fail(422, say("recipe.template", {{"missing", missing}}), {{"missing", missing}});
     // The chart's EC and pH range come along (SD-057)
     Result r = putRecipe({{"name", localized(t, "name")},
                           {"note", localized(t, "note")},
@@ -1492,13 +1484,13 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
     }
     return r;
   }
-  return Result::fail(404, "recipe.template", "Vorlage nicht gefunden");
+  return Result::fail(404, say("recipe.template.unknown"));
 }
 
 Result Hub::putFunction(const std::string& id, const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   const FunctionDef* fd = cat_.function(id);
-  if (!fd) return Result::fail(404, "function.unknown", "Funktion nicht gefunden");
+  if (!fd) return Result::fail(404, say("function.unknown"));
   Config next = cfg_;
   auto& f = next.functions[id];
   if (j.contains("params") && j["params"].is_object())
@@ -1509,7 +1501,7 @@ Result Hub::putFunction(const std::string& id, const json& j) {
       // Einschalten nur, wenn die Einrichtung vollständig ist ("eingeschränkt" genügt).
       for (const auto& fs : functions_)
         if (fs.id == id && (fs.setup == "unavailable" || fs.setup == "needs_setup"))
-          return Result::fail(409, "function.not_ready", fs.summary.text);
+          return Result::fail(409, say("function.not_ready", {{"reason", fs.summary}}));
     }
     f.enabled = en;
   }
@@ -1529,11 +1521,14 @@ Result Hub::importConfig(const json& j) {
     const json& tz = j["system"]["timezone"];
     if (!tz.is_string() || !isTimeZoneName(tz.get<std::string>())) return Result::fail(422, say("system.timezone"));
   }
+  if (!j.is_object()) return Result::fail(422, say("config.not_object"));
+  if (j.contains("schemaVersion") && j["schemaVersion"].is_number_integer() && j["schemaVersion"].get<int>() > kSchemaVersion)
+    return Result::fail(422, say("config.newer", {{"schema", j["schemaVersion"]}}));
   Config next;
   try {
     next = configFromJson(j);
   } catch (const std::exception& e) {
-    return Result::fail(422, "config.import", std::string("Datei unlesbar: ") + e.what());
+    return Result::fail(422, say("config.import", {{"reason", e.what()}}));
   }
   // A calibration of a device that is not in the file (left over in an older backup) is left out
   for (auto c = next.calibrations.begin(); c != next.calibrations.end();)
@@ -1542,15 +1537,15 @@ Result Hub::importConfig(const json& j) {
   for (const auto& [dev, kinds] : next.calibrations)
     for (const auto& [kind, data] : kinds) {
       if (auto e = SensorTruth::checkCalibration(kind, data))
-        errs.push_back({"cfg.calibration", "Kalibrierung " + dev + " (" + kind + "): " + *e, json::object()});
+        errs.push_back(say("cfg.calibration", {{"device", dev}, {"kind", kind}, {"reason", *e}}));
       // Only what the device's class offers: a file cannot give a sensor calibrated elsewhere a calibration (RAT-025)
       const DeviceClassDef* dc = cat_.deviceClass(next.device(dev)->cls);
       if (!dc || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
-        errs.push_back({"cfg.calibration", "Kalibrierung " + dev + " (" + kind + "): dieses Gerät bietet sie nicht an", json::object()});
+        errs.push_back(say("cfg.calibration.offered", {{"device", dev}, {"kind", kind}}));
     }
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
-    return Result::fail(409, "job.busy", "Es wird gerade dosiert oder gemischt – lade die Einstellungen danach");
+    return Result::fail(409, say("config.busy"));
   act_.stopAll(cat_, cfg_, clock_.nowMs());
   // A socket that loses its fan role goes back to "off after power loss";
   // every switched socket in the import gets the setting of its role.
@@ -1601,10 +1596,10 @@ Result Hub::mixPlan(const json& req) {
 
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft schon ein Mischlauf, eine Handgabe, ein Einmessen oder ein Schlauchfüllen");  // kein Doppelstart (RAT-003)
+  if (userJobActive()) return Result::fail(409, say("job.busy"));  // kein Doppelstart (RAT-003)
   // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
-  if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
+  if (doser_.busy()) return Result::fail(409, say("job.dosing"));
   if (stopped_) return Result::fail(409, say("act.stopped"));
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   auto it = cfg_.functions.find("ph_control");
@@ -1613,7 +1608,7 @@ Result Hub::mixStart(const json& req) {
   if (!plan.ok) {
     json b = plan;
     // the first error as the message it is, with its values (SD-032)
-    return Result::fail(422, plan.errors.empty() ? Msg{"mix.invalid", "Plan ungültig", json::object()} : plan.errors.front(),
+    return Result::fail(422, plan.errors.empty() ? say("mix.invalid") : plan.errors.front(),
                         {{"plan", b}});
   }
   // Abgleich des Rezepts mit den wirklich vorhandenen Kanistern vor der ersten Gabe.
@@ -1783,10 +1778,10 @@ void Hub::tickJob(Ctx& c) {
 
 Result Hub::jobContinue(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (!job_ || job_->id != id) return Result::fail(404, "job.unknown", "Auftrag nicht aktiv");
+  if (!job_ || job_->id != id) return Result::fail(404, say("job.unknown"));
   if (job_->state != "waiting_user" && job_->state != "mixing")
-    return Result::fail(409, "job.state", "Auftrag wartet nicht");
-  if (job_->type == "calibration") return Result::fail(409, "job.state", "Bitte die gemessene Menge eintragen");
+    return Result::fail(409, say("job.state"));
+  if (job_->type == "calibration") return Result::fail(409, say("job.state_amount"));
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
   saveJob();
@@ -1795,8 +1790,8 @@ Result Hub::jobContinue(const std::string& id) {
 
 Result Hub::jobResume(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (!job_ || job_->id != id) return Result::fail(404, "job.unknown", "Auftrag nicht aktiv");
-  if (job_->state != "failed") return Result::fail(409, "job.state", "Nur ein unterbrochener Auftrag kann nachgeholt werden");
+  if (!job_ || job_->id != id) return Result::fail(404, say("job.unknown"));
+  if (job_->state != "failed") return Result::fail(409, say("job.state_resume"));
   // Einmesswert und Pumpe neu lesen (z. B. nach dem Tausch der Kappe)
   auto& st = job_->steps[job_->index];
   if (auto it = pumps_.find(st.dose.pump); it != pumps_.end()) st.dose.flowMlPerMin = it->second.flowMlPerMin;
@@ -1810,7 +1805,7 @@ Result Hub::jobResume(const std::string& id) {
 
 Result Hub::jobAbort(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (!job_ || job_->id != id) return Result::fail(404, "job.unknown", "Auftrag nicht aktiv");
+  if (!job_ || job_->id != id) return Result::fail(404, say("job.unknown"));
   Ctx c = ctx();
   if (doser_.busy() && doser_.active()->id.rfind(id, 0) == 0) doser_.abort(c, act_, say("abort.job"));
   if (auto fin = doser_.takeFinished()) onJobDose(c, *fin);
@@ -1824,16 +1819,17 @@ Result Hub::jobAbort(const std::string& id) {
 
 Result Hub::manualDose(const std::string& canister, double ml) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive() || doser_.busy()) return Result::fail(409, "job.busy", "Es läuft bereits eine Dosierung");
+  if (userJobActive()) return Result::fail(409, say("job.busy"));
+  if (doser_.busy()) return Result::fail(409, say("job.dosing"));
   const CanisterCfg* k = cfg_.canister(canister);
-  if (!k) return Result::fail(404, "canister.unknown", "Kanister nicht gefunden");
-  if (!isNum(ml) || ml <= 0) return Result::fail(422, "dose.amount", "Menge fehlt");
+  if (!k) return Result::fail(404, say("canister.unknown"));
+  if (!isNum(ml) || ml <= 0) return Result::fail(422, say("dose.amount"));
   const Limits lim = cfg_.limits.bounded();
   if (ml > lim.handDoseMaxMl)
-    return Result::fail(422, "dose.hand_limit", "Höchstens " + fmt(lim.handDoseMaxMl, 1) + " ml je Handgabe");
+    return Result::fail(422, say("dose.hand_limit", {{"max", lim.handDoseMaxMl}}));
   auto pit = pumps_.find(k->pump);
   if (k->pump.empty() || pit == pumps_.end() || !pit->second.online)
-    return Result::fail(422, "dose.pump", k->name + ": Pumpe nicht erkannt");
+    return Result::fail(422, say("dose.pump", {{"name", k->name}}));
   DoseStep s;
   s.canister = k->id;
   s.name = k->name;
@@ -1865,11 +1861,12 @@ Result Hub::manualDose(const std::string& canister, double ml) {
 
 Result Hub::startCalibration(const std::string& pump, double seconds) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive() || doser_.busy()) return Result::fail(409, "job.busy", "Es läuft bereits eine Dosierung");
+  if (userJobActive()) return Result::fail(409, say("job.busy"));
+  if (doser_.busy()) return Result::fail(409, say("job.dosing"));
   auto pit = pumps_.find(pump);
-  if (pit == pumps_.end() || !pit->second.online) return Result::fail(404, "pump.unknown", "Pumpe nicht erkannt");
+  if (pit == pumps_.end() || !pit->second.online) return Result::fail(404, say("pump.unknown"));
   if (!isNum(seconds) || seconds < 10 || seconds > 60)
-    return Result::fail(422, "cal.seconds", "Einmesslauf 10–60 s (kurze Läufe sind ungenau)");
+    return Result::fail(422, say("cal.seconds"));
   const CanisterCfg* k = cfg_.canisterByPump(pump);
   DoseStep s;
   s.canister = k ? k->id : "";
@@ -1897,15 +1894,15 @@ Result Hub::startCalibration(const std::string& pump, double seconds) {
 Result Hub::calibrationResult(const std::string& jobId, double ml) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (!job_ || job_->id != jobId || job_->type != "calibration" || job_->state != "waiting_user")
-    return Result::fail(409, "cal.state", "Kein Einmesslauf wartet auf ein Ergebnis");
-  if (!isNum(ml) || ml <= 0 || ml > 1000) return Result::fail(422, "cal.amount", "Menge ungültig – alter Wert bleibt");
+    return Result::fail(409, say("cal.state"));
+  if (!isNum(ml) || ml <= 0 || ml > 1000) return Result::fail(422, say("cal.amount"));
   Ms actual = static_cast<Ms>(jnum(job_->info, "actualMs", 0));
-  if (actual <= 0) return Result::fail(422, "cal.runtime", "Ist-Laufzeit fehlt – bitte erneut einmessen");
+  if (actual <= 0) return Result::fail(422, say("cal.runtime"));
   // Rate aus der gemeldeten Ist-Laufzeit, nicht aus der angeforderten (RAT-070)
   double flow = ml / (static_cast<double>(actual) / 60000.0);
   std::string pump = jstr(job_->info, "pump");
   std::string e;
-  if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, "cal.write", "Schreiben in die Pumpe fehlgeschlagen: " + e);
+  if (!bus_.writePumpCalibration(pump, flow, e)) return Result::fail(502, say("cal.write", {{"reason", e}}));
   if (auto it = pumps_.find(pump); it != pumps_.end()) it->second.flowMlPerMin = flow;  // sofort gültig, nicht erst im nächsten Takt
   double prev = jnum(job_->info, "previous");
   if (isNum(prev) && prev <= 0) prev = kNaN;  // a chip reporting 0 has no previous rate (R5)
@@ -1924,10 +1921,11 @@ Result Hub::calibrationResult(const std::string& jobId, double ml) {
 
 Result Hub::prime(const std::string& pump, double seconds) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive() || doser_.busy()) return Result::fail(409, "job.busy", "Es läuft bereits eine Dosierung");
+  if (userJobActive()) return Result::fail(409, say("job.busy"));
+  if (doser_.busy()) return Result::fail(409, say("job.dosing"));
   auto pit = pumps_.find(pump);
-  if (pit == pumps_.end() || !pit->second.online) return Result::fail(404, "pump.unknown", "Pumpe nicht erkannt");
-  if (!isNum(seconds) || seconds <= 0 || seconds > 20) return Result::fail(422, "prime.seconds", "Schlauch füllen: höchstens 20 s je Lauf");
+  if (pit == pumps_.end() || !pit->second.online) return Result::fail(404, say("pump.unknown"));
+  if (!isNum(seconds) || seconds <= 0 || seconds > 20) return Result::fail(422, say("prime.seconds"));
   const CanisterCfg* k = cfg_.canisterByPump(pump);
   DoseStep s;
   s.canister = k ? k->id : "";
@@ -2043,9 +2041,9 @@ Result Hub::probeCalibration(const json& j) {
     if (probeSessions_.erase(key)) stateDirty_ = true;
     return Result::ok();
   }
-  if (!cfg_.device(dev)) return Result::fail(404, "device.unknown", "Gerät nicht eingerichtet");
+  if (!cfg_.device(dev)) return Result::fail(404, say("device.unknown"));
   const std::string cap = capabilityOfKind(kind);
-  if (cap.empty()) return Result::fail(422, "probe.kind", "Unbekannte Kalibrierung");
+  if (cap.empty()) return Result::fail(422, say("probe.kind"));
   // Only kinds the device class offers; a device calibrated elsewhere offers
   // none, and one that reports another class than configured offers none either
   const DeviceClassDef* dc = cat_.deviceClass(cfg_.device(dev)->cls);
@@ -2053,24 +2051,24 @@ Result Hub::probeCalibration(const json& j) {
   for (const auto& d : devices_)
     if (d.id == dev && d.cls != cfg_.device(dev)->cls) reportedOther = true;
   if (!dc || reportedOther || std::find(dc->calibrations.begin(), dc->calibrations.end(), kind) == dc->calibrations.end())
-    return Result::fail(422, "probe.not_offered", "Dieses Gerät lässt sich hier nicht kalibrieren");
+    return Result::fail(422, say("probe.not_offered"));
   if (action == "start") {
     probeSessions_[key] = {{"device", dev}, {"kind", kind}, {"points", json::array()}, {"at", clock_.nowMs()}};
     stateDirty_ = true;
     return Result::ok(probeSessions_[key]);
   }
   auto it = probeSessions_.find(key);
-  if (it == probeSessions_.end()) return Result::fail(409, "probe.session", "Erst die Kalibrierung starten");
+  if (it == probeSessions_.end()) return Result::fail(409, say("probe.session"));
   if (action == "point") {
     double ref = jnum(j, "reference");
-    if (!isNum(ref)) return Result::fail(422, "probe.reference", "Sollwert fehlt");
+    if (!isNum(ref)) return Result::fail(422, say("probe.reference"));
     // What a buffer, a reference solution or a tank can be
     const bool plausible = kind == "ph" ? ref >= 0 && ref <= 14 : kind == "ec" ? ref > 0 && ref <= 20 : ref >= 0 && ref <= 100000;
-    if (!plausible) return Result::fail(422, "probe.reference", "Sollwert außerhalb dessen, was ein Puffer oder Tank sein kann");
+    if (!plausible) return Result::fail(422, say("probe.reference_range"));
     // Room for another point: a retake for the same reference replaces its point
     const json& have = it->second["points"];
     if (have.size() >= kMaxProbePoints && std::none_of(have.begin(), have.end(), [&](const json& x) { return x[1].get<double>() == ref; }))
-      return Result::fail(422, "probe.points", "Höchstens " + std::to_string(kMaxProbePoints) + " Punkte");
+      return Result::fail(422, say("probe.points_max", {{"max", kMaxProbePoints}}));
     it->second["at"] = clock_.nowMs();
     it->second.erase("idle");
     // A sensor on its own schedule (Home Assistant) reports when it reports:
@@ -2094,19 +2092,19 @@ Result Hub::probeCalibration(const json& j) {
     json data;
     const json& pts = it->second["points"];
     if (kind == "ph") {
-      if (pts.size() < 2) return Result::fail(422, "probe.points", "Zwei Pufferpunkte nötig (z. B. pH 7 und pH 4)");
+      if (pts.size() < 2) return Result::fail(422, say("probe.points_two"));
       data = {{"points", json::array({pts[0], pts[1]})}};
     } else if (kind == "ec") {
-      if (pts.empty()) return Result::fail(422, "probe.points", "Ein Referenzpunkt nötig (z. B. 1,413 mS/cm)");
+      if (pts.empty()) return Result::fail(422, say("probe.points_one"));
       double raw = pts.back()[0].get<double>(), ref = pts.back()[1].get<double>();
-      if (raw <= 0) return Result::fail(422, "probe.raw", "Rohwert ungültig");
+      if (raw <= 0) return Result::fail(422, say("probe.raw"));
       data = {{"factor", ref / raw}};
     } else {
       json sorted = pts;
       std::sort(sorted.begin(), sorted.end(), [](const json& a, const json& b) { return a[0].get<double>() < b[0].get<double>(); });
       data = {{"points", sorted}};
-      std::string err;
-      if (!Curve::fromJson(data, err)) return Result::fail(422, "probe.curve", err);
+      Msg err;
+      if (!Curve::fromJson(data, err)) return Result::fail(422, err);
     }
     data["at"] = clock_.epoch();
     double probe = kind == "tank_curve" ? pts[0][0].get<double>() : 7.0;
@@ -2134,14 +2132,14 @@ Result Hub::probeCalibration(const json& j) {
              say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", kindMsg}}));
     return Result::ok({{"calibration", data}});
   }
-  return Result::fail(422, "probe.action", "Unbekannter Schritt");
+  return Result::fail(422, say("probe.action"));
 }
 
 Result Hub::ackLatch(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = rt_.latches.find(id);
-  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Diese Sperre ist schon aufgehoben");
-  if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
+  if (it == rt_.latches.end()) return Result::fail(404, say("latch.unknown"));
+  if (id.rfind("jump.", 0) == 0) return Result::fail(409, say("latch.jump"));
   rt_.latches.erase(it);
   stateDirty_ = true;
   log_.add(clock_.epoch(), "block", "info", say("ev.latch_released"), latchName(id));
@@ -2220,7 +2218,7 @@ Result Hub::resume() {
 
 Result Hub::maintenance(double minutes) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (!isNum(minutes) || minutes < 0 || minutes * 60 > kMaxMaintenanceS) return Result::fail(422, "maint.minutes", "0–240 min");
+  if (!isNum(minutes) || minutes < 0 || minutes * 60 > kMaxMaintenanceS) return Result::fail(422, say("maint.minutes"));
   maintenanceUntil_ = minutes > 0 ? clock_.epoch() + static_cast<Epoch>(minutes * 60) : 0;
   log_.add(clock_.epoch(), "system", "info", say(minutes > 0 ? "ev.maintenance" : "ev.maintenance_end"),
            minutes > 0 ? say("ev.maintenance.text", {{"min", minutes}}) : Msg{});
@@ -2238,7 +2236,7 @@ Result Hub::manualMeasure(const json& j) {
       values.push_back(say(ph ? "reading.ph" : "reading.ec", {{"value", v}}));
     }
   }
-  if (values.empty()) return Result::fail(422, "manual.empty", "Kein Wert eingetragen");
+  if (values.empty()) return Result::fail(422, say("manual.empty"));
   rt_.manualAt = clock_.epoch();
   stateDirty_ = true;
   log_.add(clock_.epoch(), "measure", "info", say("ev.manual_reading"), say("ev.manual_reading.text", {{"values", values}}));
@@ -2247,7 +2245,7 @@ Result Hub::manualMeasure(const json& j) {
 
 Result Hub::growStart(const json& j) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (cfg_.grow.state == "running") return Result::fail(409, "grow.running", "Es läuft bereits ein Durchgang");
+  if (cfg_.grow.state == "running") return Result::fail(409, say("grow.running"));
   GrowCfg g;
   g.state = "running";
   g.name = utf8Prefix(jstr(j, "name", "Durchgang"), 40);
@@ -2259,7 +2257,7 @@ Result Hub::growStart(const json& j) {
     json params = p.is_object() && p.contains("params") ? p["params"] : json::object();
     g.phases.push_back({jstr(p, "name"), isNum(days) && days >= 0 && days < 1000 ? static_cast<int>(days) : 0, params});
   }
-  if (g.phases.empty()) return Result::fail(422, "grow.phases", "Mindestens eine Phase anlegen");
+  if (g.phases.empty()) return Result::fail(422, say("grow.phases"));
   Config next = cfg_;
   next.grow = g;
   auto errs = validateConfig(next, cat_);
@@ -2273,8 +2271,8 @@ Result Hub::growStart(const json& j) {
 Result Hub::growNextPhase() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto& g = cfg_.grow;
-  if (g.state != "running") return Result::fail(409, "grow.state", "Kein laufender Durchgang");
-  if (g.phase + 1 >= static_cast<int>(g.phases.size())) return Result::fail(409, "grow.last", "Letzte Phase erreicht");
+  if (g.state != "running") return Result::fail(409, say("grow.state"));
+  if (g.phase + 1 >= static_cast<int>(g.phases.size())) return Result::fail(409, say("grow.last"));
   g.phase++;
   g.phaseStartedAt = clock_.epoch();
   saveConfig({});
@@ -2285,7 +2283,7 @@ Result Hub::growNextPhase() {
 Result Hub::growHarvest() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto& g = cfg_.grow;
-  if (g.state != "running") return Result::fail(409, "grow.state", "Kein laufender Durchgang");
+  if (g.state != "running") return Result::fail(409, say("grow.state"));
   g.harvestedAt = clock_.epoch();  // Ernte ist ein Ereignis, kein Dauerzustand (RAT-077)
   saveConfig({});
   log_.add(clock_.epoch(), "grow", "info", say("ev.grow.harvest"), plain(g.name));
@@ -2295,7 +2293,7 @@ Result Hub::growHarvest() {
 Result Hub::growComplete() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto& g = cfg_.grow;
-  if (g.state != "running") return Result::fail(409, "grow.state", "Kein laufender Durchgang");
+  if (g.state != "running") return Result::fail(409, say("grow.state"));
   g.state = "completed";
   saveConfig({});
   log_.add(clock_.epoch(), "grow", "info", say("ev.grow.finished"), plain(g.name));

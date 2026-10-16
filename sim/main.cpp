@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
                                      req.get_header_value("Origin"), req.get_header_value("Host"));
     if (ok) return httplib::Server::HandlerResponse::Unhandled;
     res.status = 403;
-    res.set_content(R"({"error":{"key":"api.origin","text":"Anfrage von fremder Herkunft abgelehnt"}})",
+    res.set_content(R"({"error":{"key":"api.origin","text":"Request from a foreign origin refused"}})",
                     "application/json");
     return httplib::Server::HandlerResponse::Handled;
   });
@@ -242,7 +242,7 @@ int main(int argc, char** argv) {
     std::lock_guard<std::recursive_mutex> l(simulation.mutex());
     if (!simulation.api().authorized(toApi(req))) {
       res.status = 401;
-      res.set_content(R"({"error":{"key":"auth.required","text":"Bitte anmelden"}})", "application/json");
+      res.set_content(R"({"error":{"key":"auth.required","text":"Please sign in"}})", "application/json");
       return;
     }
     res.set_content(simulation.simState().dump(), "application/json");
@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
     const bool open = action == "scenario" && allowReset;
     if (!open && !simulation.api().authorized(toApi(req))) {
       res.status = 401;
-      res.set_content(R"({"error":{"key":"auth.required","text":"Bitte anmelden"}})", "application/json");
+      res.set_content(R"({"error":{"key":"auth.required","text":"Please sign in"}})", "application/json");
       return;
     }
     auto body = gc::json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);

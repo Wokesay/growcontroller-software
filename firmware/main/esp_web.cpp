@@ -123,7 +123,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
   const std::string host = header(req, "Host");
   if (!gc::hostAllowed(host) ||
       !gc::writeAllowed(r.method, header(req, "Sec-Fetch-Site"), header(req, "Origin"), host))
-    return sendError(req, 403, "{\"error\":{\"key\":\"api.origin\",\"text\":\"Anfrage von fremder Herkunft abgelehnt\"}}");
+    return sendError(req, 403, "{\"error\":{\"key\":\"api.origin\",\"text\":\"Request from a foreign origin refused\"}}");
   std::string uri = req->uri;
   auto q = uri.find('?');
   r.path = uri.substr(0, q);
@@ -140,7 +140,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
     }
   }
   if (req->content_len > kMaxBody)
-    return sendError(req, 413, "{\"error\":{\"key\":\"api.too_large\",\"text\":\"Anfrage zu groß\"}}");
+    return sendError(req, 413, "{\"error\":{\"key\":\"api.too_large\",\"text\":\"Request too large\"}}");
   r.body.resize(req->content_len);
   size_t got = 0;
   int timeouts = 0;
@@ -150,7 +150,7 @@ esp_err_t apiHandler(httpd_req_t* req) {
       // Langsame oder stumme Gegenstelle darf den einzigen Server-Task nicht blockieren.
       if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 2) continue;
       if (n == HTTPD_SOCK_ERR_TIMEOUT)
-        return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"Anfrage unvollständig\"}}");
+        return sendError(req, 408, "{\"error\":{\"key\":\"api.timeout\",\"text\":\"Request incomplete\"}}");
       return ESP_FAIL;
     }
     got += static_cast<size_t>(n);
