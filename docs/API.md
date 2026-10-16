@@ -88,7 +88,7 @@ UI can do, an integration can do as well.
 | PUT | `/tank` | name, usable volume, minimum level, water, volume without a level head |
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
-| POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
+| POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes, whose steps may be `fixed` (a fixed addition, never one of a pair: `cfg.recipe.fixed_pair`, RAT-085; a step without it counts as not fixed, anything but true or false is 422 `recipe.fixed`), with the chart's `refEc` (mS/cm) and `ph` `[low, high]`: a missing key keeps them, `null` clears them, another type is 422 `recipe.ref_ec` or `recipe.ph`, an EC that does not fit the amounts or a range out of order is refused by the configuration check (`cfg.recipe.ref_far`, `cfg.recipe.ref_strong`, `cfg.recipe.ref_range`, `cfg.recipe.ph_band`, SD-057); a template brings its chart EC and pH range; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 
@@ -113,7 +113,8 @@ When the dosing of a job step cannot start or go on (`/mix/start`,
 key `job.start_failed` and the cause as the message in `args.reason`,
 for example `dose.too_small` or `act.stopped` in `args.reason.key`.
 Checks of the request itself keep their own keys (for example
-`job.busy`, `dose.hand_limit`, `job.state`). Job messages (`job.message`) use their own keys,
+`job.busy`, `dose.hand_limit`, `job.state`); a mix started during a Stop
+is refused with `act.stopped` itself. Job messages (`job.message`) use their own keys,
 for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 `job.emergency_stop`.
 
@@ -127,7 +128,7 @@ for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
 | POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel. For a sensor on its own schedule (Home Assistant, SD-041) `point` answers with `pending {since, reference}`: the point is taken from the sensor's next report; with none within its freshness limit the session in the state carries `failed` (`probe.no_raw`) |
 | POST | `/latches/{id}/ack` | acknowledge a latch (a jump lock clears itself) |
-| POST | `/stop`, `/resume`, `/maintenance {minutes}` | emergency stop, resume, maintenance mode |
+| POST | `/stop`, `/resume`, `/maintenance {minutes}` | Stop, resume, maintenance mode |
 | POST | `/measure {ph, ec}` | manual measurement |
 | POST | `/grow/start`, `/grow/next`, `/grow/harvest`, `/grow/complete` | cultivation run |
 | POST | `/update/check`, `/update/install`, `/update/rollback` | install only while no dosing runs (409) |

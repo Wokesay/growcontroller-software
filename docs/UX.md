@@ -55,9 +55,9 @@ competitors' apps). Implemented in the prototype unless noted otherwise.
 | Settings | System, access, updates with "What's new", report a problem, data, display |
 
 On a phone: Overview, Mixing, Tank, History, More. The **STOP** button
-(emergency stop) is always at the top right, except where nothing is
+is always at the top right, except where nothing is
 switched (the Home Assistant trial): there "Nur Anzeige" (display only)
-says why there is no stop and how to switch off in an emergency (SD-040).
+says why there is no Stop and how to switch off in an emergency (SD-040).
 
 ## 3. Overview per expansion stage
 

@@ -10,6 +10,7 @@
 #include <functional>
 #include <optional>
 #include <random>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -296,6 +297,52 @@ TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
 
+TEST_CASE("Scenario: an EC round doses the recipe's parts but never a fixed addition (SD-057, RAT-085)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(60000);
+  // CalMag in the demo's recipe becomes a fixed addition
+  c.ok("POST", "/api/v1/recipes",
+       {{"id", "wachstum"},
+        {"steps",
+         {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}});
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    return st["job"].is_null() && st["dosing"].is_null();
+  }, 4 * 3600 * 1000, 5000));
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  const double calmagBefore = c.state()["stock"]["calmag"].get<double>();
+  s.world().fill(40, 0.6, 5.9);  // EC well below the target 1.4: an EC round follows
+  std::set<std::string> dosed;
+  // Until the round has dosed and settles: a dose is logged when it ends, and CalMag would come last
+  REQUIRE(until(s, [&] {
+    for (const auto& e : findEvents(c, "dose"))
+      if (e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec") dosed.insert(e["data"]["canister"].get<std::string>());
+    return dosed.count("teil-a") && dosed.count("teil-b") && c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling";
+  }, 2 * 3600 * 1000, 10000));
+  CHECK(dosed.count("calmag") == 0);
+  CHECK(c.state()["stock"]["calmag"].get<double>() == doctest::Approx(calmagBefore));
+  // A recipe of fixed amounts only gives EC control nothing to raise the EC with, and its line says so
+  const gc::json only = c.ok("POST", "/api/v1/recipes", {{"name", "Nur CalMag"}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}})["id"];
+  c.ok("POST", "/api/v1/grow/complete", json::object());  // the phase's recipe would win over the function's (R4)
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", only}}}});
+  s.world().fill(40, 0.6, 5.9);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.plan"; }, 2 * 3600 * 1000, 10000));
+  CHECK(c.state()["controllers"]["ec"]["line"]["args"]["reason"]["key"] == "ec.recipe_no_scaled");
+  // Fixed right after a round was planned, before its first dose: the round's queue empties, and it
+  // ends instead of staying "dosing" and holding pH and refill
+  auto calmagOnly = [&](bool fixed) {
+    c.ok("POST", "/api/v1/recipes", {{"id", only}, {"steps", {{{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", fixed}}}}});
+  };
+  calmagOnly(false);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.start"; }, 3600 * 1000, 1000));
+  REQUIRE(c.state()["dosing"].is_null());
+  calmagOnly(true);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.plan"; }, 60 * 1000, 1000));
+  CHECK_FALSE(c.state()["controllers"]["ec"]["state"] == "working");
+}
+
 TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereignis sichtbar") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
@@ -316,6 +363,43 @@ TEST_CASE("Szenario: Sprungsperre – während der Sperre keine pH-Gabe, Ereigni
   for (const auto& e : findEvents(c, "block")) ev = ev || e["title"]["key"] == "ev.jump";
   CHECK(ev);
   s.step(10 * 60 * 1000);
+  for (const auto& e : findEvents(c, "dose"))
+    if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+}
+
+// #234: the regression test of the fix covers a Home Assistant probe; this one
+// is the hub's own, as in every published version up to 0.1.0-proto.4
+TEST_CASE("Scenario: a calibration of the hub's own pH probe left open stops explaining jumps after 30 min (RAT-042)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "start"}});
+  // The window was closed without "cancel" (a lost tab). 45 min: idle after
+  // 30 min, plus the 10 min its last announcement still runs, plus margin
+  s.step(45 * 60 * 1000);
+  constexpr gc::Ms kPoll = 5000;
+  gc::Ms quiet = 0;
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    bool calm = st["job"].is_null() && st["outputs"]["tank.inlet"] == false && st["controllers"]["refill"]["state"] != "working";
+    quiet = calm ? quiet + kPoll : 0;
+    return quiet > 11 * gc::kMinute;  // nothing else explains a jump now
+  }, 8 * 3600 * 1000, kPoll));
+  auto st = c.state();
+  REQUIRE(st["probeCalibration"]["PHEC-3F2A91:ph"]["idle"] == true);
+  CHECK(st["controllers"]["ph"]["line"]["key"] == "ctl.calibrating");  // still open: pH control keeps waiting
+  const auto before = st["eventId"].get<std::uint64_t>();
+  s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "jump"}});
+  s.step(60000);
+  st = c.state();
+  CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
+  CHECK_FALSE(st["readings"]["tank.ph"]["usable"].get<bool>());
+  // Cancelled now, pH control finds the jump instead of dosing on it
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "cancel"}});
+  s.step(10 * 60 * 1000);
+  st = c.state();
+  CHECK(st["controllers"]["ph"]["state"] == "blocked");
+  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump");
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
@@ -816,7 +900,7 @@ TEST_CASE("Scenario: a clock step keeps the hour of the repeat guard (SD-067)") 
   CHECK(c.state()["latches"]["circulation.dry"]["hold"] == "repeat");
 }
 
-TEST_CASE("Scenario: during an emergency stop the latch may release itself; the pump starts only after Resume (SD-067)") {
+TEST_CASE("Scenario: during a Stop the latch may release itself; the pump starts only after Resume (SD-067)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   circulateAlways(s, c);
@@ -900,7 +984,7 @@ TEST_CASE("Scenario: someone guessing the password cannot keep the owner from st
   CHECK(phone.state()["stopped"] == true);
 }
 
-TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen") {
+TEST_CASE("Scenario: a Stop switches everything off and holds automation until Resume") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
@@ -915,6 +999,11 @@ TEST_CASE("Szenario: Not-Halt stoppt alles und sperrt Automatik bis Fortsetzen")
   CHECK(code != 200);
   CHECK(refused["error"]["key"] == "job.start_failed");
   CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
+  // a mix is refused too, with a message in the page's language (SD-045: "Stop", never "emergency stop")
+  auto [mixCode, mix] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
+  CHECK(mixCode == 409);
+  CHECK(mix["error"]["key"] == "act.stopped");
+  CHECK(mix["error"]["text"] == "Stop active – tap Resume first");
   c.ok("POST", "/api/v1/resume");
   CHECK(c.state()["stopped"] == false);
 }
@@ -1493,7 +1582,7 @@ TEST_CASE("Simulator: „Wert friert“ hält den letzten Messwert fest") {
   CHECK(r["value"].is_number());
 }
 
-TEST_CASE("Messages: pump calibration and emergency stop name their result and cause (SD-032)") {
+TEST_CASE("Messages: pump calibration and the Stop name their result and cause (SD-032)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   s.world().cap(kB)->storedFlow = 0;  // a chip that reports 0: no previous rate, not "clearly different" (R5)

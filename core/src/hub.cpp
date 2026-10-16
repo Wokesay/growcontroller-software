@@ -264,7 +264,7 @@ void Hub::boot() {
   // Nach dem Start ist alles aus; Abläufe werden nicht fortgesetzt (R6).
   // Fans keep their state: their sockets come back on after a power loss
   // (PD-050), and after a restart of the hub alone they keep running.
-  // An emergency stop survives the restart and stops the fans too (PD-076).
+  // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
   if (stopped_ && !stateKept)  // a kept state says why everything stays off
@@ -545,7 +545,7 @@ void Hub::tick() {
   } catch (const std::exception& e) {
     // Sicherer Zustand statt Absturz oder Boot-Schleife: alles aus, laufende
     // Dosierung abbrechen, einmal laut melden. Fans keep running (PD-077),
-    // except during an emergency stop (PD-076).
+    // except during a Stop (PD-076).
     act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
     try {
       Ctx c = ctx();
@@ -1172,7 +1172,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
   const RoleDef* rd = cat_.role(role);
   // Netzgerät: Schutzeinstellung schreiben und zurücklesen, erst dann binden.
   if (net_ && net_->owns(device) && rd && !rd->profile.empty()) {
-    // During an emergency stop a fan socket stays off after a power loss too (PD-076).
+    // During a Stop a fan socket stays off after a power loss too (PD-076).
     const SwitchSafety want = stopped_ && rd->onAfterPowerLoss ? SwitchSafety{} : safetyForRole(*rd);
     std::string e;
     if (!net_->configure(device, channel, want, e))
@@ -1242,8 +1242,8 @@ void Hub::releaseSocket(const RoleDef& rd, const Binding& b) {
              {{"device", b.device}, {"channel", b.channel}});
 }
 
-// Fan sockets come back on after a power loss, except during an emergency
-// stop (PD-050, PD-076). Written and read back; a failure is reported.
+// Fan sockets come back on after a power loss, except during a Stop
+// (PD-050, PD-076). Written and read back; a failure is reported.
 void Hub::setFanSockets(bool comeBackOn) {
   if (!net_) return;
   cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
@@ -1408,12 +1408,61 @@ Result Hub::putRecipe(const json& j) {
   if (j.contains("note")) r->note = jstr(j, "note");
   if (j.contains("steps")) {
     r->steps.clear();
-    for (const auto& s : j["steps"]) r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL")});
+    for (const auto& s : j["steps"]) {
+      // Read wrongly as false, a fixed part would be scaled after all (RAT-085)
+      if (s.contains("fixed") && !s["fixed"].is_boolean()) return Result::fail(422, say("recipe.fixed"));
+      r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL"), jbool(s, "fixed", false)});
+    }
+  }
+  // The chart's EC and pH range (SD-057): a missing key keeps them, null clears them (R5)
+  if (j.contains("refEc")) {
+    if (!j["refEc"].is_null() && !j["refEc"].is_number()) return Result::fail(422, say("recipe.ref_ec"));
+    r->refEc = jnum(j, "refEc");
+  }
+  if (j.contains("ph")) {
+    const json& ph = j["ph"];
+    if (ph.is_null()) {
+      r->phLow = r->phHigh = kNaN;
+    } else if (ph.is_array() && ph.size() == 2 && ph[0].is_number() && ph[1].is_number()) {
+      r->phLow = ph[0].get<double>();
+      r->phHigh = ph[1].get<double>();
+    } else {
+      return Result::fail(422, say("recipe.ph"));
+    }
   }
   if (r->name.empty()) return Result::fail(422, "recipe.name", "Name fehlt");
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
+  // EC control learned its effect per ml/L of the parts it scaled. A part of its recipe that is fixed now
+  // leaves that effect on fewer ml/L: scaled up by what left, so the next round doses less, never more
+  // (RAT-085, RAT-056). The effect of each recipe of its own comes with SD-057's later steps.
+  if (const RecipeCfg* before = cfg_.recipe(id)) {
+    // The recipe EC control uses, as it picks it: the set one, or the first (activeRecipe in control.cpp)
+    const std::string set = effectiveParams(cat_, cfg_, "ec_control").str("recipe");
+    const std::string active = cfg_.recipe(set) ? set : cfg_.recipes.empty() ? "" : cfg_.recipes.front().id;
+    auto fixedNow = [&](const std::string& can) {
+      for (const auto& s : r->steps)
+        if (s.canister == can) return s.fixed;
+      return false;
+    };
+    double scaledBefore = 0, moved = 0;  // the old amounts the effect was learned on, and those of the parts fixed now
+    bool changed = false;
+    for (const auto& o : before->steps) {
+      if (o.fixed || !isNum(o.mlPerL)) continue;
+      scaledBefore += o.mlPerL;
+      if (fixedNow(o.canister)) moved += o.mlPerL;
+    }
+    for (const auto& s : r->steps) {
+      const auto o = std::find_if(before->steps.begin(), before->steps.end(), [&](const RecipeStep& x) { return x.canister == s.canister; });
+      changed |= o != before->steps.end() && o->fixed != s.fixed;
+    }
+    if (id == active && changed) ec_.recipeChanged(*r);  // a running round was planned on the old parts
+    if (id == active && isNum(rt_.ecEffect) && moved > 0 && scaledBefore > moved) {
+      rt_.ecEffect *= scaledBefore / (scaledBefore - moved);
+      stateDirty_ = true;
+    }
+  }
   cfg_ = next;
   saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
   return Result::ok({{"id", id}});
@@ -1479,7 +1528,12 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
       return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
-    Result r = putRecipe({{"name", localized(t, "name")}, {"note", localized(t, "note")}, {"steps", steps}});
+    // The chart's EC and pH range come along (SD-057)
+    Result r = putRecipe({{"name", localized(t, "name")},
+                          {"note", localized(t, "note")},
+                          {"steps", steps},
+                          {"refEc", t.contains("ec") ? t["ec"] : json(nullptr)},
+                          {"ph", t.contains("ph") ? t["ph"] : json(nullptr)}});
     if (r.status != 200) return r;
     // Ist der Paarname schon an anderen Kanistern vergeben, einen freien
     // wählen (AB2, AB3, …), sonst zählte das Paar vier Kanister.
@@ -1574,7 +1628,7 @@ Result Hub::importConfig(const json& j) {
     }
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
-    return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
+    return Result::fail(409, "job.busy", "Es wird gerade dosiert oder gemischt – lade die Einstellungen danach");
   act_.stopAll(cat_, cfg_, clock_.nowMs());
   // A socket that loses its fan role goes back to "off after power loss";
   // every switched socket in the import gets the setting of its role.
@@ -1625,11 +1679,11 @@ Result Hub::mixPlan(const json& req) {
 
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
+  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft schon ein Mischlauf, eine Handgabe, ein Einmessen oder ein Schlauchfüllen");  // kein Doppelstart (RAT-003)
   // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
-  if (stopped_) return Result::fail(409, "job.stopped", "Not-Halt aktiv – erst fortsetzen");
+  if (stopped_) return Result::fail(409, say("act.stopped"));
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
@@ -2164,7 +2218,7 @@ Result Hub::probeCalibration(const json& j) {
 Result Hub::ackLatch(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = rt_.latches.find(id);
-  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Keine solche Rastung");
+  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Diese Sperre ist schon aufgehoben");
   if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
   rt_.latches.erase(it);
   stateDirty_ = true;
@@ -2223,7 +2277,7 @@ Result Hub::stop(const Msg& who) {
     log_.add(clock_.epoch(), "system", "warn", say("ev.stop.unbooked"),
              say("ev.stop.unbooked.text", {{"name", unbooked->step.name}, {"reason", reason}}), {{"canister", unbooked->step.canister}});
   saveEvents();
-  // A manual emergency stop stops everything, also after a power loss
+  // A Stop by hand stops everything, also after a power loss
   // (PD-076). Written on every stop, so pressing it again retries a socket
   // that did not take the setting.
   setFanSockets(false);

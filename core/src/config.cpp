@@ -5,6 +5,8 @@
 #include <set>
 #include <stdexcept>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 namespace {
@@ -148,8 +150,11 @@ void to_json(json& j, const Config& c) {
   j["recipes"] = json::array();
   for (const auto& r : c.recipes) {
     json steps = json::array();
-    for (const auto& s : r.steps) steps.push_back({{"canister", s.canister}, {"mlPerL", numOrNull(s.mlPerL)}});
-    j["recipes"].push_back({{"id", r.id}, {"name", r.name}, {"note", r.note}, {"steps", steps}});
+    for (const auto& s : r.steps) steps.push_back({{"canister", s.canister}, {"mlPerL", numOrNull(s.mlPerL)}, {"fixed", s.fixed}});
+    // A range only as two values, a missing one as null (R5)
+    json ph = isNum(r.phLow) && isNum(r.phHigh) ? json::array({r.phLow, r.phHigh}) : json(nullptr);
+    j["recipes"].push_back(
+        {{"id", r.id}, {"name", r.name}, {"note", r.note}, {"steps", steps}, {"refEc", numOrNull(r.refEc)}, {"ph", ph}});
   }
   j["functions"] = json::object();
   for (const auto& [id, f] : c.functions) j["functions"][id] = {{"enabled", f.enabled}, {"params", f.params}};
@@ -279,7 +284,13 @@ Config configFromJson(const json& in) {
     rc.id = jstr(r, "id");
     rc.name = jstr(r, "name");
     rc.note = jstr(r, "note");
-    for (const auto& s : r.value("steps", json::array())) rc.steps.push_back({jstr(s, "canister"), numOrNaN(s, "mlPerL")});
+    for (const auto& s : r.value("steps", json::array())) rc.steps.push_back({jstr(s, "canister"), numOrNaN(s, "mlPerL"), jbool(s, "fixed", false)});
+    rc.refEc = numOrNaN(r, "refEc");
+    const json ph = r.value("ph", json());
+    if (ph.is_array() && ph.size() == 2 && ph[0].is_number() && ph[1].is_number()) {
+      rc.phLow = ph[0].get<double>();
+      rc.phHigh = ph[1].get<double>();
+    }
     c.recipes.push_back(rc);
   }
   if (j.contains("functions"))
@@ -316,6 +327,10 @@ Limits Limits::bounded() const {
 std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   std::vector<Msg> out;
   auto err = [&](const std::string& key, const std::string& text) { out.push_back({key, text, json::object()}); };
+  auto paramOf = [&](const char* fn, const char* key) -> const ParamDef* {
+    const FunctionDef* fd = cat.function(fn);
+    return fd ? fd->param(key) : nullptr;
+  };
 
   // Grenzen dürfen nur verschärfen (R7).
   const auto& L = c.limits;
@@ -424,6 +439,8 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       if (k->kind != "nutrient") err("cfg.recipe.ph", "Rezept " + r.name + ": " + k->name + " ist kein Nährstoff (pH kommt zuletzt)");
       if (!isNum(s.mlPerL) || s.mlPerL <= 0) err("cfg.recipe.amount", "Rezept " + r.name + ": Menge für " + k->name + " fehlt");
       if (!k->pair.empty()) pairsInRecipe.insert(k->pair);
+      // A fixed part of a pair would leave its partner scaled alone (RAT-054)
+      if (s.fixed && !k->pair.empty()) out.push_back(say("cfg.recipe.fixed_pair", {{"name", r.name}, {"part", k->name}}));
     }
     for (const auto& p : pairsInRecipe) {
       int inRecipe = 0;
@@ -432,6 +449,41 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         if (k && k->pair == p) inRecipe++;
       }
       if (inRecipe != pairCount[p]) err("cfg.recipe.pair", "Rezept " + r.name + ": Paar " + p + " unvollständig");
+    }
+    // The chart's EC becomes a phase's target, so it lies in the target's range;
+    // the effect it implies lies within a quarter to four times the start effect
+    // (SD-057, RAT-056). The message names the EC that would fit the amounts.
+    if (!std::isnan(r.refEc)) {
+      const ParamDef* pd = paramOf("ec_control", "ec_target");
+      const double lo = pd && isNum(pd->min) ? pd->min : 0.0, hi = pd && isNum(pd->max) ? pd->max : kNaN;
+      double sum = 0;  // the parts EC control scales: the effect is per ml/L of those (RAT-085)
+      for (const auto& s : r.steps) sum += !s.fixed && isNum(s.mlPerL) && s.mlPerL > 0 ? s.mlPerL : 0;
+      if (!isNum(r.refEc) || r.refEc <= 0 || r.refEc < lo || (isNum(hi) && r.refEc > hi))
+        out.push_back(say("cfg.recipe.ref_range", {{"name", r.name}, {"min", lo}, {"max", numOrNull(hi)}}));
+      else if (sum > 0) {
+        const double effect = r.refEc / sum;
+        double fitLo = kRefEffectMin * kEcStartEffect * sum, fitHi = kRefEffectMax * kEcStartEffect * sum;
+        if (std::max(fitLo, lo) <= (isNum(hi) ? std::min(fitHi, hi) : fitHi)) {  // within the target's range where it can be
+          fitLo = std::max(fitLo, lo);
+          if (isNum(hi)) fitHi = std::min(fitHi, hi);
+        }
+        const bool anyFixed = std::any_of(r.steps.begin(), r.steps.end(), [](const RecipeStep& s) { return s.fixed; });
+        const json args = {{"name", r.name},
+                           {"ec", r.refEc},
+                           {"sum", sum},
+                           {"amounts", say(anyFixed ? "cfg.recipe.amounts_scaled" : "cfg.recipe.amounts", {{"sum", sum}})},
+                           {"lo", fitLo},
+                           {"hi", fitHi}};
+        if (effect < kRefEffectMin * kEcStartEffect) out.push_back(say("cfg.recipe.ref_far", args));
+        else if (effect > kRefEffectMax * kEcStartEffect) out.push_back(say("cfg.recipe.ref_strong", args));
+      }
+    }
+    // The chart's pH range proposes the grow's pH target: two values, low to high, in its range (RAT-066)
+    if (!std::isnan(r.phLow) || !std::isnan(r.phHigh)) {
+      const ParamDef* pd = paramOf("ph_control", "ph_target");
+      const double lo = pd && isNum(pd->min) ? pd->min : 0.0, hi = pd && isNum(pd->max) ? pd->max : 14.0;
+      if (!isNum(r.phLow) || !isNum(r.phHigh) || r.phLow > r.phHigh || r.phLow < lo || r.phHigh > hi)
+        out.push_back(say("cfg.recipe.ph_band", {{"name", r.name}, {"min", lo}, {"max", hi}}));
     }
   }
   auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::string& where) {

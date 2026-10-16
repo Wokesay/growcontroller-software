@@ -78,7 +78,7 @@ test("A part that fails to draw shows a notice; the page around it and STOP stay
   await expect(page.getByRole("button", { name: "Seite neu laden" })).toBeVisible();
   await expect(page.getByTestId("watchdog")).toBeVisible();  // the rest of the overview
   await page.locator(".stop-btn").click();
-  await expect(page.getByText("Not-Halt auslösen?")).toBeVisible();
+  await expect(page.getByText("Alles stoppen?")).toBeVisible();
   await page.getByRole("button", { name: "Abbrechen" }).click();
   await page.unroute(/\/api\/v1\/events\?/);
   await page.getByRole("button", { name: "Seite neu laden" }).click();
