@@ -26,7 +26,8 @@ TEST_CASE("Resolver: ohne Hardware ist eine Funktion nicht verfügbar, mit Shop-
   const auto& ph = fn(v, "ph_control");
   CHECK(ph.setup == "unavailable");
   CHECK((ph.summary.key == "fn.unavailable" || ph.summary.key == "fn.unavailable_more"));
-  CHECK(ph.summary.args["first"].dump().find("Sensorkopf pH/EC") != std::string::npos);  // the class, from the catalog
+  CHECK(ph.summary.args["first"].dump().find("cat.class.head_ph_ec") != std::string::npos);  // the class, by the catalog's key (SD-083)
+  CHECK(ph.summary.text.find("pH/EC sensor head") != std::string::npos);
   CHECK(ph.summary.text.find("You need") != std::string::npos);  // the hub's text is English; the page translates by key (SD-083)
   CHECK(fn(v, "mix").setup == "unavailable");
 }

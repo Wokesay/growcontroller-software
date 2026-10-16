@@ -13,6 +13,7 @@ import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, info, refreshConfig, refreshState, state, toast, toastError } from "./store";
 import { Banner, Button, Modal, Pill } from "./ui";
 import { AgeText, millivoltsText, qualityText, rawSignalUncalibrated } from "./widgets";
+import { capName, roleName } from "./catnames";
 
 export const isHa = computed(() => info.value?.platform?.kind === "home-assistant");
 
@@ -92,7 +93,7 @@ export function useHaList(everyMs = 5000): { list: HaList | null; reload: () => 
   return { list, reload, failing: fails >= 3 };
 }
 
-export const roleLabel = (role: string) => catalog.value?.roles[role]?.label ?? role;
+export const roleLabel = roleName;
 const capOf = (measure: string) => catalog.value?.capabilities[`measure.${measure}`];
 const valueText = (measure: string, v: number | null | undefined) => {
   const cap = capOf(measure);
@@ -417,7 +418,7 @@ const CLASS_TEXT: Record<string, TextKey> = {
   gas: "ha.cls.gas",
   distance: "ha.cls.distance",
 };
-const measureLabel = (measure: string) => capOf(measure)?.label ?? measure;
+const measureLabel = (measure: string) => (capOf(measure) ? capName(`measure.${measure}`) : measure);
 
 // Why an other sensor cannot serve this measure, "" if it can.
 function otherProblem(o: HaOther, measure: string): string {

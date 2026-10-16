@@ -1022,6 +1022,70 @@ TEST_CASE("System: Sprache nur de oder en") {
   CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
 }
 
+TEST_CASE("Devices: one without a name of its own is named by its class in the page's language; a stored class name counts as none (SD-083)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  c.ok("POST", "/api/v1/devices/DB-7A31C0/accept", {{"name", ""}});
+  auto dev = [&](const std::string& id) {
+    const gc::json devices = c.ok("GET", "/api/v1/state")["devices"];  // held: a loop over a temporary's member dangles
+    for (const auto& d : devices)
+      if (d["id"] == id) return d;
+    return gc::json();
+  };
+  auto stored = [&](const std::string& id) {
+    const gc::json devices = c.ok("GET", "/api/v1/config")["devices"];
+    for (const auto& d : devices)
+      if (d["id"] == id) return d["name"].get<std::string>();
+    return std::string("?");
+  };
+  // Accepted without a name: none stored, the class by its key in the event
+  CHECK(stored("DB-7A31C0") == "");
+  CHECK(dev("DB-7A31C0")["name"] == "");
+  CHECK(dev("DB-7A31C0")["classLabel"] == "Dosing block");
+  const gc::json added = c.ok("GET", "/api/v1/events?limit=1&type=config")["events"].at(0);
+  CHECK(added["title"]["args"]["name"]["key"] == "cat.class.dosing_block");
+  // A name as the German catalog had it, stored before: kept in the file, shown as none
+  c.ok("PATCH", "/api/v1/devices/DB-7A31C0", {{"name", "Dosierblock"}});
+  CHECK(stored("DB-7A31C0") == "Dosierblock");
+  CHECK(dev("DB-7A31C0")["name"] == "");
+  const gc::json renamed = c.ok("GET", "/api/v1/events?limit=1&type=config")["events"].at(0);
+  CHECK(renamed["title"]["args"]["name"]["key"] == "cat.class.dosing_block");
+  // A name of its own stays, also one that starts like the class
+  c.ok("PATCH", "/api/v1/devices/DB-7A31C0", {{"name", "Dosierblock 1"}});
+  CHECK(dev("DB-7A31C0")["name"] == "Dosierblock 1");
+  CHECK(c.ok("GET", "/api/v1/events?limit=1&type=config")["events"].at(0)["title"]["args"]["name"] == "Dosierblock 1");
+}
+
+TEST_CASE("Devices: a calibration names a device without a name of its own by its class (SD-083)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(5000);
+  c.ok("PATCH", "/api/v1/devices/LVL-77B210", {{"name", ""}});
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "start"}});
+  s.world().fill(20, 1.3, 5.9);
+  s.step(5000);
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "point"}, {"reference", 20}});
+  s.world().fill(40, 1.3, 5.9);
+  s.step(5000);
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "point"}, {"reference", 40}});
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "commit"}});
+  const gc::json events = c.ok("GET", "/api/v1/events?limit=10")["events"];
+  int named = 0;
+  auto byClass = [](const gc::json& n) { return n.is_object() && n.value("key", "") == "cat.class.head_level"; };
+  for (const auto& e : events) {
+    if (e["title"]["key"] == "ev.cfg.calibration") named += byClass(e["title"]["args"]["name"]);
+    if (e["title"]["key"] == "ev.probe_calibrated") named += byClass(e["text"]["args"]["name"]);
+  }
+  CHECK(named == 2);  // the saved calibration and the calibration event
+  // The class's English name is no name of its own either
+  c.ok("PATCH", "/api/v1/devices/LVL-77B210", {{"name", "Level sensor head"}});
+  const gc::json devices = c.ok("GET", "/api/v1/state")["devices"];
+  for (const auto& d : devices)
+    if (d["id"] == "LVL-77B210") CHECK(d["name"] == "");
+}
+
 TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übernommen") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};

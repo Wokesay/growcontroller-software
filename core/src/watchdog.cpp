@@ -41,12 +41,12 @@ WatchResult evaluate(const WatchInput& in) {
   if (in.stopped) add("stop", say("watch.stop.label"), "problem", say("watch.stop"));
 
   // Geräte
-  std::string offline;
+  json offline = json::array();  // names in the page's language (SD-083)
   for (const auto& d : in.cfg.devices) {
     bool on = false;
     for (const auto& s : in.devices)
       if (s.id == d.id) on = s.online;
-    if (!on) offline += (offline.empty() ? "" : ", ") + (d.name.empty() ? d.id : d.name);
+    if (!on) offline.push_back(deviceName(in.cat, d.id, d.cls, d.name));
   }
   const Msg devices = say("watch.devices.label");
   if (in.cfg.devices.empty()) add("devices", devices, "neutral", say("watch.devices.none"));
@@ -59,7 +59,7 @@ WatchResult evaluate(const WatchInput& in) {
   // A sensor whose device has no sign of life set keeps its own item.
   auto roleLabel = [&](const std::string& role) {
     const RoleDef* rd = in.cat.role(role);
-    return Msg{"", rd ? rd->label : role};  // catalog label, translated with the catalog
+    return rd ? nameOf(*rd) : Msg{"", role, json::object()};  // in the page's language (SD-083)
   };
   struct Silent {
     json ageS;

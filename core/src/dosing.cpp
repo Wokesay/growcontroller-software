@@ -19,11 +19,8 @@ Msg purposeLabel(const std::string& p) {
   return say("purpose.other");
 }
 
-// The label of a role from the catalog (translated with the catalog later).
-std::string roleLabel(const Catalog& cat, const std::string& role) {
-  const RoleDef* rd = cat.role(role);
-  return rd ? rd->label : role;
-}
+// A role's name from the catalog, as a message in the page's language (SD-083)
+json roleLabel(const Catalog& cat, const std::string& role) { return roleName(cat, role); }
 
 constexpr double kInletHysteresisL = 0.5;  // EIN erst 0,5 L über der AUS-Grenze (RAT-078: 2,5/3 L)
 
@@ -185,7 +182,7 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
   if (const RoleDef* rd = c.cat.role(role); rd && rd->profile == "kompressor") {
     auto off = offSince_.find(role);
     if (off != offSince_.end() && c.now - off->second < kCompressorPause)
-      return say("act.compressor.pause", {{"label", rd->label}, {"min", static_cast<double>(kCompressorPause / kMinute)}});
+      return say("act.compressor.pause", {{"label", nameOf(*rd)}, {"min", static_cast<double>(kCompressorPause / kMinute)}});
   }
   return std::nullopt;
 }
@@ -474,7 +471,7 @@ void Actuators::enforce(const Ctx& c) {
       continue;
     }
     // Scheitert das Ausschalten, bleibt onSince_ stehen: der nächste Takt versucht es erneut.
-    if (cut(c, role, "maxon", "block", "warn", say("ev.max_on", {{"label", rd.label}}), say("ev.max_on.text", {{"min", rd.maxOnS / 60}}))) {
+    if (cut(c, role, "maxon", "block", "warn", say("ev.max_on", {{"label", nameOf(rd)}}), say("ev.max_on.text", {{"min", rd.maxOnS / 60}}))) {
       onSince_.erase(role);
       offSince_[role] = c.now;
     }

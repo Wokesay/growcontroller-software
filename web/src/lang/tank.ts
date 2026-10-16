@@ -96,7 +96,7 @@ export const en: Record<keyof typeof de, string> = {
   "tank.addPhase": "Add phase",
   "tank.targetsFromRecipe": "The phase's recipe proposes target EC and pH: the chart EC and the middle of its pH range. You can change them.",
   "tank.targetFallback": "Empty: {value} from Functions applies",
-  "tank.belowEcFloor": "Below {floor} mS/cm pH control does not dose (pH lock below EC)",
+  "tank.belowEcFloor": "Below {floor} mS/cm, pH correction does not dose (pH lock below EC)",
   "tank.fromFunctions": "from Functions",
   "tank.controlHint": "Tap a row to see its checklist – why it is running right now, or why not.",
   "tank.locks": "Locks",
