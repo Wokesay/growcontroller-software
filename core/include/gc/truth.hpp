@@ -27,7 +27,7 @@ inline constexpr Ms kLifeLimit = 60 * kSecond;
 // erste Wert, über dem letzten mit dessen Steigung.
 struct Curve {
   std::vector<std::pair<double, double>> points;  // (roh, Wert)
-  static std::optional<Curve> fromJson(const json& j, std::string& err);
+  static std::optional<Curve> fromJson(const json& j, Msg& err);
   double map(double raw) const;
 };
 
@@ -37,9 +37,9 @@ class SensorTruth {
 
   // Einmal je Takt: liest alle gebundenen Mess-Rollen.
   void update(const Config& cfg, const IBus& bus, RuntimeState& rt, Ms now, Epoch epoch);
+  // Checks imported calibration data: the reason as a message, or nothing.
+  static std::optional<Msg> checkCalibration(const std::string& kind, const json& data);
   // Eine eigene Dosierung erklärt einen Sprung bis zu diesem Zeitpunkt (RAT-042).
-  // Prüft importierte Kalibrierdaten; Fehlertext oder nichts.
-  static std::optional<std::string> checkCalibration(const std::string& kind, const json& data);
   void expectChange(const std::string& role, Ms until);
 
   const Reading& get(const std::string& role) const;

@@ -4,7 +4,7 @@
 // overwrite the other; every file has the same keys in German and English.
 // The hub's messages (SD-032): core/src/messages.cpp (English) and
 // web/src/lang/msg.ts (German) have the same keys and placeholders, and
-// every say("…") in the core names a key of the table.
+// every say("…") in the core, the servers and the firmware names a key of the table.
 //   node --test tools/i18n_keys.test.mjs
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -99,12 +99,16 @@ test("the hub's messages have a German text with the same placeholders", () => {
   for (const [k, tmpl] of core) assert.equal(de.get(k), sorted(tmpl), `${k}: placeholders differ`);
 });
 
-test("every say() in the core names a key of the table", () => {
+test("every say() in the core, the servers and the firmware names a key of the table", () => {
   const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
   let n = 0;
+  const cpp = (dir) => readdirSync(join(root, dir)).filter((f) => f.endsWith(".cpp")).map((f) => join(root, dir, f));
   const sources = [
     ...readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp").map((f) => join(coreSrc, f)),
     ...readdirSync(join(root, "core", "include", "gc")).map((f) => join(root, "core", "include", "gc", f)),
+    ...cpp("sim"),
+    ...cpp("ha"),
+    ...cpp(join("firmware", "main")),
   ];
   for (const path of sources) {
     const f = path.slice(root.length + 1);
@@ -129,9 +133,42 @@ test("no other core text uses a key of the table", () => {
   const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
   for (const f of readdirSync(coreSrc).filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")) {
     const text = readFileSync(join(coreSrc, f), "utf8");
-    const outside = text.replace(/\bsay\(\s*(?:"[^"]*"|[^,)]*)/g, "say(");
+    // A key compared with another one is no text of its own
+    const outside = text.replace(/\bsay\(\s*(?:"[^"]*"|[^,)]*)/g, "say(").replace(/\bkey\s*[!=]=\s*"[^"]*"/g, "key ==");
     for (const k of core.keys()) assert.ok(!outside.includes(`"${k}"`), `${f}: "${k}" used outside say()`);
   }
+});
+
+// A refusal written by hand where the table is not linked (the firmware's
+// transport, a raw string) has the table's English text for its key.
+test("a hand-written refusal has its key's English text", () => {
+  const core = coreMessages(readFileSync(join(coreSrc, "messages.cpp"), "utf8"));
+  let n = 0;
+  for (const dir of ["sim", "ha", join("firmware", "main")])
+    for (const f of readdirSync(join(root, dir)).filter((x) => x.endsWith(".cpp"))) {
+      const text = readFileSync(join(root, dir, f), "utf8");
+      for (const m of text.matchAll(/key\\?":\\?"([a-z_.]+)\\?",\\?"text\\?":\\?"([^"\\]*)/g)) {
+        n++;
+        assert.ok(core.has(m[1]), `${dir}/${f}: ${m[1]} is not in messages.cpp`);
+        assert.equal(m[2], core.get(m[1]), `${dir}/${f}: ${m[1]}`);
+      }
+    }
+  assert.ok(n >= 4, "hand-written refusals found");
+});
+
+// The hub sends English and the web app translates by key (SD-083): the
+// refusals of the API, the sign-in and the configuration check hold no
+// German text of their own.
+test("the API, the sign-in and the configuration check send no German text", () => {
+  const german = /"(?:[^"\\\n]|\\.)*[äöüßÄÖÜ„“](?:[^"\\\n]|\\.)*"/;
+  for (const f of ["api.cpp", "auth.cpp", "config.cpp", "hub.cpp"]) {
+    const lines = readFileSync(join(coreSrc, f), "utf8").split("\n");
+    for (const [i, line] of lines.entries()) {
+      const code = line.replace(/\/\/.*$/, "");
+      assert.doesNotMatch(code, german, `${f}:${i + 1}: ${line.trim()}`);
+    }
+  }
+  assert.match('x = "Gerät";', german);
 });
 
 test("German and English use the same placeholders", () => {
@@ -202,6 +239,10 @@ test("durations and ages join the number and its unit with a no-break space", ()
   // No other text joins a placeholder and a unit of time with a plain space
   const plain = /\}[ \t]+(s|min|h|Tage|Tagen|days)\b/;
   for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, plain, `messages.cpp: ${k}`);
+  // The hub's messages: a written number and its unit of time too (SD-083)
+  const written = /\d[ \t]+(s|min|h)\b/;
+  for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, written, `messages.cpp: ${k}`);
+  for (const line of msg.split("\n")) assert.doesNotMatch(line, written, `msg.ts: ${line.trim()}`);
   for (const file of [...files, "msg.ts"])
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) assert.doesNotMatch(line, plain, `${file}: ${line.trim()}`);
 });
