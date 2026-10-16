@@ -764,6 +764,12 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The session comes only from a cookie named exactly `gc_session`**
+  (Home Assistant app, simulator and firmware): the servers now split the
+  browser's `Cookie` header into its name=value pairs and take the session
+  only from the pair of that name, and only when there is exactly one such
+  pair; two cookies of that name count as none. This happens in one place
+  in the core (`gc::sessionToken`).
 - **Three security fixes are guarded against coming back** (#234); each
   check fails when its fix is taken out:
   - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED
