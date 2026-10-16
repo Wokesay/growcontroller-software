@@ -195,6 +195,7 @@ struct Job {
   bool circulation = false;           // Umwälzpumpe vom Auftrag eingeschaltet
   bool unmixed = false;               // the circulation pump stood still while the mix settled at its end
   bool pumpStands = false;            // … and the card says so now
+  Ms pumpOffSince = 0;                // since when the pump reads off or unknown while it mixes in
   bool cutMarked = false;             // EC and pH were told to settle what went in (Hub::mixCut)
   json info = json::object();         // Rezept, Wasser, Einmessdaten
 };

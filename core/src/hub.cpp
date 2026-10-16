@@ -931,8 +931,9 @@ json Hub::state() {
   if (job_ && job_->waitUntil > 0 && (job_->state == "mixing" || job_->state == "settling" || (job_->type == "mix" && job_->state == "waiting_user")))
     j["job"]["waitLeftS"] = std::max<Ms>(0, job_->waitUntil - clock_.nowMs()) / kSecond;
   if (job_ && job_->state == "settling") {
+    // as the card says it: running until it has stood still for 10 s; then off, or unknown (R5)
     const auto pump = act_.roleState(cfg_, "tank.circulation");
-    j["job"]["circulating"] = pump ? json(*pump) : json(nullptr);  // unknown stays unknown (R5)
+    j["job"]["circulating"] = !job_->pumpStands ? json(true) : pump ? json(*pump) : json(nullptr);
   }
   j["lastJob"] = lastJob_ ? json(*lastJob_) : json(nullptr);
   if (doser_.active()) {
@@ -1863,8 +1864,10 @@ json missingPairParts(const Job& j) {
 }  // namespace
 
 bool Hub::controlOn() const {
-  for (const char* fn : {"ec_control", "ph_control"})
-    if (auto it = cfg_.functions.find(fn); it != cfg_.functions.end() && it->second.enabled) return true;
+  // switched on and not locked: a locked controller waits for a person, not for the mixed tank
+  const std::pair<const char*, const char*> fns[] = {{"ec_control", "ec.no_effect"}, {"ph_control", "ph.no_effect"}};
+  for (const auto& [fn, latch] : fns)
+    if (auto it = cfg_.functions.find(fn); it != cfg_.functions.end() && it->second.enabled && !rt_.latches.count(latch)) return true;
   return false;
 }
 
@@ -2015,19 +2018,21 @@ void Hub::tickJob(Ctx& c) {
   } else if (j.state == "settling") {
     // A pump that stands still mixes nothing: the card says so, the mix still ends, and EC and pH then
     // wait for the pump themselves instead of deciding on a tank that has not mixed (SD-057, SD-073).
-    // One tick off or unknown is enough: it costs a longer wait, the safe side.
+    // Off or unknown for 10 s counts, not a single missed report, which mixes in as much.
     const bool pumping = act_.roleState(cfg_, "tank.circulation").value_or(false);
-    if (!pumping) j.unmixed = true;
+    if (pumping) j.pumpOffSince = 0;
+    else if (j.pumpOffSince == 0) j.pumpOffSince = std::max<Ms>(c.now, 1);
+    const bool stands = !pumping && c.now - j.pumpOffSince >= 10 * kSecond;
+    if (stands) j.unmixed = true;
     if (c.now >= j.waitUntil) {
       const bool unmixed = j.unmixed;
       finishMixDone(c, unmixed);
       if (unmixed) settleControllersFirst(false);
-    } else if (j.pumpStands == pumping) {
+    } else if (stands != j.pumpStands && (stands || pumping)) {
       // Back on, it says how the mix will end: not mixed yet, and mixed once more by control
-      j.pumpStands = !pumping;
+      j.pumpStands = stands;
       const bool ctl = controlOn();
-      const json at{{"min", (j.waitUntil - c.now + kMinute - 1) / kMinute}};
-      if (pumping) j.message = ctl ? say("mix.settling_resumed", at) : say("mix.settling_resumed_plain", at);
+      if (pumping) j.message = ctl ? say("mix.settling_resumed") : say("mix.settling_resumed_plain");
       else j.message = ctl ? say("mix.settling_no_circ") : say("mix.settling_no_circ_plain");
       saveJob();
     }
@@ -2070,7 +2075,9 @@ Result Hub::jobResume(const std::string& id) {
   const bool cutShort = st.state == "failed";  // else the mix waited for stirring and goes on (SD-057)
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
-  job_->cutMarked = false;  // more goes in: a later cut marks the controllers again
+  // More goes in: a later cut marks the controllers again. A rest below an accurate run counts as
+  // in and can end the mix right away, so the job may be gone here.
+  if (job_) job_->cutMarked = false;
   log_.add(clock_.epoch(), "mix", "info", say("ev.mix.resumed"), say(cutShort ? "ev.mix.resumed.text" : "ev.mix.resumed.next", {{"name", name}}));
   saveJob();
   return Result::ok(jobJson());
