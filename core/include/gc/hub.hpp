@@ -171,7 +171,8 @@ class Hub {
   void finishJob(const std::string& state, Msg m);
   void finishMixDone(Ctx& c, bool unmixed);  // all parts in: the mix's report and "done"
   Ms mixSettleMs() const;      // how long a mix mixes in at its end
-  bool controlOn() const;      // EC or pH control switched on: something waits for the mixed tank
+  bool controllerFree(const char* fn, const char* latch) const;  // switched on and not locked
+  bool controlOn() const;      // EC or pH control free: something waits for the mixed tank
   // A mix ending early with nutrients in (or a part cut unbooked): EC and pH settle first (SD-057)
   void mixCut(bool byStop, bool doseCut = false);
   void settleControllersFirst(bool byStop);

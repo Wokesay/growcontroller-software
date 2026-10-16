@@ -170,7 +170,7 @@ export function JobView(p: { job: Job; compact?: boolean }) {
   const total = j.steps.length;
   const title = j.type === "mix" ? t("widgets.jobMix", { name: j.info.recipeName ?? "", l: num(j.info.waterL, 1) }) : j.type === "calibration" ? t("widgets.jobCalibration") : j.type === "prime" ? t("term.prime") : t("widgets.jobManual");
   // Mixing in at the end with the pump standing still: said, not shown as mixing (SD-057)
-  const pumpStands = j.state === "settling" && j.circulating !== true;
+  const pumpStands = j.state === "settling" && j.pumpStands === true;
   const stateText = pumpStands ? t("widgets.job.waitingPump") : jobStateText[j.state] ? t(jobStateText[j.state]) : "";
   const mins = (s: number | undefined) => Math.max(1, Math.ceil((s ?? 0) / 60));
   return (

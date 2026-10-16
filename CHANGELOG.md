@@ -13,7 +13,7 @@ listed in every release under "Security".
   (as long as EC or pH control waits after a dose, whichever is longer,
   at least about 100 s per 20 L in the tank, at most 60 min); the mix
   card shows the minutes left, offers no button to skip or cancel it, and
-  says so when the pump is not running. EC and pH control and refill
+  says so when the pump is not running (off or unknown for 10 s). EC and pH control and refill
   decide only after that. A mix ended, stopped, or cut short by a failure,
   an internal error or a restart with nutrients in makes EC and pH
   control wait for the circulation pump and settle first, at least 15 min

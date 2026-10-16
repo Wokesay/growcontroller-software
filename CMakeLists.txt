@@ -78,6 +78,9 @@ if(GC_SANITIZE)
   set(GC_SAN -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
   target_compile_options(gc_core PUBLIC ${GC_SAN})
   target_link_options(gc_core PUBLIC ${GC_SAN})
+  # The standard library's own checks, such as an empty std::optional read, which the sanitizers
+  # do not see (libstdc++; ignored by other libraries)
+  target_compile_definitions(gc_core PUBLIC _GLIBCXX_ASSERTIONS)
 endif()
 
 if(GC_BUILD_SIM)
