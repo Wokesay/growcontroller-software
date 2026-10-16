@@ -605,7 +605,7 @@ test("Recipes: a bottle a recipe uses says where and how to take it out, a pair 
   const editor = page.getByRole("dialog", { name: "Rezept „Wachstum“" });
   await expect(editor).toBeVisible();
   // Following the advice works: the amount cleared and saved, the bottle can go
-  await editor.locator(".step").filter({ hasText: "CalMag" }).locator("input").fill("");
+  await editor.locator(".step").filter({ hasText: "CalMag" }).getByRole("textbox").fill("");
   await editor.getByRole("button", { name: "Speichern" }).click();
   await expect(editor).toHaveCount(0);
   await expect(row("CalMag").getByRole("button", { name: "„CalMag“ entfernen" })).toBeFocused();  // the next step of the advice

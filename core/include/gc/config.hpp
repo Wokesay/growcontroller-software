@@ -70,6 +70,9 @@ struct CanisterCfg {
 struct RecipeStep {
   std::string canister;
   double mlPerL = kNaN;
+  // A fixed addition (a cleanser, for example): per litre of fresh water in
+  // every mix, never scaled by EC control (SD-057, RAT-085); never part of a pair
+  bool fixed = false;
 };
 
 struct RecipeCfg {
@@ -230,7 +233,7 @@ struct RuntimeState {
   double tankVolumeL = kNaN;               // ohne Füllstandskopf: aus Mischläufen
   Epoch lastMixAt = 0;  // start of the running mix, then the end of the last one (RAT-003)
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
-  double ecEffect = kNaN;  // gelernte Wirkung Rezept (mS/cm je ml/L Summe)
+  double ecEffect = kNaN;  // learned effect of the recipe, mS/cm per ml/L of the parts EC control scales (RAT-085)
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund
   std::map<std::string, Epoch> selfReleased;  // latch → when it last released itself (SD-022)
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis

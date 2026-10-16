@@ -1322,7 +1322,11 @@ Result Hub::putRecipe(const json& j) {
   if (j.contains("note")) r->note = jstr(j, "note");
   if (j.contains("steps")) {
     r->steps.clear();
-    for (const auto& s : j["steps"]) r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL")});
+    for (const auto& s : j["steps"]) {
+      // Read wrongly as false, a fixed part would be scaled after all (RAT-085)
+      if (s.contains("fixed") && !s["fixed"].is_boolean()) return Result::fail(422, say("recipe.fixed"));
+      r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL"), jbool(s, "fixed", false)});
+    }
   }
   // The chart's EC and pH range (SD-057): a missing key keeps them, null clears them (R5)
   if (j.contains("refEc")) {
@@ -1344,6 +1348,35 @@ Result Hub::putRecipe(const json& j) {
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
+  // EC control learned its effect per ml/L of the parts it scaled. A part of its recipe that is fixed now
+  // leaves that effect on fewer ml/L: scaled up by what left, so the next round doses less, never more
+  // (RAT-085, RAT-056). The effect of each recipe of its own comes with SD-057's later steps.
+  if (const RecipeCfg* before = cfg_.recipe(id)) {
+    // The recipe EC control uses, as it picks it: the set one, or the first (activeRecipe in control.cpp)
+    const std::string set = effectiveParams(cat_, cfg_, "ec_control").str("recipe");
+    const std::string active = cfg_.recipe(set) ? set : cfg_.recipes.empty() ? "" : cfg_.recipes.front().id;
+    auto fixedNow = [&](const std::string& can) {
+      for (const auto& s : r->steps)
+        if (s.canister == can) return s.fixed;
+      return false;
+    };
+    double scaledBefore = 0, moved = 0;  // the old amounts the effect was learned on, and those of the parts fixed now
+    bool changed = false;
+    for (const auto& o : before->steps) {
+      if (o.fixed || !isNum(o.mlPerL)) continue;
+      scaledBefore += o.mlPerL;
+      if (fixedNow(o.canister)) moved += o.mlPerL;
+    }
+    for (const auto& s : r->steps) {
+      const auto o = std::find_if(before->steps.begin(), before->steps.end(), [&](const RecipeStep& x) { return x.canister == s.canister; });
+      changed |= o != before->steps.end() && o->fixed != s.fixed;
+    }
+    if (id == active && changed) ec_.recipeChanged(*r);  // a running round was planned on the old parts
+    if (id == active && isNum(rt_.ecEffect) && moved > 0 && scaledBefore > moved) {
+      rt_.ecEffect *= scaledBefore / (scaledBefore - moved);
+      stateDirty_ = true;
+    }
+  }
   cfg_ = next;
   saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
   return Result::ok({{"id", id}});

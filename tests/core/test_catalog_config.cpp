@@ -237,6 +237,37 @@ TEST_CASE("Recipes: a pH range is two values, low to high, within the pH target'
   CHECK_FALSE(band());
 }
 
+TEST_CASE("Recipes: a part can be a fixed addition, never one of a pair; the chart EC's effect counts the other parts (SD-057, RAT-085)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  c.devices.push_back({"CAP-4", "pump_cap", "Kappe 4"});
+  c.canisters.push_back({"clean", "Cleanse", "nutrient", "CAP-4", "", "#444", 1000});
+  c.recipes[0].steps.push_back({"clean", 0.5, true});
+  CHECK(validateConfig(c, cat).empty());
+  // Saved and read back; a file from before has no flag and nothing is fixed
+  Config d = configFromJson(json(c));
+  CHECK(d.recipes[0].steps[2].fixed);
+  CHECK_FALSE(d.recipes[0].steps[0].fixed);
+  CHECK(json(c) == json(d));
+  json old = c;
+  for (auto& s : old["recipes"][0]["steps"]) s.erase("fixed");
+  CHECK_FALSE(configFromJson(old).recipes[0].steps[2].fixed);
+  // One part of a pair cannot be fixed: the pair would split (RAT-054)
+  auto keys = [&] {
+    std::set<std::string> out;
+    for (const auto& m : validateConfig(c, cat)) out.insert(m.key);
+    return out;
+  };
+  c.recipes[0].steps[0].fixed = true;
+  CHECK(keys().count("cfg.recipe.fixed_pair") == 1);
+  c.recipes[0].steps[0].fixed = false;
+  // 0.29 over 4.5 ml/L would be below a quarter of the start effect; over the 4 ml/L that EC control scales it is not
+  c.recipes[0].refEc = 0.29;
+  CHECK(keys().empty());
+  c.recipes[0].steps[2].fixed = false;
+  CHECK(keys().count("cfg.recipe.ref_far") == 1);
+}
+
 TEST_CASE("Catalog: every recipe template's chart EC and pH range would pass as a recipe's (SD-057)") {
   // Each template as a recipe of its own, checked the way a saved recipe is
   Catalog cat = Catalog::builtin();

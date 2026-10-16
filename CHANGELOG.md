@@ -8,6 +8,21 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
+  bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
+  amount", for an addition the maker gives a fixed amount per litre for,
+  such as a cleanser. It goes in per litre of fresh water in every mix, as
+  all parts do today, but EC control never doses or scales it: its rounds
+  go to the other parts in their ratio, and the effect it learns, like the
+  chart EC's check, counts only those. Marking a part of EC control's
+  recipe this way scales the learned effect up, so the next round doses
+  less, never more; a round running then doses no part that is fixed now
+  and learns nothing, and one left with nothing to dose settles or ends. The recipe card and the mix plan mark it; the bottle
+  editor says before saving that such a bottle cannot join a pair. A
+  recipe of fixed amounts only cannot raise the EC, and the editor and
+  the control line say so. EC control's reasons for not dosing (tank
+  volume or effect unknown, no amounts, EC not below the target) now come
+  in English too.
 - **A recipe keeps its chart's EC and pH range, and a grow proposes them**
   (#143, SD-057, step 1): the recipe editor has "Chart EC" and "pH
   range", and the recipe templates fill them in (2.1 and 2.3 mS/cm
@@ -80,6 +95,23 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plan: factory reset with BOOT held 15 s and a confirmation; an
+  access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
+  PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
+  15 s. It first switches off the smart plugs with a water or CO2 role:
+  irrigation and circulation pump, inlet and inlet pump, humidifier,
+  dehumidifier, CO2 and tank heater. Light, fans, room heater and air
+  pump keep their state, and a drain with its own pump stays on. The
+  LEDs show whether every one of these plugs reported "off". Only a
+  short press on BOOT within 30 s then erases; without it nothing is
+  erased. The web app and our flash page switch off the same plugs
+  first. The reset erases Wi-Fi, the password, settings, calibrations,
+  history and the passwords of adopted plugs, and keeps the label's key.
+  If you only lost access, the access reset keeps your data: hold BOOT
+  long (proposed: 8 s), set a new password in the home network within
+  15 min and confirm it with a short press on BOOT. Home Assistant must
+  then be paired again. Before you pass a device on, use the factory
+  reset. Built in a later change.
 - **Plain words instead of developer terms** (#143, SD-055): in German,
   locks now say "Freigabe nötig" and "Freigeben", as the help and the
   English texts do, instead of "Gerastet" and "quittieren". The lock list
@@ -244,9 +276,9 @@ listed in every release under "Security".
   yourself in the browser; later it can come pre-flashed. Wi-Fi is then
   set up through the ESP32-S3's own setup network with the key from the
   label; on a configured device it opens only when you hold BOOT for
-  3 s, for at most 10 min. Holding BOOT for 10 s resets the device to
-  factory state: settings, calibration values, passwords, Wi-Fi and
-  history are erased, the label's key stays. A pre-flashed device asks for
+  3 s, for at most 10 min. A factory reset (see the entry on BOOT held
+  15 s) erases settings, calibration values, passwords, Wi-Fi and
+  history; the label's key stays. A pre-flashed device asks for
   its first password in the home network within 15 min after it joins.
   Every board with our firmware gets security updates for 7 years from
   its delivery, until December (delivered 2028: until at least 12/2035);
