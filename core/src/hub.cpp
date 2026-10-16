@@ -101,7 +101,10 @@ std::string slug(const std::string& s) {
 Result errors(const std::vector<Msg>& errs) {
   json arr = json::array();
   for (const auto& e : errs) arr.push_back(e);
-  return {422, {{"error", {{"key", "validation"}, {"text", errs.empty() ? "" : errs.front().text}}}, {"errors", arr}}};
+  // The error is the first finding with its key and arguments, so a page in
+  // the other language can show it in its own (SD-032); the rest follow.
+  json first = errs.empty() ? json{{"key", "validation"}, {"text", ""}} : json(errs.front());
+  return {422, {{"error", first}, {"errors", arr}}};
 }
 
 // A pair needs two: a bottle left alone with the label is no longer paired, otherwise every
@@ -825,7 +828,8 @@ json Hub::info() const {
           {"setupDone", cfg_.system.setupDone},
           {"hasPassword", auth_.hasPassword()},
           {"setupCode", auth_.setupCodeRequired()},  // the first password needs the code from the log (#79)
-          {"name", cfg_.system.name}};
+          {"name", cfg_.system.name},
+          {"language", cfg_.system.language == "de" ? "de" : "en"}};  // the sign-in page's, before a choice in the browser (SD-083)
 }
 
 json Hub::state() {
@@ -952,13 +956,22 @@ json Hub::events(Epoch from, Epoch to, const std::string& type, size_t limit) co
   return {{"events", arr}};
 }
 
-std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to) const {
+std::string Hub::language() const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
+  return cfg_.system.language == "de" ? "de" : "en";
+}
+
+std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, Epoch to, const std::string& lang) const {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  // German: semicolon and decimal comma; English: comma and decimal point, so
+  // a spreadsheet in either language reads the numbers (RAT-016, SD-083)
+  const bool en = lang != "de";
+  const char sep = en ? ',' : ';';
   std::ostringstream os;
-  os << "zeit_utc";
+  os << (en ? "time_utc" : "zeit_utc");
   std::vector<SeriesPoints> pts;
   for (const auto& s : series) {
-    os << ';' << s;
+    os << sep << s;
     pts.push_back(history_.query(s, from, to, 0));
   }
   os << '\n';
@@ -972,8 +985,11 @@ std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, E
   for (const auto& [t, row] : rows) {
     os << t;
     for (double v : row) {
-      os << ';';
-      if (isNum(v)) os << fmt(v, 3);  // leer statt 0 (RAT-016, RAT-006)
+      os << sep;
+      if (!isNum(v)) continue;  // a gap stays an empty field, never 0 (RAT-016, RAT-006)
+      std::string n = fmt(v, 3);
+      if (en) std::replace(n.begin(), n.end(), ',', '.');
+      os << n;
     }
     os << '\n';
   }
@@ -1494,8 +1510,7 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
   // differ from the hub's), otherwise in the system language (#32).
   if (!langIn.empty() && langIn != "de" && langIn != "en")
     return Result::fail(422, "recipe.template.lang", "Sprache muss de oder en sein");
-  const std::string& sys = cfg_.system.language;
-  const std::string lang = !langIn.empty() ? langIn : (sys == "en" ? "en" : "de");
+  const std::string lang = !langIn.empty() ? langIn : language();  // English first (SD-014)
   auto localized = [&](const json& o, const char* key) {
     const std::string en = jstr(o, (std::string(key) + "En").c_str());
     return lang == "en" && !en.empty() ? en : jstr(o, key);

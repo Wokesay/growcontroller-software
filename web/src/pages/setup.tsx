@@ -11,7 +11,7 @@ import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { num, timeZone } from "../format";
 import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { canisters, catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
-import { Banner, Button, Card, CheckRow, Field, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
+import { Banner, Button, Card, CheckRow, Field, LANGS, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 
 const STEPS: TextKey[] = ["setup.step.start", "setup.step.devices", "setup.step.tank", "setup.step.nutrients", "setup.step.calibrate", "setup.step.done"];
@@ -152,13 +152,13 @@ function StepStart(p: { step: number; next: () => void }) {
       <p class="muted">{t("setup.start.intro")}</p>
       <Banner>{t("setup.start.pw")}</Banner>
       <div class="form-grid">
+        <div class="field">
+          <span>{t("common.language")}</span>
+          <Seg<Lang> value={lang.value} onChange={pick} options={LANGS} label={t("common.language")} />
+        </div>
         <Field label={t("setup.start.name")} hint={t("setup.start.nameHint")}>
           <input class="input" name="hubname" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </Field>
-        <div class="field">
-          <span>{t("common.language")}</span>
-          <Seg<Lang> value={lang.value} onChange={pick} options={[["de", "Deutsch"], ["en", "English"]]} />
-        </div>
         <div class="field">
           <span>{t("setup.start.zoneKind")}</span>
           <Seg<ZoneKind>

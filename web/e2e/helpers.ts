@@ -6,7 +6,22 @@ export { expect };
 // Every test also fails on an uncaught exception in the page and on a part
 // the error boundary had to replace (SD-032): either could otherwise pass
 // unnoticed where no step looks at that part of the page.
-export const test = base.extend<{ appErrorGuard: void }>({
+// The specs read German texts, while a new hub and browser start in English
+// (SD-014): each page starts German unless the test chose a language itself.
+// A test that checks the English start sets `pageLang` to null.
+export const test = base.extend<{ appErrorGuard: void; pageLang: "de" | "en" | null }>({
+  pageLang: ["de", { option: true }],
+  page: async ({ page, pageLang }, use) => {
+    if (pageLang)
+      await page.addInitScript((l) => {
+        try {
+          if (!localStorage.getItem("gc.lang")) localStorage.setItem("gc.lang", l);
+        } catch {
+          // no storage: the page keeps its default
+        }
+      }, pageLang);
+    await use(page);
+  },
   appErrorGuard: [
     async ({ page }, use) => {
       const errors: string[] = [];

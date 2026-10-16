@@ -240,6 +240,7 @@ json migrateConfig(json j) {
 Config configFromJson(const json& in) {
   json j = migrateConfig(in);
   Config c;
+  c.system.language = "de";  // a saved file without a language was saved under the old default (SD-014, SD-083)
   c.schemaVersion = j.value("schemaVersion", kSchemaVersion);
   c.revision = whole(j, "revision", 0, 0);  // an import keeps the hub's own
   if (j.contains("system")) {

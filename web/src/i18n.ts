@@ -23,14 +23,14 @@ function initial(): Lang {
     const saved = localStorage.getItem(STORE);
     if (saved === "de" || saved === "en") return saved;
   } catch {
-    // privater Modus: Browser-Sprache
+    // private mode: no saved choice
   }
-  return (navigator.language || "de").toLowerCase().startsWith("de") ? "de" : "en";
+  return "en";  // English first until a choice is made here or on the hub (SD-014)
 }
 
 export const lang = signal<Lang>(initial());
 
-/** Hat dieser Browser schon eine eigene Wahl? Sonst gilt die Sprache des Hubs. */
+/** Has this browser a choice of its own? Otherwise the hub's language applies. */
 export function hasOwnLang(): boolean {
   try {
     return localStorage.getItem(STORE) !== null;
@@ -48,7 +48,7 @@ export function setLang(l: Lang, remember = true) {
   try {
     localStorage.setItem(STORE, l);
   } catch {
-    // ohne Speicher gilt die Wahl bis zum Neuladen
+    // without storage the choice lasts until the page reloads
   }
 }
 

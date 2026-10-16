@@ -219,9 +219,15 @@ export function Toggle(p: { checked: boolean; onChange: (v: boolean) => unknown;
   );
 }
 
-export function Seg<T extends string>(p: { value: T; options: [T, string][]; onChange: (v: T) => unknown }) {
+/** The two languages in their own names, in the same order everywhere (SD-014); each name is read in its language. */
+export const LANGS: ["en" | "de", ComponentChildren][] = [
+  ["en", <span lang="en" class="notranslate">English</span>],
+  ["de", <span lang="de" class="notranslate">Deutsch</span>],
+];
+
+export function Seg<T extends string>(p: { value: T; options: [T, ComponentChildren][]; onChange: (v: T) => unknown; label?: string; labelledBy?: string; large?: boolean }) {
   return (
-    <div class="seg" role="tablist">
+    <div class={`seg${p.large ? " lg" : ""}`} role="tablist" aria-label={p.label} aria-labelledby={p.labelledBy}>
       {p.options.map(([v, l]) => (
         <button type="button" role="tab" aria-selected={p.value === v} class={p.value === v ? "on" : ""} onClick={() => changed(() => p.onChange(v))}>
           {l}

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <set>
+#include <sstream>
 
 #include "client.hpp"
 #include "fakes.hpp"
@@ -247,6 +248,96 @@ TEST_CASE("API: Zustand hat die Felder, die die Web-App liest (Vertrag)") {
   auto d = c.ok("GET", "/api/v1/diagnostics");
   CHECK(d["reportId"].get<std::string>().rfind("GC-", 0) == 0);
   CHECK(d.dump().find("salt") == std::string::npos);
+}
+
+TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, SD-083)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(120000);  // two minutes of readings
+  auto csv = [&](const std::string& q, const std::string& series = "tank.ph,zone.co2") {
+    gc::ApiRequest r;
+    r.method = "GET";
+    r.path = "/api/v1/export.csv";
+    r.query = {{"series", series}};
+    if (!q.empty()) r.query["lang"] = q;
+    r.token = c.token;
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    return s.api().handle(r);
+  };
+  auto header = [](const gc::ApiResponse& r) {
+    for (const auto& [k, v] : r.headers)
+      if (k == "Content-Disposition") return v;
+    return std::string();
+  };
+  // A line with a pH value and no CO2 (the demo has no CO2 sensor): the gap stays an empty field
+  auto row = [](const std::string& body) {
+    std::istringstream in(body);
+    std::string line, last;
+    std::getline(in, line);
+    while (std::getline(in, line))
+      if (!line.empty()) last = line;
+    return last;
+  };
+  const auto en = csv("en");
+  CHECK(en.status == 200);
+  CHECK(en.body.rfind("time_utc,tank.ph,zone.co2\n", 0) == 0);
+  const std::string enRow = row(en.body);
+  REQUIRE_FALSE(enRow.empty());
+  CHECK(enRow.find(';') == std::string::npos);
+  CHECK(enRow.find('.') != std::string::npos);  // decimal point
+  CHECK(enRow.back() == ',');                    // CO2 left empty, never 0
+  CHECK(header(en).find("growcontroller-history.csv") != std::string::npos);
+  const auto de = csv("de");
+  CHECK(de.body.rfind("zeit_utc;tank.ph;zone.co2\n", 0) == 0);
+  const std::string deRow = row(de.body);
+  REQUIRE_FALSE(deRow.empty());
+  CHECK(deRow.find(',') != std::string::npos);  // decimal comma
+  CHECK(deRow.find('.') == std::string::npos);
+  CHECK(deRow.back() == ';');
+  CHECK(header(de).find("growcontroller-verlauf.csv") != std::string::npos);
+  // Without a language the hub's own decides; the demo's hub speaks German
+  CHECK(csv("").body.rfind("zeit_utc;", 0) == 0);
+  CHECK(csv("xx").body.rfind("zeit_utc;", 0) == 0);  // an unknown one counts as none
+  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  CHECK(csv("").body.rfind("time_utc,", 0) == 0);
+  // Only a series id heads a column: anything else is refused, nothing is written
+  for (const char* bad : {"=1+1", "tank.ph\n=2", "tank.ph;x", "Tank.PH", "-1", "@a", "\"q\"", "tank ph"}) {
+    const auto r = csv("en", bad);
+    CHECK_MESSAGE(r.status == 422, bad);
+    CHECK_MESSAGE(gc::json::parse(r.body)["error"]["key"] == "history.series_id", bad);
+  }
+  CHECK(csv("en", "tank.ph,zone.vpd,tank.water_temp").status == 200);
+  CHECK(csv("en", "tank.ph,,zone.co2").status == 422);  // an empty id between two
+  CHECK(csv("en", "tank.ph,").status == 422);           // and after the last
+  CHECK(csv("en", ",tank.ph").status == 422);
+  CHECK(csv("en", std::string(64, 'a')).status == 200);
+  CHECK(csv("en", std::string(65, 'a')).status == 422);
+  CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
+}
+
+TEST_CASE("API: an imported configuration without a language is German; the settings file has an English name (SD-083)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  cfg["system"].erase("language");  // a file saved before the hub wrote one
+  c.ok("POST", "/api/v1/config/import", cfg);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "de");
+  gc::ApiRequest r;
+  r.method = "GET";
+  r.path = "/api/v1/config/export";
+  r.token = c.token;
+  gc::ApiResponse res;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    res = s.api().handle(r);
+  }
+  bool named = false;
+  for (const auto& [k, v] : res.headers) named = named || (k == "Content-Disposition" && v.find("growcontroller-config.json") != std::string::npos);
+  CHECK(named);
 }
 
 TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
@@ -630,6 +721,9 @@ TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears the
   auto [st4, e4] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"refEc", 0.4}});  // 0.06 per ml/L over 6.8 ml/L: a typo?
   CHECK(st4 == 422);
   CHECK(e4.dump().find("cfg.recipe.ref_far") != std::string::npos);
+  // The error itself is the first finding, key and arguments included, so a German page translates it
+  CHECK(e4["error"] == e4["errors"][0]);
+  CHECK(e4["error"]["key"] == "cfg.recipe.ref_far");
   for (const gc::json& half : {gc::json::array({5.8}), gc::json::array({nullptr, 6.2})}) {
     auto [st, e] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"ph", half}});
     CHECK(st == 422);
@@ -758,11 +852,11 @@ TEST_CASE("Templates: missing parts are named in the language of the request; En
   CHECK(cfg["recipes"][0]["steps"].size() == 3);
 }
 
-TEST_CASE("Templates: an unknown system language in an imported configuration falls back to German (#32)") {
+TEST_CASE("Templates: an unknown system language in an imported configuration falls back to English (#32, SD-014)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
-  for (const char* n : {"Teil A", "Teil B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
+  for (const char* n : {"Part A", "Part B", "CalMag"}) c.ok("POST", "/api/v1/canisters", {{"name", n}, {"kind", "nutrient"}, {"pump", ""}});
   gc::json cfg = c.ok("GET", "/api/v1/config/export");
   if (cfg.contains("config")) cfg = cfg["config"];
   cfg["system"]["language"] = "xx";
@@ -773,7 +867,7 @@ TEST_CASE("Templates: an unknown system language in an imported configuration fa
   const auto after = c.ok("GET", "/api/v1/config");
   REQUIRE(after["recipes"].size() == 1);
   CHECK(after["recipes"][0]["id"] == j["id"]);
-  CHECK(after["recipes"][0]["name"] == "Zweikomponenten-Dünger");
+  CHECK(after["recipes"][0]["name"] == "Two-part nutrient");
 }
 
 TEST_CASE("Templates: with both names present, the one in the language of the request wins (#32)") {
@@ -797,10 +891,14 @@ TEST_CASE("Templates: with both names present, the one in the language of the re
 TEST_CASE("System: Sprache nur de oder en") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
+  // A new hub speaks English, and says so before anyone signs in (SD-014, SD-083)
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "en");
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
-  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
-  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "en");
+  c.ok("PUT", "/api/v1/system", {{"language", "de"}});
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
+  CHECK(Client{s}.ok("GET", "/api/v1/info")["language"] == "de");  // the sign-in page of a browser without a choice
   CHECK(c.call("PUT", "/api/v1/system", {{"language", "fr"}}).first == 422);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["language"] == "de");
 }
 
 TEST_CASE("Vorlagen: ein Kanister für zwei Teile wird abgelehnt, Paar wird übernommen") {

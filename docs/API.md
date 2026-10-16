@@ -6,8 +6,10 @@ UI can do, an integration can do as well.
 
 ## Access
 
-- `GET /info` is public: version, platform, whether a password is set and
-  whether the first password needs a setup code (`setupCode`, #79).
+- `GET /info` is public: version, platform, whether a password is set,
+  whether the first password needs a setup code (`setupCode`, #79) and
+  the hub's language (`language`, `de` or `en`; a new hub is `en`), which
+  a sign-in page without a choice of its own uses (SD-083).
 - `POST /auth/setup {password, code}` sets the initial password, exactly
   once (otherwise 409). Where the platform armed a setup code (the Home
   Assistant app prints it to its log, SD-068), `code` from the JSON body
@@ -60,7 +62,9 @@ UI can do, an integration can do as well.
   name is refused with 422 `system.timezone` before anything else is checked
   (so other errors in the file are not listed with it, and a running job
   does not turn it into 409); when the saved file is loaded, such a zone
-  falls back to `Europe/Berlin` and an event says so. A count or index in
+  falls back to `Europe/Berlin` and an event says so. A file without
+  `system.language` sets the hub to German, as files were saved before
+  English became the default (SD-083). A count or index in
   the file is a whole number in its range, never null and never a fraction
   cut to one: the running phase is one of the grow cycle's phases
   (`cfg.grow.phase`, also the 409 of `/grow/next` for a saved phase outside
@@ -79,7 +83,7 @@ UI can do, an integration can do as well.
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
 | GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to` | CSV |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
@@ -101,7 +105,11 @@ UI can do, an integration can do as well.
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 
-Errors come as `{"error":{"key","text"},"errors":[…]}`.
+Errors come as `{"error":{"key","text","args"},"errors":[…]}` (`args`
+only when there are any). When the
+configuration check refuses a change (422), `error` is the first of its
+findings in `errors`, with its key and arguments, so a page can show it
+in its own language.
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested

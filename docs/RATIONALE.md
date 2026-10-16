@@ -161,11 +161,11 @@ cover it. Code, tests and other docs cite only the ID (RAT-001 …).
 
 ### RAT-016 – Exported data leaves gaps empty
 
-- **Rule:** CSV exports of the history use a semicolon separator and a decimal comma, and missing values stay as empty fields, never 0. A planned addition is an end-of-run summary (water, nutrient ml and cost, phase durations, yield entered by hand) as a lasting basis for comparing runs.
+- **Rule:** CSV exports of the history leave missing values as empty fields, never 0. A German export uses a semicolon separator and a decimal comma; an English one a comma separator and a decimal point, so a spreadsheet in either language reads the numbers (SD-083). A planned addition is an end-of-run summary (water, nutrient ml and cost, phase durations, yield entered by hand) as a lasting basis for comparing runs.
 - **Why:** The data of a finished run is the basis for comparing runs and costs. If gaps turned into zeros, averages and totals would be silently wrong and could not be told apart from real measurements.
 - **Evidence:** Observed on the reference installation (2026): the detailed history was dropped after a retention period, so an export at the end of each run became the lasting record; over about a month the export had no unexplained gaps.
-- **Implemented in:** core/src/hub.cpp (`Hub::exportCsv`), docs/HISTORY.md
-- **Tests:** tests/core/test_history.cpp "Verlauf: feinste Stufe, Lücken bleiben Lücken" (gaps stay gaps); no dedicated CSV test.
+- **Implemented in:** core/src/hub.cpp (`Hub::exportCsv`), core/src/api.cpp (`GET /export.csv`, the language), web/src/pages/history.tsx and settings.tsx (the links), docs/HISTORY.md
+- **Tests:** tests/core/test_history.cpp "Verlauf: feinste Stufe, Lücken bleiben Lücken" (gaps stay gaps); tests/core/test_api.cpp "API: the CSV export follows the language, gaps stay empty".
 
 
 ### RAT-017 – VPD is air VPD, with no value when an input is missing

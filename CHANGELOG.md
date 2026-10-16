@@ -95,6 +95,30 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **English first** (#143, #18, SD-014, SD-083): a new hub is set to
+  English. The first-password page starts with the language choice, set
+  to English; what you pick there carries into setup, whose first field
+  is the language, as in the Home Assistant app's introduction. A browser
+  where you have not picked a language no longer follows the browser's
+  own language: it shows the hub's language, from the sign-in page on. A
+  hub you already use keeps its language through the update, and so does
+  an older settings file without a language when imported (German).
+  Skipping the Home Assistant app's introduction still saves the language
+  you picked.
+- **The CSV export in the page's language** (RAT-016, SD-083): from a
+  German page as before, with semicolons and a decimal comma
+  (`growcontroller-verlauf.csv`); from an English page with commas and a
+  decimal point (`growcontroller-history.csv`). Gaps stay empty in both.
+  A series name in the export's address holds only lower-case letters,
+  digits, dots and underscores.
+- **English file names:** the settings file is now
+  `growcontroller-config.json` (was `growcontroller-konfiguration.json`),
+  the diagnostic bundle `growcontroller-diagnostics-….json` (was
+  `growcontroller-diagnose-….json`).
+- **API:** a refused change's `error` is now its first finding, with
+  `key`, `text` and `args` (the whole list stays in `errors`); `/info`
+  names the hub's language (`language`); `/export.csv` takes `lang=de`
+  or `lang=en` and otherwise uses the hub's.
 - **The menu is grouped by topic** (#143, SD-056): below Overview and
   History come small headings for the nutrient solution (mixing, tank
   and control, recipes and bottles, watering), the room (climate,
@@ -371,6 +395,10 @@ listed in every release under "Security".
   settings already hold such a phase or such days keeps running; while
   that cycle runs, a change says the same, and once it is finished
   nothing is blocked.
+- **A refused change says why in the page's language** (#18): when the
+  configuration check refused a recipe, for example because the chart EC
+  does not fit the amounts, a German page showed the reason in English.
+  It now shows it in German.
 - **A large refill no longer latches the inlet** (#155, SD-082): a
   refill planned longer than the valve may stay open ("Ventil höchstens
   offen", 15 min by default) ran into that limit, which shut the inlet as
