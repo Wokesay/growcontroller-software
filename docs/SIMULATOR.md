@@ -42,6 +42,7 @@ default password (EN 18031-1).
 | Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
 | Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
+| Water temperature | a daily curve of 19–22 °C; fresh water moves it towards the inlet water's temperature by volume, at once, with no layering and no lag of the probe, and it returns to the curve with t63 3 h; the inlet water is as warm as the tank unless a test sets it (`inletTempC`) | **Assumption**, not measured |
 | Level reading | follows the volume at once, every 5 s | assumption: no lag (the real one lags 1.5–2 min, RAT-038); irrigation draws no water from the tank; both do not change a refill test's result |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
 | Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |
@@ -60,7 +61,7 @@ default password (EN 18031-1).
 | Dosing block offline | block does not respond, hub sees the last state | deadline per run: pumps off, counted as run |
 | Cap on hub port 2 | identification does not match, port is not enabled | mis-plug message (PD-012) |
 | Power cut | hub restarts, outputs de-energised; optionally lasting `outageMin` (the world runs on, everything off) and without a secured time afterwards (`timeSecured: false`); `mainsLost: false` restarts only the hub, the sockets keep power. The action `time` secures the clock later (`secured: true`), takes the secured time away again (`secured: false`) or steps the network time (`stepS`) | R6: everything off except the fan sockets (PD-050), during a Stop the fans too (PD-076); sequence reported, not resumed; without a secured time the clock continues from the saved time (PD-069); a clock step keeps the remaining time of locks and pauses. A `world.json` from before the power-on setting reads outlets as off or "as before"; "as before" starts off in the simulator |
-| Fresh water | set volume, EC and pH | mixing, EC gate, dry run |
+| Fresh water | set volume, EC and pH; the water temperature goes back to the daily curve | mixing, EC gate, dry run |
 | Time-lapse 1–300× | – | settle times, history |
 | Scenario | everything reset; only when logged in, without login only with `--allow-reset` (Playwright) | first-time setup |
 

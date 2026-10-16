@@ -84,6 +84,7 @@ struct Tank {
   double ec = 0.02;       // durchmischter Zustand
   double ph = 7.0;
   double temp = 20.5;
+  double tempDev = 0;     // deviation from the daily curve, from fresh water (assumption)
   double pendingEc = 0;   // noch nicht durchmischte Gabe (Konzentrationsbeitrag)
   double pendingPh = 0;
 };
@@ -141,7 +142,7 @@ class World {
   // test can see what was switched at that moment or make the read fail. Empty in the simulator.
   std::function<void(const std::string& capId)> onRunStatus;
 
-  void fill(double volumeL, double ec, double ph);
+  void fill(double volumeL, double ec, double ph);  // the water at the daily curve's temperature
   json toJson() const;
   // Sichern und Wiederherstellen (Geräte, ID-Chips, Tank) für Neustarts des Simulators
   json save() const;
@@ -153,6 +154,7 @@ class World {
   std::optional<double> probeBuffer;  // Sonde steckt in Pufferlösung (Kalibrierung)
   std::string probeKind;              // "ph" | "ec"
   double inletLpm = 2.0;
+  double inletTempC = gc::kNaN;       // inlet water; NaN: as warm as the tank (assumption, docs/SIMULATOR.md)
   double phOffset = 0.18;             // Sondenfehler vor der Kalibrierung (Annahme)
   double phSlope = 0.97;
   double ecFactor = 1.08;

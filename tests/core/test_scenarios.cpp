@@ -451,9 +451,9 @@ TEST_CASE("Scenario: a pH jump while the hub's own pH dose settles still locks t
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   // An own pH dose is sized to move pH by at most 0.3 (RAT-050), so it does not explain a jump
-  // of more than 1.0 (RAT-042). A mix announces pH for 10 min after it ends, the inlet for
-  // 5 min and an EC round until 1 min after its settle time: start a pH round only after
-  // 11 quiet minutes.
+  // of more than 1.0 (RAT-042). A mix announces pH for 10 min after it ends, the inlet until
+  // 5 min after it closes and an EC round until 1 min after its settle time (its EC until
+  // about 10 min after its last busy tick): start a pH round only after 11 quiet minutes.
   constexpr gc::Ms kPoll = 5000;
   gc::Ms quiet = 0;
   REQUIRE(until(s, [&] {
@@ -1111,6 +1111,74 @@ TEST_CASE("Scenario: a refill from a nearly empty tank fills in steps within the
   s.fastForward(1.5, 40000);
   CHECK_FALSE(inletLatched(c));
   CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
+}
+
+TEST_CASE("Scenario: a cold refill trips no water temperature jump lock: the open inlet explains the change until 5 min after it closes (#272, RAT-042)") {
+  // Demo from 2.3 L: 28 L of tap water at 10 °C (assumption) cool the tank by about 10 °C, more than
+  // the jump threshold of 3 °C in 5 min. The open inlet announces the change, as it does for EC, pH
+  // and level. The refill starts only after the demo's own calibrations at setup, which explain
+  // every reading of the probe for 10 min.
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 2.3);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  s.world().inletTempC = 10.0;
+  s.step(16 * 60 * 1000, 5000);
+  const auto waterJumps = [&] {
+    int n = 0;
+    for (const auto& e : findEvents(c, "block"))
+      n += e["title"]["key"] == "ev.jump" && e["data"]["role"] == "tank.water_temp" ? 1 : 0;
+    return n;
+  };
+  const auto quality = [&] { return c.state()["readings"]["tank.water_temp"]["quality"].get<std::string>(); };
+  REQUIRE(waterJumps() == 0);
+  REQUIRE(quality() == "ok");
+  const double before = s.world().tank.temp;
+
+  SUBCASE("the same fall with the valve closed is a jump") {
+    s.world().tank.tempDev -= 10.0;
+    REQUIRE(soon(s, [&] { return quality() == "jump"; }, 2 * 60 * 1000, 5000));
+    CHECK(waterJumps() == 1);
+  }
+
+  SUBCASE("the open inlet explains the fall, and its announcement ends 5 min after the valve closes") {
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}});
+    bool locked = false;
+    const auto watch = [&] { locked = locked || quality() == "jump"; };
+    REQUIRE(soon(s, [&] { watch(); return inletOpen(c); }, 5 * 60 * 1000, 5000));
+    REQUIRE(soon(s, [&] { watch(); return !inletOpen(c); }, 20 * 60 * 1000, 5000));
+    CHECK(s.world().tank.temp < before - 3.0);  // the fall a jump lock would see
+    CHECK_FALSE(locked);
+    CHECK(waterJumps() == 0);
+    // The refill's pause after its first step: 3 min after the valve closed a fall is still explained,
+    // 7 min after it a fall is a jump. A jump inside the tail is not locked: an open point of the
+    // jump lock (INVARIANTS M8)
+    REQUIRE(refillLine(c)["key"] == "refill.check_step");
+    s.step(3 * 60 * 1000, 5000);
+    s.world().tank.tempDev -= 4.0;
+    s.step(60 * 1000, 5000);
+    CHECK(quality() == "ok");
+    CHECK(waterJumps() == 0);
+    s.step(3 * 60 * 1000, 5000);
+    REQUIRE(refillLine(c)["key"] == "refill.check_step");  // the valve is still closed
+    CHECK(quality() == "ok");
+    CHECK(waterJumps() == 0);
+    s.world().tank.tempDev -= 4.0;
+    REQUIRE(soon(s, [&] { return quality() == "jump"; }, 60 * 1000, 5000));
+    CHECK(waterJumps() == 1);
+  }
+
+  SUBCASE("an inlet opened by hand explains the fall too") {
+    c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+    bool locked = false;
+    const auto watch = [&] { locked = locked || quality() == "jump"; return false; };
+    soon(s, watch, 4 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", false}});
+    soon(s, watch, 10 * 60 * 1000, 5000);
+    CHECK(s.world().tank.temp < before - 3.0);
+    CHECK_FALSE(locked);
+    CHECK(waterJumps() == 0);
+  }
 }
 
 TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet; a slower inlet within reason does not (#155, SD-082, RAT-031)") {
