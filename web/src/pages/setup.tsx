@@ -9,7 +9,7 @@ import { ArrowLeft, ArrowRight, Check, PackagePlus, Sprout } from "lucide-preact
 import { del, post, probeKinds, put, type Canister, type ProbeKind, type RecipeTemplate } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { num, timeZone } from "../format";
-import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
+import { lang, msg, setLang, t, type Lang, type TextKey } from "../i18n";
 import { canisters, catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, CheckRow, Field, LANGS, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
@@ -71,7 +71,7 @@ function Aside(p: { terms?: HelpTopic[] }) {
         <div class="card flat stack-sm">
           <div class="section-title">{t("setup.side.missing")}</div>
           {open.map((c) => (
-            <CheckRow ok={false} soft={c.soft} text={c.text} />
+            <CheckRow ok={false} soft={c.soft} text={msg(c.text)} />
           ))}
           {open.every((c) => c.soft) && <CheckRow ok text={t("setup.side.nothing")} />}
         </div>
@@ -568,7 +568,7 @@ function StepDone(p: { step: number }) {
           <div class="item">
             <span class="grow">
               <strong>{f.label}</strong>
-              {f.setup === "needs_setup" && <div class="muted small">{f.summary.text}</div>}
+              {f.setup === "needs_setup" && <div class="muted small">{msg(f.summary)}</div>}
             </span>
             <Pill tone={setupLabel[f.setup][1]}>{setupLabel[f.setup][0]}</Pill>
           </div>

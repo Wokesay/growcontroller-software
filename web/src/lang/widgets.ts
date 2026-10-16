@@ -4,7 +4,7 @@
 export const de = {
   "widgets.quality.notBound": "nicht zugeordnet",
   "widgets.quality.offline": "Sensor liefert nicht",
-  "widgets.quality.noData": "noch kein Wert",
+  "widgets.quality.noData": "kein Messwert",
   "widgets.quality.stale": "veraltet",
   "widgets.quality.frozen": "steht still",
   "widgets.quality.implausible": "unplausibel",
@@ -24,7 +24,7 @@ export const de = {
   "widgets.latch.inletFault": "Zulauf-Notabschaltung",
   "widgets.latch.phNoEffect": "pH ohne Wirkung",
   "widgets.latch.ecNoEffect": "EC ohne Wirkung",
-  "widgets.latch.jump": "{label} sprang unerwartet – frei nach 15\u00a0min Ruhe",
+  "widgets.latch.jump": "{label} sprang unerwartet – die Sperre löst sich nach 15\u00a0min Ruhe",
   "widgets.latch.reading": "Messwert",
   "widgets.latch.other": "Schutzabschaltung",
   "widgets.jobMix": "Mischlauf „{name}“ · {l} L",
@@ -56,7 +56,7 @@ export const de = {
 export const en: Record<keyof typeof de, string> = {
   "widgets.quality.notBound": "Not assigned",
   "widgets.quality.offline": "Not responding",
-  "widgets.quality.noData": "No value yet",
+  "widgets.quality.noData": "No reading",
   "widgets.quality.stale": "Outdated",
   "widgets.quality.frozen": "Value stuck",
   "widgets.quality.implausible": "Implausible",

@@ -33,15 +33,15 @@ bool SimNetBus::owns(const std::string& dev) const { return w_.netPlug(dev) != n
 NetOutlet* SimNetBus::outlet(const std::string& dev, int channel, std::string& err) const {
   NetPlug* p = w_.netPlug(dev);
   if (!p) {
-    err = "Gerät unbekannt";
+    err = "unknown device";
     return nullptr;
   }
   if (p->fault == "offline") {
-    err = "im Netzwerk nicht erreichbar";
+    err = "not reachable in the network";
     return nullptr;
   }
   if (channel < 0 || channel >= static_cast<int>(p->outlets.size())) {
-    err = "Dose " + std::to_string(channel + 1) + " gibt es nicht";
+    err = "there is no outlet " + std::to_string(channel + 1);
     return nullptr;
   }
   return &p->outlets[static_cast<size_t>(channel)];
@@ -51,7 +51,7 @@ bool SimNetBus::setSwitch(const std::string& dev, int channel, bool on, std::str
   NetOutlet* o = outlet(dev, channel, err);
   if (!o) return false;
   if (w_.netPlug(dev)->fault == "stuck") {
-    err = "Schaltbefehl abgelehnt";  // nur Befehle; Auto-Off im Gerät und Stromausfall wirken weiter
+    err = "switch command refused";  // commands only; the device's own auto-off and a power loss still act
     return false;
   }
   if (on && !o->on) {
@@ -81,7 +81,7 @@ bool SimNetBus::configure(const std::string& dev, int channel, const gc::SwitchS
   if (!o) return false;
   NetPlug* p = w_.netPlug(dev);
   if (p->fault == "readonly") {
-    err = "Gerät lehnt die Einstellung ab (Anmeldung?)";
+    err = "the device refused the setting (sign-in?)";
     return false;
   }
   if (p->fault == "ignore") return true;  // meldet Erfolg, speichert aber nichts – das Rücklesen fällt auf

@@ -339,7 +339,7 @@ export function PortGrid() {
       {st.ports.map((p) => {
         const d = st.devices.find((x) => x.id === p.device);
         return (
-          <div class={`port ${p.state}`} title={p.message?.text}>
+          <div class={`port ${p.state}`} title={msg(p.message) || undefined}>
             <span class="pn">{t("port.hub", { n: p.port })}</span>
             {p.state === "empty" ? <span class="jack" /> : <span class="pi"><DeviceIcon cls={d?.class ?? p.class} size={22} /></span>}
             <span class="pl">{p.state === "empty" ? <span class="faint">{t("common.free")}</span> : d?.name || d?.classLabel || p.class}</span>

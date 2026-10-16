@@ -743,6 +743,71 @@ constexpr Entry kMessages[] = {
     {"sim.err.scenario", "Scenario: demo, neu or stufe1"},
     {"sim.err.hours", "0–72\u00a0h"},
     {"sim.err.action", "Unknown action"},
+    // A reading's reasons, the functions' checklists and their summaries (#73, SD-083)
+    {"truth.not_bound", "Not assigned"},
+    {"truth.offline", "The device is not responding"},
+    {"truth.no_data", "Connected, but no value arrives"},
+    {"truth.stale", "Last value {min}\u00a0min ago"},
+    {"truth.uncalibrated", "Not calibrated"},
+    {"truth.frozen", "The value has not changed for over 15\u00a0min – check the probe"},
+    {"truth.implausible", "The value {value}{unit} is outside the possible range {min}–{max}{unit} – check the sensor"},
+    {"truth.jump", "The value jumped from {from}{unit} to {to}{unit}. Did someone work at the tank without maintenance mode? If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_zone", "The value jumped from {from}{unit} to {to}{unit}. Did someone work near the plants without maintenance mode? If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_ph", "The value rose from {from} to {to}. Did someone work at the tank without maintenance mode? If not, check the probe against a hand measurement. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_ph_fall", "The value fell from {from} to {to}. Measure by hand; if too low, raise it yourself – the hub only lowers pH. Cause: the hub's pH dose, the probe or tank work. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_level", "The value jumped from {from}{unit} to {to}{unit}. Filled or drained by hand? Then start maintenance mode first next time. If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.ok", "Valid"},
+    {"truth.vpd.needs", "Needs air temperature and humidity"},
+    {"truth.vpd.invalid", "Air temperature or humidity is not valid"},
+    {"truth.vpd.apart", "Air temperature and humidity were measured more than 1\u00a0min apart"},
+    {"req.kind.bottle", "bottle"},
+    {"req.kind.nutrient", "nutrient"},
+    {"req.kind.ph_down", "pH−"},
+    {"req.kind.ph_up", "pH+"},
+    {"req.needs", "You need: {items}"},
+    {"req.needs_one_of", "You need one of: {items}"},
+    {"req.needs_dosing", "You need a dosing block and a pump"},
+    {"req.assign", "Assign \"{label}\""},
+    {"req.assigned", "{label} assigned"},
+    {"req.external", "{label} is calibrated outside the hub – the hub doesn't use it for control"},
+    {"req.calibrated", "{label} probe calibrated"},
+    {"req.calibrate", "Calibrate the {label} probe"},
+    {"req.calibrate_level", "Calibrate the level sensor"},
+    {"req.calibrated_level", "Level sensor calibrated"},
+    {"req.valid", "{label} valid"},
+    {"req.reason", "{label}: {reason}"},
+    {"req.reachable", "{label} reachable"},
+    {"req.offline", "{label}: The device is not responding"},
+    {"req.add_bottle", "Add a bottle and assign its pump"},
+    {"req.add_bottle_kind", "Add a {kind} bottle and assign its pump"},
+    {"req.bottles", "{n}\u00a0× bottle with a pump"},
+    {"req.bottles_kind", "{n}\u00a0× {kind} bottle with a pump"},
+    {"req.pumps_seen", "Pumps responding"},
+    {"req.pump_missing", "A pump is not responding – is it plugged onto the dosing block?"},
+    {"req.pumps_calibrated", "Pumps calibrated"},
+    {"req.pumps_calibrated_kind", "Pumps for {kind} bottles calibrated"},
+    {"req.calibrate_pump", "Calibrate the pump for \"{name}\""},
+    {"req.recipe", "Recipe in place"},
+    {"req.add_recipe", "Add a recipe"},
+    {"req.volume", "Usable volume set"},
+    {"req.set_volume", "Enter the tank's usable volume"},
+    {"req.fn_on", "{label} switched on"},
+    {"req.fn_setup", "Set up \"{label}\" and switch it on"},
+    {"req.detected", "{label} detected"},
+    {"req.why.stir", "Without a circulation pump, the mixing guide has you stir between doses"},
+    {"req.why.temp", "Without a water temperature reading, the hub doesn't judge the water temperature"},
+    {"req.why.dry_run", "Without a level reading, there is no dry-run protection"},
+    {"fn.unavailable", "{first}"},
+    {"fn.unavailable_more", "{first} · {more} more missing"},
+    {"fn.needs_setup", "Next: {first}"},
+    {"fn.needs_setup_more", "Next: {first} (then {more} more)"},
+    {"fn.limited", "Limited: {why}"},
+    {"fn.on", "Switched on"},
+    {"fn.ready", "Ready, switched off"},
+    // A port's state (simulator; the device follows)
+    {"port.checking", "Test measurement running"},
+    {"port.no_answer", "The device is not responding"},
+    {"port.cap_on_hub", "Pump plugged straight into the hub – plug it onto the dosing block"},
 };
 // clang-format on
 
@@ -833,6 +898,20 @@ std::string render(std::string_view tmpl, const json& args) {
 }
 
 bool knownMessage(std::string_view key) { return table().count(key) > 0; }
+
+bool fitsTemplate(std::string_view key, const json& args) {
+  auto it = table().find(key);
+  if (it == table().end()) return true;
+  const std::string_view tmpl = it->second;
+  for (size_t i = 0; i < tmpl.size(); ++i) {
+    if (tmpl[i] != '{') continue;
+    size_t j = i + 1;
+    while (j < tmpl.size() && nameChar(tmpl[j])) ++j;
+    if (j == i + 1 || j >= tmpl.size() || (tmpl[j] != '}' && tmpl[j] != ':')) continue;
+    if (!args.is_object() || !args.contains(std::string(tmpl.substr(i + 1, j - i - 1)))) return false;
+  }
+  return true;
+}
 
 Msg say(std::string_view key, json args) {
   auto it = table().find(key);

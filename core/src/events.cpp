@@ -3,9 +3,31 @@
 
 #include <algorithm>
 
+#include "gc/messages.hpp"
+
 namespace gc {
 
 namespace {
+
+// A message nested in a saved message's arguments (a reading's reason in a
+// line, the parts of a list) that no longer fits its template loses its key
+// too, down to the depth the web app shows (SD-083)
+void dropUnfitting(json& v, int depth) {
+  if (depth > 4) return;
+  if (v.is_array()) {
+    for (auto& x : v) dropUnfitting(x, depth + 1);
+    return;
+  }
+  if (!v.is_object()) return;
+  static const json kNone = json::object();
+  const json& args = v.contains("args") && v["args"].is_object() ? v["args"] : kNone;
+  if (v.contains("key") && v["key"].is_string()) {
+    const std::string key = v["key"].get<std::string>();
+    if (!key.empty() && !fitsTemplate(key, args)) v["key"] = "";
+  }
+  if (v.contains("args") && v["args"].is_object())
+    for (auto& [name, x] : v["args"].items()) dropUnfitting(x, depth + 1);
+}
 
 // A saved message; events written before SD-032 hold plain German text,
 // which stays as it is (no key). Anything else of the wrong type loads as an
@@ -18,6 +40,10 @@ Msg msgFromJson(const json& e, const char* field) {
   if (!v.is_object()) return {};
   Msg m{utf8Prefix(jstr(v, "key"), kMaxKey), utf8Prefix(jstr(v, "text"), kMaxText), json::object()};
   if (v.contains("args") && v["args"].is_object()) m.args = v["args"];
+  // Saved under an older template: the page shows the text it was saved with
+  // rather than today's template with values missing (SD-083)
+  if (!m.key.empty() && !fitsTemplate(m.key, m.args)) m.key.clear();
+  for (auto& [name, x] : m.args.items()) dropUnfitting(x, 1);
   return m;
 }
 
