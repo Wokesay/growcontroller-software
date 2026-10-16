@@ -111,4 +111,25 @@ class Catalog {
   json raw;  // the catalog data as loaded
 };
 
+// A catalog entry's name or text as a message (SD-083 point 3): the key
+// names the entry, the text is the catalog's English, and the web app shows
+// it in German by the key (web/src/lang/cat.ts). So an event names a role,
+// a device class or a function in the language of the page that reads it.
+Msg nameOf(const CapabilityDef& c);
+Msg nameOf(const DeviceClassDef& d);
+Msg nameOf(const RoleDef& r);
+Msg nameOf(const FunctionDef& f);
+Msg nameOf(const FunctionDef& f, const ParamDef& p);
+
+// Whether a device's stored name is a name of its own (SD-083): not empty
+// and not its class's name, now or as the German catalog had it, since a
+// device accepted without a name stored that until the catalog was English.
+// Without one, the device is named by its class in the page's language.
+bool ownName(const std::string& name, const std::string& cls, const Catalog& cat);
+
+// A role by its name as a message, or by its id when the catalog does not know it
+json roleName(const Catalog& cat, const std::string& id);
+// A device by its own name, else by its class's name as a message, else by its id
+json deviceName(const Catalog& cat, const std::string& id, const std::string& cls, const std::string& name);
+
 }  // namespace gc

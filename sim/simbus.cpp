@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "simbus.hpp"
 
+#include "gc/messages.hpp"
+
 namespace sim {
 
 using gc::DeviceReport;
@@ -25,14 +27,14 @@ std::vector<PortReport> SimBus::ports() const {
     r.cls = d.cls;
     if (w_.now() - d.pluggedAt < 1000) {
       r.state = PortState::Checking;
-      r.message = {"port.checking", "Prüfmessung läuft", gc::json::object()};
+      r.message = gc::say("port.checking");
     } else if (d.cls == "pump_cap") {
       // Kennung passt nicht zum Hub-Port: Hardware gibt den Port nicht frei (PD-012)
       r.state = PortState::Rejected;
-      r.message = {"port.cap_on_hub", "Pumpe direkt am Hub. Bitte auf den Dosierblock stecken.", gc::json::object()};
+      r.message = gc::say("port.cap_on_hub");
     } else if (d.fault == "offline") {
       r.state = PortState::Fault;
-      r.message = {"port.no_answer", "Gerät antwortet nicht", gc::json::object()};
+      r.message = gc::say("port.no_answer");
     } else {
       r.state = PortState::Ok;
     }
@@ -113,7 +115,7 @@ gc::RunStatus SimBus::runStatus(const std::string& pump) const {
   Cap* c = w_.cap(pump, &block);
   if (!c) {
     st.state = gc::RunStatus::State::Failed;
-    st.error = "Pumpe getrennt";
+    st.error = "pump disconnected";
     return st;
   }
   // Block antwortet nicht: der Hub sieht nur den zuletzt gelesenen Stand.
@@ -136,7 +138,7 @@ void SimBus::stopAllPumps() { w_.stopAllPumps(); }
 
 bool SimBus::setSwitch(const std::string& dev, int channel, bool on, std::string& err) {
   if (dev != kHubOut || channel < 0 || channel > 1) {
-    err = "unbekannter Ausgang";
+    err = "unknown output";
     return false;
   }
   w_.out[channel] = on;
@@ -151,7 +153,7 @@ std::optional<bool> SimBus::switchState(const std::string& dev, int channel) con
 bool SimBus::writePumpCalibration(const std::string& pump, double mlPerMin, std::string& err) {
   Cap* c = w_.cap(pump);
   if (!c) {
-    err = "Pumpe nicht erreichbar";
+    err = "pump not reachable";
     return false;
   }
   c->storedFlow = mlPerMin;

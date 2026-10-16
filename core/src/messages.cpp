@@ -34,7 +34,7 @@ constexpr Entry kMessages[] = {
     {"ec.no_volume", "tank volume unknown"},
     {"ec.effect_unknown", "the recipe's effect is unknown"},
     {"ec.recipe", "the recipe has no amounts"},
-    {"ec.recipe_no_scaled", "{name} has only fixed amounts – EC control cannot raise the EC with it. Untick “Fixed amount” for one nutrient in the recipe"},
+    {"ec.recipe_no_scaled", "{name} has only fixed amounts – EC top-up cannot raise the EC with it. Untick “Fixed amount” for one nutrient in the recipe"},
     {"mix.ec_reached", "EC is not below the target"},
     {"ec.circ_failed", "Blocked: circulation pump did not start – round cancelled"},
     {"ec.wait_circ", "Controlling: circulation pump starting"},
@@ -99,7 +99,7 @@ constexpr Entry kMessages[] = {
     {"refill.check", "Waiting: {left} left, then it checks that the level rose"},
     {"refill.check_step", "Waiting: {left} left, then it checks the level rose and fills step {next} of {steps}"},
     {"refill.check_wait", "Waiting: for a valid level reading to check the rise · at most {left} left"},
-    {"refill.too_slow", "Blocked: one fill would add less than 0.5 L – check the inlet rate ({flow:1} L/min) and \"Valve open at most\" ({min:0}\u00a0min) under Functions"},
+    {"refill.too_slow", "Blocked: one fill would add less than 0.5 L – check the inlet rate ({flow:1} L/min) and \"Maximum valve open time\" ({min:0}\u00a0min) under Functions"},
     {"refill.open_by_hand", "Waiting: inlet open by hand – the refill starts once it is closed"},
 
     // Circulation
@@ -375,7 +375,7 @@ constexpr Entry kMessages[] = {
     {"ev.net.power_off_auto", "Off after a power cut; the plug switches itself off after {min:0}\u00a0min at the latest"},
     {"ev.net.stays_on", "{label}: plug may come back on"},
     {"ev.net.stays_on.text", "Setting it back to \"off after a power cut\" failed: {reason}. Change it in the smart plug itself."},
-    {"ev.net.on_not_set", "{label}: stays off after a power cut"},
+    {"ev.net.on_not_set", "{label}: off after power cut"},
     {"ev.net.on_not_set.text", "Setting \"on after a power cut\" failed: {reason}. Assign it again under Devices › Assignment."},
     {"ev.net.off_not_set", "{label}: may come back on"},
     {"ev.net.off_not_set.text", "Setting \"off after a power cut\" failed: {reason}. It may switch on by itself after a power cut – unplug it if it must stay off."},
@@ -707,10 +707,10 @@ constexpr Entry kMessages[] = {
     {"cfg.recipe.ph", "Recipe \"{name}\": \"{part}\" is a pH bottle and can't be in a recipe – pH comes last"},
     {"cfg.recipe.amount", "Recipe \"{name}\": the amount for \"{part}\" is missing"},
     {"cfg.recipe.pair", "Recipe \"{name}\": pair {pair} is only partly in it – enter amounts for all its bottles or none"},
-    {"cfg.param.type", "{fn}: enter a number for {param}"},
-    {"cfg.param.range", "{fn}: {param} must be between {min} and {max}{unit}"},
-    {"cfg.phase.type", "Phase \"{phase}\", {fn}: enter a number for {param}"},
-    {"cfg.phase.range", "Phase \"{phase}\", {fn}: {param} must be between {min} and {max}{unit}"},
+    {"cfg.param.type", "{fn}: enter a number for \"{param}\""},
+    {"cfg.param.range", "{fn}: \"{param}\" must be between {min} and {max}{unit}"},
+    {"cfg.phase.type", "Phase \"{phase}\", {fn}: enter a number for \"{param}\""},
+    {"cfg.phase.range", "Phase \"{phase}\", {fn}: \"{param}\" must be between {min} and {max}{unit}"},
     {"cfg.function.unknown", "Unknown function {id}"},
     {"cfg.params", "{fn}: invalid parameters"},
     {"cfg.param.unknown", "{fn}: unknown parameter {param}"},
@@ -733,6 +733,71 @@ constexpr Entry kMessages[] = {
     {"sim.err.scenario", "Scenario: demo, neu or stufe1"},
     {"sim.err.hours", "0–72\u00a0h"},
     {"sim.err.action", "Unknown action"},
+    // A reading's reasons, the functions' checklists and their summaries (#73, SD-083)
+    {"truth.not_bound", "Not assigned"},
+    {"truth.offline", "The device is not responding"},
+    {"truth.no_data", "Connected, but no value arrives"},
+    {"truth.stale", "Last value {min}\u00a0min ago"},
+    {"truth.uncalibrated", "Not calibrated"},
+    {"truth.frozen", "The value has not changed for over 15\u00a0min – check the probe"},
+    {"truth.implausible", "The value {value}{unit} is outside the possible range {min}–{max}{unit} – check the sensor"},
+    {"truth.jump", "The value jumped from {from}{unit} to {to}{unit}. Did someone work at the tank without maintenance mode? If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_zone", "The value jumped from {from}{unit} to {to}{unit}. Did someone work near the plants without maintenance mode? If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_ph", "The value rose from {from} to {to}. Did someone work at the tank without maintenance mode? If not, check the probe against a hand measurement. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_ph_fall", "The value fell from {from} to {to}. Measure by hand; if too low, raise it yourself – the hub only lowers pH. Cause: the hub's pH dose, the probe or tank work. The lock lifts after 15\u00a0min steady."},
+    {"truth.jump_level", "The value jumped from {from}{unit} to {to}{unit}. Filled or drained by hand? Then start maintenance mode first next time. If not, check the sensor. The lock lifts after 15\u00a0min steady."},
+    {"truth.ok", "Valid"},
+    {"truth.vpd.needs", "Needs air temperature and humidity"},
+    {"truth.vpd.invalid", "Air temperature or humidity is not valid"},
+    {"truth.vpd.apart", "Air temperature and humidity were measured more than 1\u00a0min apart"},
+    {"req.kind.bottle", "bottle"},
+    {"req.kind.nutrient", "nutrient"},
+    {"req.kind.ph_down", "pH−"},
+    {"req.kind.ph_up", "pH+"},
+    {"req.needs", "You need: {items}"},
+    {"req.needs_one_of", "You need one of: {items}"},
+    {"req.needs_dosing", "You need a dosing block and a pump"},
+    {"req.assign", "Assign \"{label}\""},
+    {"req.assigned", "{label} assigned"},
+    {"req.external", "{label} is calibrated outside the hub – the hub doesn't use it for control"},
+    {"req.calibrated", "{label} probe calibrated"},
+    {"req.calibrate", "Calibrate the {label} probe"},
+    {"req.calibrate_level", "Calibrate the level sensor"},
+    {"req.calibrated_level", "Level sensor calibrated"},
+    {"req.valid", "{label} valid"},
+    {"req.reason", "{label}: {reason}"},
+    {"req.reachable", "{label} reachable"},
+    {"req.offline", "{label}: The device is not responding"},
+    {"req.add_bottle", "Add a bottle and assign its pump"},
+    {"req.add_bottle_kind", "Add a {kind} bottle and assign its pump"},
+    {"req.bottles", "{n}\u00a0× bottle with a pump"},
+    {"req.bottles_kind", "{n}\u00a0× {kind} bottle with a pump"},
+    {"req.pumps_seen", "Pumps responding"},
+    {"req.pump_missing", "A pump is not responding – is it plugged onto the dosing block?"},
+    {"req.pumps_calibrated", "Pumps calibrated"},
+    {"req.pumps_calibrated_kind", "Pumps for {kind} bottles calibrated"},
+    {"req.calibrate_pump", "Calibrate the pump for \"{name}\""},
+    {"req.recipe", "Recipe in place"},
+    {"req.add_recipe", "Add a recipe"},
+    {"req.volume", "Usable volume set"},
+    {"req.set_volume", "Enter the tank's usable volume"},
+    {"req.fn_on", "{label} switched on"},
+    {"req.fn_setup", "Set up \"{label}\" and switch it on"},
+    {"req.detected", "{label} detected"},
+    {"req.why.stir", "Without a circulation pump, the mixing guide has you stir between doses"},
+    {"req.why.temp", "Without a water temperature reading, the hub doesn't judge the water temperature"},
+    {"req.why.dry_run", "Without a level reading, there is no dry-run protection"},
+    {"fn.unavailable", "{first}"},
+    {"fn.unavailable_more", "{first} · {more} more missing"},
+    {"fn.needs_setup", "Next: {first}"},
+    {"fn.needs_setup_more", "Next: {first} (then {more} more)"},
+    {"fn.limited", "Limited: {why}"},
+    {"fn.on", "Switched on"},
+    {"fn.ready", "Ready, switched off"},
+    // A port's state (simulator; the device follows)
+    {"port.checking", "Test measurement running"},
+    {"port.no_answer", "The device is not responding"},
+    {"port.cap_on_hub", "Pump plugged straight into the hub – plug it onto the dosing block"},
 };
 // clang-format on
 
@@ -823,6 +888,20 @@ std::string render(std::string_view tmpl, const json& args) {
 }
 
 bool knownMessage(std::string_view key) { return table().count(key) > 0; }
+
+bool fitsTemplate(std::string_view key, const json& args) {
+  auto it = table().find(key);
+  if (it == table().end()) return true;
+  const std::string_view tmpl = it->second;
+  for (size_t i = 0; i < tmpl.size(); ++i) {
+    if (tmpl[i] != '{') continue;
+    size_t j = i + 1;
+    while (j < tmpl.size() && nameChar(tmpl[j])) ++j;
+    if (j == i + 1 || j >= tmpl.size() || (tmpl[j] != '}' && tmpl[j] != ':')) continue;
+    if (!args.is_object() || !args.contains(std::string(tmpl.substr(i + 1, j - i - 1)))) return false;
+  }
+  return true;
+}
 
 Msg say(std::string_view key, json args) {
   auto it = table().find(key);

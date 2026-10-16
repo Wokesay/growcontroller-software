@@ -66,7 +66,7 @@ export const en: Record<keyof typeof de, string> = {
   "mix.topupNote": "The amounts are only for the fresh water, not the whole tank.",
   "mix.start": "Start mixing",
   "mix.noCirc": "Without a circulation pump, mixing pauses after each dose until you have stirred.",
-  "mix.manualTitle": "Dose manually",
+  "mix.manualTitle": "Manual dose",
   "mix.repeatTitle": "Mix this tank again?",
   "mix.repeatConfirm": "Mix anyway",
 };

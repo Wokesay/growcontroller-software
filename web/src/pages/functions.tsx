@@ -9,6 +9,7 @@ import { catalog, config, recipes, refreshConfig, refreshState, state, toast, to
 import { msg, t, type TextKey } from "../i18n";
 import { figure } from "../format";
 import { Button, Card, CheckRow, Field, NumberInput, Pill, Toggle, ctlLabel, ctlTone, route, setupLabel } from "../ui";
+import { fnName, fnText, optionName, paramName } from "../catnames";
 
 const CTL: Record<string, "ec" | "ph" | "refill" | "circulation"> = { ec_control: "ec", ph_control: "ph", refill: "refill", circulation: "circulation" };
 const STAGES: TextKey[] = ["functions.stage0", "functions.stage1", "functions.stage2", "functions.stage3", "functions.stage4"];
@@ -22,13 +23,13 @@ function Params(p: { f: FunctionState; defs: ParamDef[] }) {
     <div class="stack">
       <div class="form-grid">
         {p.defs.map((d) => (
-          <Field label={d.label} hint={d.phase && phaseActive ? t("functions.phaseOverride") : d.min !== undefined ? `${figure(d.min)}–${d.max !== undefined ? figure(d.max) : ""}` : undefined}>
+          <Field label={paramName(p.f.id, d.key, d.label)} hint={d.phase && phaseActive ? t("functions.phaseOverride") : d.min !== undefined ? `${figure(d.min)}–${d.max !== undefined ? figure(d.max) : ""}` : undefined}>
             {d.type === "number" ? (
               <NumberInput value={(vals[d.key] as number) ?? null} onValue={(v) => setVals({ ...vals, [d.key]: v })} unit={d.unit || undefined} />
             ) : d.type === "enum" ? (
               <select class="select" value={String(vals[d.key] ?? "")} onChange={(e) => setVals({ ...vals, [d.key]: (e.target as HTMLSelectElement).value })}>
                 {d.options?.map(([v, l]) => (
-                  <option value={v}>{l}</option>
+                  <option value={v}>{optionName(p.f.id, d.key, v, l)}</option>
                 ))}
               </select>
             ) : (
@@ -79,8 +80,8 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
         <div class="row" style="gap:10px">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <div>
-            <h3>{p.f.label}</h3>
-            <div class="muted small">{p.f.setup === "ready" ? p.f.text : p.f.summary.text}</div>
+            <h3>{fnName(p.f.id, p.f.label)}</h3>
+            <div class="muted small">{p.f.setup === "ready" ? fnText(p.f.id, p.f.text) : msg(p.f.summary)}</div>
           </div>
         </div>
         <div class="row" onClick={(e) => e.stopPropagation()}>
@@ -96,7 +97,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
                   await patch(`/functions/${p.f.id}`, { enabled: v });
                   await refreshConfig();
                   await refreshState();
-                  toast(t(v ? "functions.switchedOn" : "functions.switchedOff", { name: p.f.label }));
+                  toast(t(v ? "functions.switchedOn" : "functions.switchedOff", { name: fnName(p.f.id, p.f.label) }));
                 } catch (e: any) {
                   toastError(e);
                 }
@@ -111,7 +112,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("functions.hardware")}</div>
               {hw.map((c) => (
-                <CheckRow ok={c.ok} text={c.text} fix={c.fix} />
+                <CheckRow ok={c.ok} text={msg(c.text)} fix={c.fix} />
               ))}
             </div>
           )}
@@ -119,7 +120,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("nav.setup")}</div>
               {setup.map((c) => (
-                <CheckRow ok={c.ok} soft={c.soft} text={c.text} fix={c.fix} />
+                <CheckRow ok={c.ok} soft={c.soft} text={msg(c.text)} fix={c.fix} />
               ))}
             </div>
           )}
@@ -127,7 +128,7 @@ function FunctionRow(p: { f: FunctionState; open: boolean }) {
             <div class="stack-sm">
               <div class="section-title">{t("functions.now")}</div>
               {runtime.map((c) => (
-                <CheckRow ok={c.ok} text={c.text} />
+                <CheckRow ok={c.ok} text={msg(c.text)} />
               ))}
               {ctl && p.f.enabled && <p class="muted small">{msg(ctl.line)}</p>}
             </div>

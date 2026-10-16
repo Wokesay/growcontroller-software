@@ -508,10 +508,7 @@ void Hub::detectDevices() {
   // "Not responding" and "back" name a known device alike: its name, else
   // its kind; an unknown device by its ID.
   auto named = [&](const std::string& id, const DeviceCfg* known) -> json {
-    if (!known) return id;
-    if (!known->name.empty()) return known->name;
-    const DeviceClassDef* dc = cat_.deviceClass(known->cls);
-    return dc ? json(dc->label) : json(id);
+    return known ? deviceName(cat_, id, known->cls, known->name) : json(id);
   };
   for (const auto& id : online)
     if (!seenOnline_.count(id)) {
@@ -528,7 +525,7 @@ void Hub::detectDevices() {
                   : dc && dc->attach == "ha"  ? say("where.ha")
                                               : say("where.hub");
       // "label" also for "back": events stored before #115 carry the kind under it
-      const json label = known ? named(id, known) : dc ? json(dc->label) : json(say("device.unnamed"));
+      const json label = known ? named(id, known) : dc ? json(nameOf(*dc)) : json(say("device.unnamed"));
       Msg title = say(known ? "ev.device.back" : "ev.device.found", {{"label", label}});
       Msg text = say("ev.device.where", {{"where", where}});
       // A pump back after it was gone while the hub runs: is it still on the same bottle?
@@ -702,13 +699,13 @@ void Hub::tickImpl() {
   for (const auto& [role, until] : rt_.jumpLocks)
     if (!locksBefore.count(role)) {
       const auto& r = truth_.get(role);
-      log_.add(epoch, "block", "alarm", say("ev.jump", {{"label", cat_.role(role) ? cat_.role(role)->label : role}}), r.reason,
+      log_.add(epoch, "block", "alarm", say("ev.jump", {{"label", roleName(cat_, role)}}), r.reason,
                {{"role", role}, {"until", until}});
       stateDirty_ = true;
     }
   for (const auto& [role, until] : locksBefore)
     if (!rt_.jumpLocks.count(role)) {
-      log_.add(epoch, "unblock", "info", say("ev.jump_cleared", {{"label", cat_.role(role) ? cat_.role(role)->label : role}}),
+      log_.add(epoch, "unblock", "info", say("ev.jump_cleared", {{"label", roleName(cat_, role)}}),
                say("ev.jump_cleared.text"), {{"role", role}});
       stateDirty_ = true;
     }
@@ -874,7 +871,7 @@ json Hub::state() {
     devs.push_back({{"id", d.id},
                     {"class", d.cls},
                     {"classLabel", cls ? cls->label : d.cls},
-                    {"name", dc ? dc->name : ""},
+                    {"name", dc && ownName(dc->name, dc->cls, cat_) ? dc->name : ""},  // a class name is none (SD-083)
                     {"configured", dc != nullptr},
                     {"online", d.online},
                     {"port", d.port},
@@ -891,7 +888,7 @@ json Hub::state() {
     for (const auto& x : devices_) seen = seen || x.id == d.id;
     if (!seen) {
       const DeviceClassDef* cls = cat_.deviceClass(d.cls);
-      devs.push_back({{"id", d.id}, {"class", d.cls}, {"classLabel", cls ? cls->label : d.cls}, {"name", d.name},
+      devs.push_back({{"id", d.id}, {"class", d.cls}, {"classLabel", cls ? cls->label : d.cls}, {"name", ownName(d.name, d.cls, cat_) ? d.name : ""},
                       {"configured", true}, {"online", false}, {"port", 0}, {"slot", -1}, {"parent", ""},
                       {"fw", ""}, {"fault", ""}, {"info", json::object()}, {"calibrations", json::object()}});
     }
@@ -1105,18 +1102,19 @@ Result Hub::acceptDevice(const std::string& id, const std::string& name) {
   if (!cat_.deviceClass(d->cls)) return Result::fail(422, say("device.class"));
   if (cfg_.device(id)) return Result::ok();
   const DeviceClassDef* dc = cat_.deviceClass(d->cls);
-  cfg_.devices.push_back({id, d->cls, name.empty() ? dc->label : utf8Prefix(name, 40)});
+  // Without a name of its own it stores none and is named by its class in the page's language (SD-083)
+  cfg_.devices.push_back({id, d->cls, utf8Prefix(name, 40)});
   // Netzgerät: jeden Kanal „nach Stromausfall aus“ setzen (R6 gilt auch dort).
   if (net_ && net_->owns(id))
     for (int ch = 0; ch < std::max(1, dc->channels); ++ch) {
       std::string e;
       if (!net_->configure(id, ch, SwitchSafety{}, e))
-        log_.add(clock_.epoch(), "device", "warn", say("ev.net.unprotected", {{"name", cfg_.devices.back().name}}), plain(e), {{"device", id}});
+        log_.add(clock_.epoch(), "device", "warn", say("ev.net.unprotected", {{"name", deviceName(cat_, id, d->cls, cfg_.devices.back().name)}}), plain(e), {{"device", id}});
     }
   // Messrollen automatisch zuordnen, wenn genau ein Gerät passt (nie bei
   // Dosier- oder Schaltrollen). Sonst wählt der Nutzer unter Zuordnung.
   autoBindMeasures();
-  saveConfig(say("ev.cfg.device_added", {{"name", cfg_.devices.back().name}}));
+  saveConfig(say("ev.cfg.device_added", {{"name", deviceName(cat_, id, d->cls, cfg_.devices.back().name)}}));
   return Result::ok();
 }
 
@@ -1146,7 +1144,7 @@ Result Hub::renameDevice(const std::string& id, const std::string& name) {
   for (auto& d : cfg_.devices)
     if (d.id == id) {
       d.name = utf8Prefix(name, 40);
-      saveConfig(say("ev.cfg.device_renamed", {{"name", d.name}}));
+      saveConfig(say("ev.cfg.device_renamed", {{"name", deviceName(cat_, d.id, d.cls, d.name)}}));
       return Result::ok();
     }
   return Result::fail(404, say("device.unknown"));
@@ -1163,7 +1161,7 @@ Result Hub::setDeviceLife(const std::string& id, const std::string& source, cons
   d->lifeChannel = ch;
   auto errs = validateConfig(next, cat_);
   if (!errs.empty()) return errors(errs);
-  const std::string name = d->name;
+  const json name = deviceName(cat_, d->id, d->cls, d->name);
   cfg_ = std::move(next);
   saveConfig(source.empty() ? say("ev.cfg.device_life_off", {{"name", name}}) : say("ev.cfg.device_life", {{"name", name}}));
   return Result::ok();
@@ -1175,7 +1173,7 @@ Result Hub::removeDevice(const std::string& id) {
   if (it == cfg_.devices.end()) return Result::fail(404, say("device.unknown"));
   for (auto p = probeSessions_.begin(); p != probeSessions_.end();)  // a calibration ends with its device
     p = jstr(p->second, "device") == id ? probeSessions_.erase(p) : std::next(p);
-  std::string name = it->name;
+  const json name = deviceName(cat_, it->id, it->cls, it->name);
   // Ausgänge dieses Geräts erst aus, dann vergessen.
   std::vector<std::string> on;
   cfg_.forEachBinding([&](const std::string& role, const Binding& b) {
@@ -1186,7 +1184,7 @@ Result Hub::removeDevice(const std::string& id) {
       Msg e;
       Ctx c = ctx();
       if (!act_.setRole(c, role, false, say("who.device_removed"), e))
-        log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+        log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", nameOf(*rd)}}),
                  say("ev.off_unconfirmed.device_removed", {{"reason", e}}), {{"role", role}, {"device", id}});
       if (const Binding* b = cfg_.binding(role)) releaseSocket(*rd, *b);
     }
@@ -1224,7 +1222,7 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     const bool on = want.powerOn == PowerOn::On;
     Msg text = isNum(want.autoOffS) ? say(on ? "ev.net.power_on_auto" : "ev.net.power_off_auto", {{"min", want.autoOffS / 60}})
                                     : say(on ? "ev.net.power_on" : "ev.net.power_off");
-    log_.add(clock_.epoch(), "device", "info", say("ev.net.protected", {{"label", rd->label}}), text, {{"device", device}, {"channel", channel}});
+    log_.add(clock_.epoch(), "device", "info", say("ev.net.protected", {{"label", nameOf(*rd)}}), text, {{"device", device}, {"channel", channel}});
   }
   // War die Rolle schon anderswo zugeordnet: dort erst ausschalten, sonst
   // verliert der Hub einen laufenden Ausgang aus dem Blick.
@@ -1232,12 +1230,12 @@ Result Hub::bindRole(const std::string& role, const std::string& device, int cha
     Msg e;
     Ctx c = ctx();
     if (!act_.setRole(c, role, false, say("who.role_changed"), e))
-      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", nameOf(*rd)}}),
                say("ev.off_unconfirmed.old_output", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     releaseSocket(*rd, *old);
   }
   cfg_ = next;
-  saveConfig(say("ev.cfg.role", {{"label", rd ? rd->label : role}}));
+  saveConfig(say("ev.cfg.role", {{"label", roleName(cat_, role)}}));
   return Result::ok();
 }
 
@@ -1249,7 +1247,7 @@ Result Hub::switchRole(const std::string& role, bool on) {
   Msg e;
   if (!act_.setRole(c, role, on, say("who.manual"), e)) return Result::fail(409, e);
   testOff_.erase(role);
-  log_.add(clock_.epoch(), "manual", "info", say(on ? "ev.manual_on" : "ev.manual_off", {{"label", rd->label}}), say("ev.manual.text"),
+  log_.add(clock_.epoch(), "manual", "info", say(on ? "ev.manual_on" : "ev.manual_off", {{"label", nameOf(*rd)}}), say("ev.manual.text"),
            {{"role", role}, {"on", on}});
   return Result::ok();
 }
@@ -1279,7 +1277,7 @@ void Hub::releaseSocket(const RoleDef& rd, const Binding& b) {
     if (!ok) reason = say("net.not_confirmed");
   }
   if (!ok)
-    log_.add(clock_.epoch(), "device", "warn", say("ev.net.stays_on", {{"label", rd.label}}), say("ev.net.stays_on.text", {{"reason", reason}}),
+    log_.add(clock_.epoch(), "device", "warn", say("ev.net.stays_on", {{"label", nameOf(rd)}}), say("ev.net.stays_on.text", {{"reason", reason}}),
              {{"device", b.device}, {"channel", b.channel}});
 }
 
@@ -1300,7 +1298,7 @@ void Hub::setFanSockets(bool comeBackOn) {
       if (!ok) reason = say("net.not_confirmed");
     }
     if (!ok)
-      log_.add(clock_.epoch(), "device", "warn", say(comeBackOn ? "ev.net.on_not_set" : "ev.net.off_not_set", {{"label", rd->label}}),
+      log_.add(clock_.epoch(), "device", "warn", say(comeBackOn ? "ev.net.on_not_set" : "ev.net.off_not_set", {{"label", nameOf(*rd)}}),
                say(comeBackOn ? "ev.net.on_not_set.text" : "ev.net.off_not_set.text", {{"reason", reason}}),
                {{"role", role}, {"device", b.device}});
   });
@@ -1314,12 +1312,12 @@ Result Hub::unbindRole(const std::string& role) {
     Ctx c = ctx();
     const Binding* old = cfg_.binding(role);
     if (old && !act_.setRole(c, role, false, say("who.role_removed"), e))
-      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", rd->label}}),
+      log_.add(clock_.epoch(), "block", "warn", say("ev.off_unconfirmed", {{"label", nameOf(*rd)}}),
                say("ev.off_unconfirmed.unassigned", {{"reason", e}}), {{"role", role}, {"device", old->device}});
     if (old) releaseSocket(*rd, *old);
   }
   cfg_.rolesFor(role).erase(role);
-  saveConfig(say("ev.cfg.role_removed", {{"role", rd ? rd->label : role}}));
+  saveConfig(say("ev.cfg.role_removed", {{"role", roleName(cat_, role)}}));
   return Result::ok();
 }
 
@@ -1632,7 +1630,7 @@ Result Hub::putFunction(const std::string& id, const json& j) {
   cfg_ = next;
   functions_ = resolveFunctions(cat_, cfg_, devices_, pumps_, truth_);
   const bool params = !j.contains("enabled");
-  saveConfig(say(params ? "ev.cfg.function_params" : f.enabled ? "ev.cfg.function_on" : "ev.cfg.function_off", {{"label", fd->label}}));
+  saveConfig(say(params ? "ev.cfg.function_params" : f.enabled ? "ev.cfg.function_on" : "ev.cfg.function_off", {{"label", nameOf(*fd)}}));
   return Result::ok();
 }
 
@@ -1705,7 +1703,7 @@ Result Hub::importConfig(const json& j) {
         ok = got && sameSafety(*got, want);
       }
       if (!ok)
-        log_.add(clock_.epoch(), "device", "warn", say("ev.net.import_unconfirmed", {{"label", rd->label}}),
+        log_.add(clock_.epoch(), "device", "warn", say("ev.net.import_unconfirmed", {{"label", nameOf(*rd)}}),
                  e.empty() ? say("ev.net.import_unconfirmed.text") : say("ev.net.import_unconfirmed.text_reason", {{"reason", e}}),
                  {{"role", role}, {"device", b.device}});
     });
@@ -2261,9 +2259,11 @@ Result Hub::probeCalibration(const json& j) {
       stateDirty_ = true;
     }
     const Msg kindMsg = kindName(kind);
-    saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", cfg_.device(dev)->name}}));
-    log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
-             say("ev.probe_calibrated.text", {{"name", cfg_.device(dev)->name}, {"kind", kindMsg}}));
+    const DeviceCfg* d = cfg_.device(dev);
+    const json name = deviceName(cat_, dev, d->cls, d->name);  // its own name, or its class (SD-083)
+    saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", name}}));
+    log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"), say("ev.probe_calibrated.text", {{"name", name}, {"kind", kindMsg}}),
+             {{"device", dev}});
     return Result::ok({{"calibration", data}});
   }
   return Result::fail(422, say("probe.action"));

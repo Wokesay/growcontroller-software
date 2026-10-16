@@ -55,6 +55,23 @@ TEST_CASE("Watchdog: a value calibrated outside the hub says so; a problem only 
   CHECK(f.item(w, "reading.tank.ph")->text.key == "watch.reading.external");  // not "not calibrated": the hub cannot calibrate it
 }
 
+TEST_CASE("Watchdog: devices not responding are listed by name, one without a name of its own by its class (SD-083)") {
+  Fix f;
+  f.cfg.devices = {{"DB-1", "dosing_block", ""}, {"DB-2", "dosing_block", "Dosierblock"}, {"PH-1", "head_ph_ec", "Kopf am Tank"}};
+  auto w = f.eval();  // none reports: all three are not responding
+  const Assessment* dev = f.item(w, "devices");
+  REQUIRE(dev);
+  CHECK(dev->status == "problem");
+  CHECK(dev->text.key == "watch.devices.offline");
+  const json names = dev->text.args["names"];
+  REQUIRE(names.is_array());
+  REQUIRE(names.size() == 3);
+  CHECK(names[0]["key"] == "cat.class.dosing_block");  // none stored
+  CHECK(names[1]["key"] == "cat.class.dosing_block");  // the German class name stored before counts as none
+  CHECK(names[2] == "Kopf am Tank");                     // a name of its own stays
+  CHECK(dev->text.text == "Not responding: Dosing block, Dosing block, Kopf am Tank");
+}
+
 TEST_CASE("Watchdog: ungültiger Wert ist ein Problem, nie neutral (M9-1, RAT-015)") {
   Fix f;
   f.readings["tank.ph"].quality = Quality::Offline;
@@ -154,6 +171,7 @@ TEST_CASE("Watchdog: a silent device is one problem titled with its readings; a 
   REQUIRE(sensors.size() == 2);
   CHECK(sensors[0]["text"] == f.cat.role("tank.ph")->label);
   CHECK(sensors[1]["text"] == f.cat.role("tank.water_temp")->label);
+  CHECK(sensors[0]["key"] == "cat.role.tank.ph");  // in the page's language by its key (SD-083)
   CHECK(dev->text.key == "watch.life.silent");
   CHECK(dev->text.args["source"] == "sensor.hub_life");
   CHECK(dev->text.args["ageS"] == 75);  // the oldest: nothing looks fresher than it is

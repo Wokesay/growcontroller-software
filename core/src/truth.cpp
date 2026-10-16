@@ -209,14 +209,21 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     auto& tr = tracks_[roleId];
     tr.ownSchedule = false;  // set from the bound device below
     tr.life = false;
-    auto setQ = [&](Quality q, const std::string& key, const std::string& text, json args = json::object()) {
+    auto setQ = [&](Quality q, Msg reason) {
       r.quality = q;
-      r.reason = {key, text, std::move(args)};
+      r.reason = std::move(reason);
+    };
+    // A unit after a value, with its no-break space; none for pH
+    const std::string unit = cap->unit.empty() ? std::string() : "\u00a0" + cap->unit;
+    // A value as the sensor's unit shows it: rounded to its decimals, then shown without trailing zeros
+    auto shown = [&](double v) {
+      const double p = std::pow(10.0, cap->decimals);
+      return numOrNull(std::round(v * p) / p);
     };
 
     const Binding* b = cfg.binding(roleId);
     if (!b) {
-      setQ(Quality::NotBound, "truth.not_bound", "Nicht zugeordnet");
+      setQ(Quality::NotBound, say("truth.not_bound"));
       readings_[roleId] = r;
       continue;
     }
@@ -234,7 +241,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     tr.ownSchedule = dc && dc->ownReportSchedule;
     auto s = bus.sample(b->device, role.capability);
     if (!online) {
-      setQ(Quality::Offline, "truth.offline", "Gerät antwortet nicht");
+      setQ(Quality::Offline, say("truth.offline"));
       readings_[roleId] = r;
       continue;
     }
@@ -280,7 +287,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       }
     }
     if (!s || !isNum(s->raw)) {
-      setQ(Quality::NoData, "truth.no_data", "Noch kein Messwert");
+      setQ(Quality::NoData, say("truth.no_data"));
       readings_[roleId] = r;
       continue;
     }
@@ -348,17 +355,14 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       r.quality = Quality::Stale;
       r.reason = say("truth.life_stale", {{"ageS", (r.ageMs + kSecond - 1) / kSecond}, {"limitS", limit / kSecond}});
     } else if (r.ageMs > limit) {
-      setQ(Quality::Stale, "truth.stale", "Letzter Wert vor " + std::to_string(r.ageMs / kMinute) + " min",
-           {{"ageS", r.ageMs / 1000}, {"limitS", limit / 1000}});
+      setQ(Quality::Stale, say("truth.stale", {{"min", r.ageMs / kMinute}, {"ageS", r.ageMs / 1000}, {"limitS", limit / 1000}}));
     } else if (!assessed) {
-      setQ(Quality::Uncalibrated, "truth.uncalibrated", "Nicht kalibriert");
+      setQ(Quality::Uncalibrated, say("truth.uncalibrated"));
     } else if (expectsNoise(role.capability) && !calibratedElsewhere && rawClock - tr.lastRawChange > kFrozenAfter) {
-      setQ(Quality::Frozen, "truth.frozen", "Wert steht seit über 15 min still – Sonde prüfen");
+      setQ(Quality::Frozen, say("truth.frozen"));
     } else if ((isNum(cap->plausMin) && *assessed < cap->plausMin) || (isNum(cap->plausMax) && *assessed > cap->plausMax)) {
-      setQ(Quality::Implausible, "truth.implausible",
-           cap->label + " " + fmt(*assessed, cap->decimals) + " außerhalb " + fmt(cap->plausMin, 1) + "–" +
-               fmt(cap->plausMax, 1),
-           {{"value", *assessed}, {"min", cap->plausMin}, {"max", cap->plausMax}});
+      setQ(Quality::Implausible, say("truth.implausible", {{"label", nameOf(*cap)}, {"value", shown(*assessed)}, {"unit", unit},
+                                                           {"min", numOrNull(cap->plausMin)}, {"max", numOrNull(cap->plausMax)}}));
     } else {
       // Jump lock: a change above the threshold within 5 min that no announced
       // intervention explains (mix, hand dose, EC round, inlet, calibration,
@@ -384,10 +388,16 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
       auto lock = rt.jumpLocks.find(roleId);
       if (lock != rt.jumpLocks.end() && epoch < lock->second) {
         json info = rt.latches.count("jump." + roleId) ? rt.latches["jump." + roleId] : json::object();
-        setQ(Quality::Jump, "truth.jump",
-             cap->label + " sprang ohne Dosierung von " + fmt(jnum(info, "from"), cap->decimals) + " auf " +
-                 fmt(jnum(info, "to"), cap->decimals) + ". Sonde prüfen. Hebt sich nach 15 min Ruhe auf.",
-             {{"until", lock->second}, {"from", numOrNull(jnum(info, "from"))}, {"to", numOrNull(jnum(info, "to"))}});
+        // The reason names only causes that can be true: the hub's own pH dose, which announces no
+        // change (RAT-042), only lowers pH (RAT-041), so a fall names it; a level names work by hand;
+        // a reading of the grow area names work near the plants, one of the tank work at the tank
+        const double from = jnum(info, "from"), to = jnum(info, "to");
+        const json args = {{"label", nameOf(*cap)}, {"until", lock->second}, {"from", shown(from)}, {"to", shown(to)}, {"unit", unit}};
+        const bool ph = role.capability == "measure.ph", level = role.capability == "measure.level";
+        const bool fell = isNum(from) && isNum(to) && to < from, zone = roleId.rfind("zone.", 0) == 0;
+        if (ph) setQ(Quality::Jump, say(fell ? "truth.jump_ph_fall" : "truth.jump_ph", args));
+        else if (level) setQ(Quality::Jump, say("truth.jump_level", args));
+        else setQ(Quality::Jump, say(zone ? "truth.jump_zone" : "truth.jump", args));
       } else {
         if (lock != rt.jumpLocks.end()) {
           rt.jumpLocks.erase(lock);
@@ -399,7 +409,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
           r.quality = Quality::Uncalibrated;
           r.reason = say("truth.external");  // kCalibratedElsewhere (tested)
         } else {
-          setQ(Quality::Ok, "truth.ok", "Gültig");
+          setQ(Quality::Ok, say("truth.ok"));
         }
       }
     }
@@ -433,19 +443,19 @@ void SensorTruth::updateDerived() {
     const Reading& h = get("zone.humidity");
     if (t.quality == Quality::NotBound || h.quality == Quality::NotBound) {
       r.quality = Quality::NotBound;
-      r.reason = {"truth.vpd.needs", "Braucht Lufttemperatur und Luftfeuchte", json::object()};
+      r.reason = say("truth.vpd.needs");
     } else if (!t.usable() || !h.usable()) {
       r.quality = Quality::NoData;
-      r.reason = {"truth.vpd.invalid", "Lufttemperatur oder Luftfeuchte ungültig", json::object()};
+      r.reason = say("truth.vpd.invalid");
     } else if (!ownSchedule("zone.air_temp") && !ownSchedule("zone.humidity") && std::llabs(t.ts - h.ts) > 60 * kSecond) {
       r.quality = Quality::Stale;
-      r.reason = {"truth.vpd.apart", "Temperatur und Feuchte liegen zeitlich zu weit auseinander", json::object()};
+      r.reason = say("truth.vpd.apart");
     } else {
       r.value = airVpdKPa(*t.value, *h.value);
       r.ts = std::max(t.ts, h.ts);
       r.ageMs = std::max(t.ageMs, h.ageMs);
       r.quality = Quality::Ok;
-      r.reason = {"truth.ok", "Gültig", json::object()};
+      r.reason = say("truth.ok");
     }
     readings_[roleId] = r;
   }

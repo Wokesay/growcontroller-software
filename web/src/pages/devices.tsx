@@ -11,6 +11,7 @@ import { binding, canisters, catalog, config, refreshConfig, refreshState, state
 import { Banner, Button, Card, Empty, Field, Modal, Pill, Seg, navigate, route, setupLabel } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
 import { HaRoles, isHa } from "../ha";
+import { className, classText, deviceName, deviceNameById, fnName, roleName } from "../catnames";
 
 function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) {
   const d = p.d;
@@ -23,14 +24,14 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
     <div class="item wrap-row" data-testid={`device-${d.id}`}>
       <div class="grow">
         <div class="row" style="gap:8px">
-          <strong>{d.name || d.classLabel}</strong>
+          <strong>{deviceName(d)}</strong>
           <Pill tone={d.online ? "ok" : "bad"} dot>
             {d.online ? t("devices.online") : t("devices.offline")}
           </Pill>
           {!d.configured && <Pill tone="info">{t("devices.newFound")}</Pill>}
         </div>
         <div class="muted small">
-          {d.classLabel} · {where} · <span class="mono">{d.id}</span>
+          {className(d.class, d.classLabel)} · {where} · <span class="mono">{d.id}</span>
           {d.class === "pump_cap" && (
             <>
               {" · "}
@@ -38,7 +39,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
               {can ? ` · ${t("devices.onBottle", { name: can.name })}` : ` · ${t("devices.noBottle")}`}
             </>
           )}
-          {Object.entries(d.calibrations ?? {}).map(([k, at]) => ` · ${k === "tank_curve" ? t("devices.curveCalibrated", { at: at ? dateTime(at) : "" }) : t("devices.kindCalibrated", { kind: k, at: at ? dateTime(at) : "" })}`)}
+          {Object.entries(d.calibrations ?? {}).map(([k, at]) => ` · ${k === "tank_curve" ? t("devices.curveCalibrated", { at: at ? dateTime(at) : "" }) : t("devices.kindCalibrated", { kind: k === "ph" ? "pH" : k === "ec" ? "EC" : k, at: at ? dateTime(at) : "" })}`)}
         </div>
         {d.class.startsWith("shelly_") && <OutletRoles d={d} />}
       </div>
@@ -51,7 +52,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
               await post(`/devices/${d.id}/accept`, { name: "" });
               await refreshConfig();
               await refreshState();
-              toast(t("devices.accepted", { name: d.classLabel }));
+              toast(t("devices.accepted", { name: className(d.class, d.classLabel) }));
             }}
           >
             {t("devices.accept")}
@@ -112,7 +113,7 @@ function DeviceCard(p: { d: Device; onCal: (d: Device, kind: string) => void }) 
           }
         >
           <Field label={t("common.name")} hint={t("devices.nameHint")}>
-            <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+            <input class="input" value={name} placeholder={className(d.class, d.classLabel)} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
         </Modal>
       )}
@@ -145,14 +146,14 @@ function Roles() {
             for (const d of cands) {
               const n = channels(d.class);
               const what = (c: number) => (d.class.startsWith("shelly_") ? t("port.outlet", { n: c + 1 }) : t("devices.output", { n: c + 1 }));
-              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${d.name || d.id} · ${what(c)}`]);
-              else opts.push([`${d.id}|0`, d.name || d.id]);
+              if (n > 1) for (let c = 0; c < n; c++) opts.push([`${d.id}|${c}`, `${deviceNameById(d.id)} · ${what(c)}`]);
+              else opts.push([`${d.id}|0`, deviceNameById(d.id)]);
             }
             const reading = st.readings[id];
             return (
               <tr>
                 <td>
-                  <strong>{r.label}</strong>
+                  <strong>{roleName(id)}</strong>
                 </td>
                 <td>
                   <select
@@ -194,7 +195,7 @@ function Expand() {
   const cat = catalog.value!;
   const unavailable = st.functions.filter((f) => f.setup === "unavailable");
   const byShop = new Map<string, string[]>();
-  for (const f of unavailable) for (const c of f.checks) for (const s of c.shop ?? []) byShop.set(s, [...(byShop.get(s) ?? []), f.label]);
+  for (const f of unavailable) for (const c of f.checks) for (const s of c.shop ?? []) byShop.set(s, [...(byShop.get(s) ?? []), fnName(f.id, f.label)]);
   return (
     <div class="stack">
       <p class="muted">{t("devices.expandIntro")}</p>
@@ -205,10 +206,10 @@ function Expand() {
           return (
             <div class="card flat">
               <div class="row-between">
-                <h3>{d?.label ?? cls}</h3>
+                <h3>{className(cls)}</h3>
                 <Pill tone="neutral">{t("devices.stage", { n: d?.stage ?? "" })}</Pill>
               </div>
-              <p class="muted small">{d?.text}</p>
+              <p class="muted small">{classText(cls)}</p>
               <div class="chips" style="margin-top:8px">
                 {[...new Set(fns)].map((f) => (
                   <span class="chip">{f}</span>
@@ -222,7 +223,7 @@ function Expand() {
       <div class="list">
         {st.functions.map((f) => (
           <div class="item">
-            <span class="grow">{f.label}</span>
+            <span class="grow">{fnName(f.id, f.label)}</span>
             <Pill tone={setupLabel[f.setup][1]}>{setupLabel[f.setup][0]}</Pill>
           </div>
         ))}
@@ -321,7 +322,7 @@ export function DevicesPage() {
           {blocks.map((b) => {
             const caps = st.devices.filter((d) => d.parent === b.id);
             return (
-              <Card title={b.name || b.classLabel} icon={<DeviceIcon cls={b.class} />}>
+              <Card title={deviceName(b)} icon={<DeviceIcon cls={b.class} />}>
                 <div class="list">
                   <DeviceCard d={b} onCal={(d, kind) => setCal({ d, kind })} />
                   {caps.map((c) => (
@@ -344,8 +345,8 @@ export function DevicesPage() {
           <Expand />
         </Card>
       )}
-      {cal && cal.kind === "pump" && <PumpCalibration pump={cal.d.id} name={canisters.value.find((k) => k.pump === cal.d.id)?.name ?? cal.d.name} onClose={() => { setCal(null); navigate("/geraete"); }} />}
-      {cal && cal.kind !== "pump" && <ProbeCalibration device={cal.d.id} kind={cal.kind as any} name={cal.d.name} onClose={() => { setCal(null); navigate("/geraete"); }} />}
+      {cal && cal.kind === "pump" && <PumpCalibration pump={cal.d.id} name={canisters.value.find((k) => k.pump === cal.d.id)?.name ?? deviceName(cal.d)} onClose={() => { setCal(null); navigate("/geraete"); }} />}
+      {cal && cal.kind !== "pump" && <ProbeCalibration device={cal.d.id} kind={cal.kind as any} name={deviceName(cal.d)} onClose={() => { setCal(null); navigate("/geraete"); }} />}
     </div>
   );
 }

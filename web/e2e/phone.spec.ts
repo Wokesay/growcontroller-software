@@ -325,7 +325,7 @@ test("Home Assistant: the introduction, devices, assignment and sign of life fit
   await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
     const res = await route.fetch();
     const st = await res.json();
-    st.devices = [...st.devices, { id: device, class: "ha_water_temp", classLabel: "Wassertemperatur aus Home Assistant", name: "", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity }, calibrations: {} }];
+    st.devices = [...st.devices, { id: device, class: "ha_water_temp", classLabel: "Water temperature from Home Assistant", name: "", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity }, calibrations: {} }];
     await route.fulfill({ response: res, json: st });
   });
   await newPassword(page);

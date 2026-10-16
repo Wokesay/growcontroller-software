@@ -95,6 +95,22 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **The catalog in the page's language** (#143, #18, SD-083 point 3):
+  the names and texts of roles, device classes, functions and their
+  settings, and of the Home Assistant app's sensor classes, show in the
+  page's language, also inside messages and in the event log. The
+  catalog is English; the web app shows German by each entry's key. An
+  event saved before keeps its German names. A device accepted without a
+  name of its own stores none and is named by its class in the page's
+  language; a stored name that is only its class's German name, which a
+  device accepted before got, counts as none, and the file keeps it. For
+  API users: `/catalog` is English; a role's, a device class's, a
+  capability's, a function's and a parameter's name inside a message's
+  `args` is a message with a key (`cat.role.<id>`, `cat.class.<id>`,
+  `cat.cap.<id>`, `cat.fn.<id>`, `cat.param.<function>.<key>`) instead
+  of a German string; a device without a name of its own has an empty
+  `name` in `/state` and is named by its class in events; the list of
+  devices not responding (`watch.devices.offline`, `names`) is a list.
 - **English first** (#143, #18, SD-014, SD-083): a new hub is set to
   English. The first-password page starts with the language choice, set
   to English; what you pick there carries into setup, whose first field
@@ -119,6 +135,34 @@ listed in every release under "Security".
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
   names the hub's language (`language`); `/export.csv` takes `lang=de`
   or `lang=en` and otherwise uses the hub's.
+- **Reasons and checklists in the page's language** (#143, #73, SD-083):
+  why a reading is not valid (not assigned, no answer, stale, frozen,
+  outside its range, a jump lock), what a function still needs and its
+  short state on Functions and in setup now come in the page's language.
+  A jump lock names only causes that can be true (#162, RAT-041,
+  RAT-042), and no longer says "without dosing": a pH fall says to
+  measure by hand and raise pH yourself, as the hub only lowers it, and
+  names the hub's own pH dose as one possible cause; a pH rise names work
+  at the tank and the probe; a level jump asks about filling or draining
+  by hand without maintenance mode; a reading of the grow area names work
+  near the plants, one of the tank work at the tank. Each says the lock
+  lifts after 15 min steady, in at most 200 characters. An event saved
+  before these texts is shown as it was saved, also a reason inside it.
+  The simulator's port lines (a pump plugged straight into the hub) and
+  a device's own error text inside a refusal or a failed dose are
+  English; the device's text has no key. For
+  API users: a function's `checks[].text` is now a message object (`req.*`
+  keys) instead of a string; its `summary` names the first open item and
+  how many more (`fn.needs_setup`, `fn.needs_setup_more`,
+  `fn.unavailable`, `fn.unavailable_more`) and splits "switched on"
+  (`fn.on`) from "ready, switched off" (`fn.ready`); a pH rise, a pH fall,
+  a level jump and a jump in the grow area have keys of their own
+  (`truth.jump_ph`, `truth.jump_ph_fall`, `truth.jump_level`,
+  `truth.jump_zone`), three soft requirements' reasons too (`req.why.*`),
+  `req.present` is now `req.assigned`, a level sensor's calibration
+  too (`req.calibrate_level`, `req.calibrated_level`), and values in a
+  reading's reason are rounded to the reading's decimals and carry their
+  unit (`unit`).
 - **Refusals in the page's language** (#143, #18, SD-083): a refusal of
   the hub now comes with a key of its own and an English text, and an
   English page shows English, a German page German: signing in and
@@ -126,10 +170,8 @@ listed in every release under "Security".
   recipes and templates, starting a mix, manual doses, pump calibration
   and tube priming, probe and tank-curve calibration, grow cycles,
   maintenance mode, updates, the configuration check and the import, and
-  the simulator panel. Still German until their work follows: the
-  reasons a mix plan or a dose split gives (with SD-057), a reading's
-  reasons and the checklists (#73), and a smart plug's or a pump's own
-  error text inside a refusal. For API users, some keys are new where
+  the simulator panel. Still German until its work follows: the
+  reasons a mix plan or a dose split gives (with SD-057). For API users, some keys are new where
   one key had several texts: `device.not_detected` (was `device.unknown`
   when adding a device), `config.busy`, `config.newer`, `job.state_amount`,
   `job.state_resume`, `job.dosing` (EC or pH control dosing, before a
@@ -277,21 +319,30 @@ listed in every release under "Security".
   fixed pattern from litres and recipe or a fixed EC with the water's
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
-- **Plan: one dosing pump type with speed stages** (SD-066, #132): after
+- **Plan: dosing modules with a fixed rate** (SD-066, SD-084, #132): after
   0.1.0-proto.5, as part of the work for the carrier board, growcontroller
-  will support one pump type that runs at several speeds, reports its
-  speed back and keeps its calibration on a chip in the module. Proposed:
-  a long dose of up to about 20 min runs as many short runs, and the
-  firmware's safety limit ends each run after at most 60 s, so if control
-  fails during a dose, at most one run's amount goes in. Board v0.1 has
-  no time cut-off for the pumps in hardware, which RAT-007 and RAT-018 now
-  say. The safety limits always count as if the pump ran at full speed,
-  and a slow speed is used only where that worst case stays within the
-  dose's limit. With a pump of about 200 ml/min this rules out automatic
-  pH dosing below about 56–139 L, depending on its shortest run, and with
-  the longer one also hand doses up to the default 5 ml, so a low-flow pump for pH− is
-  proposed. Some details are still to be decided. The simulator docs now
-  mark how mixing time grows with the tank as an assumption.
+  will support dosing modules that each run at one fixed rate and keep
+  their calibration on a chip in the module. "Fine" (about 12 ml/min) is
+  for nutrients, additives and pH in tanks up to about 150 L. "Large"
+  (about 220 ml/min) is recommended from about 100 L. Every dose has a cap
+  derived from the tank's usable volume, on top of the caps per litre of
+  what is in the tank and below the fixed caps in code. A
+  long dose runs as runs of at most 60 s, and the board ends every run
+  after about 90 s on its own. Priming, calibration and test runs go into
+  a cup, never into the tank, and every shop module is calibrated at the
+  factory. A mix still does not start when a canister's stock does not
+  cover it, and a warning comes when the stock will not cover the next
+  mix. Besides the tank, you will be able to mix into a bucket or watering
+  can: nutrients only, no pH. Some details are still to be decided
+  (#282, #284). The simulator docs now mark how mixing time grows with
+  the tank as an assumption.
+- **Plan: the hub's own pH dose and the jump lock** (SD-085, #162): the
+  hub's own pH doses will get a fixed cap per litre, derived from the jump
+  threshold at the strongest measured effect. A lock in the direction of
+  the hub's own dose will reset the learned pH effect. Until it is
+  measured how far an EC round moves pH, an EC round will explain a pH
+  change from its start. A pH jump lock still lifts by itself after
+  15 min steady.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
   SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
   web app can be reached only in the home network (preselected), viewed
@@ -411,7 +462,7 @@ listed in every release under "Security".
 
 ### Fixed
 - **A missing saved state on a hub that ran before keeps everything
-  stopped** (#238, SD-084): when `state.json` was gone (deleted, or a
+  stopped** (#238, SD-086): when `state.json` was gone (deleted, or a
   damaged entry the flash reports as not found) but the hub's events were
   there, the hub started as a new one: not stopped, with no locks or
   latches, so a Stop in force was lost and control started again without

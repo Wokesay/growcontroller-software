@@ -9,6 +9,7 @@ import { ago, day, duration, num, numUpTo, time } from "./format";
 import { msg, t, type TextKey } from "./i18n";
 import { binding, catalog, config, canisters, refreshConfig, refreshState, state, toast, toastError } from "./store";
 import { Button, CheckRow, ErrorBoundary, Pill, ctlLabel, ctlTone } from "./ui";
+import { className, deviceName, roleName } from "./catnames";
 
 export const qualityText: Record<string, TextKey> = {
   not_bound: "widgets.quality.notBound",
@@ -157,7 +158,7 @@ const latchText: Record<string, TextKey> = { "circulation.dry": "widgets.latch.d
 // Never the raw key: a jump lock names its reading, anything unknown is a safety cut-off
 export const latchLabel = (k: string) => {
   if (latchText[k]) return t(latchText[k]);
-  if (k.startsWith("jump.")) return t("widgets.latch.jump", { label: catalog.value?.roles[k.slice(5)]?.label ?? t("widgets.latch.reading") });
+  if (k.startsWith("jump.")) return t("widgets.latch.jump", { label: catalog.value?.roles[k.slice(5)] ? roleName(k.slice(5)) : t("widgets.latch.reading") });
   return t("widgets.latch.other");
 };
 
@@ -338,10 +339,10 @@ export function PortGrid() {
       {st.ports.map((p) => {
         const d = st.devices.find((x) => x.id === p.device);
         return (
-          <div class={`port ${p.state}`} title={p.message?.text}>
+          <div class={`port ${p.state}`} title={msg(p.message) || undefined}>
             <span class="pn">{t("port.hub", { n: p.port })}</span>
             {p.state === "empty" ? <span class="jack" /> : <span class="pi"><DeviceIcon cls={d?.class ?? p.class} size={22} /></span>}
-            <span class="pl">{p.state === "empty" ? <span class="faint">{t("common.free")}</span> : d?.name || d?.classLabel || p.class}</span>
+            <span class="pl">{p.state === "empty" ? <span class="faint">{t("common.free")}</span> : d ? deviceName(d) : className(p.class)}</span>
             {(p.state === "rejected" || p.state === "fault") && <span class="pm">{msg(p.message)}</span>}
             {p.state === "checking" && <span class="faint small">…</span>}
           </div>
@@ -358,7 +359,7 @@ export function switchRolesFor(cls: string): [string, string][] {
   const provides = cat.deviceClasses[cls]?.provides ?? [];
   return Object.entries(cat.roles)
     .filter(([, r]) => r.profile && (r.accepts ?? [r.capability]).some((a) => provides.includes(a)))
-    .map(([id, r]) => [id, r.label]);
+    .map(([id]) => [id, roleName(id)]);
 }
 
 /** Dosen einer Netzsteckdose: was eingesteckt ist (Rolle), Zustand, Leistung, Testen. */

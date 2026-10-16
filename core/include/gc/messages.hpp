@@ -26,4 +26,9 @@ std::string render(std::string_view tmpl, const json& args);
 // Whether the table has a template for the key.
 bool knownMessage(std::string_view key);
 
+// Whether the arguments carry every value the key's template names (a null
+// value counts: it shows as "–"). A message saved under an older template
+// that does not fit keeps its own text instead (events.cpp).
+bool fitsTemplate(std::string_view key, const json& args);
+
 }  // namespace gc

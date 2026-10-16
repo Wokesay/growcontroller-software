@@ -510,7 +510,7 @@ TEST_CASE("Restart: a run-time state that cannot be read keeps everything stoppe
   }
 }
 
-TEST_CASE("Restart: a run-time state that is missing on a hub that ran before is unknown: everything stays stopped and it is said (PD-076, RAT-003, SD-084)") {
+TEST_CASE("Restart: a run-time state that is missing on a hub that ran before is unknown: everything stays stopped and it is said (PD-076, RAT-003, SD-086)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk);
@@ -560,13 +560,13 @@ TEST_CASE("Restart: a run-time state that is missing on a hub that ran before is
   }
 }
 
-TEST_CASE("Restart: a hub with no files at all starts as a new one, not stopped (SD-084)") {
+TEST_CASE("Restart: a hub with no files at all starts as a new one, not stopped (SD-086)") {
   gc::Catalog cat = gc::Catalog::builtin();
   gc::MemoryStorage store;
   test::FakeBus bus;
   test::Clock clk;
   SUBCASE("nothing there") {}
-  SUBCASE("settings and a password put in place before the first start: no sign that it ran (SD-084)") {
+  SUBCASE("settings and a password put in place before the first start: no sign that it ran (SD-086)") {
     gc::Config cfg;
     cfg.system.name = "Zelt 2";
     store.write("config.json", json(cfg).dump());
