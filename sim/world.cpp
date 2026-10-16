@@ -347,7 +347,8 @@ double World::rawEc(const Device* d) const {
   return std::max(0.0, std::round(raw * 1000.0) / 1000.0);
 }
 
-double World::rawLevelV() const {
+double World::rawLevelV(const Device* d) const {
+  if (d && d->fault == "frozen") return d->frozenLevel;  // a stuck level sensor (#155)
   double v = tank.volumeL;
   double volts = v < 3.0 ? 0.5 + 0.03 * v : 0.59 + 0.04 * (v - 3.0);  // unten nichtlinear (vgl. RAT-078)
   return std::round((volts + noise(0.002)) * 10000.0) / 10000.0;

@@ -42,6 +42,7 @@ default password (EN 18031-1).
 | Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
 | Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
+| Level reading | follows the volume at once, every 5 s | assumption: no lag (the real one lags 1.5–2 min, RAT-038); irrigation draws no water from the tank; both do not change a refill test's result |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
 | Probe error before calibration | pH +0.18 offset, slope 0.97; EC × 1.08 | **Assumption** |
 | Time limit of the dosing block | refuses a run requested over 90 s; repeating the same job ID does not run twice | proposal by `firmware` for the earlier dosing block; board v0.1 has no time limit in hardware (PD-160, SD-066) |
@@ -53,7 +54,7 @@ default password (EN 18031-1).
 |---|---|---|
 | pH jump | probe +2.1 pH | jump lock, control line, event |
 | EC 0 | probe dry | EC gate, latch "no effect" |
-| Value freezes | raw values stand still | standstill detection |
+| Value freezes | raw values stand still (pH/EC head; the level head too, as a stuck level sensor) | standstill detection; for the level, the refill's rise check (#155, SD-082) |
 | Head/level offline | device does not respond | data loss, inlet emergency cut-off |
 | Block/pull off a cap | run fails after 0.3 s, or the cap is missing | pair fault, "catch up"; amount estimated from the run time |
 | Dosing block offline | block does not respond, hub sees the last state | deadline per run: pumps off, counted as run |

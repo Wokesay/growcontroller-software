@@ -666,7 +666,7 @@ void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
     if (plausibleEpoch(at)) at = std::min(at + jump, epoch);  // never in the future; an implausible one counts as now (SD-067)
   ec_.shiftClock(jump);
   ph_.shiftClock(jump);
-  refill_.shiftClock(jump);
+  refill_.shiftClock(rt_, jump);
 }
 
 void Hub::tickImpl() {
@@ -738,8 +738,11 @@ void Hub::tickImpl() {
   env.volumeL = tankVolume();
   env.lastEcDoseAt = ec_.lastDoseAt();
   env.circulationOn = act_.roleState(cfg_, "tank.circulation").value_or(false);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
   env.calibrating = !probeSessions_.empty();
+  if (const Binding* lb = cfg_.binding("tank.level"))
+    for (const auto& [key, sess] : probeSessions_)
+      env.levelCalibrating = env.levelCalibrating || (!sess.value("idle", false) && jstr(sess, "kind") == "tank_curve" && jstr(sess, "device") == lb->device);
   if (auto fin = doser_.takeFinished()) {
     const std::string& id = fin->orderId;
     if (id.rfind("ec-", 0) == 0) ec_.onDoseFinished(c, env, *fin);
@@ -753,8 +756,12 @@ void Hub::tickImpl() {
   // und hält dann neue EC- und pH-Runden an (RAT-055).
   env.ecBusy = ec_.busy();
   env.phBusy = ph_.busy();
+  const json refillBefore = rt_.refill;
+  const auto latchesBeforeRefill = rt_.latches;
   refill_.tick(c, env);
-  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false);
+  // A latch or a pending check the refill set is saved at once, also when a later step throws (RAT-063, SD-082)
+  if (rt_.refill != refillBefore || rt_.latches != latchesBeforeRefill) stateDirty_ = true;
+  env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
   // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
   env.phBusy = ph_.busy() || ph_.pending();
   ec_.tick(c, env);
@@ -2240,6 +2247,10 @@ Result Hub::probeCalibration(const json& j) {
     }
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
+    if (const Binding* lb = cfg_.binding("tank.level"); kind == "tank_curve" && lb && lb->device == dev) {
+      RefillController::levelCommitted(rt_, data);
+      stateDirty_ = true;
+    }
     const Msg kindMsg = kindName(kind);
     saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", cfg_.device(dev)->name}}));
     log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),
