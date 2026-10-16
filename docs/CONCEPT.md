@@ -161,5 +161,5 @@ UI and API always match, and a rollback takes the UI along.
   socket with auto-off.
 - **Languages and units:** The web app speaks English and German, English
   first: a new hub and a browser without a choice start in English, and
-  the first page asks for the language (SD-014, SD-082). Still missing: a
+  the first page asks for the language (SD-014, SD-083). Still missing: a
   unit system chosen separately from the language (PD-035, PD-027).

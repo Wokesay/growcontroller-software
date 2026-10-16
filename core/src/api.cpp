@@ -279,7 +279,7 @@ ApiResponse Api::route(const ApiRequest& req) {
       if (!okId) return fromResult(Result::fail(422, say("history.series_id")));
       series.push_back(s);
     }
-    // The page's language, else the hub's (RAT-016, SD-082)
+    // The page's language, else the hub's (RAT-016, SD-083)
     auto l = req.query.find("lang");
     const std::string lang = l != req.query.end() && (l->second == "de" || l->second == "en") ? l->second : hub_.language();
     ApiResponse r;

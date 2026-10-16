@@ -101,7 +101,7 @@ The log thus replaces keeping a cultivation diary by hand.
 
 - **CSV** per period in the page's language: German with semicolons and a
   decimal comma, English with commas and a decimal point; empty fields
-  instead of 0 in both (RAT-016, SD-082).
+  instead of 0 in both (RAT-016, SD-083).
 - **Settings** are saved and loaded as JSON. Loading is validated and
   switches all actuators off first.
 - **Diagnostic bundle** for "Report a problem", see `SECURITY_MODEL.md`.

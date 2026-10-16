@@ -224,7 +224,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await expect(page.getByTestId("watchdog")).toBeVisible();
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.name).toBe("Zelt 1");
-  expect(sys.language).toBe("de");  // the page's, saved to the hub, which started in English (SD-082)
+  expect(sys.language).toBe("de");  // the page's, saved to the hub, which started in English (SD-083)
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({ climate: "outside", light: "auto", irrigation: "outside", refill: "outside", circulation: "outside", dosing: "outside" });
   await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way into the dosing setup
@@ -313,7 +313,7 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({});
-  expect(sys.language).toBe("de");  // the page's language still reaches the hub, which started in English (SD-082)
+  expect(sys.language).toBe("de");  // the page's language still reaches the hub, which started in English (SD-083)
   await page.reload();
   await expect(page.getByTestId("watchdog")).toBeVisible();  // not opened again
   // The overview points to choosing sensors
@@ -362,7 +362,7 @@ test.describe("A new hub and browser", () => {
     await expect.poll(async () => (await (await page.request.get("/api/v1/config")).json()).system.language).toBe("de");
   });
 
-  test("on a German hub show its language from the sign-in page on, without keeping a choice (SD-082)", async ({ page, request }) => {
+  test("on a German hub show its language from the sign-in page on, without keeping a choice (SD-083)", async ({ page, request }) => {
     await scenario(request, "demo");  // the demo's hub speaks German
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "de");

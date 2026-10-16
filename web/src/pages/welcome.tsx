@@ -23,7 +23,7 @@ const BASE = "/willkommen";
 /** Done or skipped: the app does not open this by itself again. */
 async function finish(skipped = false) {
   if (!state.value?.setupDone) {
-    // Skipped the first time: the language picked with the password still becomes the hub's (SD-082)
+    // Skipped the first time: the language picked with the password still becomes the hub's (SD-083)
     if (skipped && hasOwnLang() && config.value?.system.language !== lang.value) await put("/system", { language: lang.value });
     await post("/setup/complete");
     await refreshConfig();

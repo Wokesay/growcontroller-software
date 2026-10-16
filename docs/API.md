@@ -9,7 +9,7 @@ UI can do, an integration can do as well.
 - `GET /info` is public: version, platform, whether a password is set,
   whether the first password needs a setup code (`setupCode`, #79) and
   the hub's language (`language`, `de` or `en`; a new hub is `en`), which
-  a sign-in page without a choice of its own uses (SD-082).
+  a sign-in page without a choice of its own uses (SD-083).
 - `POST /auth/setup {password, code}` sets the initial password, exactly
   once (otherwise 409). Where the platform armed a setup code (the Home
   Assistant app prints it to its log, SD-068), `code` from the JSON body
@@ -64,7 +64,7 @@ UI can do, an integration can do as well.
   does not turn it into 409); when the saved file is loaded, such a zone
   falls back to `Europe/Berlin` and an event says so. A file without
   `system.language` sets the hub to German, as files were saved before
-  English became the default (SD-082).
+  English became the default (SD-083).
 
 ## Read
 
