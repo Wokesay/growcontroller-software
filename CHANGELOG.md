@@ -361,6 +361,13 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Settings files: whole numbers only.** Restoring settings refuses a
+  file, with the reason, when a count or index in it is not a whole
+  number in its range: the current phase of a running grow cycle (it has
+  to be one of its phases), a phase's days, a device's channel and the
+  schema version. A time in the file that the hub cannot have written
+  reads as not set. "Next phase" checks the current phase too and says
+  how to go on: finish the cycle and start a new one.
 - **A large refill no longer latches the inlet** (#155, SD-082): a
   refill planned longer than the valve may stay open ("Ventil höchstens
   offen", 15 min by default) ran into that limit, which shut the inlet as

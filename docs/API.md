@@ -60,7 +60,14 @@ UI can do, an integration can do as well.
   name is refused with 422 `system.timezone` before anything else is checked
   (so other errors in the file are not listed with it, and a running job
   does not turn it into 409); when the saved file is loaded, such a zone
-  falls back to `Europe/Berlin` and an event says so.
+  falls back to `Europe/Berlin` and an event says so. A count or index in
+  the file is a whole number in its range, never null and never a fraction
+  cut to one: the running phase is one of the grow cycle's phases
+  (`cfg.grow.phase`, also the 409 of `/grow/next` for a saved phase outside
+  them), a phase's days 0 or more (`cfg.phase.days`), a device's channel
+  (`cfg.role.channel`), the schema version up to the hub's own
+  (`config.import`). A time the hub cannot have written (the grow cycle's,
+  a calibration's) reads as not set; the file's revision is not taken.
 
 ## Read
 
