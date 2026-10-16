@@ -96,7 +96,8 @@ Errors come as `{"error":{"key","text","args"},"errors":[…]}` (`args`
 only when there are any). When the
 configuration check refuses a change (422), `error` is the first of its
 findings in `errors`, with its key and arguments, so a page can show it
-in its own language. Every refusal has a key of its own and an English
+in its own language. `errors` lists at most 50 findings; `more` counts
+the rest. Every refusal has a key of its own and an English
 text: those of the API, the sign-in, the configuration check, a
 calibration and the import, also the transport's (`api.origin`,
 `api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)

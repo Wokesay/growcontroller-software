@@ -218,6 +218,10 @@ test("durations and ages join the number and its unit with a no-break space", ()
   // No other text joins a placeholder and a unit of time with a plain space
   const plain = /\}[ \t]+(s|min|h|Tage|Tagen|days)\b/;
   for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, plain, `messages.cpp: ${k}`);
+  // The hub's messages: a written number and its unit of time too (SD-082)
+  const written = /\d[ \t]+(s|min|h)\b/;
+  for (const [k, tmpl] of core) assert.doesNotMatch(tmpl, written, `messages.cpp: ${k}`);
+  for (const line of msg.split("\n")) assert.doesNotMatch(line, written, `msg.ts: ${line.trim()}`);
   for (const file of [...files, "msg.ts"])
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) assert.doesNotMatch(line, plain, `${file}: ${line.trim()}`);
 });

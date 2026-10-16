@@ -135,6 +135,7 @@ listed in every release under "Security".
   import refuses.
 - **History and CSV export:** a request names at most 16 series and none
   twice; each series id follows the CSV export's rule.
+- **A refused change lists at most 50 findings**; `more` counts the rest.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for

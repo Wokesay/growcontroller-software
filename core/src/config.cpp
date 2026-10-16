@@ -500,6 +500,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!isNum(v) || (isNum(pd.min) && v < pd.min) || (isNum(pd.max) && v > pd.max)) {
       args["min"] = numOrNull(pd.min);
       args["max"] = numOrNull(pd.max);
+      args["unit"] = pd.unit;
       err(say(phase ? "cfg.phase.range" : "cfg.param.range", args));
     }
   };

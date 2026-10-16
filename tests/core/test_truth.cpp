@@ -149,7 +149,7 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK(err.key == "curve.point");
   CHECK_FALSE(Curve::fromJson(gc::json::object(), err));
   CHECK(err.key == "curve.missing");
-  CHECK(err.text == "The curve is missing");  // the hub's text is English; the page translates by the key (SD-082)
+  CHECK(err.text == "No points recorded");  // the hub's text is English; the page translates by the key (SD-082)
 }
 
 TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)") {

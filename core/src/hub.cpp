@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <set>
 #include <sstream>
 #include <string_view>
@@ -90,13 +91,18 @@ std::string slug(const std::string& s) {
   return out.empty() ? "x" : out.substr(0, 24);
 }
 
+// At most this many findings in one answer; `more` counts the rest
+constexpr size_t kMaxFindings = 50;
+
 Result errors(const std::vector<Msg>& errs) {
   json arr = json::array();
-  for (const auto& e : errs) arr.push_back(e);
+  for (size_t i = 0; i < errs.size() && i < kMaxFindings; ++i) arr.push_back(errs[i]);
   // The error is the first finding with its key and arguments, so a page in
   // the other language can show it in its own (SD-032); the rest follow.
   json first = errs.empty() ? json{{"key", "validation"}, {"text", ""}} : json(errs.front());
-  return {422, {{"error", first}, {"errors", arr}}};
+  json body = {{"error", first}, {"errors", arr}};
+  if (errs.size() > kMaxFindings) body["more"] = errs.size() - kMaxFindings;
+  return {422, body};
 }
 
 // A pair needs two: a bottle left alone with the label is no longer paired, otherwise every
@@ -1522,8 +1528,14 @@ Result Hub::importConfig(const json& j) {
     if (!tz.is_string() || !isTimeZoneName(tz.get<std::string>())) return Result::fail(422, say("system.timezone"));
   }
   if (!j.is_object()) return Result::fail(422, say("config.not_object"));
-  if (j.contains("schemaVersion") && j["schemaVersion"].is_number_integer() && j["schemaVersion"].get<int>() > kSchemaVersion)
-    return Result::fail(422, say("config.newer", {{"schema", j["schemaVersion"]}}));
+  // A newer schema in words of its own; anything else that is no version is refused when it is read
+  if (j.contains("schemaVersion")) {
+    const json& v = j["schemaVersion"];
+    const bool newer = v.is_number_unsigned() ? v.get<std::uint64_t>() > static_cast<std::uint64_t>(kSchemaVersion)
+                     : v.is_number_integer()  ? v.get<std::int64_t>() > kSchemaVersion
+                                              : false;
+    if (newer) return Result::fail(422, say("config.newer"));
+  }
   Config next;
   try {
     next = configFromJson(j);

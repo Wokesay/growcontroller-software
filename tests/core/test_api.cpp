@@ -343,6 +343,26 @@ TEST_CASE("API: history and CSV name at most 16 series, none twice, each a serie
   CHECK(c.ok("GET", "/api/v1/history?series=")["series"].empty());  // none named, none read
 }
 
+TEST_CASE("API: a refused import names at most 50 findings and counts the rest; a newer schema says so (SD-082)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  for (int i = 0; i < 60; ++i) cfg["devices"].push_back({{"id", "X" + std::to_string(i)}, {"class", "unknown_class"}, {"name", "x"}});
+  auto [st, body] = c.call("POST", "/api/v1/config/import", cfg);
+  CHECK(st == 422);
+  CHECK(body["errors"].size() == 50);
+  CHECK(body["more"].get<int>() >= 10);
+  CHECK(body["error"]["key"] == body["errors"][0]["key"]);
+  for (const gc::json& v : {gc::json(99), gc::json(4294967298ULL)}) {
+    gc::json newer = c.ok("GET", "/api/v1/config/export");
+    newer["schemaVersion"] = v;
+    auto [nst, nbody] = c.call("POST", "/api/v1/config/import", newer);
+    CHECK(nst == 422);
+    CHECK(nbody["error"]["key"] == "config.newer");
+  }
+}
+
 TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-082)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
