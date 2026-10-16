@@ -636,7 +636,9 @@ TEST_CASE("Storage: an import refused while a dose runs drops no stock (#161)") 
   const json file = withoutBottle(c.ok("GET", "/api/v1/config/export"), "ph");
   const double ph = c.state()["stock"]["ph"].get<double>();
   c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
-  CHECK(c.call("POST", "/api/v1/config/import", file).first == 409);
+  auto [busy, busyBody] = c.call("POST", "/api/v1/config/import", file);
+  CHECK(busy == 409);
+  CHECK(busyBody["error"]["key"] == "config.busy");
   CHECK(c.state()["stock"]["ph"].get<double>() == doctest::Approx(ph));
   s.step(2000);
   CHECK(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("ph"));

@@ -345,6 +345,59 @@ TEST_CASE("API: history and CSV name at most 16 series, none twice, each a serie
   CHECK(c.ok("GET", "/api/v1/history?series=")["series"].empty());  // none named, none read
 }
 
+TEST_CASE("API: where one key had several texts, each refusal has its own key (SD-083)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.step(5000);
+  auto key = [&](const std::string& method, const std::string& path, const gc::json& body) {
+    auto [st, res] = c.call(method, path, body);
+    return std::make_pair(st, res["error"]["key"].is_string() ? res["error"]["key"].get<std::string>() : res.dump());
+  };
+  auto probe = [&](const char* dev, const char* kind, const char* action, gc::json more = gc::json::object()) {
+    more["device"] = dev;
+    more["kind"] = kind;
+    more["action"] = action;
+    return key("POST", "/api/v1/probe", more);
+  };
+  // pH: a point needs its value, a value a buffer can be, and two points before saving
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "start"}});
+  CHECK(probe("PHEC-3F2A91", "ph", "point") == std::make_pair(422, std::string("probe.reference")));
+  CHECK(probe("PHEC-3F2A91", "ph", "point", {{"reference", 99}}) == std::make_pair(422, std::string("probe.reference_range")));
+  CHECK(probe("PHEC-3F2A91", "ph", "commit") == std::make_pair(422, std::string("probe.points_two")));
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "cancel"}});
+  // EC: one point in the reference solution before saving
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ec"}, {"action", "start"}});
+  CHECK(probe("PHEC-3F2A91", "ec", "commit") == std::make_pair(422, std::string("probe.points_one")));
+  c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ec"}, {"action", "cancel"}});
+  // A tank curve: two points at least, and litres that rise with the sensor value
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "start"}});
+  s.world().fill(20, 1.3, 5.9);
+  s.step(5000);
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "point"}, {"reference", 20}});
+  CHECK(probe("LVL-77B210", "tank_curve", "commit") == std::make_pair(422, std::string("curve.two")));
+  s.world().fill(40, 1.3, 5.9);
+  s.step(5000);
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "point"}, {"reference", 10}});
+  CHECK(probe("LVL-77B210", "tank_curve", "commit") == std::make_pair(422, std::string("curve.falls")));
+  c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "cancel"}});
+  // An imported calibration: the reason as a nested message; one the device's class does not offer
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  cfg["calibrations"]["PHEC-3F2A91"]["ph"] = {{"points", "kaputt"}};
+  cfg["calibrations"]["LVL-77B210"]["ec"] = {{"factor", 1.0}};
+  auto [ist, ibody] = c.call("POST", "/api/v1/config/import", cfg);
+  CHECK(ist == 422);
+  bool reason = false, offered = false;
+  for (const auto& e : ibody["errors"]) {
+    reason = reason || (e["key"] == "cfg.calibration" && e["args"]["reason"]["key"] == "calib.ph" && e["args"]["device"] == "PHEC-3F2A91");
+    offered = offered || (e["key"] == "cfg.calibration.offered" && e["args"]["device"] == "LVL-77B210");
+  }
+  CHECK_MESSAGE(reason, ibody.dump());
+  CHECK_MESSAGE(offered, ibody.dump());
+  // Adding a device the hub does not see
+  CHECK(key("POST", "/api/v1/devices/NOPE-1/accept", {{"name", ""}}) == std::make_pair(404, std::string("device.not_detected")));
+}
+
 TEST_CASE("API: a refused import names at most 50 findings and counts the rest; a newer schema says so (SD-083)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -356,7 +409,14 @@ TEST_CASE("API: a refused import names at most 50 findings and counts the rest; 
   CHECK(body["errors"].size() == 50);
   CHECK(body["more"].get<int>() >= 10);
   CHECK(body["error"]["key"] == body["errors"][0]["key"]);
-  for (const gc::json& v : {gc::json(99), gc::json(4294967298ULL)}) {
+  gc::json few = c.ok("GET", "/api/v1/config/export");
+  for (int i = 0; i < 3; ++i) few["devices"].push_back({{"id", "Y" + std::to_string(i)}, {"class", "unknown_class"}, {"name", "y"}});
+  auto [fst, fbody] = c.call("POST", "/api/v1/config/import", few);
+  CHECK(fst == 422);
+  CHECK(fbody["errors"].size() == 3);
+  CHECK_FALSE(fbody.contains("more"));  // only when there are more than 50
+  for (const gc::json& v : {gc::json(99), gc::json(4294967298ULL), gc::json(99.0), gc::json(3.0e9), gc::json(1e300)}) {
+    CAPTURE(v.dump());
     gc::json newer = c.ok("GET", "/api/v1/config/export");
     newer["schemaVersion"] = v;
     auto [nst, nbody] = c.call("POST", "/api/v1/config/import", newer);
@@ -479,7 +539,9 @@ TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines A
   c.ok("POST", "/api/v1/config/import", old);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["passwordSet"] == true);
   c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
-  CHECK(c.call("POST", "/api/v1/config/import", cfg).first == 409);
+  auto [busy, busyBody] = c.call("POST", "/api/v1/config/import", cfg);
+  CHECK(busy == 409);
+  CHECK(busyBody["error"]["key"] == "config.busy");
 }
 
 TEST_CASE("API: Passwort verloren → keine Ersteinrichtung über das Netz (EN 18031 AUM)") {
@@ -552,7 +614,9 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   CHECK(st == 422);
   CHECK(err["missing"].size() == 3);
   c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}});
-  CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}}).first == 404);
+  auto [nf, nfBody] = c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}});
+  CHECK(nf == 404);
+  CHECK(nfBody["error"]["key"] == "recipe.template.unknown");
 }
 
 TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears them, a wrong range is refused (SD-057)") {

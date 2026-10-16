@@ -298,17 +298,10 @@ TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
 
-TEST_CASE("Scenario: while EC control doses, a manual dose, a pump calibration and priming are refused as such, and nothing starts (SD-083)") {
+TEST_CASE("Scenario: while a job or EC control doses, a manual dose, a pump calibration and priming are refused as such, and nothing starts (SD-083)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-  REQUIRE(until(s, [&] {
-    auto st = c.state();
-    return st["job"].is_null() && st["dosing"].is_null();
-  }, 4 * 3600 * 1000, 5000));
-  s.world().fill(40, 0.6, 5.9);  // EC well below the target: an EC round follows
-  REQUIRE(until(s, [&] { return !c.state()["dosing"].is_null(); }, 2 * 3600 * 1000, 500));
-  REQUIRE(c.state()["dosing"]["purpose"] == "ec");
   std::string pump;
   const gc::json cfg = c.ok("GET", "/api/v1/config");
   for (const auto& k : cfg["canisters"])
@@ -317,6 +310,24 @@ TEST_CASE("Scenario: while EC control doses, a manual dose, a pump calibration a
   const std::vector<std::pair<std::string, gc::json>> calls = {{"/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}}},
                                                                {"/api/v1/pumps/" + pump + "/calibrate", {{"seconds", 30}}},
                                                                {"/api/v1/pumps/" + pump + "/prime", {{"seconds", 3}}}};
+  // A job of the user: the demo starts with a mix
+  const gc::json job = c.state()["job"];
+  REQUIRE_FALSE(job.is_null());
+  for (const auto& [path, body] : calls) {
+    CAPTURE(path);
+    auto [st, res] = c.call("POST", path, body);
+    CHECK(st == 409);
+    CHECK(res["error"]["key"] == "job.busy");
+    CHECK(c.state()["job"]["id"] == job["id"]);  // still the same job
+  }
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    return st["job"].is_null() && st["dosing"].is_null();
+  }, 4 * 3600 * 1000, 5000));
+  s.world().fill(40, 0.6, 5.9);  // EC well below the target: an EC round follows
+  REQUIRE(until(s, [&] { return !c.state()["dosing"].is_null(); }, 2 * 3600 * 1000, 500));
+  REQUIRE(c.state()["dosing"]["purpose"] == "ec");
+  // EC control dosing
   for (const auto& [path, body] : calls) {
     CAPTURE(path);
     auto [st, res] = c.call("POST", path, body);
