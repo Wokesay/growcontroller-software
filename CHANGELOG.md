@@ -315,13 +315,13 @@ listed in every release under "Security".
   what is in the tank and below the fixed caps in code. A
   long dose runs as runs of at most 60 s, and the board ends every run
   after about 90 s on its own. Priming, calibration and test runs go into
-  a cup, never into the tank, and every module is calibrated at the
-  factory. A mix does not start when a canister's stock does not cover
-  it. Besides the tank, you will be able to mix into a bucket or watering
-  can: nutrients only, no pH. Some details are still to be decided (#282,
-  #284). The
-  simulator docs now mark how mixing time grows with the tank as an
-  assumption.
+  a cup, never into the tank, and every shop module is calibrated at the
+  factory. A mix still does not start when a canister's stock does not
+  cover it, and a warning comes when the stock will not cover the next
+  mix. Besides the tank, you will be able to mix into a bucket or watering
+  can: nutrients only, no pH. Some details are still to be decided
+  (#282, #284). The simulator docs now mark how mixing time grows with
+  the tank as an assumption.
 - **Plan: the hub's own pH dose and the jump lock** (SD-085, #162): the
   hub's own pH doses will get a fixed cap per litre, derived from the jump
   threshold at the strongest measured effect. A lock in the direction of
