@@ -4457,6 +4457,47 @@ other announcements, stays open.
 
 ---
 
+## SD-086: A missing state.json on a hub that ran before is unknown, not new
+
+Decided by the project owner on 2026-10-16 in the software session
+("umsetzen" for #238, a follow-up of SD-081 from the `domain` review).
+
+- **When:** `state.json` is not there, but the hub's events are: their
+  snapshot or journal is there, or kept unread (SD-081). Every start of the
+  hub writes both (the state at the end of its start, the events in the
+  same step), so a hub that ran before always has a `state.json`. One that
+  is gone was deleted, or the flash reports a damaged entry as not found
+  (ESP-IDF's SPIFFS gives ENOENT for a deleted entry or one that is not a
+  file, SD-081).
+- **What the hub does:** as with a broken run-time state (SD-081, "an
+  unknown run-time state errs on the safe side"): it starts stopped
+  (PD-076), a second mix within 30 minutes of the start needs
+  confirmation (RAT-003), a dry-run latch in the first hour holds for a
+  person (SD-067), and it says "Saved state missing" instead of
+  "Stop still active". The new `state.json` written at the end of the
+  start holds the Stop, so the next start stays stopped until Resume.
+- **A new hub:** no events and no `state.json` (first start, after a
+  factory reset, a new data folder) starts as before, not stopped.
+- **Why the events:** they are the hub's own record of having run.
+  `config.json` alone is not taken as that sign: settings can be put in
+  place before a first start, and many tests and tools do so.
+- **Not covered:**
+  - when the events are gone as well, a hub that ran before cannot be
+    told from a new one. On the device this is what a storage that does
+    not mount does today, since the firmware then formats it; SD-076 and
+    SD-080 plan that it no longer does so by itself;
+  - SD-080's factory reset has to finish its erase before the hub
+    starts, remove the events (not only make them unreadable), and
+    nothing it leaves behind (its mark) may count as the hub's events;
+    otherwise a hub just reset could say "Saved state missing", or read
+    an old state;
+  - a first start whose `state.json` could not be written while its
+    events were (a failing card) stops once at the next start and says
+    the file is gone: the safe side. Every release made here writes
+    `state.json` at every start, so an update does not stop by mistake.
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |
