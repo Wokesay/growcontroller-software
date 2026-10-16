@@ -392,6 +392,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Settings files: whole numbers only.** Restoring settings refuses a
+  file, with the reason, when a count or index in it is not a whole
+  number in its range: the current phase of a running grow cycle (it has
+  to be one of its phases), a phase's days, a device's channel and the
+  schema version. A time in the file that the hub cannot have written
+  reads as not set. "Next phase" checks the current phase too and says
+  how to go on: finish the cycle and start a new one. A hub whose saved
+  settings already hold such a phase or such days keeps running; while
+  that cycle runs, a change says the same, and once it is finished
+  nothing is blocked.
 - **A refused change says why in the page's language** (#18): when the
   configuration check refused a recipe, for example because the chart EC
   does not fit the amounts, a German page showed the reason in English.

@@ -317,6 +317,8 @@ export const msgDe: Record<string, string> = {
   "cfg.recipe.amounts": "diesen Mengen ({sum:1} ml/L zusammen)",
   "cfg.recipe.amounts_scaled": "diesen Mengen ohne die festen ({sum:1} ml/L)",
   "cfg.recipe.ph_band": "{name}: Der pH-Bereich braucht einen unteren und einen oberen Wert zwischen {min} und {max}, den unteren zuerst",
+  "cfg.grow.phase": "Die aktuelle Phase des Durchgangs ist keine seiner Phasen – schließ den Durchgang ab und starte einen neuen",
+  "cfg.phase.days": "Phase „{phase}“: Die Tage müssen eine ganze Zahl ab 0 sein – schließ den Durchgang ab und starte einen neuen",
   "recipe.ref_ec": "Die EC laut Plan ist eine Zahl in mS/cm",
   "recipe.ph": "Der pH-Bereich sind zwei Zahlen, unten und oben",
   "ev.cfg.pair_template": "Paar aus der Vorlage übernommen",

@@ -95,7 +95,14 @@ The app has two ways in; the listener decides which, never the request.
   does not turn it into 409); when the saved file is loaded, such a zone
   falls back to `Europe/Berlin` and an event says so. A file without
   `system.language` sets the hub to German, as files were saved before
-  English became the default (SD-083).
+  English became the default (SD-083). A count or index in
+  the file is a whole number in its range, never null and never a fraction
+  cut to one: the running phase is one of the grow cycle's phases
+  (`cfg.grow.phase`, also the 409 of `/grow/next` for a saved phase outside
+  them), a phase's days 0 or more (`cfg.phase.days`), a device's channel
+  (`cfg.role.channel`), the schema version up to the hub's own
+  (`config.import`). A time the hub cannot have written (the grow cycle's,
+  a calibration's) reads as not set; the file's revision is not taken.
 
 ## Read
 

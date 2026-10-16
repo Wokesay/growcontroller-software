@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <sstream>
 
@@ -394,6 +396,181 @@ TEST_CASE("API: the session token comes from a bearer header or the cookie named
   // A long header of separators only
   CHECK(gc::sessionToken("", std::string(8192, ';')) == "");
   CHECK(gc::sessionToken("", std::string(8192, '=')) == "");
+}
+
+TEST_CASE("API: an imported number is a whole number in range: grow phase, channel, days and schema version") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  gc::json cfg = c.ok("GET", "/api/v1/config/export");
+  if (cfg.contains("config")) cfg = cfg["config"];
+  REQUIRE(cfg["grow"]["state"] == "running");
+  REQUIRE(cfg["tanks"][0]["roles"].contains("tank.ph"));  // so a bad channel is the only finding about it
+  const size_t phases = cfg["grow"]["phases"].size();
+  REQUIRE(phases >= 2);
+  auto refused = [&](const gc::json& file, const std::string& key) {
+    auto [st, body] = c.call("POST", "/api/v1/config/import", file);
+    CHECK(st == 422);
+    CHECK_MESSAGE(body.dump().find("\"" + key + "\"") != std::string::npos, body.dump());
+  };
+  // The running phase is one of its phases: a whole number from 0 to the last
+  for (const gc::json& phase : {gc::json(-2), gc::json(phases), gc::json(2147483647), gc::json(4294967296.0), gc::json(1e300),
+                                gc::json(0.5), gc::json("1"), gc::json(nullptr), gc::json(true)}) {
+    CAPTURE(phase.dump());
+    gc::json bad = cfg;
+    bad["grow"]["phase"] = phase;
+    refused(bad, "cfg.grow.phase");
+  }
+  // A channel and a phase's days are whole numbers too; a fraction is never cut to one
+  for (const gc::json& v : {gc::json(0.5), gc::json(1e300), gc::json(nullptr), gc::json("0")}) {
+    CAPTURE(v.dump());
+    gc::json bad = cfg;
+    bad["tanks"][0]["roles"]["tank.ph"]["channel"] = v;
+    refused(bad, "cfg.role.channel");
+    bad = cfg;
+    bad["grow"]["phases"][0]["days"] = v;
+    refused(bad, "cfg.phase.days");
+  }
+  // The schema version: a whole number up to the hub's own
+  for (const gc::json& v : {gc::json(99), gc::json(4294967298ULL), gc::json(2.5), gc::json(1e300), gc::json(-1), gc::json("2"), gc::json(nullptr)}) {
+    CAPTURE(v.dump());
+    gc::json bad = cfg;
+    bad["schemaVersion"] = v;
+    refused(bad, "config.import");
+  }
+  // Nothing of it was taken: the running phase is still the one before
+  CHECK(c.ok("GET", "/api/v1/config")["grow"]["phase"] == cfg["grow"]["phase"]);
+  // The file as exported passes the same check, and so do the last phase, 0 days, a whole-number float and -0.0
+  // (the demo may be dosing, so these are checked, not imported)
+  std::lock_guard<std::recursive_mutex> l(s.mutex());
+  const gc::Catalog& cat = s.hub().catalog();
+  CHECK(gc::validateConfig(gc::configFromJson(cfg), cat).empty());
+  for (const gc::json& phase : {gc::json(phases - 1), gc::json(1.0), gc::json(-0.0)}) {
+    CAPTURE(phase.dump());
+    gc::json ok = cfg;
+    ok["grow"]["phase"] = phase;
+    ok["grow"]["phases"][0]["days"] = 0;
+    CHECK(gc::validateConfig(gc::configFromJson(ok), cat).empty());
+  }
+  // A time of the grow cycle the hub cannot have written is not set
+  for (const auto& [v, want] : std::vector<std::pair<gc::json, gc::Epoch>>{{gc::json(9223372036854775808.0), 0},
+                                                                           {gc::json(18446744073709551615ULL), 0},
+                                                                           {gc::json(-9223372036854775807LL - 1), 0},
+                                                                           {gc::json(1e300), 0},
+                                                                           {gc::json("1790000000"), 0},
+                                                                           {gc::json(1790000000.0), 1790000000},
+                                                                           {gc::json(1790000000), 1790000000}}) {
+    CAPTURE(v.dump());
+    gc::json t = cfg;
+    t["grow"]["startedAt"] = v;
+    CHECK(gc::configFromJson(t).grow.startedAt == want);
+  }
+}
+
+TEST_CASE("Grow cycle: a saved phase outside its list never moves on to a phase that does not exist") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  for (int phase : {-2, 2, 2147483647}) {
+    CAPTURE(phase);
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    store.write("config.json", gc::json{{"schemaVersion", gc::kSchemaVersion},
+                                        {"grow", {{"state", "running"}, {"name", "A"}, {"phase", phase}, {"phaseStartedAt", 1790000000},
+                                                  {"phases", {{{"name", "Wachstum"}, {"days", 14}}, {{"name", "Blüte"}, {"days", 56}}}}}}}
+                                   .dump());
+    gc::Hub h(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+    h.boot();
+    const gc::Result r = h.growNextPhase();
+    CHECK(r.status == 409);
+    CHECK(r.body["error"]["key"] == "cfg.grow.phase");
+    const gc::json cfg = h.configJson();
+    CHECK(cfg["grow"]["phase"] == phase);
+    CHECK(cfg["grow"]["phaseStartedAt"] == 1790000000);
+    CHECK(h.events(0, 4000000000, "", 100).dump().find("ev.grow.phase") == std::string::npos);
+  }
+}
+
+TEST_CASE("Grow cycle: a value saved before these checks blocks changes only while its cycle runs, and finishing it is the way out") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  auto boot = [&](gc::MemoryStorage& store, test::FakeBus& bus, test::Clock& clk, const gc::json& grow) {
+    store.write("config.json", gc::json{{"schemaVersion", gc::kSchemaVersion}, {"grow", grow}}.dump());
+    auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+    h->boot();
+    return h;
+  };
+  const gc::json phases = {{{"name", "W"}, {"days", 14}}, {{"name", "B"}, {"days", 56}}};
+  SUBCASE("a running phase outside its phases") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    auto h = boot(store, bus, clk, {{"state", "running"}, {"name", "A"}, {"phase", 5}, {"phases", phases}});
+    const gc::Result r = h->putTank({{"capacityL", 40}});
+    CHECK(r.status == 422);
+    CHECK_MESSAGE(r.body["errors"].dump().find("\"cfg.grow.phase\"") != std::string::npos, r.body.dump());
+    CHECK(h->growComplete().status == 200);
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+    CHECK(h->growStart({{"name", "B"}, {"phases", phases}}).status == 200);
+    CHECK(h->configJson()["grow"]["phase"] == 0);
+  }
+  SUBCASE("days below 0 in a running cycle") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    gc::json bad = phases;
+    bad[0]["days"] = -3;
+    auto h = boot(store, bus, clk, {{"state", "running"}, {"name", "A"}, {"phase", 0}, {"phases", bad}});
+    const gc::Result r = h->putTank({{"capacityL", 40}});
+    CHECK(r.status == 422);
+    CHECK_MESSAGE(r.body["errors"].dump().find("\"cfg.phase.days\"") != std::string::npos, r.body.dump());
+    CHECK(h->growComplete().status == 200);
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+  }
+  SUBCASE("days that are no whole number in a finished cycle block nothing") {
+    gc::MemoryStorage store;
+    test::FakeBus bus;
+    test::Clock clk;
+    gc::json bad = phases;
+    bad[0]["days"] = 14.5;
+    auto h = boot(store, bus, clk, {{"state", "completed"}, {"name", "A"}, {"phase", 1}, {"phases", bad}});
+    CHECK(h->putTank({{"capacityL", 40}}).status == 200);
+  }
+}
+
+TEST_CASE("Restart: a saved schema version that is no whole number starts with the factory settings and keeps the file") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  const std::string file = gc::json{{"schemaVersion", 2.5}, {"system", {{"name", "Zelt"}}}}.dump();
+  store.write("config.json", file);
+  gc::Hub h(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+  h.boot();
+  CHECK(h.configJson()["system"]["name"] != "Zelt");
+  CHECK(store.read("config.broken.json") == std::optional<std::string>(file));
+  CHECK(h.events(0, 4000000000, "", 100).dump().find("ev.config_unreadable") != std::string::npos);
+}
+
+TEST_CASE("Devices: a calibration time from a file that the hub cannot have written shows as not set") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  bus.head("PH-1");
+  store.write("config.json", gc::json{{"schemaVersion", gc::kSchemaVersion},
+                                      {"devices", {{{"id", "PH-1"}, {"class", "head_ph_ec"}, {"name", "pH/EC"}}}},
+                                      {"calibrations", {{"PH-1", {{"ph", {{"at", 1e300}}}, {"ec", {{"at", 1790000000}}}}}}}}
+                                 .dump());
+  gc::Hub h(cat, bus, store, clk, [](std::uint8_t* p, size_t n) { std::fill(p, p + n, std::uint8_t{7}); });
+  h.boot();
+  clk.ms += 1000;
+  h.tick();
+  const gc::json st = h.state();
+  gc::json dev;
+  for (const auto& d : st["devices"])
+    if (d["id"] == "PH-1") dev = d;
+  REQUIRE(dev.is_object());
+  CHECK(dev["calibrations"]["ph"] == 0);
+  CHECK(dev["calibrations"]["ec"] == 1790000000);
 }
 
 TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines Auftrags (R7)") {

@@ -3,14 +3,45 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <set>
 #include <stdexcept>
+#include <type_traits>
 
 #include "gc/messages.hpp"
 
 namespace gc {
 
 namespace {
+
+// A whole number from a file. A missing key gives `def`; anything else that
+// is no whole number in the type's range (null, a fraction, text, a number
+// beyond the type) gives `bad`, never another value (R5). For the grow
+// cycle's times `bad` is `def`: a time that cannot be read is not set.
+template <class T>
+T whole(const json& j, const char* key, T def, T bad) {
+  static_assert(std::is_signed_v<T>, "the bounds below assume a signed type");
+  if (!j.is_object()) return def;
+  auto it = j.find(key);
+  if (it == j.end()) return def;
+  if (it->is_null()) return bad;
+  constexpr auto lo = std::numeric_limits<T>::min(), hi = std::numeric_limits<T>::max();
+  if (it->is_number_unsigned()) {
+    const auto u = it->template get<std::uint64_t>();
+    return u <= static_cast<std::uint64_t>(hi) ? static_cast<T>(u) : bad;
+  }
+  if (it->is_number_integer()) {
+    const auto v = it->template get<std::int64_t>();
+    return v >= lo && v <= hi ? static_cast<T>(v) : bad;
+  }
+  if (it->is_number_float()) {
+    const double d = it->template get<double>();
+    // -lo is a power of two, exact as a double; d below it fits the type
+    return std::isfinite(d) && d == std::floor(d) && d >= static_cast<double>(lo) && d < -static_cast<double>(lo) ? static_cast<T>(d) : bad;
+  }
+  return bad;
+}
 
 double numOrNaN(const json& j, const char* key) {
   if (!j.is_object() || !j.contains(key) || !j[key].is_number()) return kNaN;
@@ -172,7 +203,8 @@ void to_json(json& j, const Config& c) {
 
 json migrateConfig(json j) {
   if (!j.is_object()) throw std::runtime_error("Konfiguration ist kein Objekt");
-  int v = j.value("schemaVersion", 0);
+  const int v = whole(j, "schemaVersion", 0, -1);
+  if (v < 0) throw std::runtime_error("the configuration has no valid schema version");
   if (v > kSchemaVersion)
     throw std::runtime_error("Konfiguration stammt aus einer neueren Version (Schema " + std::to_string(v) + ")");
   // v0 → v1: frühe Entwürfe hatten einen einzelnen "tank" statt "tanks".
@@ -210,7 +242,7 @@ Config configFromJson(const json& in) {
   Config c;
   c.system.language = "de";  // a saved file without a language was saved under the old default (SD-014, SD-083)
   c.schemaVersion = j.value("schemaVersion", kSchemaVersion);
-  c.revision = j.value("revision", 0);
+  c.revision = whole(j, "revision", 0, 0);  // an import keeps the hub's own
   if (j.contains("system")) {
     const auto& s = j["system"];
     c.system.name = s.value("name", c.system.name);
@@ -252,7 +284,7 @@ Config configFromJson(const json& in) {
     tc.minL = numOrNaN(t, "minL");
     tc.water = t.value("water", tc.water);
     if (t.contains("roles"))
-      for (const auto& [r, b] : t["roles"].items()) tc.roles[r] = {jstr(b, "device"), b.value("channel", 0)};
+      for (const auto& [r, b] : t["roles"].items()) tc.roles[r] = {jstr(b, "device"), whole(b, "channel", 0, -1)};
     c.tanks.push_back(tc);
   }
   if (c.tanks.empty()) c.tanks.emplace_back();
@@ -263,7 +295,7 @@ Config configFromJson(const json& in) {
     zc.kind = z.value("kind", zc.kind);
     zc.tank = z.value("tank", c.tanks.front().id);
     if (z.contains("roles") && z["roles"].is_object())
-      for (const auto& [r, b] : z["roles"].items()) zc.roles[r] = {jstr(b, "device"), b.value("channel", 0)};
+      for (const auto& [r, b] : z["roles"].items()) zc.roles[r] = {jstr(b, "device"), whole(b, "channel", 0, -1)};
     c.zones.push_back(zc);
   }
   if (c.zones.empty()) {
@@ -306,12 +338,17 @@ Config configFromJson(const json& in) {
     const auto& g = j["grow"];
     c.grow.state = g.value("state", c.grow.state);
     c.grow.name = g.value("name", std::string());
-    c.grow.startedAt = g.value("startedAt", Epoch{0});
-    c.grow.phase = g.value("phase", 0);
-    c.grow.phaseStartedAt = g.value("phaseStartedAt", Epoch{0});
-    c.grow.harvestedAt = g.value("harvestedAt", Epoch{0});
+    // A time the hub can have written, else not set
+    auto time = [&](const char* key) {
+      const Epoch t = whole(g, key, Epoch{0}, Epoch{0});
+      return t >= 0 && t <= kNotAfter ? t : Epoch{0};
+    };
+    c.grow.startedAt = time("startedAt");
+    c.grow.phase = whole(g, "phase", 0, -1);
+    c.grow.phaseStartedAt = time("phaseStartedAt");
+    c.grow.harvestedAt = time("harvestedAt");
     for (const auto& p : g.value("phases", json::array()))
-      c.grow.phases.push_back({jstr(p, "name"), p.value("days", 0), p.value("params", json::object())});
+      c.grow.phases.push_back({jstr(p, "name"), whole(p, "days", 0, -1), p.value("params", json::object())});
   }
   return c;
 }
@@ -517,8 +554,17 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
       checkParam(*fd, *pd, val, "");
     }
   }
+  // A running grow cycle: its phase is one of its phases, each phase's days a
+  // whole number, 0 or more. A finished cycle is only shown, so a value saved
+  // before these checks never blocks a change once the cycle is finished.
+  const auto& g = c.grow;
+  if (g.state == "running") {
+    if (g.phase < 0 || static_cast<size_t>(g.phase) >= g.phases.size()) out.push_back(say("cfg.grow.phase"));
+    for (const auto& ph : g.phases)
+      if (ph.days < 0) out.push_back(say("cfg.phase.days", {{"phase", ph.name}}));
+  }
   // Phasen liefern Parameter (R4): dieselben Bereiche wie in den Einstellungen.
-  for (const auto& ph : c.grow.phases) {
+  for (const auto& ph : g.phases) {
     const std::string where = "Phase „" + ph.name + "“, ";
     if (!ph.params.is_object()) {
       err("cfg.phase.params", where + "Parameter ungültig");
