@@ -28,15 +28,16 @@ bool signalMeasure(const std::string& m) {
 }
 bool signalUnit(const std::string& unit) { return unit == "mV" || unit == "V"; }
 
-// Labels as the catalog writes them (the catalog is still German, #18).
+// Labels as the catalog writes them, in English; German comes from the web
+// app's table by the class id (web/src/lang/cat.ts, SD-083 point 3).
 const char* labelOf(const std::string& m) {
-  if (m == "ph") return "pH aus Home Assistant";
-  if (m == "ec") return "EC aus Home Assistant";
-  if (m == "water_temp") return "Wassertemperatur aus Home Assistant";
-  if (m == "level") return "Füllstand aus Home Assistant";
-  if (m == "air_temp") return "Lufttemperatur aus Home Assistant";
-  if (m == "humidity") return "Luftfeuchte aus Home Assistant";
-  return "CO2 aus Home Assistant";
+  if (m == "ph") return "pH from Home Assistant";
+  if (m == "ec") return "EC from Home Assistant";
+  if (m == "water_temp") return "Water temperature from Home Assistant";
+  if (m == "level") return "Level from Home Assistant";
+  if (m == "air_temp") return "Air temperature from Home Assistant";
+  if (m == "humidity") return "Humidity from Home Assistant";
+  return "CO2 from Home Assistant";
 }
 
 }  // namespace
@@ -679,14 +680,14 @@ gc::Catalog catalog() {
                                       {"stage", 0},
                                       {"attach", "ha"},
                                       {"provides", {std::string("measure.") + m}},
-                                      {"text", "Wert aus Home Assistant; kalibriert wird dort."}};
+                                      {"text", "Value from Home Assistant; calibrated there."}};
   for (const char* m : kSignalMeasures)
-    j["deviceClasses"][classOf(m) + kSignalSuffix] = {{"label", std::string(labelOf(m)) + " (Rohwert)"},
+    j["deviceClasses"][classOf(m) + kSignalSuffix] = {{"label", std::string(labelOf(m)) + " (raw value)"},
                                                       {"stage", 0},
                                                       {"attach", "ha"},
                                                       {"provides", {std::string("measure.") + m}},
                                                       {"calibrations", {m}},
-                                                      {"text", "Rohwert aus Home Assistant; kalibriert wird hier."}};
+                                                      {"text", "Raw value from Home Assistant; calibrated here."}};
   gc::Catalog c = gc::Catalog::fromJson(j);
   // Set in code, not from the catalog data, so the catalog cannot loosen
   // them (R7): calibrated in Home Assistant (RAT-025), and reported when the
