@@ -891,6 +891,10 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   }
   // EC control's recipe: CalMag (0.6 of 4.6 ml/L) fixed leaves the learned effect on 4.0 ml/L, so it grows
   // by 4.6 / 4.0 and the next round doses less; unticking it again keeps the larger effect
+  // The demo's mix mixes in before EC control decides and lands in its band (SD-057): a lower EC gives
+  // EC control a round to learn from
+  for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);
+  s.world().fill(40, 1.0, 5.9);
   for (int h = 0; h < 12 && !c.state()["effects"]["ec"].is_number(); ++h) s.fastForward(1);
   REQUIRE(c.state()["effects"]["ec"].is_number());
   const double learned = c.state()["effects"]["ec"].get<double>();

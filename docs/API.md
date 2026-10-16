@@ -77,7 +77,7 @@ UI can do, an integration can do as well.
 
 | Method | Path | Content |
 |---|---|---|
-| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job, dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock (ml per bottle, `null` when unknown, below zero when more was booked than entered, SD-066), cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
+| GET | `/state` | live state: ports, devices, readings with quality and reason (and `ageS`, `ageMs`, `ageOf`: what the age counts from, `reading`, `measurement` with a sign of life or `change`, SD-042), tank, controllers with control line and checklist, outputs, job (with `waitLeftS` while it mixes, mixes in at its end or waits for stirring, and, while it mixes in, `circulating` as the pump reads (`null` when unknown) and `pumpStands` once it has read off or unknown for 10 s (false again while it runs), which the card shows and which ends the mix not mixed yet, SD-057), dosing, watchdog (headline and items as messages, with `stale`), functions (resolver), latches, stock (ml per bottle, `null` when unknown, below zero when more was booked than entered, SD-066), cultivation run; `time`: `secured`, `source` (`secured`, `continued` from the saved time, `unset`) and `operatingS` (PD-069) |
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
@@ -167,7 +167,7 @@ for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 | Method | Path | |
 |---|---|---|
 | POST | `/mix/plan`, `/mix/start` `{recipe, waterL, mode, guided, confirmRepeat}` | preview, start |
-| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring, abort, catch up a pair, calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
+| POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring (refused while a mix mixes in at its end), abort (a mix cancelled with a pair half in names the parts still missing, `job.aborted_pair`), catch up a pair or, after 30 min without "Continue", go on with the next part (SD-057), calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
 | POST | `/dose {canister, ml}` | manual dose |
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |
 | POST | `/probe {device, kind, action, reference}` | probe calibration: start, point, commit, cancel. For a sensor on its own schedule (Home Assistant, SD-041) `point` answers with `pending {since, reference}`: the point is taken from the sensor's next report; with none within its freshness limit the session in the state carries `failed` (`probe.no_raw`) |

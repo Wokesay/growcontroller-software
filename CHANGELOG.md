@@ -8,6 +8,22 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A mix mixes in before it ends** (#143, SD-057, step 3): with a
+  circulation pump, a mix now ends only once its nutrients have mixed in
+  (as long as EC or pH control waits after a dose, whichever is longer,
+  at least about 100 s per 20 L in the tank, at most 60 min); the mix
+  card shows the minutes left, offers no button to skip or cancel it, and
+  says so when the pump is not running (off or unknown for 10 s). EC and
+  pH control and refill decide only after that. A mix ended, stopped, or cut short by a failure,
+  an internal error or a restart with nutrients in makes EC and pH
+  control wait for the circulation pump and settle first, at least 15 min
+  and as long as the longer of their settle times; EC decides first, now
+  also when both waits end together. So does a mix whose pump did not run
+  while it mixed in. Their line says why while the pump does not run, and
+  such a wait logs no correction. Stirring by hand now waits at most 30
+  minutes after a part: then the mix stops, names the parts of a pair
+  still missing with their amounts, and can go on ("Resume mix") or be
+  ended ("End mix"); a mix cancelled with a pair half in names them too.
 - **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
   bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
   amount", for an addition the maker gives a fixed amount per litre for,
