@@ -310,22 +310,25 @@ listed in every release under "Security".
   will support dosing modules that each run at one fixed rate and keep
   their calibration on a chip in the module. "Fine" (about 12 ml/min) is
   for nutrients, additives and pH in tanks up to about 150 L. "Large"
-  (about 220 ml/min) is for tanks from about 100 L. Every dose has a cap
-  derived from the tank's usable volume, below the fixed caps in code. A
+  (about 220 ml/min) is recommended from about 100 L. Every dose has a cap
+  derived from the tank's usable volume, on top of the caps per litre of
+  what is in the tank and below the fixed caps in code. A
   long dose runs as runs of at most 60 s, and the board ends every run
   after about 90 s on its own. Priming, calibration and test runs go into
   a cup, never into the tank, and every module is calibrated at the
   factory. A mix does not start when a canister's stock does not cover
   it. Besides the tank, you will be able to mix into a bucket or watering
-  can: nutrients only, no pH. Some details are still to be decided. The
+  can: nutrients only, no pH. Some details are still to be decided (#282,
+  #284). The
   simulator docs now mark how mixing time grows with the tank as an
   assumption.
-- **Plan: the hub's own pH dose and the jump lock** (SD-085, #162): after
-  0.1.0-proto.5, the hub's own pH doses get a fixed cap per litre, so one
-  dose cannot move pH as far as a jump. A lock in the direction of the
-  hub's own dose resets the learned pH effect. Until it is measured how
-  far an EC round moves pH, a round explains a pH change from its start.
-  A pH jump lock still lifts by itself after 15 min steady.
+- **Plan: the hub's own pH dose and the jump lock** (SD-085, #162): the
+  hub's own pH doses will get a fixed cap per litre, derived from the jump
+  threshold at the strongest measured effect. A lock in the direction of
+  the hub's own dose will reset the learned pH effect. Until it is
+  measured how far an EC round moves pH, an EC round will explain a pH
+  change from its start. A pH jump lock still lifts by itself after
+  15 min steady.
 - **Plan: access from outside, Home Assistant, fans and EC** (SD-052 to
   SD-054, SD-059, SD-060): at setup you will choose whether the ESP32-S3's
   web app can be reached only in the home network (preselected), viewed
