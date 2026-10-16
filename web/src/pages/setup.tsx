@@ -9,10 +9,11 @@ import { ArrowLeft, ArrowRight, Check, PackagePlus, Sprout } from "lucide-preact
 import { del, post, probeKinds, put, type Canister, type ProbeKind, type RecipeTemplate } from "../api";
 import { PumpCalibration, ProbeCalibration } from "../calibration";
 import { num, timeZone } from "../format";
-import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
+import { lang, msg, setLang, t, type Lang, type TextKey } from "../i18n";
 import { canisters, catalog, config, recipes, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, CheckRow, Field, LANGS, NumberInput, Pill, Seg, Term, navigate, route, setupLabel, type HelpTopic } from "../ui";
 import { DeviceIcon, OutletRoles, PortGrid, devicePlace } from "../widgets";
+import { className, deviceNameById, fnName } from "../catnames";
 
 const STEPS: TextKey[] = ["setup.step.start", "setup.step.devices", "setup.step.tank", "setup.step.nutrients", "setup.step.calibrate", "setup.step.done"];
 const COLORS = ["#3f8f4a", "#c47a2c", "#5b7fb8", "#b8455b", "#8a5cc2", "#2f9aa0"];
@@ -71,7 +72,7 @@ function Aside(p: { terms?: HelpTopic[] }) {
         <div class="card flat stack-sm">
           <div class="section-title">{t("setup.side.missing")}</div>
           {open.map((c) => (
-            <CheckRow ok={false} soft={c.soft} text={c.text} />
+            <CheckRow ok={false} soft={c.soft} text={msg(c.text)} />
           ))}
           {open.every((c) => c.soft) && <CheckRow ok text={t("setup.side.nothing")} />}
         </div>
@@ -207,7 +208,7 @@ function StepDevices(p: { step: number; next: () => void }) {
               <DeviceIcon cls={d.class} />
             </span>
             <span class="grow">
-              <strong>{d.classLabel}</strong>
+              <strong>{className(d.class, d.classLabel)}</strong>
               <div class="faint small">{devicePlace(d)}</div>
             </span>
             {d.configured ? <Pill tone="ok">{t("setup.dev.stateAccepted")}</Pill> : <Pill tone="info">{t("setup.dev.stateFound")}</Pill>}
@@ -246,7 +247,7 @@ function StepDevices(p: { step: number; next: () => void }) {
                   <DeviceIcon cls={d.class} />
                 </span>
                 <span class="grow">
-                  <strong>{d.classLabel}</strong>
+                  <strong>{className(d.class, d.classLabel)}</strong>
                   <div class="faint small">{devicePlace(d)}</div>
                 </span>
                 {d.configured ? <Pill tone="ok">{t("setup.dev.stateAccepted")}</Pill> : <Pill tone="info">{t("setup.dev.stateFound")}</Pill>}
@@ -539,7 +540,7 @@ function StepCalibrate(p: { step: number; next: () => void }) {
       <div class="section-title">{t("setup.cal.probes")}</div>
       {probes.length > 0 && <div class="list">{probes.map((x) => probeRow(x.dev, x.kind, probeLabel(x.kind)))}</div>}
       {external.map((d) => (
-        <p class="muted" data-testid="external-probe">{t("setup.cal.external", { name: d.name })}</p>
+        <p class="muted" data-testid="external-probe">{t("setup.cal.external", { name: deviceNameById(d.id) })}</p>
       ))}
       {probes.length === 0 && external.length === 0 && <p class="muted">{t("setup.cal.noProbes")}</p>}
       {cal && <PumpCalibration pump={cal.id} name={cal.name} onClose={() => setCal(null)} />}
@@ -567,8 +568,8 @@ function StepDone(p: { step: number }) {
         {[...usable, ...todo].map((f) => (
           <div class="item">
             <span class="grow">
-              <strong>{f.label}</strong>
-              {f.setup === "needs_setup" && <div class="muted small">{f.summary.text}</div>}
+              <strong>{fnName(f.id, f.label)}</strong>
+              {f.setup === "needs_setup" && <div class="muted small">{msg(f.summary)}</div>}
             </span>
             <Pill tone={setupLabel[f.setup][1]}>{setupLabel[f.setup][0]}</Pill>
           </div>

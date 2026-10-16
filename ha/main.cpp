@@ -29,6 +29,7 @@
 #include "gc/api.hpp"
 #include "gc/embedded.hpp"
 #include "gc/hub.hpp"
+#include "gc/messages.hpp"
 #include "ha_assign.hpp"
 #include "ha_bus.hpp"
 #include "ha_client.hpp"
@@ -366,7 +367,7 @@ int main(int argc, char** argv) {
   std::mutex assigning;  // one pick at a time, also from two browser tabs
   svr.Post("/api/v1/ha/assign", [&](const httplib::Request& req, httplib::Response& res) {
     const gc::ApiRequest areq = toApi(req);
-    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));  // before any lock or write
+    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, gc::say("auth.required")));  // before any lock or write
     std::lock_guard<std::mutex> one(assigning);
     // The hub's configuration is on disk when the pick returns (#68)
     gc::Result r = ha::assignRoute(api, hub, bus, areq, [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
@@ -375,7 +376,7 @@ int main(int argc, char** argv) {
   });
   svr.Post("/api/v1/ha/life", [&](const httplib::Request& req, httplib::Response& res) {
     const gc::ApiRequest areq = toApi(req);
-    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, "auth.required", "Bitte anmelden"));
+    if (!api.authorized(areq)) return reply(res, gc::Result::fail(401, gc::say("auth.required")));
     std::lock_guard<std::mutex> one(assigning);
     gc::Result r = ha::lifeRoute(api, hub, bus, areq);
     if (r.status == 200) r.body = {{"ok", true}};

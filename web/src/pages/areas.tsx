@@ -13,6 +13,7 @@ import { t, type TextKey } from "../i18n";
 import { binding, catalog, config, hasRole, readOnly, refreshConfig, refreshState, state, toast, toastError } from "../store";
 import { Banner, Button, Card, Empty, Pill, Term } from "../ui";
 import { MetricTile, useSparks } from "../widgets";
+import { deviceName, roleName } from "../catnames";
 
 /** Schaltausgang einer Rolle: Zustand, Gerät, Leistung, Handbetrieb. */
 export function OutputRow(p: { role: string; compact?: boolean }) {
@@ -29,7 +30,7 @@ export function OutputRow(p: { role: string; compact?: boolean }) {
           <Zap size={14} />
         </span>
         <span class="grow">
-          <strong>{rd.label}</strong>
+          <strong>{roleName(p.role)}</strong>
           <div class="muted small">{t("area.unassigned")}</div>
         </span>
         <a class="btn sm" href="#/geraete?tab=geraete">
@@ -42,14 +43,14 @@ export function OutputRow(p: { role: string; compact?: boolean }) {
   const dev = st.devices.find((d) => d.id === b.device);
   const net = !!dev?.class.startsWith("shelly_");
   const power = net ? dev?.info?.outlets?.[b.channel]?.powerW ?? null : null;
-  const where = dev ? `${dev.name || dev.classLabel} · ${net ? t("port.outlet", { n: b.channel + 1 }) : t("port.out12v", { n: b.channel + 1 })}` : b.device;
+  const where = dev ? `${deviceName(dev)} · ${net ? t("port.outlet", { n: b.channel + 1 }) : t("port.out12v", { n: b.channel + 1 })}` : b.device;
   return (
     <div class="item" data-testid={`output-${p.role}`}>
       <span class={`outlet-state ${on ? "on" : ""}`}>
         <Zap size={14} />
       </span>
       <span class="grow">
-        <strong>{rd.label}</strong>
+        <strong>{roleName(p.role)}</strong>
         <div class="muted small">
           {where}
           {power !== null ? ` · ${num(power, 0)} W` : ""}

@@ -2,6 +2,7 @@
 #include "gc/catalog.hpp"
 
 #include <cstdio>
+#include <map>
 #include <stdexcept>
 
 #include "gc/embedded.hpp"
@@ -202,6 +203,54 @@ Catalog Catalog::fromJson(const json& j) {
 }
 
 Catalog Catalog::builtin() { return fromJson(json::parse(embedded::kCatalogJson)); }
+
+Msg nameOf(const CapabilityDef& c) { return {"cat.cap." + c.id, c.label, json::object()}; }
+Msg nameOf(const DeviceClassDef& d) { return {"cat.class." + d.id, d.label, json::object()}; }
+Msg nameOf(const RoleDef& r) { return {"cat.role." + r.id, r.label, json::object()}; }
+Msg nameOf(const FunctionDef& f) { return {"cat.fn." + f.id, f.label, json::object()}; }
+Msg nameOf(const FunctionDef& f, const ParamDef& p) { return {"cat.param." + f.id + "." + p.key, p.label, json::object()}; }
+
+bool ownName(const std::string& name, const std::string& cls, const Catalog& cat) {
+  if (name.empty()) return false;
+  // The class names as the German catalog had them, which a device accepted
+  // without a name stored until 0.1.0-proto.5 (SD-083); fixed, never extended
+  static const std::map<std::string, std::string> kFormer = {
+      {"dosing_block", "Dosierblock"},
+      {"pump_cap", "Pumpe"},
+      {"head_ph_ec", "Sensorkopf pH/EC"},
+      {"head_ph", "Sensorkopf pH"},
+      {"head_ec", "Sensorkopf EC"},
+      {"head_level", "Sensorkopf Füllstand"},
+      {"head_climate", "Sensorkopf Klima"},
+      {"head_co2", "Sensorkopf CO2"},
+      {"shelly_plug", "Schaltbare Steckdose"},
+      {"shelly_strip4", "Schaltbare Steckdosenleiste"},
+      {"hub_outputs", "12-V-Ausgänge des Hubs"},
+      {"ha_ph", "pH aus Home Assistant"},
+      {"ha_ec", "EC aus Home Assistant"},
+      {"ha_water_temp", "Wassertemperatur aus Home Assistant"},
+      {"ha_level", "Füllstand aus Home Assistant"},
+      {"ha_air_temp", "Lufttemperatur aus Home Assistant"},
+      {"ha_humidity", "Luftfeuchte aus Home Assistant"},
+      {"ha_co2", "CO2 aus Home Assistant"},
+      {"ha_ph_raw", "pH aus Home Assistant (Rohwert)"},
+  };
+  auto former = kFormer.find(cls);
+  if (former != kFormer.end() && name == former->second) return false;
+  const DeviceClassDef* dc = cat.deviceClass(cls);
+  return !(dc && name == dc->label);
+}
+
+json roleName(const Catalog& cat, const std::string& id) {
+  const RoleDef* rd = cat.role(id);
+  return rd ? json(nameOf(*rd)) : json(id);
+}
+
+json deviceName(const Catalog& cat, const std::string& id, const std::string& cls, const std::string& name) {
+  if (ownName(name, cls, cat)) return name;
+  const DeviceClassDef* dc = cat.deviceClass(cls);
+  return dc ? json(nameOf(*dc)) : json(id);
+}
 
 bool RoleDef::allows(const std::string& cap) const {
   for (const auto& a : accepts)

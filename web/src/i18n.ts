@@ -9,6 +9,7 @@
 import { signal } from "@preact/signals";
 import { de } from "./lang/de";
 import { en } from "./lang/en";
+import { catDe } from "./lang/cat";
 import { msgDe } from "./lang/msg";
 
 export type Lang = "de" | "en";
@@ -108,7 +109,16 @@ function msgAt(m: unknown, depth: number): string {
     const vars = args && typeof args === "object" && !Array.isArray(args) ? args : {};
     return fill(msgDe[key], vars, depth);
   }
+  // A catalog name: German by its key, the hub's text is the catalog's English (SD-083)
+  if (lang.value === "de" && typeof key === "string" && own(catDe, key)) return catDe[key];
   return typeof text === "string" ? text : "";
+}
+
+/** A catalog entry's name or text in the current language (SD-083 point 3):
+ *  German from the table by its key, otherwise the catalog's English. */
+export function catText(key: string, english: string | undefined, fallback = ""): string {
+  if (lang.value === "de" && own(catDe, key)) return catDe[key];
+  return english ?? fallback;
 }
 
 /** Gebietsschema für Zahlen und Datum. */

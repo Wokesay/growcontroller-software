@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "client.hpp"
+#include "gc/messages.hpp"
 
 using gc::json;
 using test::Client;
@@ -252,7 +253,8 @@ TEST_CASE("Szenario: Pumpenkappe am Hub-Port wird nicht freigegeben (PD-012)") {
   s.step(2000);
   auto port = c.state()["ports"][1];
   CHECK(port["state"] == "rejected");
-  CHECK(port["message"]["text"].get<std::string>().find("Dosierblock") != std::string::npos);
+  CHECK(port["message"]["key"] == "port.cap_on_hub");
+  CHECK(port["message"]["text"].get<std::string>().find("dosing block") != std::string::npos);
 }
 
 TEST_CASE("Szenario Stufe 1: Regelung bringt pH und EC ins Ziel, ohne Rastung") {
@@ -296,6 +298,45 @@ TEST_CASE("Szenario: EC-Gate – in Osmosewasser kein pH− (RAT-046)") {
   CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.gate");
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+}
+
+TEST_CASE("Scenario: while a job or EC control doses, a manual dose, a pump calibration and priming are refused as such, and nothing starts (SD-083)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  std::string pump;
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& k : cfg["canisters"])
+    if (k["id"] == "teil-a") pump = k["pump"];
+  REQUIRE_FALSE(pump.empty());
+  const std::vector<std::pair<std::string, gc::json>> calls = {{"/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}}},
+                                                               {"/api/v1/pumps/" + pump + "/calibrate", {{"seconds", 30}}},
+                                                               {"/api/v1/pumps/" + pump + "/prime", {{"seconds", 3}}}};
+  // A job of the user: the demo starts with a mix
+  const gc::json job = c.state()["job"];
+  REQUIRE_FALSE(job.is_null());
+  for (const auto& [path, body] : calls) {
+    CAPTURE(path);
+    auto [st, res] = c.call("POST", path, body);
+    CHECK(st == 409);
+    CHECK(res["error"]["key"] == "job.busy");
+    CHECK(c.state()["job"]["id"] == job["id"]);  // still the same job
+  }
+  REQUIRE(until(s, [&] {
+    auto st = c.state();
+    return st["job"].is_null() && st["dosing"].is_null();
+  }, 4 * 3600 * 1000, 5000));
+  s.world().fill(40, 0.6, 5.9);  // EC well below the target: an EC round follows
+  REQUIRE(until(s, [&] { return !c.state()["dosing"].is_null(); }, 2 * 3600 * 1000, 500));
+  REQUIRE(c.state()["dosing"]["purpose"] == "ec");
+  // EC control dosing
+  for (const auto& [path, body] : calls) {
+    CAPTURE(path);
+    auto [st, res] = c.call("POST", path, body);
+    CHECK(st == 409);
+    CHECK(res["error"]["key"] == "job.dosing");
+    CHECK(c.state()["job"].is_null());  // no job of its own was started
+  }
 }
 
 TEST_CASE("Scenario: an EC round doses the recipe's parts but never a fixed addition (SD-057, RAT-085)") {
@@ -400,7 +441,7 @@ TEST_CASE("Scenario: a calibration of the hub's own pH probe left open stops exp
   s.step(10 * 60 * 1000);
   st = c.state();
   CHECK(st["controllers"]["ph"]["state"] == "blocked");
-  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump");
+  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump_ph");  // a rise
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
@@ -442,9 +483,17 @@ TEST_CASE("Scenario: a pH jump while the hub's own pH dose settles still locks t
   st = c.state();
   CHECK(st["controllers"]["ph"]["state"] == "blocked");
   CHECK(st["controllers"]["ph"]["line"]["key"] == "ph.invalid");
-  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump");
+  CHECK(st["controllers"]["ph"]["line"]["args"]["reason"]["key"] == "truth.jump_ph");  // a rise
   for (const auto& e : findEvents(c, "dose"))
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
+  // Every event of the run fits its template, so it keeps its key, and its language, after a restart (SD-083)
+  const json events = c.ok("GET", "/api/v1/events?limit=500")["events"];  // held: a loop over a temporary's member dangles
+  for (const auto& e : events)
+    for (const char* part : {"title", "text"}) {
+      const json& m = e[part];
+      if (m.is_object() && !gc::jstr(m, "key").empty())
+        CHECK_MESSAGE(gc::fitsTemplate(gc::jstr(m, "key"), m.contains("args") ? m["args"] : json::object()), m.dump());
+    }
 }
 
 TEST_CASE("Szenario: Trockenlauf – Umwälzpumpe aus, Rastung, Quittierung (M11-1, RAT-062)") {

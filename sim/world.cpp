@@ -71,7 +71,7 @@ bool World::unplug(int port) {
   for (auto& s : it->second.slots)
     if (s && s->state == 1) {
       s->state = 3;
-      s->error = "Dosierblock getrennt";
+      s->error = "dosing block disconnected";
       runningCap_.clear();
     }
   ports.erase(it);
@@ -125,20 +125,20 @@ bool World::startRun(const std::string& capId, Ms ms, const std::string& jobId, 
   Device* block = nullptr;
   Cap* c = cap(capId, &block);
   if (!c || !block) {
-    err = "Pumpe nicht gefunden";
+    err = "pump not found";
     return false;
   }
   if (block->fault == "offline") {
-    err = "Dosierblock antwortet nicht";
+    err = "dosing block not responding";
     return false;
   }
   if (c->jobId == jobId && c->state != 0) return true;  // Wiederholung: nicht doppelt dosieren
   if (!runningCap_.empty()) {
-    err = "busy: ein Kanal läuft bereits";
+    err = "busy: a channel is already running";
     return false;
   }
   if (ms <= 0 || ms > kHwLimitMs) {
-    err = "über dem Zeitlimit in Hardware";
+    err = "over the hardware time limit";
     return false;
   }
   c->jobId = jobId;
@@ -156,7 +156,7 @@ void World::stopAllPumps() {
     for (auto& s : d.slots)
       if (s && s->state == 1) {
         s->state = 3;
-        s->error = "gestoppt";
+        s->error = "stopped";
       }
   runningCap_.clear();
 }
@@ -266,7 +266,7 @@ void World::step(Ms dt) {
       s->elapsed += dt;
       if (s->blocked && s->elapsed >= 300) {
         s->state = 3;
-        s->error = "Blockade erkannt (Motorstrom)";
+        s->error = "blockage detected (motor current)";
         runningCap_.clear();
         continue;
       }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <cmath>
+
 #include "fakes.hpp"
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -77,7 +79,103 @@ TEST_CASE("Sensorwahrheit: veraltet und unplausibel") {
   f.clk.ms += 61000;
   CHECK(f.run("tank.ph").quality == Quality::Stale);
   f.ph(9.9);  // ≈ pH 9,7 – außerhalb 3–9 (RAT-020)
-  CHECK(f.run("tank.ph").quality == Quality::Implausible);
+  const Reading bad = f.run("tank.ph");
+  CHECK(bad.quality == Quality::Implausible);
+  // The reason as a message: the value at the sensor's decimals, its range, in the page's language (SD-083)
+  CHECK(bad.reason.key == "truth.implausible");
+  const double v = bad.reason.args["value"].get<double>();
+  CHECK(v == std::round(v * 100) / 100);  // at the sensor's two decimals
+  CHECK(bad.reason.args["min"] == 3);
+  CHECK(bad.reason.args["max"] == 9);
+  CHECK(bad.reason.text.find("outside the possible range 3–9 –") != std::string::npos);  // pH has no unit
+}
+
+TEST_CASE("Sensor truth: a jump other than pH names no dose of the hub's own, which announces itself (RAT-042, #162)") {
+  Fix f;
+  for (int i = 0; i < 6; ++i) {
+    f.bus.set("PH-1", "measure.ec", 1.20 + 0.001 * i, f.clk.ms);
+    f.run("tank.ec");
+    f.clk.ms += 5000;
+  }
+  f.bus.set("PH-1", "measure.ec", 2.40, f.clk.ms);  // +1.2 mS/cm in seconds
+  const Reading r = f.run("tank.ec");
+  REQUIRE(r.quality == Quality::Jump);
+  CHECK(r.reason.key == "truth.jump");
+  CHECK(r.reason.text.find("dose") == std::string::npos);
+  CHECK(r.reason.text.find("at the tank") != std::string::npos);
+  CHECK(r.reason.text.find("near the plants") == std::string::npos);
+  CHECK(r.reason.text.find("check the sensor") != std::string::npos);
+  CHECK(r.reason.text.find("2.4\u00a0mS/cm") != std::string::npos);
+}
+
+TEST_CASE("Sensor truth: a jump of a reading in the grow area names work near the plants, not at the tank (RAT-042)") {
+  Fix f;
+  f.cfg.devices.push_back({"CL-1", "head_climate", "Climate"});
+  f.cfg.rolesFor("zone.air_temp")["zone.air_temp"] = {"CL-1", 0};
+  f.bus.head("CL-1", true, "head_climate");
+  for (int i = 0; i < 6; ++i) {
+    f.bus.set("CL-1", "measure.air_temp", 24.0 + 0.01 * i, f.clk.ms);
+    f.run("zone.air_temp");
+    f.clk.ms += 5000;
+  }
+  f.bus.set("CL-1", "measure.air_temp", 31.0, f.clk.ms);  // +7 °C in seconds
+  const Reading r = f.run("zone.air_temp");
+  REQUIRE(r.quality == Quality::Jump);
+  CHECK(r.reason.key == "truth.jump_zone");
+  CHECK(r.reason.text.find("near the plants") != std::string::npos);
+  CHECK(r.reason.text.find("at the tank") == std::string::npos);
+  CHECK(r.reason.text.find("31\u00a0°C") != std::string::npos);
+}
+
+TEST_CASE("Sensor truth: a jump lock whose values are gone shows \"–\" for them, never 0 and never a fall (R5, RAT-044)") {
+  Fix f;
+  f.ph(7.18);
+  f.run("tank.ph");
+  f.clk.ms += 5000;
+  f.rt.jumpLocks["tank.ph"] = f.clk.epoch() + 900;  // a lock without the latch that holds from and to
+  f.ph(7.181);
+  const Reading r = f.run("tank.ph");
+  REQUIRE(r.quality == Quality::Jump);
+  CHECK(r.reason.key == "truth.jump_ph");
+  CHECK(r.reason.args["from"].is_null());
+  CHECK(r.reason.args["to"].is_null());
+  CHECK(r.reason.text.find("from – to –") != std::string::npos);
+}
+
+TEST_CASE("Sensor truth: a pH fall names the hub's own dose as one possible cause, and that the hub only lowers pH (RAT-041, RAT-042, #162)") {
+  Fix f;
+  for (int i = 0; i < 6; ++i) {
+    f.ph(7.40 - 0.001 * i);  // ≈ pH 7.2
+    f.run("tank.ph");
+    f.clk.ms += 5000;
+  }
+  f.ph(6.18);  // ≈ −1.25 pH in seconds
+  const Reading fell = f.run("tank.ph");
+  REQUIRE(fell.quality == Quality::Jump);
+  CHECK(fell.reason.key == "truth.jump_ph_fall");
+  CHECK(fell.reason.args["to"].get<double>() < fell.reason.args["from"].get<double>());
+  CHECK(fell.reason.text.find("the hub's pH dose") != std::string::npos);
+  CHECK(fell.reason.text.find("Measure by hand") != std::string::npos);
+  CHECK(fell.reason.text.find("the hub only lowers pH") != std::string::npos);
+}
+
+TEST_CASE("Sensor truth: a level jump asks about filling or draining by hand without maintenance mode (RAT-042)") {
+  Fix f;
+  f.cfg.devices.push_back({"LVL-1", "head_level", "Level"});
+  f.cfg.tank().roles["tank.level"] = {"LVL-1", 0};
+  f.cfg.calibrations["LVL-1"]["tank_curve"] = {{"points", {{0.0, 0.0}, {1.0, 100.0}}}};
+  f.bus.head("LVL-1", true, "head_level");
+  for (int i = 0; i < 6; ++i) {
+    f.bus.set("LVL-1", "measure.level", 0.50 + 0.001 * i, f.clk.ms);  // ≈ 50 L
+    f.run("tank.level");
+    f.clk.ms += 5000;
+  }
+  f.bus.set("LVL-1", "measure.level", 0.80, f.clk.ms);  // +30 L in seconds
+  const Reading r = f.run("tank.level");
+  REQUIRE(r.quality == Quality::Jump);
+  CHECK(r.reason.key == "truth.jump_level");
+  CHECK(r.reason.text.find("Filled or drained by hand? Then start maintenance mode first next time.") != std::string::npos);
+  CHECK(r.reason.text.find("80\u00a0L") != std::string::npos);
 }
 
 TEST_CASE("Sensorwahrheit: Sprungsperre, überlebt Neustart, frei nach 15 min Ruhe (M8-2)") {
@@ -88,7 +186,17 @@ TEST_CASE("Sensorwahrheit: Sprungsperre, überlebt Neustart, frei nach 15 min Ru
     f.clk.ms += 5000;
   }
   f.ph(7.40);  // ≈ +1,25 pH in Sekunden, ohne Dosierung
-  CHECK(f.run("tank.ph").quality == Quality::Jump);
+  const Reading jumped = f.run("tank.ph");
+  CHECK(jumped.quality == Quality::Jump);
+  // A rise is never the hub's own dose, which only lowers pH: the reason names the probe and work at the tank (RAT-041, RAT-042)
+  CHECK(jumped.reason.key == "truth.jump_ph");
+  CHECK(jumped.reason.args["from"].is_number());
+  CHECK(jumped.reason.args["to"].is_number());
+  CHECK(jumped.reason.text.find("rose from") != std::string::npos);
+  CHECK(jumped.reason.text.find("check the probe against a hand measurement") != std::string::npos);
+  CHECK(jumped.reason.text.find("dose") == std::string::npos);
+  // The lock lifts on time alone, so the text sets no condition on the probe (RAT-044)
+  CHECK(jumped.reason.text.find("The lock lifts after 15\u00a0min steady.") != std::string::npos);
   CHECK(f.rt.jumpLocks.count("tank.ph") == 1);
   // "Neustart": neue Sensorwahrheit, gleicher Laufzeitzustand
   SensorTruth again(f.cat);
@@ -132,7 +240,7 @@ TEST_CASE("Sensorwahrheit: stillstehender Rohwert wird erkannt (RAT-023)") {
 }
 
 TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)") {
-  std::string err;
+  gc::Msg err;
   auto c = Curve::fromJson({{"points", {{0.5, 0.0}, {0.59, 3.0}, {1.07, 15.0}, {2.39, 48.0}}}}, err);
   REQUIRE(c);
   CHECK(c->map(0.4) == doctest::Approx(0.0));
@@ -140,8 +248,16 @@ TEST_CASE("Kennlinie: stückweise linear, streng steigend (RAT-078, M10-4/M10-5)
   CHECK(c->map(0.83) == doctest::Approx(9.0));
   CHECK(c->map(2.79) == doctest::Approx(58.0));  // über dem letzten Punkt mit dessen Steigung
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {0.502, 3.0}}}}, err));  // < 3 mV
+  CHECK(err.key == "curve.order");
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}}}}, err));
+  CHECK(err.key == "curve.two");
   CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 5.0}, {1.0, 3.0}}}}, err));
+  CHECK(err.key == "curve.falls");
+  CHECK_FALSE(Curve::fromJson({{"points", {{0.5, 0.0}, {"x", 3.0}}}}, err));
+  CHECK(err.key == "curve.point");
+  CHECK_FALSE(Curve::fromJson(gc::json::object(), err));
+  CHECK(err.key == "curve.missing");
+  CHECK(err.text == "No points recorded");  // the hub's text is English; the page translates by the key (SD-083)
 }
 
 TEST_CASE("Sensor truth: a value calibrated elsewhere is shown, but not used for control (RAT-025)") {

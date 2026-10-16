@@ -115,7 +115,7 @@ export const deBase = {
   "term.latched": "Gesperrt bis Freigabe",
   "help.latched": "Ein Schutz hat ein laufendes Gerät abgeschaltet. Es bleibt aus, bis du die Ursache behoben und „Freigeben“ gedrückt hast.",
   "term.jumpLock": "Sprungsperre",
-  "help.jumpLock": "Ein Messwert ist ohne Grund gesprungen. Dosiert wird erst wieder, wenn er ruhig ist.",
+  "help.jumpLock": "Ein Messwert ist unerwartet gesprungen. Der Hub nutzt ihn erst wieder, wenn er 15\u00a0min ruhig ist – freigeben musst du nichts.",
   "term.maintenance": "Pflegemodus",
   "help.maintenance": "Für Tankwechsel und Reinigung: kein Dosieren, kein Nachfüllen, Sprünge gelten als angekündigt.",
   "term.phase": "Phase",

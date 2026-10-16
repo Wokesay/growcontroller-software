@@ -69,7 +69,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # Core tests under the sanitizers and E2E in one job: about 40 min with a
+    # warm compiler cache, past 50 when a change to a common header misses it
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,7 +100,7 @@ jobs:
           restore-keys: ccache-core-
       - name: Architecture, licenses, core, tests, web app
         env:
-          CCACHE_MAXSIZE: 500M
+          CCACHE_MAXSIZE: 1G
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"

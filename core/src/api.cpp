@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstring>
 #include <optional>
-#include <sstream>
 #include <string_view>
 
 #include "gc/embedded.hpp"
@@ -39,8 +38,29 @@ ApiResponse jsonResp(int status, const json& body) {
 
 ApiResponse fromResult(const Result& r) { return jsonResp(r.status, r.body); }
 
-ApiResponse fail(int status, const std::string& key, const std::string& text) {
-  return jsonResp(status, {{"error", {{"key", key}, {"text", text}}}});
+ApiResponse fail(int status, const Msg& m) { return jsonResp(status, {{"error", m}}); }
+
+// The series a request names, separated by commas: each id lower-case
+// letters, digits, dots and underscores, at most 64 characters (it heads a
+// column of the CSV file); at most kMaxSeries of them and none twice, so one
+// request reads a bounded part of the history. An empty list names none.
+constexpr size_t kMaxSeries = 16;
+std::optional<Msg> parseSeries(const std::string& list, std::vector<std::string>& out) {
+  out.clear();
+  if (list.empty()) return std::nullopt;
+  size_t pos = 0;
+  while (true) {
+    const size_t comma = list.find(',', pos);
+    const std::string s = list.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+    const bool okId = !s.empty() && s.size() <= 64 &&
+                      std::all_of(s.begin(), s.end(), [](unsigned char ch) { return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_'; });
+    if (!okId) return say("history.series_id");
+    if (std::find(out.begin(), out.end(), s) != out.end()) return say("history.series_twice", {{"id", s}});
+    if (out.size() == kMaxSeries) return say("history.series_many", {{"max", kMaxSeries}});
+    out.push_back(s);
+    if (comma == std::string::npos) return std::nullopt;
+    pos = comma + 1;
+  }
 }
 
 Epoch qnum(const ApiRequest& r, const char* k, Epoch def) {
@@ -124,15 +144,15 @@ ApiResponse Api::handle(const ApiRequest& req) {
   try {
     return route(req);
   } catch (const json::exception&) {
-    return fail(400, "api.bad_input", "Eingabe hat das falsche Format");
+    return fail(400, say("api.bad_input"));
   } catch (const std::exception&) {
-    return fail(500, "api.internal", "Interner Fehler – bitte als Problem melden");
+    return fail(500, say("api.internal"));
   }
 }
 
 ApiResponse Api::route(const ApiRequest& req) {
   auto p = split(req.path);
-  if (p.size() < 2 || p[0] != "api" || p[1] != "v1") return fail(404, "api.not_found", "Unbekannter Pfad");
+  if (p.size() < 2 || p[0] != "api" || p[1] != "v1") return fail(404, say("api.not_found"));
   p.erase(p.begin(), p.begin() + 2);
   const std::string& m = req.method;
   auto is = [&](const std::string& method, std::initializer_list<const char*> parts) {
@@ -147,7 +167,7 @@ ApiResponse Api::route(const ApiRequest& req) {
   json body = json::object();
   if (!req.body.empty()) {
     body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) return fail(400, "api.json", "Ungültiges JSON");
+    if (body.is_discarded() || !body.is_object()) return fail(400, say("api.json"));
   }
 
   // ---- öffentlich
@@ -166,14 +186,14 @@ ApiResponse Api::route(const ApiRequest& req) {
     // A password file it cannot read is kept: no new password over it, and no factory reset advised (SD-081)
     if (hub_.passwordUnreadable()) return fromResult(Result::fail(423, say("auth.kept", {{"file", "auth.json"}})));
     if (hub_.credentialsLost())
-      return fail(423, "auth.lost", "Zugangsdaten fehlen, obwohl ein Passwort gesetzt war – Werksreset am Gerät nötig");
+      return fail(423, say("auth.lost"));
     const Auth before = hub_.auth();
     const Ms now = clock_.nowMs();
     Msg e = hub_.auth().setInitialPassword(jstr(body, "password"), jstr(body, "code"), now);
     const bool wrongCode = hub_.auth().wrongSetupCodes() > before.wrongSetupCodes();
     if (wrongCode && hub_.auth().logWrongSetupCode(now))
       hub_.logEvent("auth", "warn", say("ev.auth.code_wrong"), say("ev.auth.code_wrong.text", {{"count", hub_.auth().wrongSetupCodes()}}));
-    if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : wrongCode ? 403 : 422, e.key, e.text);
+    if (!e.key.empty()) return fail(e.key == "auth.exists" ? 409 : wrongCode ? 403 : 422, e);
     // auth.json first, on disk; only then the lock against a second setup (#68).
     // Not saved: nothing is set, so setup stays possible once the card takes it.
     if (!hub_.saveAuth()) {
@@ -198,7 +218,7 @@ ApiResponse Api::route(const ApiRequest& req) {
       // Only a counted failure is logged; a try refused during a lockout is
       // not, so guessing cannot wear out the flash or flush the log (SD-051).
       if (err.key == "auth.wrong") hub_.logEvent("auth", "warn", say("ev.auth.failed"), err);
-      return fail(err.key == "auth.locked" ? 429 : 401, err.key, err.text);
+      return fail(err.key == "auth.locked" ? 429 : 401, err);
     }
     hub_.logEvent("auth", "info", say("ev.auth.signed_in"));
     ApiResponse r = jsonResp(200, {{"ok", true}});
@@ -214,15 +234,15 @@ ApiResponse Api::route(const ApiRequest& req) {
   }
 
   // ---- ab hier nur angemeldet (EN 18031-1 ACM)
-  if (!authorized(req)) return fail(401, "auth.required", "Bitte anmelden");
+  if (!authorized(req)) return fail(401, say("auth.required"));
 
   if (is("PUT", {"auth", "password"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     const Auth before = hub_.auth();
     Msg e = hub_.auth().changePassword(jstr(body, "old"), jstr(body, "new"), clock_.nowMs(), req.client);
     if (!e.key.empty()) {
-      if (e.key == "auth.wrong") hub_.logEvent("auth", "warn", say("ev.auth.failed"), e);  // counted like a sign-in
-      return fail(e.key == "auth.locked" ? 429 : 422, e.key, e.text);
+      if (e.key == "auth.wrong_old") hub_.logEvent("auth", "warn", say("ev.auth.failed"), e);  // counted like a sign-in
+      return fail(e.key == "auth.locked" ? 429 : 422, e);
     }
     if (!hub_.saveAuth()) {  // the old password and the sessions stay, in memory as on disk
       hub_.auth() = before;
@@ -249,13 +269,13 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("GET", {"history"})) {
     Epoch now = hub_.now();
     auto it = req.query.find("series");
-    if (it == req.query.end()) return fail(422, "history.series", "series fehlt");
+    if (it == req.query.end()) return fail(422, say("history.series"));
     Epoch from = qnum(req, "from", now - 24 * 3600), to = qnum(req, "to", now);
     size_t points = static_cast<size_t>(std::max<Epoch>(10, std::min<Epoch>(qnum(req, "points", 600), 4000)));
+    std::vector<std::string> series;
+    if (auto e = parseSeries(it->second, series)) return fail(422, *e);
     json out = json::array();
-    std::stringstream ss(it->second);
-    std::string s;
-    while (std::getline(ss, s, ',')) out.push_back(hub_.history(s, from, to, points));
+    for (const auto& s : series) out.push_back(hub_.history(s, from, to, points));
     return jsonResp(200, {{"from", from}, {"to", to}, {"series", out}});
   }
   if (is("GET", {"events"})) {
@@ -268,17 +288,8 @@ ApiResponse Api::route(const ApiRequest& req) {
     Epoch now = hub_.now();
     std::vector<std::string> series;
     auto it = req.query.find("series");
-    const std::string list = it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second;
-    if (!list.empty() && list.back() == ',') return fromResult(Result::fail(422, say("history.series_id")));  // an empty last id
-    std::stringstream ss(list);
-    std::string s;
-    while (std::getline(ss, s, ',')) {
-      // A series id is lower-case letters, digits, dots and underscores; it heads a column of the file
-      const bool okId = !s.empty() && s.size() <= 64 &&
-                        std::all_of(s.begin(), s.end(), [](unsigned char ch) { return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_'; });
-      if (!okId) return fromResult(Result::fail(422, say("history.series_id")));
-      series.push_back(s);
-    }
+    if (auto e = parseSeries(it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second, series))
+      return fail(422, *e);
     // The page's language, else the hub's (RAT-016, SD-083)
     auto l = req.query.find("lang");
     const std::string lang = l != req.query.end() && (l->second == "de" || l->second == "en") ? l->second : hub_.language();
@@ -297,13 +308,13 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("DELETE", {"devices", "*"})) return fromResult(hub_.removeDevice(p[1]));
   if (is("PUT", {"roles", "*"})) {
     double ch = jnum(body, "channel", 0);
-    if (!isNum(ch) || ch < 0 || ch > 15) return fail(422, "role.channel", "Kanal ungültig");
+    if (!isNum(ch) || ch < 0 || ch > 15) return fail(422, say("role.channel"));
     return fromResult(hub_.bindRole(p[1], jstr(body, "device"), static_cast<int>(ch)));
   }
   if (is("DELETE", {"roles", "*"})) return fromResult(hub_.unbindRole(p[1]));
   if (is("POST", {"roles", "*", "test"})) return fromResult(hub_.testRole(p[1]));
   if (is("POST", {"roles", "*", "switch"})) {
-    if (!body.contains("on") || !body["on"].is_boolean()) return fail(422, "role.switch", "„on“ muss true oder false sein");
+    if (!body.contains("on") || !body["on"].is_boolean()) return fail(422, say("role.switch"));
     return fromResult(hub_.switchRole(p[1], body["on"].get<bool>()));
   }
   if (is("PUT", {"tank"})) return fromResult(hub_.putTank(body));
@@ -339,7 +350,7 @@ ApiResponse Api::route(const ApiRequest& req) {
 
   if (p.size() >= 1 && p[0] == "update") {
     IUpdater* u = hub_.updater();
-    if (!u) return fail(501, "update.none", "Updates auf dieser Plattform nicht verfügbar");
+    if (!u) return fail(501, say("update.none"));
     if (is("GET", {"update"})) return jsonResp(200, u->status());
     if (is("POST", {"update", "check"})) return jsonResp(200, u->check());
     // Nur im sicheren Zustand: keine Dosierung, kein Auftrag, kein offener Zulauf
@@ -351,17 +362,17 @@ ApiResponse Api::route(const ApiRequest& req) {
       return jobActive || !st["dosing"].is_null() || jbool(st["outputs"], "tank.inlet", false);
     };
     if (is("POST", {"update", "install"})) {
-      if (busy()) return fail(409, "update.busy", "Update wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
+      if (busy()) return fail(409, say("update.busy"));
       hub_.logEvent("system", "notice", say("ev.update.requested"), say("ev.plain", {{"text", jstr(body, "version")}}));
       return jsonResp(200, u->install(jstr(body, "version")));
     }
     if (is("POST", {"update", "rollback"})) {
-      if (busy()) return fail(409, "update.busy", "Rückkehr wartet, bis keine Dosierung, kein Auftrag und kein Zulauf läuft");
+      if (busy()) return fail(409, say("update.busy_back"));
       hub_.logEvent("system", "notice", say("ev.update.rollback"));
       return jsonResp(200, u->rollback());
     }
   }
-  return fail(404, "api.not_found", "Unbekannter Pfad");
+  return fail(404, say("api.not_found"));
 }
 
 }  // namespace gc

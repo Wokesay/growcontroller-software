@@ -51,7 +51,7 @@ std::vector<gc::DeviceReport> EspBus::devices() const {
 std::optional<gc::Sample> EspBus::sample(const std::string&, const std::string&) const { return std::nullopt; }
 
 bool EspBus::startRun(const std::string&, gc::Ms, const std::string&, std::string& err) {
-  err = "Dosierblock-Treiber folgt (M1)";
+  err = "dosing block driver follows (M1)";
   return false;
 }
 
@@ -61,7 +61,7 @@ void EspBus::stopAllPumps() {}
 
 bool EspBus::setSwitch(const std::string& dev, int channel, bool on, std::string& err) {
   if (dev != kHubOut || channel < 0 || channel > 1) {
-    err = "unbekannter Ausgang";
+    err = "unknown output";
     return false;
   }
   out_[channel] = on;
@@ -75,7 +75,7 @@ std::optional<bool> EspBus::switchState(const std::string& dev, int channel) con
 }
 
 bool EspBus::writePumpCalibration(const std::string&, double, std::string& err) {
-  err = "Dosierblock-Treiber folgt (M1)";
+  err = "dosing block driver follows (M1)";
   return false;
 }
 

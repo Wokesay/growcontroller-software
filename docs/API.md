@@ -81,9 +81,9 @@ UI can do, an integration can do as well.
 | GET | `/events/stream` | Server-Sent Events: `event: state` every 1 s |
 | GET | `/config`, `/config/export` | configuration without secrets |
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
-| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
+| GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`); at most 16 series, none twice (else 422 `history.series_many`, `history.series_twice`), each id as for `/export.csv` |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column), at most 16 series and none twice as for `/history`: `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
@@ -102,14 +102,26 @@ UI can do, an integration can do as well.
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
 | POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes, whose steps may be `fixed` (a fixed addition, never one of a pair: `cfg.recipe.fixed_pair`, RAT-085; a step without it counts as not fixed, anything but true or false is 422 `recipe.fixed`), with the chart's `refEc` (mS/cm) and `ph` `[low, high]`: a missing key keeps them, `null` clears them, another type is 422 `recipe.ref_ec` or `recipe.ph`, an EC that does not fit the amounts or a range out of order is refused by the configuration check (`cfg.recipe.ref_far`, `cfg.recipe.ref_strong`, `cfg.recipe.ref_range`, `cfg.recipe.ph_band`, SD-057); a template brings its chart EC and pH range; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
-| PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
-| POST | `/config/import` | validated, actuators off first |
+| PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 `function.not_ready` with what is missing in `args.reason`) |
+| POST | `/config/import` | validated, actuators off first; 422 `config.newer` for a file from a newer version, `config.import` for one that cannot be read; 409 `config.busy` while dosing or mixing |
 
 Errors come as `{"error":{"key","text","args"},"errors":[…]}` (`args`
 only when there are any). When the
 configuration check refuses a change (422), `error` is the first of its
 findings in `errors`, with its key and arguments, so a page can show it
-in its own language.
+in its own language. `errors` lists at most 50 findings; `more` counts
+the rest. A refusal has a key of its own and an English text: those of
+the API, the sign-in, the configuration check, a calibration, the
+import, the checks of a job request, the transport's (`api.origin`,
+`api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
+(SD-083). Still German until their work follows: the reasons a mix plan
+or a dose split gives (`mix.*`, `dose.no_flow`, `dose.too_small`, …;
+with SD-057). A
+device's own error text inside `act.bus`,
+`act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
+`dose.failed` is English and has no key. A message an event saved
+under an older template that no longer fits keeps its own text (no
+key), also one nested in its arguments.
 
 Every text the hub sends is a message `{"key","text","args"}` (SD-032):
 `key` is stable, `args` holds the values (numbers as numbers, a nested
@@ -117,12 +129,26 @@ message as an object) and `text` is English for every key in
 `core/src/messages.cpp`. The web app shows German from
 `web/src/lang/msg.ts`. Controller lines, checklist entries, the
 watchdog (`headline`, each item's `label` and `text`), job messages,
-events (`title`, `text`) and errors are messages; a reading's label is
-the catalog label without a key until the catalog follows. An argument
+events (`title`, `text`), errors, a reading's `reason` (its values
+rounded to the reading's decimals, `unit` with its no-break space; a
+jump lock: a pH rise `truth.jump_ph`, a pH fall `truth.jump_ph_fall`,
+a level `truth.jump_level`, a reading of the grow area
+`truth.jump_zone`, any other `truth.jump`) and each function's
+`summary` (the first open item and how many more) and checklist entries (`checks[].text`, keys `req.*`; a
+string before #73) are messages. A catalog name inside a message's
+`args` (a role, a device class, a capability, a function, a parameter)
+is a message too, with the key `cat.role.<id>`, `cat.class.<id>`,
+`cat.cap.<id>`, `cat.fn.<id>` or `cat.param.<function>.<key>` and the
+catalog's English as its text; the web app shows German from
+`web/src/lang/cat.ts` (SD-083 point 3). `/catalog` itself is English.
+A device without a name of its own (none stored, or only its class's
+name, also as the German catalog had it) has an empty `name` in
+`/state`, and events name it by its class; `/state` `classLabel` is the
+catalog's English, and `/config` keeps a device's name as stored. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a
-state saved before keeps its plain text; jump locks have no `why`). The other texts follow under #18 and are still
-German until then.
+state saved before keeps its plain text; jump locks have no `why`). The
+texts named above as still German follow with their work.
 
 When the dosing of a job step cannot start or go on (`/mix/start`,
 `/dose`, `/jobs/{id}/continue`, `/jobs/{id}/resume`,
@@ -130,7 +156,8 @@ When the dosing of a job step cannot start or go on (`/mix/start`,
 key `job.start_failed` and the cause as the message in `args.reason`,
 for example `dose.too_small` or `act.stopped` in `args.reason.key`.
 Checks of the request itself keep their own keys (for example
-`job.busy`, `dose.hand_limit`, `job.state`); a mix started during a Stop
+`job.busy` for another job, `job.dosing` while EC or pH control doses,
+`dose.hand_limit`, `job.state`); a mix started during a Stop
 is refused with `act.stopped` itself. Job messages (`job.message`) use their own keys,
 for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 `job.emergency_stop`.

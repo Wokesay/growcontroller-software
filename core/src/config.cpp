@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <type_traits>
@@ -202,11 +203,11 @@ void to_json(json& j, const Config& c) {
 }
 
 json migrateConfig(json j) {
-  if (!j.is_object()) throw std::runtime_error("Konfiguration ist kein Objekt");
+  if (!j.is_object()) throw std::runtime_error("the configuration is not an object");
   const int v = whole(j, "schemaVersion", 0, -1);
   if (v < 0) throw std::runtime_error("the configuration has no valid schema version");
   if (v > kSchemaVersion)
-    throw std::runtime_error("Konfiguration stammt aus einer neueren Version (Schema " + std::to_string(v) + ")");
+    throw std::runtime_error("the configuration comes from a newer version (schema " + std::to_string(v) + ")");
   // v0 → v1: frühe Entwürfe hatten einen einzelnen "tank" statt "tanks".
   if (v < 1) {
     if (j.contains("tank") && !j.contains("tanks")) {
@@ -365,7 +366,7 @@ Limits Limits::bounded() const {
 
 std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   std::vector<Msg> out;
-  auto err = [&](const std::string& key, const std::string& text) { out.push_back({key, text, json::object()}); };
+  auto err = [&](Msg m) { out.push_back(std::move(m)); };
   auto paramOf = [&](const char* fn, const char* key) -> const ParamDef* {
     const FunctionDef* fd = cat.function(fn);
     return fd ? fd->param(key) : nullptr;
@@ -374,64 +375,65 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   // Grenzen dürfen nur verschärfen (R7).
   const auto& L = c.limits;
   if (!isNum(L.minRunS) || L.minRunS < kHardMinRunS || L.minRunS > 10)
-    err("cfg.limits.min_run", "Kürzester Pumpenlauf muss zwischen 1 und 10 s liegen");
+    err(say("cfg.limits.min_run"));
   if (!isNum(L.maxRunS) || L.maxRunS > kHardMaxRunS || L.maxRunS < L.minRunS)
-    err("cfg.limits.max_run", "Längster Pumpenlauf muss zwischen dem kürzesten und 60 s liegen");
+    err(say("cfg.limits.max_run"));
   if (!isNum(L.handDoseMaxMl) || L.handDoseMaxMl <= 0 || L.handDoseMaxMl > kHardHandDoseMaxMl)
-    err("cfg.limits.hand", "Grenze je Handgabe muss zwischen 0 und 50 ml liegen");
+    err(say("cfg.limits.hand"));
   if (L.maxPartialRuns < 1 || L.maxPartialRuns > kHardMaxPartialRuns)
-    err("cfg.limits.runs", "Teilläufe je Gabe: 1 bis 6");
+    err(say("cfg.limits.runs"));
 
   std::set<std::string> ids;
   for (const auto& d : c.devices) {
-    if (d.id.empty()) err("cfg.device.id", "Gerät ohne Kennung");
-    if (!ids.insert(d.id).second) err("cfg.device.dup", "Gerät doppelt: " + d.id);
-    if (!cat.deviceClass(d.cls)) err("cfg.device.class", "Unbekannte Geräteklasse " + d.cls + " (Update nötig)");
+    if (d.id.empty()) err(say("cfg.device.id"));
+    if (!ids.insert(d.id).second) err(say("cfg.device.dup", {{"id", d.id}}));
+    if (!cat.deviceClass(d.cls)) err(say("cfg.device.class", {{"cls", d.cls}}));
   }
   const auto& t = c.tank();
-  if (isNum(t.capacityL) && t.capacityL <= 0) err("cfg.tank.capacity", "Nutzvolumen muss größer als 0 sein");
+  if (isNum(t.capacityL) && t.capacityL <= 0) err(say("cfg.tank.capacity"));
   if (isNum(t.minL) && isNum(t.capacityL) && t.minL >= t.capacityL)
-    err("cfg.tank.min", "Mindestfüllstand muss unter dem Nutzvolumen liegen");
+    err(say("cfg.tank.min"));
   // v1 der Logik kennt genau eine Zone; Messen und Regeln lesen nur die erste.
-  if (c.zones.size() > 1) err("cfg.zone.count", "Mehrere Anbaubereiche werden noch nicht unterstützt");
+  if (c.zones.size() > 1) err(say("cfg.zone.count"));
   for (const auto& z : c.zones) {
-    if (z.name.empty()) err("cfg.zone.name", "Der Anbaubereich braucht einen Namen");
-    if (z.kind != "room" && z.kind != "tent" && z.kind != "greenhouse") err("cfg.zone.kind", z.name + ": Art muss Raum, Zelt oder Gewächshaus sein");
+    if (z.name.empty()) err(say("cfg.zone.name"));
+    if (z.kind != "room" && z.kind != "tent" && z.kind != "greenhouse") err(say("cfg.zone.kind", {{"name", z.name}}));
     bool tankKnown = false;
     for (const auto& tk : c.tanks) tankKnown = tankKnown || tk.id == z.tank;
-    if (!tankKnown) err("cfg.zone.tank", z.name + ": Tank " + z.tank + " gibt es nicht");
+    if (!tankKnown) err(say("cfg.zone.tank", {{"name", z.name}, {"tank", z.tank}}));
     for (const auto& [role, b] : z.roles)
-      if (role.rfind("zone.", 0) != 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an die Zone");
+      if (role.rfind("zone.", 0) != 0) err(say("cfg.role.place", {{"role", role}}));
   }
   for (const auto& tk : c.tanks)
     for (const auto& [role, b] : tk.roles)
-      if (role.rfind("zone.", 0) == 0) err("cfg.role.place", "Rolle " + role + " gehört nicht an den Tank");
+      if (role.rfind("zone.", 0) == 0) err(say("cfg.role.place_tank", {{"role", role}}));
   std::vector<std::pair<std::string, Binding>> all;
   c.forEachBinding([&](const std::string& r, const Binding& b) { all.emplace_back(r, b); });
-  std::map<std::pair<std::string, int>, std::string> switchUse;  // Kanal → Rolle
+  std::map<std::pair<std::string, int>, json> switchUse;  // Kanal → Rolle
   for (const auto& [role, b] : all) {
     const RoleDef* rd = cat.role(role);
     if (rd && !rd->profile.empty()) {
       auto key = std::make_pair(b.device, b.channel);
-      if (switchUse.count(key)) err("cfg.role.shared", rd->label + ": Ausgang ist schon „" + switchUse[key] + "“ zugeordnet");
-      else switchUse[key] = rd->label;
+      if (switchUse.count(key)) err(say("cfg.role.shared", {{"label", nameOf(*rd)}, {"other", switchUse[key]}}));
+      else switchUse[key] = nameOf(*rd);
     }
     if (!rd) {
-      err("cfg.role.unknown", "Unbekannte Rolle " + role);
+      err(say("cfg.role.unknown", {{"role", role}}));
       continue;
     }
     const DeviceCfg* d = c.device(b.device);
     if (!d) {
-      err("cfg.role.device", rd->label + ": Gerät " + b.device + " ist nicht eingerichtet");
+      err(say("cfg.role.device", {{"label", nameOf(*rd)}, {"device", b.device}}));
       continue;
     }
     const DeviceClassDef* dc = cat.deviceClass(d->cls);
     bool ok = false;
     if (dc)
       for (const auto& p : dc->provides) ok = ok || rd->allows(p);
-    if (!ok) err("cfg.role.cap", rd->label + ": " + d->name + " liefert das nicht");
+    const json device = deviceName(cat, d->id, d->cls, d->name);
+    if (!ok) err(say("cfg.role.cap", {{"label", nameOf(*rd)}, {"device", device}}));
     const int channels = dc && dc->channels > 0 ? dc->channels : 1;
-    if (b.channel < 0 || b.channel >= channels) err("cfg.role.channel", rd->label + ": " + d->name + " hat keinen Kanal " + std::to_string(b.channel + 1));
+    if (b.channel < 0 || b.channel >= channels) err(say("cfg.role.channel", {{"label", nameOf(*rd)}, {"device", device}, {"n", b.channel + 1}}));
   }
   // A sign of life only for a sensor on its own schedule, whose class says so
   // in code, never by catalog data (SD-042, R7); source and channel as the
@@ -444,39 +446,39 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     const DeviceClassDef* dc = cat.deviceClass(d.cls);
     if (!dc || !dc->ownReportSchedule || d.life.empty() || d.life.size() > 255 || !lifeChars(d.life, true) ||
         d.lifeChannel.size() > 16 || !lifeChars(d.lifeChannel, false))
-      err("cfg.device.life", d.name + ": Lebenszeichen ungültig");
+      err(say("cfg.device.life", {{"name", deviceName(cat, d.id, d.cls, d.name)}}));
   }
   std::set<std::string> pumps, canIds;
   for (const auto& k : c.canisters) {
-    if (k.id.empty() || !canIds.insert(k.id).second) err("cfg.canister.id", "Kanister-Kennung fehlt oder doppelt");
+    if (k.id.empty() || !canIds.insert(k.id).second) err(say("cfg.canister.id"));
     if (k.kind != "nutrient" && k.kind != "ph_down" && k.kind != "ph_up")
-      err("cfg.canister.kind", k.name + ": unbekannter Typ " + k.kind);
+      err(say("cfg.canister.kind", {{"name", k.name}, {"kind", k.kind}}));
     if (!k.pump.empty()) {
-      if (!pumps.insert(k.pump).second) err("cfg.canister.pump", "Eine Pumpe ist zwei Kanistern zugeordnet");
+      if (!pumps.insert(k.pump).second) err(say("cfg.canister.pump"));
       const DeviceCfg* d = c.device(k.pump);
-      if (!d || d->cls != "pump_cap") err("cfg.canister.pumpclass", k.name + ": zugeordnetes Gerät ist keine Pumpe des Dosierblocks");
+      if (!d || d->cls != "pump_cap") err(say("cfg.canister.pumpclass", {{"name", k.name}}));
     }
-    if (!k.pair.empty() && k.kind != "nutrient") err("cfg.canister.pair", k.name + ": nur Nährstoffe bilden Paare");
+    if (!k.pair.empty() && k.kind != "nutrient") err(say("cfg.canister.pair", {{"name", k.name}}));
   }
   // Paare müssen vollständig sein: eine Paar-Gruppe mit nur einem Kanister ist ein Fehler.
   std::map<std::string, int> pairCount;
   for (const auto& k : c.canisters)
     if (!k.pair.empty()) pairCount[k.pair]++;
   for (const auto& [p, n] : pairCount)
-    if (n < 2) err("cfg.pair.single", "Paar " + p + " hat nur einen Kanister");
+    if (n < 2) err(say("cfg.pair.single", {{"pair", p}}));
   for (const auto& r : c.recipes) {
-    if (r.steps.empty()) err("cfg.recipe.empty", "Rezept " + r.name + " hat keine Schritte");
+    if (r.steps.empty()) err(say("cfg.recipe.empty", {{"name", r.name}}));
     std::set<std::string> pairsInRecipe, seen;
     for (const auto& s : r.steps) {
       const CanisterCfg* k = c.canister(s.canister);
       if (!k) {
-        err("cfg.recipe.canister", "Rezept " + r.name + ": unbekannter Kanister");
+        err(say("cfg.recipe.canister", {{"name", r.name}}));
         continue;
       }
-      if (!seen.insert(k->id).second) err("cfg.recipe.twice", "Rezept " + r.name + ": " + k->name + " steht zweimal darin");
+      if (!seen.insert(k->id).second) err(say("cfg.recipe.twice", {{"name", r.name}, {"part", k->name}}));
       // pH-Korrektur ist nie Teil eines Rezepts, sie kommt immer zuletzt (RAT-004).
-      if (k->kind != "nutrient") err("cfg.recipe.ph", "Rezept " + r.name + ": " + k->name + " ist kein Nährstoff (pH kommt zuletzt)");
-      if (!isNum(s.mlPerL) || s.mlPerL <= 0) err("cfg.recipe.amount", "Rezept " + r.name + ": Menge für " + k->name + " fehlt");
+      if (k->kind != "nutrient") err(say("cfg.recipe.ph", {{"name", r.name}, {"part", k->name}}));
+      if (!isNum(s.mlPerL) || s.mlPerL <= 0) err(say("cfg.recipe.amount", {{"name", r.name}, {"part", k->name}}));
       if (!k->pair.empty()) pairsInRecipe.insert(k->pair);
       // A fixed part of a pair would leave its partner scaled alone (RAT-054)
       if (s.fixed && !k->pair.empty()) out.push_back(say("cfg.recipe.fixed_pair", {{"name", r.name}, {"part", k->name}}));
@@ -487,7 +489,7 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         const CanisterCfg* k = c.canister(s.canister);
         if (k && k->pair == p) inRecipe++;
       }
-      if (inRecipe != pairCount[p]) err("cfg.recipe.pair", "Rezept " + r.name + ": Paar " + p + " unvollständig");
+      if (inRecipe != pairCount[p]) err(say("cfg.recipe.pair", {{"name", r.name}, {"pair", p}}));
     }
     // The chart's EC becomes a phase's target, so it lies in the target's range;
     // the effect it implies lies within a quarter to four times the start effect
@@ -525,33 +527,40 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         out.push_back(say("cfg.recipe.ph_band", {{"name", r.name}, {"min", lo}, {"max", hi}}));
     }
   }
-  auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::string& where) {
+  // A finding names the function and the parameter, and for a phase's value the phase too
+  auto checkParam = [&](const FunctionDef& fd, const ParamDef& pd, const json& val, const std::optional<std::string>& phase) {
     if (pd.type != "number") return;
+    json args = {{"fn", nameOf(fd)}, {"param", nameOf(fd, pd)}};
+    if (phase) args["phase"] = *phase;
     if (!val.is_number()) {
-      err("cfg.param.type", where + fd.label + ": " + pd.label + " muss eine Zahl sein");
+      err(say(phase ? "cfg.phase.type" : "cfg.param.type", args));
       return;
     }
     double v = val.get<double>();
-    if (!isNum(v) || (isNum(pd.min) && v < pd.min) || (isNum(pd.max) && v > pd.max))
-      err("cfg.param.range", where + fd.label + ": " + pd.label + " außerhalb " + fmt(pd.min, 2) + "–" + fmt(pd.max, 2));
+    if (!isNum(v) || (isNum(pd.min) && v < pd.min) || (isNum(pd.max) && v > pd.max)) {
+      args["min"] = numOrNull(pd.min);
+      args["max"] = numOrNull(pd.max);
+      args["unit"] = pd.unit.empty() ? std::string() : "\u00a0" + pd.unit;  // with its space, so none is left without one
+      err(say(phase ? "cfg.phase.range" : "cfg.param.range", args));
+    }
   };
   for (const auto& [id, f] : c.functions) {
     const FunctionDef* fd = cat.function(id);
     if (!fd) {
-      err("cfg.function.unknown", "Unbekannte Funktion " + id);
+      err(say("cfg.function.unknown", {{"id", id}}));
       continue;
     }
     if (!f.params.is_object()) {
-      err("cfg.param.type", fd->label + ": Parameter ungültig");
+      err(say("cfg.params", {{"fn", nameOf(*fd)}}));
       continue;
     }
     for (const auto& [key, val] : f.params.items()) {
       const ParamDef* pd = fd->param(key);
       if (!pd) {
-        err("cfg.param.unknown", fd->label + ": unbekannter Parameter " + key);
+        err(say("cfg.param.unknown", {{"fn", nameOf(*fd)}, {"param", key}}));
         continue;
       }
-      checkParam(*fd, *pd, val, "");
+      checkParam(*fd, *pd, val, std::nullopt);
     }
   }
   // A running grow cycle: its phase is one of its phases, each phase's days a
@@ -565,9 +574,8 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
   }
   // Phasen liefern Parameter (R4): dieselben Bereiche wie in den Einstellungen.
   for (const auto& ph : g.phases) {
-    const std::string where = "Phase „" + ph.name + "“, ";
     if (!ph.params.is_object()) {
-      err("cfg.phase.params", where + "Parameter ungültig");
+      err(say("cfg.phase.params", {{"phase", ph.name}}));
       continue;
     }
     for (const auto& [key, val] : ph.params.items()) {
@@ -576,9 +584,9 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
         for (const auto& pd : fd.params)
           if (pd.key == key && pd.phase) {
             known = true;
-            checkParam(fd, pd, val, where);
+            checkParam(fd, pd, val, ph.name);
           }
-      if (!known) err("cfg.phase.unknown", where + "Parameter " + key + " ist nicht phasenabhängig");
+      if (!known) err(say("cfg.phase.unknown", {{"phase", ph.name}, {"param", key}}));
     }
   }
   // Toleranz nie 0 (Quelle: RAT-008) – über die Katalog-Untergrenze abgedeckt.
