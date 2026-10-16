@@ -73,6 +73,7 @@ export const msgDe: Record<string, string> = {
   "refill.start": "Füllt: {litres:1} L",
   "refill.open_by_hand_limit": "Wartet: Zulauf von Hand offen – nach {min:0}\u00a0min schließt und sperrt er; Nachfüllen erst, wenn er zu ist",
   "refill.settle": "Wartet: Füllstand beruhigt sich · noch {left}",
+  "refill.calibrating": "Wartet: Füllstand wird eingelernt",
   "refill.close_failed": "Gesperrt: Zulauf schließt nicht – {reason}",
   "refill.filling_step": "Füllt: Etappe {step} von {steps} · {from:1} → {to:1} L · noch {left} · Ventil höchstens {min:0}\u00a0min offen",
   "refill.check": "Wartet: noch {left}, dann Prüfung, ob der Füllstand gestiegen ist",

@@ -565,7 +565,7 @@ RuntimeState runtimeFromJson(const json& j) {
       if (!r.contains(k)) continue;
       json part = r[k].is_object() ? r[k] : json::object();
       // An amount or a time that is not a number of zero or more is left out: read as not known
-      for (const char* f : {"startL", "plannedL", "expectedL", "sumL", "openMin", "plannedMin", "flow", "at", "due", "seenAt", "closedMs"})
+      for (const char* f : {"startL", "plannedL", "expectedL", "sumL", "openMin", "plannedMin", "flow", "at", "due", "seenAt", "closedMs", "personL"})
         if (part.contains(f) && !(part[f].is_number() && std::isfinite(part[f].get<double>()) && part[f].get<double>() >= 0)) part.erase(f);
       s.refill[k] = part;
     }

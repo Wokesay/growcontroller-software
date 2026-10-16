@@ -718,7 +718,11 @@ A protective cut-off added:
   restart) ends its steps; fills not confirmed are added up and never
   fill past the target or stay open longer than one fill may before they
   are judged, and two not judged in a row, also across refills, latch
-  the inlet too. A pending check survives a restart. Residual risk: a
+  the inlet too. A Stop, maintenance, switching the refill off or a level
+  calibration keeps what flowed unconfirmed until the level reading has
+  moved by 1 L, so a stuck level gets no second full fill through them;
+  while the level is being calibrated the refill waits. A pending check
+  survives a restart. Residual risk: a
   level reading wrongly low still gets fills up to the target or one
   fill's open time before the latch; with start level and target less
   than 4 L apart, a level that hovers at the start level without

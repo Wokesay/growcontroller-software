@@ -137,6 +137,9 @@ class RefillController {
   }
   // The open fill becomes a check of its rise at the end of the pause (SD-080)
   void toCheck(const Ctx& c, double expectedL, double openMin);
+  // A person stopped the refill or works at the tank: the check and the fills not confirmed are kept as
+  // not confirmed, with the level read now (SD-080)
+  void keepForPerson(const Ctx& c, double levelNow);
   void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
   bool booted_ = false;
   bool filling_ = false;

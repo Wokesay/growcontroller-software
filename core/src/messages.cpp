@@ -88,6 +88,7 @@ constexpr Entry kMessages[] = {
     {"refill.start", "Filling: adding {litres:1} L"},
     {"refill.open_by_hand_limit", "Waiting: inlet open by hand – it closes and locks after {min:0}\u00a0min; the refill starts once it is closed"},
     {"refill.settle", "Waiting: the level reading settles · {left} left"},
+    {"refill.calibrating", "Waiting: the level is being calibrated"},
     {"refill.close_failed", "Blocked: the inlet does not close – {reason}"},
     {"refill.filling_step", "Filling: step {step} of {steps} · {from:1} → {to:1} L · {left} left · valve open at most {min:0}\u00a0min"},
     {"refill.check", "Waiting: {left} left, then it checks that the level rose"},

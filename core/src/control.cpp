@@ -555,6 +555,7 @@ constexpr int kMaxUnjudged = 2;            // fills in a row that could not be j
 constexpr Ms kSettleMs = 3 * kMinute;      // the level reading lags 1.5–2 min behind the level
 constexpr Ms kSettleMaxMs = 30 * kMinute;  // a reading that never settles that long: the fill goes ahead, marked
 constexpr Epoch kLevelGraceS = 3 * 60;     // a check due without a valid level (right after a start) waits this long
+constexpr double kFollowsL = 1.0;          // a reading that moved this much since a person's work follows the tank (RAT-030, RAT-078)
 
 // The level curve the hub reads the tank with: a fill checked against another one is not judged
 json levelCurve(const Ctx& c) {
@@ -578,6 +579,7 @@ double judgeBound(const Ctx& c, double startL) {
   return isNum(startL) && startL <= first ? std::max(kJudgeMinL, 2.0 * first) : kJudgeMinL;
 }
 
+
 // The irrigation pump draws from the tank. Bound and on, or in a state not known, it may have run.
 enum class Irrigation { None, On, Unknown };
 Irrigation irrigation(const Ctx& c, const ControlEnv& env) {
@@ -594,6 +596,20 @@ bool jflag(const json& j, const char* key) { return j.is_object() && j.contains(
 Epoch jepoch(const json& j, const char* key) {
   const double v = jnumOr(j, key, 0);
   return v > 0 && v <= static_cast<double>(kNotAfter) ? static_cast<Epoch>(v) : 0;
+}
+
+// A check added to the fills not confirmed before it: from where the first began, what flowed in all and
+// how long the valve was open, on the curve the check's readings were taken on. A value not known stays
+// so (R5), and the fills are then judged as damaged (SD-080)
+json unconfirmedOf(const json& k, const json& u) {
+  const bool earlier = u.is_object();
+  const double fillL = jnumOr(k, "expectedL", kNaN);
+  return {{"startL", numOrNull(earlier ? jnumOr(u, "startL", kNaN) : jnumOr(k, "startL", kNaN))},
+          {"sumL", numOrNull((isNum(fillL) ? fillL : jnumOr(k, "plannedL", kNaN)) + (earlier ? jnumOr(u, "sumL", kNaN) : 0.0))},
+          {"openMin", numOrNull(jnumOr(k, "openMin", kNaN) + (earlier ? jnumOr(u, "openMin", kNaN) : 0.0))},
+          {"irrigation", jflag(k, "irrigation") || jflag(u, "irrigation")},
+          {"restart", jflag(k, "restart") || jflag(u, "restart")},
+          {"curve", k.contains("curve") ? k["curve"] : json(nullptr)}};
 }
 
 }  // namespace
@@ -621,6 +637,15 @@ void RefillController::toCheck(const Ctx& c, double expectedL, double openMin) {
   rec.erase("fill");
 }
 
+void RefillController::keepForPerson(const Ctx& c, double levelNow) {
+  json& rec = c.rt.refill;
+  if (rec.contains("check")) {
+    rec["unconfirmed"] = unconfirmedOf(rec["check"], rec.contains("unconfirmed") ? rec["unconfirmed"] : json(nullptr));
+    rec.erase("check");
+  }
+  if (rec.contains("unconfirmed") && !rec["unconfirmed"].contains("personL")) rec["unconfirmed"]["personL"] = numOrNull(levelNow);
+}
+
 void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args) {
   c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
   c.log.add(c.epoch, "alarm", "alarm", title, text, args);
@@ -643,7 +668,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
   // happened before it is not known. Only irrigation may end the wait early: it reads the level too
   // high, so a fill comes out smaller; a hand fill or draining could make it larger (RAT-038, SD-080).
-  if (!booted_ || c.epoch < c.maintenanceUntil || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
+  if (!booted_ || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
   const Ms settleSince = settleSince_;
   settleSince_ = -1;  // kept only by a tick that waits for the reading to settle
@@ -678,6 +703,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       rec["check"]["more"] = false;
     }
   }
+  const auto& level = c.truth.get("tank.level");
+  const double levelNow = level.usable() ? *level.value : kNaN;
   if (!enabled(c, "refill")) {
     st_.state = "off";
     st_.line = say("refill.off");
@@ -685,9 +712,11 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       Msg e;
       env.act.setRole(c, "tank.inlet", false, say("who.refill_off"), e);
       filling_ = false;
+      toCheck(c, std::min(plannedL_, flow_ * static_cast<double>(c.now - startedMs_) / kMinute), static_cast<double>(c.now - startedMs_) / kMinute);
     }
     endSteps();
-    for (const char* r : {"fill", "check", "unconfirmed"}) rec.erase(r);
+    rec.erase("fill");
+    keepForPerson(c, levelNow);
     return;
   }
   // A mix or a hand dose ends the steps, also one that runs only during a fill or the pause after it:
@@ -697,7 +726,6 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     if (rec.contains("check")) rec["check"]["more"] = false;
   }
   auto p = effectiveParams(c.cat, c.cfg, "refill");
-  const auto& level = c.truth.get("tank.level");
   st_.checks.push_back({level.usable(), level.usable() ? say("check.level_ok") : say("check.level_bad", {{"reason", level.reason}})});
   auto inh = env.act.inhibit(c, "tank.inlet");
   st_.checks.push_back({!inh, inh ? *inh : say("check.inlet_free")});
@@ -721,8 +749,12 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       endSteps();
       cooldownUntil_ = c.epoch + kRefillPauseS;
       if (c.rt.latches.count("inlet.fault") || c.stopped || c.epoch < c.maintenanceUntil) {
-        // The gateway's emergency limit (latched), or a person: nothing more to judge
-        rec.erase("fill");
+        // The gateway's emergency limit (latched), or a person: nothing judged now
+        if (c.rt.latches.count("inlet.fault")) rec.erase("fill");
+        else {
+          toCheck(c, flowedL, ranMin);
+          keepForPerson(c, levelNow);
+        }
         st_.state = "latched";
         st_.line = say("refill.stopped");
         if (!c.rt.latches.count("inlet.fault")) automation(c, st_);
@@ -755,8 +787,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                 {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}, {"step", step_}, {"steps", steps_}});
       if (sensorStop || !automatic) endSteps();
       if (!automatic) {
-        rec.erase("fill");  // a person stopped it or works at the tank: nothing more is judged or filled
-        rec.erase("unconfirmed");
+        toCheck(c, done ? plannedL_ : flowedL, ranMin);
+        keepForPerson(c, levelNow);  // a person stopped it or works at the tank: not judged now
         return;
       }
       // Judged at the end of the pause, against what flowed while the valve was open (SD-080)
@@ -772,10 +804,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                           : say("refill.filling", {{"from", numOrNull(startL_)}, {"target", numOrNull(targetL_)}, {"left", left}});
     return;
   }
+  // A person at the tank (Stop, maintenance, and above the function switched off): a rise checked now
+  // would say nothing, but what flowed is kept, with the level read now. A reading that has moved from
+  // it by the next fill follows the tank, as after a water change; one that stays, as a stuck sensor
+  // does, holds the next fill to what is left (SD-080)
   if (!automation(c, st_)) {
     endSteps();
-    rec.erase("check");  // a person at the tank: a rise checked now would say nothing
-    rec.erase("unconfirmed");
+    keepForPerson(c, levelNow);
     return;
   }
   if (c.rt.latches.count("inlet.fault")) {
@@ -787,6 +822,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("refill.latched");
     return;
   }
+  // A person calibrating the level may fill or drain the tank: kept as through a Stop, from the level
+  // read when it began (#256, SD-080)
+  if (env.levelCalibrating) keepForPerson(c, levelNow);
 
   // At the end of the pause: did the level rise by at least half of what flowed in? If not, a leak,
   // an empty supply, a stuck valve or a level sensor that does not follow look the same: the inlet
@@ -803,15 +841,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       checkLine();
       return;
     }
-    // Fills not confirmed yet say nothing about this one while the level is being calibrated: the sum
-    // starts again with this fill, keeping their open time (SD-080)
     const json fillCurve = k.contains("curve") ? k["curve"] : json(nullptr);
-    if (rec.contains("unconfirmed") && env.levelCalibrating) {
-      json& old = rec["unconfirmed"];
-      old = {{"startL", numOrNull(jnumOr(k, "startL", kNaN))}, {"sumL", 0.0}, {"openMin", numOrNull(jnumOr(old, "openMin", kNaN))},
-             {"irrigation", jflag(old, "irrigation")}, {"restart", jflag(old, "restart")}, {"curve", fillCurve}};
-    }
-    const json u = rec.contains("unconfirmed") ? rec["unconfirmed"] : json(nullptr);
+    const json merged = unconfirmedOf(k, rec.contains("unconfirmed") ? rec["unconfirmed"] : json(nullptr));
     const double fillL = jnumOr(k, "expectedL", kNaN);
     const bool sameBoot = jnumOr(k, "boot", -1) == static_cast<double>(c.rt.bootCount);
     const bool fresh = !sameBoot || level.ts > static_cast<Ms>(jnumOr(k, "closedMs", 0));
@@ -824,16 +855,14 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
         return;
       }
       unjudged = say("refill.unjudged.level", {{"reason", level.reason}});
-    } else if (env.levelCalibrating || levelCurve(c) != fillCurve) {
+    } else if (levelCurve(c) != fillCurve) {
       unjudged = say("refill.unjudged.curve");
     } else if (!fresh) {
       // A level read during the fill lags behind (RAT-038): only one read after the valve closed is judged
       unjudged = say("refill.unjudged.stale");
     }
-    const double from = u.is_object() ? jnumOr(u, "startL", kNaN) : jnumOr(k, "startL", kNaN);
-    const double expected = (isNum(fillL) ? fillL : jnumOr(k, "plannedL", kNaN)) + (u.is_object() ? jnumOr(u, "sumL", kNaN) : 0.0);
-    const double openMin = jnumOr(k, "openMin", kNaN) + (u.is_object() ? jnumOr(u, "openMin", kNaN) : 0.0);
-    const bool irrigated = jflag(k, "irrigation") || jflag(u, "irrigation");
+    const double from = jnumOr(merged, "startL", kNaN), expected = jnumOr(merged, "sumL", kNaN);
+    const bool irrigated = jflag(merged, "irrigation");
     if (!unjudged && (!isNum(from) || !(expected >= 0))) unjudged = say("refill.unjudged.damaged");
     bool keep = false;
     if (!unjudged) {
@@ -863,9 +892,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       endSteps();
       keep = true;
     }
-    if (keep)  // with the curve its readings were taken on
-      rec["unconfirmed"] = {{"startL", numOrNull(from)}, {"sumL", numOrNull(expected)}, {"openMin", numOrNull(openMin)}, {"irrigation", irrigated},
-                            {"restart", jflag(k, "restart") || jflag(u, "restart")}, {"curve", fillCurve}};
+    if (keep) rec["unconfirmed"] = merged;
     rec.erase("check");
   }
 
@@ -922,6 +949,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = isNum(maxOpen) ? say("refill.open_by_hand_limit", {{"min", maxOpen}}) : say("refill.open_by_hand");
     return;
   }
+  if (env.levelCalibrating) {
+    // No fill from readings taken while a person calibrates the level (#256)
+    endSteps();
+    st_.state = "waiting";
+    st_.line = say("refill.calibrating");
+    return;
+  }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
     // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055)
     st_.state = "waiting";
@@ -960,6 +994,11 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // Fills whose rise is not confirmed yet never add more than the target allows from where the first
   // began, nor stay open longer in total than one fill may: a level stuck low would otherwise make
   // each of them plan the whole gap again. When nothing more fits, they are judged now.
+  if (rec.contains("unconfirmed")) {
+    // Kept through a person's work, and the reading moved since: it follows the tank
+    const double personL = jnumOr(rec["unconfirmed"], "personL", kNaN);
+    if (isNum(personL) && std::fabs(*level.value - personL) >= kFollowsL) rec.erase("unconfirmed");
+  }
   if (rec.contains("unconfirmed")) {
     const json& u = rec["unconfirmed"];
     const double from = jnumOr(u, "startL", kNaN), sum = jnumOr(u, "sumL", kNaN), openMin = jnumOr(u, "openMin", kNaN);
