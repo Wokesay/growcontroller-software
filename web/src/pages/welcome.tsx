@@ -9,10 +9,10 @@ import { Compass } from "lucide-preact";
 import { CONTROL_AREAS, post, put, type ControlArea, type ControlMode } from "../api";
 import { timeZone } from "../format";
 import { HaRoles, ROLES, roleLabel } from "../ha";
-import { lang, setLang, t, type Lang, type TextKey } from "../i18n";
+import { hasOwnLang, lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { binding, config, refreshConfig, refreshState, state, toast } from "../store";
 import { currentTheme, setTheme, type Theme } from "../theme";
-import { Banner, Button, Field, Pill, Seg, navigate, route } from "../ui";
+import { Banner, Button, Field, LANGS, Pill, Seg, navigate, route } from "../ui";
 import { ControlChoice } from "./areas";
 import { Page, StepNav } from "./setup";
 
@@ -23,6 +23,8 @@ const BASE = "/willkommen";
 /** Done or skipped: the app does not open this by itself again. */
 async function finish(skipped = false) {
   if (!state.value?.setupDone) {
+    // Skipped the first time: the language picked with the password still becomes the hub's (SD-083)
+    if (skipped && hasOwnLang() && config.value?.system.language !== lang.value) await put("/system", { language: lang.value });
     await post("/setup/complete");
     await refreshConfig();
     await refreshState();
@@ -54,16 +56,16 @@ function StepBasics(p: { step: number; next: () => void }) {
       <h2 tabIndex={-1}>{t("welcome.basics.h")}</h2>
       <p class="muted">{t("welcome.basics.intro")}</p>
       <div class="form-grid">
+        <div class="field">
+          <span>{t("common.language")}</span>
+          <Seg<Lang> value={lang.value} onChange={setLang} options={LANGS} label={t("common.language")} />
+        </div>
         <Field label={t("welcome.basics.name")} hint={t("welcome.basics.nameHint")}>
           <input class="input" name="hubname" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </Field>
         <Field label={t("setup.start.tz")} hint={state.value!.setupDone ? undefined : t("setup.start.tzHint")}>
           <input class="input" value={tz} disabled />
         </Field>
-        <div class="field">
-          <span>{t("common.language")}</span>
-          <Seg<Lang> value={lang.value} onChange={setLang} options={[["de", "Deutsch"], ["en", "English"]]} />
-        </div>
         <div class="field">
           <span>{t("settings.theme")}</span>
           <Seg<Theme>
