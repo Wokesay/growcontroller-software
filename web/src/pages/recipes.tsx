@@ -8,6 +8,7 @@ import { lang, t, type TextKey } from "../i18n";
 import { num, numUpTo } from "../format";
 import { canisters, catalog, paramDef, readOnly, recipes, REF_EFFECT_BAND, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
+import { deviceName } from "../catnames";
 
 // At or below this, a stock counts as booked below zero, as on the hub
 // (kStockBelowZeroMl, SD-066).
@@ -280,7 +281,7 @@ function CanisterEditor(p: { can?: Canister; onClose: () => void }) {
             <option value="">{t("recipes.noPumpOption")}</option>
             {caps.map((c) => (
               <option value={c.id} disabled={used.has(c.id)}>
-                {t("recipes.pumpOption", { name: c.name || c.id, n: c.slot + 1 })}
+                {t("recipes.pumpOption", { name: deviceName(c), n: c.slot + 1 })}
               </option>
             ))}
           </select>

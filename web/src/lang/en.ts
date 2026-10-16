@@ -269,7 +269,7 @@ const base: Record<keyof typeof deBase, string> = {
   "net.elsewhere": "already assigned",
   "net.assigned": "Assigned; safety setting saved in the plug",
   "net.countHint": "Outlets are numbered from 1 here, from 0 in the Shelly web interface.",
-  "net.safety": "After a power cut the outlets stay off. Humidifier, watering pump and inlet also switch off in the device itself if the hub fails. Keep the Shelly and strip outside the growing area, behind an RCD (30 mA).",
+  "net.safety": "After a power cut the outlets stay off. Humidifier, watering pump and inlet also switch off in the device itself if the hub fails. Keep the Shelly and strip outside the grow area, behind an RCD (30 mA).",
 
   "area.climate": "Room climate",
   "area.climateDevices": "Climate devices",

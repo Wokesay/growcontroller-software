@@ -2529,12 +2529,15 @@ TEST_CASE("Devices: a known device without a name is \"not responding\" and \"ba
     const json events = hub.events(0, 9999999999, "device", 2000)["events"];
     for (const auto& e : events)
       if (e["title"]["key"] == key)
-        out.push_back(e["data"].value("device", "") + "=" + e["title"]["args"].value(key == "ev.device.back" ? "label" : "name", ""));
+      {
+        // a device's own name, or its class by the catalog's key (SD-083)
+        const json& n = e["title"]["args"][key == "ev.device.back" ? "label" : "name"];
+        out.push_back(e["data"].value("device", "") + "=" + (n.is_object() ? n.value("key", "") : n.get<std::string>()));
+      }
     std::sort(out.begin(), out.end());
     return out;
   };
-  const std::string kind = cat.deviceClass("head_ph_ec")->label;
-  REQUIRE_FALSE(kind.empty());
+  const std::string kind = "cat.class.head_ph_ec";
   tick();
   for (auto& d : bus.devs) d.online = false;
   tick();

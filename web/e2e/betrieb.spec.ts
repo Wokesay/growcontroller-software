@@ -251,12 +251,12 @@ test("Funktionen zeigen, was fehlt, und Verlauf zeichnet Kurven", async ({ page 
   await expect(page.getByTestId("fn-ph_control")).toBeVisible();
   await page.getByTestId("fn-climate_watch").click();
   await expect(page.getByTestId("fn-climate_watch")).not.toContainText("Dafür brauchst du");  // Demo hat einen Klima-Kopf
-  await expect(page.getByTestId("fn-climate_watch")).toContainText("zugeordnet");  // the checklist in the page's language (SD-083)
+  await expect(page.getByTestId("fn-climate_watch")).toContainText("Lufttemperatur zugeordnet");  // the checklist and the catalog's names in the page's language (SD-083)
   await expect(page.locator("body")).not.toContainText(/Next:|You need|Ready, switched off|Switched on/);  // the summaries too
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
   await page.reload();
   await page.getByTestId("fn-climate_watch").click();
-  await expect(page.getByTestId("fn-climate_watch")).toContainText("assigned");
+  await expect(page.getByTestId("fn-climate_watch")).toContainText("Air temperature assigned");
   await expect(page.getByTestId("fn-climate_watch")).not.toContainText("zugeordnet");
   await expect(page.locator("body")).not.toContainText(/Als Nächstes|Dafür brauchst du|Bereit, ausgeschaltet|Eingeschaltet/);
   await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
@@ -288,6 +288,31 @@ test("Numbers follow the page language: range with a comma, field re-formats on 
     // The switch also sets the hub's language; later tests expect German.
     const res = await page.request.put("/api/v1/system", { data: { language: "de" } });
     expect(res.ok()).toBeTruthy();
+  }
+});
+
+test("A device without a name of its own is named by its class, and roles by their names, in the page's language (SD-083)", async ({ page }) => {
+  await login(page);
+  const named = await page.request.patch("/api/v1/devices/PHEC-3F2A91", { data: { name: "" } });
+  expect(named.ok()).toBeTruthy();
+  try {
+    await page.goto("/#/geraete");
+    await expect(page.getByTestId("device-PHEC-3F2A91").getByText("Sensorkopf pH/EC").first()).toBeVisible();
+    await page.goto("/#/geraete?tab=zuordnung");
+    await expect(page.getByRole("cell", { name: "pH im Tank", exact: true })).toBeVisible();
+    await expect(page.locator("option", { hasText: "Sensorkopf pH/EC" }).first()).toBeAttached();
+    await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+    await page.goto("/#/geraete");
+    await page.reload();
+    await expect(page.getByTestId("device-PHEC-3F2A91").getByText("pH/EC sensor head").first()).toBeVisible();
+    await expect(page.locator("main")).not.toContainText("Sensorkopf");
+    await page.goto("/#/geraete?tab=zuordnung");
+    await expect(page.getByRole("cell", { name: "pH in the tank", exact: true })).toBeVisible();
+    await expect(page.locator("option", { hasText: "pH/EC sensor head" }).first()).toBeAttached();
+    await expect(page.locator("main")).not.toContainText("pH im Tank");
+  } finally {
+    await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
+    await page.request.patch("/api/v1/devices/PHEC-3F2A91", { data: { name: "pH/EC Tank" } });
   }
 });
 
@@ -352,7 +377,7 @@ test("English page: overview, mixing, tank, functions and history speak English 
   await expect(page.getByRole("heading", { name: "Control", exact: true })).toBeVisible();
   await page.goto("/#/mischen");
   await expect(page.getByRole("heading", { name: "Mix nutrient solution" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Dose manually" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Manual dose" })).toBeVisible();
   await page.goto("/#/tank");
   await expect(page.getByRole("heading", { name: "Grow cycle and phases" })).toBeVisible();
   await page.goto("/#/funktionen");

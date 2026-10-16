@@ -147,9 +147,7 @@ import, the checks of a job request, the transport's (`api.origin`,
 `api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
 (SD-083). Still German until their work follows: the reasons a mix plan
 or a dose split gives (`mix.*`, `dose.no_flow`, `dose.too_small`, …;
-with SD-057), and the catalog's labels and texts inside messages (a
-role's or a function's name, a function's `text`; SD-083 point 3); the
-reasons of the three soft requirements have keys (`req.why.*`). A
+with SD-057). A
 device's own error text inside `act.bus`,
 `act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
 `dose.failed` is English and has no key. A message an event saved
@@ -168,8 +166,16 @@ jump lock: a pH rise `truth.jump_ph`, a pH fall `truth.jump_ph_fall`,
 a level `truth.jump_level`, a reading of the grow area
 `truth.jump_zone`, any other `truth.jump`) and each function's
 `summary` (the first open item and how many more) and checklist entries (`checks[].text`, keys `req.*`; a
-string before #73) are messages; a reading's label is
-the catalog label without a key until the catalog follows. An argument
+string before #73) are messages. A catalog name inside a message's
+`args` (a role, a device class, a capability, a function, a parameter)
+is a message too, with the key `cat.role.<id>`, `cat.class.<id>`,
+`cat.cap.<id>`, `cat.fn.<id>` or `cat.param.<function>.<key>` and the
+catalog's English as its text; the web app shows German from
+`web/src/lang/cat.ts` (SD-083 point 3). `/catalog` itself is English.
+A device without a name of its own (none stored, or only its class's
+name, also as the German catalog had it) has an empty `name` in
+`/state`, and events name it by its class; `/state` `classLabel` is the
+catalog's English, and `/config` keeps a device's name as stored. An argument
 can be a list (joined with ", "). Events written before keep their
 plain text without a key. A latch's `why` in `/state` is a message (a
 state saved before keeps its plain text; jump locks have no `why`). The

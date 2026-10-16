@@ -860,7 +860,7 @@ test("Home Assistant: a sensor gets a sign of life; its age then counts from the
   await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
     const res = await route.fetch();
     const st = await res.json();
-    st.devices = [...st.devices, { id: device, class: "ha_water_temp", classLabel: "Wassertemperatur aus Home Assistant", name: "Tank Wasser", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_water" }, calibrations: {} }];
+    st.devices = [...st.devices, { id: device, class: "ha_water_temp", classLabel: "Water temperature from Home Assistant", name: "Tank Wasser", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_water" }, calibrations: {} }];
     st.readings["tank.water_temp"] = { value: 21.5, quality: "ok", usable: true, unit: "°C", decimals: 1, ageS: Math.floor(ageMs / 1000), ageMs, ageOf: life ? "measurement" : "change", reason: { key: "truth.ok", text: "", args: {} } };
     await route.fulfill({ response: res, json: st });
   });
@@ -945,7 +945,7 @@ test("Home Assistant: a pH voltage is calibrated from the assignment; each step 
   await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
     const res = await route.fetch();
     const st = await res.json();
-    st.devices = [...st.devices, { id: device, class: "ha_ph_raw", classLabel: "pH aus Home Assistant (Rohwert)", name: "Tank pH Spannung", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_ph_mv" }, calibrations: {} }];
+    st.devices = [...st.devices, { id: device, class: "ha_ph_raw", classLabel: "pH from Home Assistant (raw value)", name: "Tank pH Spannung", configured: true, online: true, port: -1, slot: -1, parent: "", fw: "", fault: "", info: { entity: "sensor.tank_ph_mv" }, calibrations: {} }];
     st.readings["tank.ph"] = { ...st.readings["tank.ph"], value: 7.169, quality: "uncalibrated", usable: false, ageS: 20, reason: { key: "truth.uncalibrated", text: "Nicht kalibriert", args: {} } };
     st.probeCalibration = session ? { [`${device}:ph`]: session } : {};
     await route.fulfill({ response: res, json: st });

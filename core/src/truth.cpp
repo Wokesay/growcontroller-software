@@ -361,7 +361,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     } else if (expectsNoise(role.capability) && !calibratedElsewhere && rawClock - tr.lastRawChange > kFrozenAfter) {
       setQ(Quality::Frozen, say("truth.frozen"));
     } else if ((isNum(cap->plausMin) && *assessed < cap->plausMin) || (isNum(cap->plausMax) && *assessed > cap->plausMax)) {
-      setQ(Quality::Implausible, say("truth.implausible", {{"label", cap->label}, {"value", shown(*assessed)}, {"unit", unit},
+      setQ(Quality::Implausible, say("truth.implausible", {{"label", nameOf(*cap)}, {"value", shown(*assessed)}, {"unit", unit},
                                                            {"min", numOrNull(cap->plausMin)}, {"max", numOrNull(cap->plausMax)}}));
     } else {
       // Jump lock: a change above the threshold within 5 min that no announced
@@ -392,7 +392,7 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
         // change (RAT-042), only lowers pH (RAT-041), so a fall names it; a level names work by hand;
         // a reading of the grow area names work near the plants, one of the tank work at the tank
         const double from = jnum(info, "from"), to = jnum(info, "to");
-        const json args = {{"label", cap->label}, {"until", lock->second}, {"from", shown(from)}, {"to", shown(to)}, {"unit", unit}};
+        const json args = {{"label", nameOf(*cap)}, {"until", lock->second}, {"from", shown(from)}, {"to", shown(to)}, {"unit", unit}};
         const bool ph = role.capability == "measure.ph", level = role.capability == "measure.level";
         const bool fell = isNum(from) && isNum(to) && to < from, zone = roleId.rfind("zone.", 0) == 0;
         if (ph) setQ(Quality::Jump, say(fell ? "truth.jump_ph_fall" : "truth.jump_ph", args));

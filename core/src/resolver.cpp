@@ -79,7 +79,7 @@ struct Eval {
   // What a capability needs: one device class, or one of several
   Msg needs(const std::string& cap) const {
     json labels = json::array();
-    for (const auto* dc : cat.classesProviding(cap)) labels.push_back(dc->label);
+    for (const auto* dc : cat.classesProviding(cap)) labels.push_back(nameOf(*dc));
     return labels.size() > 1 ? say("req.needs_one_of", {{"items", labels}}) : say("req.needs", {{"items", labels}});
   }
 
@@ -101,15 +101,15 @@ struct Eval {
     }
     const Binding* b = cfg.binding(r.role);
     if (!b) {
-      out.push_back({"setup", false, false, say("req.assign", {{"label", rd->label}}), "roles", {}});
+      out.push_back({"setup", false, false, say("req.assign", {{"label", nameOf(*rd)}}), "roles", {}});
       return;
     }
-    out.push_back({"setup", true, false, say("req.assigned", {{"label", rd->label}}), "roles", {}});
+    out.push_back({"setup", true, false, say("req.assigned", {{"label", nameOf(*rd)}}), "roles", {}});
     const DeviceCfg* dev = cfg.device(b->device);
     const DeviceClassDef* dc = dev ? cat.deviceClass(dev->cls) : nullptr;
     if (r.calibrated && cap->kind == "measure" && dc && dc->externalCalibration) {
       // Calibrated elsewhere; the hub cannot calibrate it and has not checked it (RAT-025).
-      out.push_back({"setup", false, false, say("req.external", {{"label", rd->label}}), "", {}});
+      out.push_back({"setup", false, false, say("req.external", {{"label", nameOf(*rd)}}), "", {}});
     } else if (r.calibrated && cap->kind == "measure") {
       std::string kind = rd->capability == "measure.ph" ? "ph" : rd->capability == "measure.ec" ? "ec" : "tank_curve";
       const json* cal = cfg.calibration(b->device, kind);
@@ -117,7 +117,7 @@ struct Eval {
       bool ok = cal && SensorTruth::calibrate(rd->capability, probe, cal).has_value();
       out.push_back({"setup", ok, false,
                      kind == "tank_curve" ? (ok ? say("req.calibrated_level") : say("req.calibrate_level"))
-                                          : (ok ? say("req.calibrated", {{"label", cap->label}}) : say("req.calibrate", {{"label", cap->label}})),
+                                          : (ok ? say("req.calibrated", {{"label", nameOf(*cap)}}) : say("req.calibrate", {{"label", nameOf(*cap)}})),
                      "calibrate:" + b->device + ":" + kind, {}});
     }
     if (cap->kind == "measure") {
@@ -128,13 +128,13 @@ struct Eval {
       const bool elsewhere = rd2.reason.key == kCalibratedElsewhere;
       if (!(elsewhere && r.calibrated))
         out.push_back({"runtime", rd2.usable(), false,
-                       rd2.usable()  ? say("req.valid", {{"label", cap->label}})
-                       : elsewhere   ? say("req.external", {{"label", cap->label}})
-                                     : say("req.reason", {{"label", cap->label}, {"reason", rd2.reason}}),
+                       rd2.usable()  ? say("req.valid", {{"label", nameOf(*cap)}})
+                       : elsewhere   ? say("req.external", {{"label", nameOf(*cap)}})
+                                     : say("req.reason", {{"label", nameOf(*cap)}, {"reason", rd2.reason}}),
                        "", {}});
     } else {
       bool on = deviceOnline(b->device);
-      out.push_back({"runtime", on, false, on ? say("req.reachable", {{"label", rd->label}}) : say("req.offline", {{"label", rd->label}}), "", {}});
+      out.push_back({"runtime", on, false, on ? say("req.reachable", {{"label", nameOf(*rd)}}) : say("req.offline", {{"label", nameOf(*rd)}}), "", {}});
     }
   }
 
@@ -187,7 +187,7 @@ struct Eval {
     const FunctionDef* fd = cat.function(r.function);
     auto it = cfg.functions.find(r.function);
     bool on = it != cfg.functions.end() && it->second.enabled;
-    std::string label = fd ? fd->label : r.function;
+    const json label = fd ? json(nameOf(*fd)) : json(r.function);
     out.push_back({"setup", on, false, on ? say("req.fn_on", {{"label", label}}) : say("req.fn_setup", {{"label", label}}),
                    "function:" + r.function, {}});
   }
@@ -195,7 +195,7 @@ struct Eval {
   void device(const Requirement& r, std::vector<ReqResult>& out) const {
     const DeviceClassDef* dc = cat.deviceClass(r.device);
     bool ok = classPresent(r.device);
-    std::string label = dc ? dc->label : r.device;
+    const json label = dc ? json(nameOf(*dc)) : json(r.device);
     out.push_back({"hardware", ok, false, ok ? say("req.detected", {{"label", label}}) : say("req.needs", {{"items", json::array({label})}}), "expand",
                    ok ? std::vector<std::string>{} : std::vector<std::string>{r.device}});
   }
@@ -238,7 +238,7 @@ std::vector<FunctionState> resolveFunctions(const Catalog& cat, const Config& cf
       if (r.kind != Requirement::Kind::Role) continue;
       const RoleDef* rd = cat.role(r.role);
       bool ok = cfg.binding(r.role) != nullptr;
-      s.checks.push_back({"setup", ok, true, ok ? say("req.assigned", {{"label", rd ? rd->label : r.role}}) : softWhy(f.id, r), ok ? "" : "expand",
+      s.checks.push_back({"setup", ok, true, ok ? say("req.assigned", {{"label", roleName(cat, r.role)}}) : softWhy(f.id, r), ok ? "" : "expand",
                           ok || !rd ? std::vector<std::string>{} : ev.shopFor(rd->capability)});
     }
     bool hw = true, setup = true, soft = true;
