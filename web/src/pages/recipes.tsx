@@ -5,8 +5,8 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, RefreshCw, ScrollText, Trash2 } from "lucide-preact";
 import { del, post, type Canister, type Recipe, type RecipeTemplate } from "../api";
 import { lang, t, type TextKey } from "../i18n";
-import { num } from "../format";
-import { canisters, catalog, readOnly, recipes, refreshConfig, refreshState, state, toast } from "../store";
+import { num, numUpTo } from "../format";
+import { canisters, catalog, paramDef, readOnly, recipes, REF_EFFECT_BAND, refreshConfig, refreshState, state, toast } from "../store";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, navigate } from "../ui";
 
 // At or below this, a stock counts as booked below zero, as on the hub
@@ -362,6 +362,10 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
   const cans = canisters.value.filter((k) => k.kind === "nutrient");
   const [name, setName] = useState(p.recipe?.name ?? "");
   const [note, setNote] = useState(p.recipe?.note ?? "");
+  // The chart's EC at these amounts and its pH range: a reference and the grow's proposal (SD-057)
+  const [refEc, setRefEc] = useState<number | null>(p.recipe?.refEc ?? null);
+  const [phLow, setPhLow] = useState<number | null>(p.recipe?.ph?.[0] ?? null);
+  const [phHigh, setPhHigh] = useState<number | null>(p.recipe?.ph?.[1] ?? null);
   // Every nutrient bottle has a row: the recipe's own first, in their order, then the others
   // empty. An amount puts a bottle in, clearing it takes it out (#159).
   const [steps, setSteps] = useState<Step[]>(() => {
@@ -410,6 +414,35 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
     problems.push(missing.length === 1 ? t("recipes.pairMissing", args) : t("recipes.pairMissingMany", args));
     conflict = true;
   }
+  // The chart's EC lies in the target's range and fits the amounts; the pH range is low to high in the
+  // pH target's range – as the hub checks it (SD-057)
+  const ecDef = paramDef("ec_control", "ec_target");
+  const phDef = paramDef("ph_control", "ph_target");
+  if (refEc !== null) {
+    const sum = steps.filter(filled).reduce((a, s) => a + (s.mlPerL ?? 0), 0);
+    const lo = ecDef?.min ?? 0, hi = ecDef?.max ?? Infinity;
+    if (!Number.isFinite(refEc) || refEc <= 0 || refEc < lo || refEc > hi) {
+      problems.push(t("recipes.refRange", { min: numUpTo(lo, 2), max: numUpTo(Number.isFinite(hi) ? hi : null, 2) }));
+      conflict = true;
+    } else if (sum > 0 && (refEc / sum < REF_EFFECT_BAND[0] || refEc / sum > REF_EFFECT_BAND[1])) {
+      // The EC that would fit these amounts, within the target's range where it can be
+      let [fitLo, fitHi] = [REF_EFFECT_BAND[0] * sum, REF_EFFECT_BAND[1] * sum];
+      if (Math.max(fitLo, lo) <= Math.min(fitHi, hi)) [fitLo, fitHi] = [Math.max(fitLo, lo), Math.min(fitHi, hi)];
+      const args = { ec: numUpTo(refEc, 2), sum: numUpTo(sum, 2), lo: numUpTo(fitLo, 2), hi: numUpTo(fitHi, 2) };
+      problems.push(refEc / sum < REF_EFFECT_BAND[0] ? t("recipes.refFar", args) : t("recipes.refStrong", args));
+      conflict = true;
+    }
+  }
+  // Amounts changed under a chart EC: does it still match? A note, not a problem
+  const amountsOf = (list: Step[]) => JSON.stringify(list.filter(filled).map((s) => [s.canister, s.mlPerL]));
+  const amountsChanged = !!p.recipe && refEc !== null && amountsOf(p.recipe.steps) !== amountsOf(steps);
+  if (phLow !== null || phHigh !== null) {
+    const lo = phDef?.min ?? 0, hi = phDef?.max ?? 14;
+    if (phLow === null || phHigh === null || phLow > phHigh || phLow < lo || phHigh > hi) {
+      problems.push(t("recipes.phBand", { min: numUpTo(lo, 2), max: numUpTo(hi, 2) }));
+      conflict = true;
+    }
+  }
   return (
     <Modal
       wide
@@ -426,7 +459,7 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
             disabled={problems.length > 0}
             aria-describedby={problems.length ? "recipe-problems" : undefined}
             onClick={async () => {
-              await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter(filled) });
+              await post("/recipes", { id: p.recipe?.id, name, note, steps: steps.filter(filled), refEc, ph: phLow !== null && phHigh !== null ? [phLow, phHigh] : null });
               await refreshConfig();
               toast(t("recipes.recipeSaved"));
               p.onClose();
@@ -484,6 +517,28 @@ function RecipeEditor(p: { recipe?: Recipe; onClose: () => void; returnFocus?: (
             </div>
           );
         })}
+      </div>
+      {/* Below the amounts, which "these amounts" points back to */}
+      <div class="form-grid">
+        <Field label={t("recipes.refEc")} hint={amountsChanged ? t("recipes.amountsChanged") : t("recipes.refEcHint")}>
+          <NumberInput value={refEc} onValue={setRefEc} unit="mS/cm" />
+        </Field>
+        {/* Two inputs: a group, not one label, so each is named and the hint read with both */}
+        <div class="field" role="group" aria-labelledby="recipe-ph-range" aria-describedby="recipe-ph-hint">
+          <span class="field-label" id="recipe-ph-range">
+            {t("recipes.phRange")}
+          </span>
+          <div class="row" style="flex-wrap:nowrap">
+            <NumberInput ariaLabel={t("recipes.phLow")} value={phLow} onValue={setPhLow} />
+            <span class="muted" aria-hidden="true">
+              –
+            </span>
+            <NumberInput ariaLabel={t("recipes.phHigh")} value={phHigh} onValue={setPhHigh} />
+          </div>
+          <small class="hint" id="recipe-ph-hint">
+            {t("recipes.phRangeHint")}
+          </small>
+        </div>
       </div>
       <p class="muted small">
         {t("recipes.mixNote")}
@@ -632,6 +687,11 @@ export function RecipesPage() {
                   </div>
                 </div>
                 {r.note && <p class="muted small">{r.note}</p>}
+                {(r.refEc != null || r.ph) && (
+                  <p class="muted small" data-testid="recipe-chart">
+                    {[r.refEc != null ? t("recipes.chartEc", { ec: numUpTo(r.refEc, 2) }) : "", r.ph ? t("recipes.chartPh", { lo: numUpTo(r.ph[0], 2), hi: numUpTo(r.ph[1], 2) }) : ""].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <div class="list">
                   {r.steps.map((s, i) => {
                     const k = cans.find((c) => c.id === s.canister);

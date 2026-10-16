@@ -3,7 +3,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { Beaker, CircleCheck, Droplets, FlaskConical, OctagonX, PackagePlus, ShieldAlert, ShieldCheck, Sprout, Thermometer, Wrench } from "lucide-preact";
 import { get, post, type HubEvent } from "../api";
-import { ago, dateTime, num } from "../format";
+import { ago, dateTime, num, numUpTo } from "../format";
 import { catalog, config, hasRole, readOnly, refreshState, state, tank, toast } from "../store";
 import { msg, t as tr } from "../i18n";
 import { ClimateTiles, OutputsOverview } from "./areas";
@@ -225,7 +225,25 @@ export function Overview() {
               <span class="faint small">{tr("overview.phaseNote")}</span>
             </div>
           ) : (
-            <p class="muted">{tr("overview.noGrow")}</p>
+            <div class="stack-sm">
+              <p class="muted">{tr("overview.noGrow")}</p>
+              {/* Without a grow the function's settings are the targets; say which (SD-057) */}
+              {(phBand || ecBand) && (
+                <span class="small" data-testid="default-targets">
+                  {tr("overview.defaultTargets", {
+                    targets: [
+                      phBand ? tr("overview.targetPh", { lo: numUpTo(phBand[0], 2), hi: numUpTo(phBand[1], 2) }) : "",
+                      ecBand ? tr("overview.targetEc", { lo: numUpTo(ecBand[0], 2), hi: numUpTo(ecBand[1], 2) }) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  })}
+                </span>
+              )}
+              <a class="link small" href="#/tank">
+                {tr("overview.setUpGrow")} <span aria-hidden="true">→</span>
+              </a>
+            </div>
           )}
         </Card>
         <Card title={tr("overview.recentEvents")} icon={<CircleCheck size={18} />} actions={<a class="btn sm ghost" href="#/verlauf">{tr("common.all")}</a>}>

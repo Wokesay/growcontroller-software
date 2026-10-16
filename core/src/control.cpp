@@ -34,7 +34,6 @@ bool foreignDose(const ControlEnv& env, const char* ownPrefix) {
 }
 
 constexpr double kPhStartEffect = 5.0;    // pH je ml/L pH− (RAT-050: kleinste Dosis)
-constexpr double kEcStartEffect = 0.275;  // mS/cm je ml/L Rezept (RAT-055)
 constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
 constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)

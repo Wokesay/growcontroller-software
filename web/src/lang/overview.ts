@@ -35,6 +35,10 @@ export const de = {
   "overview.phaseLine": "Phase „{name}“ · Tag {day} von {days}",
   "overview.phaseNote": "Phasen liefern nur Zielwerte (pH, EC, Rezept). Ihr Name steuert nichts.",
   "overview.noGrow": "Kein Durchgang aktiv. Zum Mischen brauchst du keinen.",
+  "overview.defaultTargets": "Ohne Durchgang gelten die Zielbereiche unter Funktionen: {targets}.",
+  "overview.targetPh": "pH {lo}–{hi}",
+  "overview.targetEc": "EC {lo}–{hi} mS/cm",
+  "overview.setUpGrow": "Durchgang starten",
   "overview.recentEvents": "Letzte Ereignisse",
 } as const;
 
@@ -72,5 +76,9 @@ export const en: Record<keyof typeof de, string> = {
   "overview.phaseLine": "Phase \"{name}\" · day {day} of {days}",
   "overview.phaseNote": "Phases only provide targets (pH, EC, recipe). The name is just a label.",
   "overview.noGrow": "No grow cycle active. You don't need one to mix.",
+  "overview.defaultTargets": "Without a grow cycle, the target ranges under Functions apply: {targets}.",
+  "overview.targetPh": "pH {lo}–{hi}",
+  "overview.targetEc": "EC {lo}–{hi} mS/cm",
+  "overview.setUpGrow": "Start grow cycle",
   "overview.recentEvents": "Latest events",
 };
