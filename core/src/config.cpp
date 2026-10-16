@@ -2,6 +2,7 @@
 #include "gc/config.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <stdexcept>
 
@@ -581,7 +582,8 @@ void to_json(json& j, const RuntimeState& s) {
        {"manualAt", s.manualAt},
        {"clock", s.clock ? json(*s.clock) : json(nullptr)},
        {"bootCount", s.bootCount},
-       {"stopped", s.stopped}};
+       {"stopped", s.stopped},
+       {"refill", s.refill}};
 }
 
 RuntimeState runtimeFromJson(const json& j) {
@@ -608,6 +610,21 @@ RuntimeState runtimeFromJson(const json& j) {
       }
   }
   if (j.contains("jumpLocks")) s.jumpLocks = j["jumpLocks"].get<std::map<std::string, Epoch>>();
+  // The refill's record is cleaned when read: a damaged part never stops the hub. A fill that is not
+  // an object still counts as a fill a restart cut; a count out of range starts again (SD-082)
+  if (j.contains("refill") && j["refill"].is_object()) {
+    const json& r = j["refill"];
+    for (const char* k : {"fill", "check", "unconfirmed"}) {
+      if (!r.contains(k)) continue;
+      json part = r[k].is_object() ? r[k] : json::object();
+      // An amount or a time that is not a number of zero or more is left out: read as not known
+      for (const char* f : {"startL", "plannedL", "expectedL", "sumL", "openMin", "plannedMin", "flow", "at", "due", "seenAt", "closedMs", "personL"})
+        if (part.contains(f) && !(part[f].is_number() && std::isfinite(part[f].get<double>()) && part[f].get<double>() >= 0)) part.erase(f);
+      s.refill[k] = part;
+    }
+    const double n = numOrNaN(r, "unjudged");
+    s.refill["unjudged"] = isNum(n) && n >= 0 && n < 100 ? static_cast<int>(n) : 0;
+  }
   if (j.contains("manual")) s.manual = j["manual"].get<std::map<std::string, double>>();
   s.manualAt = j.value("manualAt", Epoch{0});
   if (j.contains("clock")) s.clock = stampFromJson(j["clock"]);

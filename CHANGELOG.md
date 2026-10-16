@@ -389,6 +389,21 @@ listed in every release under "Security".
   configuration check refused a recipe, for example because the chart EC
   does not fit the amounts, a German page showed the reason in English.
   It now shows it in German.
+- **A large refill no longer latches the inlet** (#155, SD-082): a
+  refill planned longer than the valve may stay open ("Ventil höchstens
+  offen", 15 min by default) ran into that limit, which shut the inlet as
+  a fault and waited for a person, after every refill from a nearly empty
+  tank. Now one fill keeps the valve open at most a minute less than the
+  limit (half of it, if that is shorter), and the rest follows in steps
+  with a 10 min pause between them, each step named in the refill's line
+  ("Füllt: Etappe 1 von 2 …"). Each fill waits until the level reading
+  has been undisturbed for 3 min, for example after irrigation (there at
+  most 30 min) or maintenance.
+  EC and pH wait from the first opening until the last step is checked;
+  a mix or hand dose meanwhile ends the steps.
+  The limit itself is unchanged and still closes a valve the hub opened.
+  The refill no longer takes over an inlet opened by hand, and says that
+  such a valve locks after the limit.
 - **The web SBOM lists preact** (#201, SD-075): the release built
   `sbom-web.cdx.json` with `npm sbom --omit dev`, which drops every
   package a build tool depends on, peers included, so it left out
@@ -810,8 +825,49 @@ Safety and robustness fixes, no vulnerability:
   - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
 
+A protective cut-off added:
+
+- **A refill after which the level did not rise latches the inlet**
+  (#155, SD-082, RAT-031): no refill checked that water arrived. With an
+  empty supply, a leak, a stuck valve or a level sensor that does not
+  follow, the inlet opened again after every pause for as long as the
+  level read below the start level. Now, at the end of each fill's pause,
+  the level must have risen by at least half of what flowed in by the set
+  rate; otherwise the inlet is latched until a person releases it, and
+  the alarm names what to check. A fill whose rise cannot be judged (a
+  rise too small while the irrigation pump ran or its state was not
+  known, no valid or fresh level, a level calibration, a fill cut by a
+  restart) ends its steps; fills not confirmed are added up and never
+  fill past the target or stay open longer than one fill may before they
+  are judged, and two not judged in a row, also across refills, latch
+  the inlet too. A Stop, maintenance, switching the refill off or a level
+  calibration keeps what flowed unconfirmed until the level reading has
+  moved by 1 L, so a stuck level gets no second full fill through them;
+  a level calibration ends a fill, and the refill waits while it runs. A pending check
+  survives a restart. Residual risk: a
+  level reading wrongly low still gets fills up to the target or one
+  fill's open time before the latch; with start level and target less
+  than 4 L apart, a level that hovers at the start level without
+  following can let small fills repeat; an inlet on a socket that keeps
+  running while the hub loses power or hangs is not counted for that
+  time; an irrigation pump that draws more than half a fill in the pause
+  of two refills in a row, or a level curve imported (not calibrated)
+  while a refill waits to be checked, latches a sound inlet; and an irrigation pump the hub does
+  not know can make a correct fill look like a missing rise: bind it as
+  the irrigation pump. After the update, check that the inlet rate under
+  Functions is about right: one set at more than twice the real rate now
+  latches every refill.
+
 A protective cut-off relaxed on purpose:
 
+- **A large refill no longer ends in the open-time latch** (#155,
+  SD-082): a fill planned longer than the valve may stay open used to be
+  cut by that limit, which latched the inlet. That also stopped a large
+  refill from a level reading wrongly low after one fill. A fill now
+  stops a minute before the limit and the rest follows in steps, also
+  above the start level; that case is caught by the rise check above
+  instead. The limit itself still closes and latches a valve the hub
+  opened.
 - **A protective lock that releases itself, deliberately** (SD-067, #27):
   the circulation pump's dry-run lock, when caused by a low level, now
   lifts by itself after the tank is refilled (see Changed). This relaxes a

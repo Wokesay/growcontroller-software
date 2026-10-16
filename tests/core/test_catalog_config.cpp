@@ -405,3 +405,18 @@ TEST_CASE("Konfiguration: Rollen am falschen Ort und unbekannte Zonenart werden 
   c.zone().kind = "keller";
   CHECK_FALSE(validateConfig(c, cat).empty());
 }
+
+TEST_CASE("Runtime state: a damaged refill record is cleaned when read and never stops the hub (SD-082)") {
+  const gc::RuntimeState s = gc::runtimeFromJson({{"refill", {{"fill", 5}, {"check", "x"}, {"unconfirmed", {{"startL", 20}}}, {"unjudged", -3}}}});
+  CHECK(s.refill["fill"] == json::object());  // still counts as a fill a restart cut
+  CHECK(s.refill["check"] == json::object());
+  CHECK(s.refill["unconfirmed"]["startL"] == 20);
+  CHECK(s.refill["unjudged"] == 0);
+  CHECK(gc::runtimeFromJson({{"refill", 7}}).refill == json::object());
+  CHECK(gc::runtimeFromJson({{"refill", {{"unjudged", 1}}}}).refill["unjudged"] == 1);
+  // Written and read back unchanged
+  gc::RuntimeState t;
+  t.refill = {{"check", {{"due", 1790000600}, {"startL", 2.3}}}, {"unjudged", 1}};
+  json j = t;
+  CHECK(gc::runtimeFromJson(j).refill == t.refill);
+}

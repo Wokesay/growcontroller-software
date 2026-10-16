@@ -45,7 +45,7 @@ struct Device {
   int port = 0;
   std::array<std::optional<Cap>, 6> slots;  // nur Dosierblock
   std::string fault;                        // offline | frozen | jump | ec_zero | ""
-  double frozenPh = gc::kNaN, frozenEc = gc::kNaN;
+  double frozenPh = gc::kNaN, frozenEc = gc::kNaN, frozenLevel = gc::kNaN;
   Ms pluggedAt = 0;
   Ms lastSample = -100000;
 };
@@ -130,7 +130,7 @@ class World {
   // Rohwerte einer Sonde; Fehlerbilder (jump, frozen, ec_zero) gelten je Gerät.
   double rawPh(const Device* d = nullptr) const;
   double rawEc(const Device* d = nullptr) const;
-  double rawLevelV() const;
+  double rawLevelV(const Device* d = nullptr) const;
   double rawTemp() const;
   Ms sampleTs(const Device& d) const { return d.lastSample; }
 

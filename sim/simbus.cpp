@@ -95,7 +95,7 @@ std::optional<gc::Sample> SimBus::sample(const std::string& dev, const std::stri
   else if (d->cls == "head_climate" && cap == "measure.humidity") v = w_.rawHumidity();
   else if (d->cls == "head_co2" && cap == "measure.co2") v = w_.rawCo2();
   else if (d->cls == "head_level" && cap == "measure.level") {
-    v = w_.rawLevelV();
+    v = w_.rawLevelV(d);
   }
   if (!gc::isNum(v)) return std::nullopt;
   cache_[key] = {d->lastSample, v};
