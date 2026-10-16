@@ -1632,6 +1632,31 @@ TEST_CASE("Scenario: a person's Stop, maintenance or switching the refill off ke
     s.step(60000, 5000);
     c.ok("POST", "/api/v1/resume");
   }
+  SUBCASE("a level calibration cancelled, then a curve imported during maintenance: a cancelled session shows nothing of the sensor") {
+    stuckFill();
+    pause();
+    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "start"}});
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "cancel"}});
+    s.step(10000, 5000);
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 5}});
+    s.step(60000, 5000);
+    json cfg = c.ok("GET", "/api/v1/config/export");
+    for (auto& p : cfg["calibrations"]["LVL-77B210"]["tank_curve"]["points"]) p[1] = p[1].get<double>() + 3.0;  // reads 3 L more
+    c.ok("POST", "/api/v1/config/import", cfg);
+  }
+  SUBCASE("a Stop during the fill, and another during the next, capped one: both are kept together") {
+    stuckFill();
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/resume");
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 20 * 60 * 1000, 5000));
+    s.step(3 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/resume");
+  }
   SUBCASE("a water change during a Stop that began with the level head offline: its first reading counts") {
     stuck = false;
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
@@ -1956,7 +1981,9 @@ TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pum
     s.step(10000);  // the cut round now waits for the pump
     REQUIRE(c.state()["controllers"]["ec"]["line"]["key"] == "ec.wait_circ");
     c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+    s.step(5000);
     // not held by the cut round, only by the reading's settling time after the Stop (SD-080)
+    CHECK(c.state()["controllers"]["refill"]["line"]["key"] == "refill.settle");
     CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 4 * 60 * 1000));
     bool dosed = false;
     for (int t = 0; t < 4 * 60; t += 5) {

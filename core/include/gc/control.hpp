@@ -129,6 +129,8 @@ class RefillController {
     return filling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
   }
   void shiftClock(RuntimeState& rt, Epoch d);
+  // A level calibration of the bound level sensor committed a new curve (SD-080)
+  static void levelCommitted(RuntimeState& rt);
 
  private:
   void endSteps() {
@@ -139,7 +141,7 @@ class RefillController {
   void toCheck(const Ctx& c, double expectedL, double openMin);
   // A person stopped the refill or works at the tank: the check and the fills not confirmed are kept as
   // not confirmed, with the level read when the work began (SD-080)
-  void keepForPerson(const Ctx& c, double levelNow, bool calibrating);
+  void keepForPerson(const Ctx& c, double levelNow);
   void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
   bool booted_ = false;
   bool filling_ = false;

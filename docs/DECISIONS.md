@@ -3352,9 +3352,10 @@ Decided by the project owner on 2026-10-15 in the software session
     change, a calibration), and that fill is judged on its own. If it has
     not, as a stuck sensor would not, the next fill gets only what is left
     and the fills are judged together. A move across a new level curve
-    counts only after a level calibration, which needs a sensor that
-    follows; an imported curve alone shows nothing of the sensor, so the
-    fills latch as measured on another curve. So a Stop, maintenance or
+    counts only when a level calibration of the level sensor committed
+    it during the person's work: its points need a sensor that follows. A
+    calibration cancelled or a curve imported shows nothing of the
+    sensor, so the fills latch as measured on another curve. So a Stop, maintenance or
     switching the refill off and on gives a level stuck low no second
     full fill. Such a fill is not counted as not judged. Switching the
     refill off during a fill starts the pause, as a Stop does.
@@ -3409,9 +3410,9 @@ Decided by the project owner on 2026-10-15 in the software session
     or more, also when a failing sensor drifts or jumps that far without
     following the tank: the next fill then plans the whole gap, and can
     pass the target by up to one fill before its own check latches. A
-    level not valid during the whole of the person's work is never taken
-    as moved, so the kept fills are judged together with the next one,
-    which can latch a sound inlet after a water change.
+    level never valid during the person's work, or valid only after a
+    water change in it, is not taken as moved, so the kept fills are
+    judged together with the next one, which can latch a sound inlet.
   - A person who drains the tank by hand in a refill's pause without
     Stop, maintenance or a level calibration makes the check judge a
     level that fell: it can latch a sound inlet. One who fills it by hand
@@ -3427,8 +3428,9 @@ Decided by the project owner on 2026-10-15 in the software session
   - Fills not judged count across refills until one passes: an
     irrigation pump that draws more than half a fill during the pause, in
     two refills with none passing between them, latches a sound inlet.
-  - Importing a new level curve, or a calibration that moves the reading
-    by less than 1 L, while a check or fills not confirmed wait, with the
+  - Importing a new level curve, cancelling a level calibration and then
+    importing one, or committing a calibration that moves the reading by
+    less than 1 L, while a check or fills not confirmed wait, with the
     level below the start level, latches the inlet: their rise cannot be
     compared.
   - When one fill's open time holds less than 4 L (a short

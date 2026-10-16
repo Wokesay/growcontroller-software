@@ -2066,6 +2066,10 @@ Result Hub::probeCalibration(const json& j) {
     }
     cfg_.calibrations[dev][kind] = data;
     probeSessions_.erase(it);
+    if (const Binding* lb = cfg_.binding("tank.level"); kind == "tank_curve" && lb && lb->device == dev) {
+      RefillController::levelCommitted(rt_);
+      stateDirty_ = true;
+    }
     const Msg kindMsg = kindName(kind);
     saveConfig(say("ev.cfg.calibration", {{"kind", kindMsg}, {"name", cfg_.device(dev)->name}}));
     log_.add(clock_.epoch(), "calibration", "info", say("ev.probe_calibrated"),

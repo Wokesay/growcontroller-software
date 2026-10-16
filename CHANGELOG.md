@@ -729,8 +729,8 @@ A protective cut-off added:
   following can let small fills repeat; an inlet on a socket that keeps
   running while the hub loses power or hangs is not counted for that
   time; an irrigation pump that draws more than half a fill in the pause
-  of two refills in a row, or a level curve imported while a refill waits
-  to be checked, latches a sound inlet; and an irrigation pump the hub does
+  of two refills in a row, or a level curve imported (not calibrated)
+  while a refill waits to be checked, latches a sound inlet; and an irrigation pump the hub does
   not know can make a correct fill look like a missing rise: bind it as
   the irrigation pump. After the update, check that the inlet rate under
   Functions is about right: one set at more than twice the real rate now
