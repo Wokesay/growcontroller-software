@@ -106,13 +106,7 @@ class HostClock : public gc::IClock {
 };
 
 std::string tokenOf(const httplib::Request& req) {
-  auto auth = req.get_header_value("Authorization");
-  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
-  auto cookie = req.get_header_value("Cookie");
-  auto pos = cookie.find("gc_session=");
-  if (pos == std::string::npos) return {};
-  auto end = cookie.find(';', pos);
-  return cookie.substr(pos + 11, end == std::string::npos ? std::string::npos : end - pos - 11);
+  return gc::sessionToken(req.get_header_value("Authorization"), req.get_header_value("Cookie"));
 }
 
 gc::ApiRequest toApi(const httplib::Request& req) {
@@ -278,6 +272,10 @@ int main(int argc, char** argv) {
   gc::Hub hub(cat, bus, store, clock, sim::randomBytes);
   hub.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
   hub.boot();
+  // Also here, where who runs it looks: the hub's alarm needs a sign-in (SD-081)
+  for (const std::string& name : hub.unreadableFiles())
+    std::cerr << (std::filesystem::path(data) / name).string() << ": cannot be read (" << store.readError(name).value_or("unknown")
+              << "), so it is kept as it is and not written over. Check its owner and permissions, or the disk, then restart.\n";
   ha::adoptFromConfig(hub, bus);  // the sensors picked in the web app
   // The first password needs a code that only who reads this output sees: as
   // an app, Home Assistant's administrators in its log. Otherwise anyone in

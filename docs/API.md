@@ -1,6 +1,6 @@
 # API v1
 
-As of 2026-10-06. REST with JSON under `/api/v1`, transport-neutral in the
+As of 2026-10-15. REST with JSON under `/api/v1`, transport-neutral in the
 core (`core/src/api.cpp`). The web app uses only this API. So whatever the
 UI can do, an integration can do as well.
 
@@ -34,8 +34,10 @@ UI can do, an integration can do as well.
   may ignore. The hub ends a session
   after 12 hours without a request, on a restart and on a password change;
   with 16 sessions, a 17th sign-in ends the one used longest ago.
-- Everything else requires a session (cookie or `Authorization: Bearer`),
-  otherwise 401.
+- Everything else requires a session, otherwise 401. A header
+  `Authorization: Bearer <token>` comes first; without it the session
+  comes from the cookie named exactly `gc_session`, and only when the
+  `Cookie` header holds exactly one cookie of that name.
 - Security headers on the server: CSP `default-src 'self'`,
   `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
 - **Origin:** the `Host` header must be an IP, `localhost` or a name in the
@@ -47,6 +49,10 @@ UI can do, an integration can do as well.
   `api.internal`; the server keeps running. If the password is lost
   (`auth.json` is missing although a password was set), `/auth/setup`
   refuses with 423 `auth.lost`: a factory reset on the device is needed.
+  If `auth.json` is there but cannot be read, it refuses with 423
+  `auth.kept` first, whether or not a password is known to be set: the
+  file is kept, and a restart that can read it again brings it back
+  (SD-081).
 - **Import** (`POST /config/import`) validates like every change, plus
   limits, phase parameters and calibration data; 409 while a job runs.
   Exception: an unknown area or mode in `system.control` is left out, as

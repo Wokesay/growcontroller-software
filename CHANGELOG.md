@@ -95,6 +95,23 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **The menu is grouped by topic** (#143, SD-056): below Overview and
+  History come small headings for the nutrient solution (mixing, tank
+  and control, recipes and bottles, watering), the room (climate,
+  light) and the system (devices, functions, settings). Watering is now
+  in the same group as the tank it draws from, and recipes in the same
+  group as mixing. On a phone the bottom bar stays as it was, and "More"
+  shows the same headings.
+- **Climate, light and watering say they work by hand** (#143, SD-056):
+  each page is marked "Manual mode" ("Handbetrieb" in German). The hub
+  switches on only when you tap and controls nothing by itself, apart
+  from exhaust and circulation fans, which come back on after a power
+  cut. So keep your own timer or controller running: a light on a hub
+  plug goes off at every restart, and only a pump the hub switches is
+  protected from running dry. With nothing assigned, the page says what
+  to connect and where, and how to add a smart plug if none is added
+  yet. The Home Assistant app is unchanged, as it switches nothing
+  there.
 - **Plan: factory reset with BOOT held 15 s and a confirmation; an
   access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
   PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
@@ -381,6 +398,24 @@ listed in every release under "Security".
   folder. The port search stops at 65535. The download's smoke test also
   starts it plainly with a data folder it cannot read (SD-074) and with no
   folder for the data, on macOS and Linux (#214).
+- **The hub keeps a file it cannot read** (#211, SD-081): a file of the
+  hub that is there but cannot be read (no permission, for example root's
+  files after a start with `sudo`, or a read error of the disk or flash)
+  was taken as missing: the hub started without the Stop that was in
+  force and without its settings or password, and later saved over the
+  file. Now it starts as with a broken file and does not write over it,
+  a snapshot and its journal together. One alarm per kind of data says
+  what this means: a run-time state it cannot read keeps everything
+  stopped and is written anew at the first Stop or Resume or a new lock;
+  settings it cannot read give the factory settings; a password file it
+  cannot read refuses a first password over it and no longer advises a
+  factory reset; a job it cannot read counts as a mix cut off by the
+  restart, and the next job writes it anew. A run-time state that is
+  broken or cannot be read also makes a second mix right after the start
+  need confirmation and holds a dry-run latch in the first hour for a
+  person. This applies to the Home Assistant server, which also prints
+  such a file at the start with the reason, and, through its storage, to
+  the device. The hub's files are listed in one place (#212).
 - **The simulator keeps a data folder it cannot read** (SD-074): when
   `--data`, or the folder next to the program on a start without
   arguments, could not be read (a folder it may not enter, for example
@@ -820,6 +855,12 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The session comes only from a cookie named exactly `gc_session`**
+  (Home Assistant app, simulator and firmware): the servers now split the
+  browser's `Cookie` header into its name=value pairs and take the session
+  only from the pair of that name, and only when there is exactly one such
+  pair; two cookies of that name count as none. This happens in one place
+  in the core (`gc::sessionToken`).
 - **Three security fixes are guarded against coming back** (#234); each
   check fails when its fix is taken out:
   - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED

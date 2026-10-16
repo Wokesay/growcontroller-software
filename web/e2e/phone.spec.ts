@@ -99,6 +99,39 @@ for (const lang of ["de", "en"]) {
   });
 }
 
+test("The bottom bar keeps its four pages; More groups the others under the menu's headings (SD-056)", async ({ page, request }) => {
+  await scenario(request, "demo");
+  await login(page);
+  const bar = page.locator("nav.bottom-nav");
+  await expect(bar.getByRole("link")).toHaveText(["Übersicht", "Mischen", "Tank", "Verlauf"]);
+  // An unknown address shows the Overview: the bar marks it, not "More"
+  await page.goto("/#/gibtsnicht");
+  await expect(bar.getByRole("link", { name: "Übersicht" })).toHaveAttribute("aria-current", "page");
+  await expect(bar.getByRole("button", { name: "Mehr" })).not.toHaveClass(/active/);
+  await bar.getByRole("button", { name: "Mehr" }).click();
+  const sheet = page.getByRole("dialog", { name: "Mehr" });
+  for (const [head, links] of [["Nährlösung", ["Rezepte & Kanister", "Bewässerung"]], ["Raum", ["Klima", "Licht"]], ["System", ["Geräte", "Funktionen", "Einstellungen"]]] as const)
+    await expect(sheet.getByRole("group", { name: head }).getByRole("link")).toHaveText([...links]);
+  await expect(sheet.getByRole("link")).toHaveCount(7);  // the bar's four are not repeated
+  await fits(page, "more sheet");
+  await sheet.getByRole("link", { name: "Licht" }).click();
+  await expect(page).toHaveURL(/#\/licht/);
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId("manual-light")).toContainText("Handbetrieb");
+  // Where you are: "More" is marked, and so is the page in it
+  const more = bar.getByRole("button", { name: "Mehr" });
+  await expect(more).toHaveClass(/active/);
+  await more.click();
+  await expect(sheet.getByRole("link", { name: "Licht" })).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
+  // English, with its longest heading
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await bar.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("dialog", { name: "More" }).getByRole("group", { name: "Nutrient solution" }).getByRole("link")).toHaveText(["Recipes & bottles", "Watering"]);
+  await fits(page, "more sheet (en)");
+});
+
 test("A device row keeps its name readable: the buttons go below it", async ({ page, request }) => {
   await scenario(request, "demo");
   await login(page);
