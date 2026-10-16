@@ -39,6 +39,11 @@ class Auth {
   Msg setInitialPassword(const std::string& pw, const std::string& code = "", Ms now = 0);
   // A wrong old password counts as a failed attempt of `client`.
   Msg changePassword(const std::string& oldPw, const std::string& newPw, Ms now, const std::string& client);
+  // Set or replace the password without the old one, for a user the
+  // platform signed in (SD-077); every session ends and every client signs
+  // in anew. Removing it does the same and leaves no password.
+  Msg setPassword(const std::string& pw);
+  void removePassword();
   // Anmeldung mit Sperre nach Fehlversuchen. Bei Erfolg ein Sitzungs-Token.
   // `client` is the peer's key (clientKey), "" when unknown.
   std::optional<std::string> login(const std::string& pw, Ms now, Msg& err, const std::string& client);

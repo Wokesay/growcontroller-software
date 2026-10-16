@@ -709,6 +709,146 @@ TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and 
   CHECK(c3.state()["stock"]["teil-a"].get<double>() == doctest::Approx(full));
 }
 
+TEST_CASE("Storage: the password for direct access survives a restart; removed, it stays removed (SD-077)") {
+  TempDir dir;
+  const gc::PlatformUser alex{"0123456789abcdef0123456789abcdef", "Alex"};
+  auto start = [&](auto&& body) {
+    sim::Options o = test::opts("neu");
+    o.dataDir = dir.path.string();
+    sim::Simulation s(o);
+    s.api().platformSignIn(true);
+    body(s);
+  };
+  start([&](sim::Simulation& s) {
+    test::Client ha{s};
+    ha.user = alex;
+    ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  });
+  start([&](sim::Simulation& s) {
+    test::Client direct{s, {}, "192.168.1.20"};
+    direct.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+    test::Client ha{s};
+    ha.user = alex;
+    ha.ok("DELETE", "/api/v1/auth/direct");
+  });
+  start([&](sim::Simulation& s) {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    CHECK_FALSE(s.hub().auth().hasPassword());
+    CHECK_FALSE(s.hub().credentialsLost());  // no alarm for a password removed on purpose
+  });
+}
+
+TEST_CASE("Storage: a password file the hub could not read is left as it is, also at a clean stop (SD-077)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  {
+    sim::Simulation s(o);
+    test::Client c{s};
+    c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  }
+  const std::string damaged = "{\"salt\": \"ab\", \"hash\": ";  // cut off, as a write torn by a power cut leaves it
+  {
+    std::ofstream f(dir.path / "auth.json", std::ios::binary | std::ios::trunc);
+    f << damaged;
+  }
+  {
+    sim::Simulation s(o);
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    CHECK(s.hub().credentialsLost());
+  }  // a clean stop: everything is saved once more
+  CHECK(onDisk(dir.path / "auth.json") == damaged);  // still there for whoever can mend it
+}
+
+TEST_CASE("Storage: a removal of the direct password that cannot be saved changes nothing, now or later (SD-077)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  sim::Simulation s(o);
+  s.api().platformSignIn(true);
+  test::Client ha{s};
+  ha.user = gc::PlatformUser{"0123456789abcdef0123456789abcdef", "Alex"};
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  test::Client direct{s, {}, "192.168.1.20"};
+  direct.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+  const std::string saved = onDisk(dir.path / "auth.json");
+  fs::create_directories(dir.path / "auth.json.tmp");  // like a full card
+  CHECK(ha.call("DELETE", "/api/v1/auth/direct").first == 500);
+  CHECK(direct.call("GET", "/api/v1/state").first == 200);  // the password and its session stay
+  fs::remove_all(dir.path / "auth.json.tmp");
+  s.step(60 * 1000);  // the failed write is tried again
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.hub().flush();
+  }
+  CHECK(onDisk(dir.path / "auth.json") == saved);
+  // Removed with space on the card: the file is emptied and stays so
+  ha.ok("DELETE", "/api/v1/auth/direct");
+  CHECK(onDisk(dir.path / "auth.json") == "{}");
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.hub().flush();
+  }
+  CHECK(onDisk(dir.path / "auth.json") == "{}");
+}
+
+TEST_CASE("Storage: a direct password whose file could not be read is removed on purpose: the file is emptied (SD-077)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  const gc::PlatformUser alex{"0123456789abcdef0123456789abcdef", "Alex"};
+  {
+    sim::Simulation s(o);
+    s.api().platformSignIn(true);
+    test::Client ha{s};
+    ha.user = alex;
+    ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  }
+  {
+    std::ofstream f(dir.path / "auth.json", std::ios::binary | std::ios::trunc);
+    f << "{\"salt\": ";  // torn
+  }
+  {
+    sim::Simulation s(o);
+    s.api().platformSignIn(true);
+    test::Client ha{s};
+    ha.user = alex;
+    ha.ok("DELETE", "/api/v1/auth/direct");
+    CHECK(onDisk(dir.path / "auth.json") == "{}");
+  }
+  sim::Simulation s(o);
+  std::lock_guard<std::recursive_mutex> l(s.mutex());
+  CHECK_FALSE(s.hub().credentialsLost());  // removed on purpose: no alarm after the restart
+}
+
+TEST_CASE("Storage: a new password for direct access that cannot be saved changes nothing (SD-077)") {
+  TempDir dir;
+  sim::Options o = test::opts("neu");
+  o.dataDir = dir.path.string();
+  sim::Simulation s(o);
+  s.api().platformSignIn(true);
+  test::Client ha{s};
+  ha.user = gc::PlatformUser{"0123456789abcdef0123456789abcdef", "Alex"};
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  test::Client direct{s, {}, "192.168.1.20"};
+  direct.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+  fs::create_directories(dir.path / "auth.json.tmp");  // like a full card
+  CHECK(ha.call("PUT", "/api/v1/auth/direct", {{"password", "neues-passwort"}}).first == 500);
+  CHECK(direct.call("GET", "/api/v1/state").first == 200);  // its session stays
+  fs::remove_all(dir.path / "auth.json.tmp");
+  test::Client other{s, {}, "192.168.1.21"};
+  other.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});  // the password before stays
+  const std::string saved = onDisk(dir.path / "auth.json");
+  s.step(60 * 1000);  // the failed write is tried again
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.hub().flush();
+  }
+  CHECK(json::parse(onDisk(dir.path / "auth.json"), nullptr, false)["hash"] == json::parse(saved, nullptr, false)["hash"]);  // still the password before
+  const json logged = s.hub().events(0, 4000000000, "auth", 50)["events"];
+  for (const auto& e : logged) CHECK(e["title"]["key"] != "ev.auth.direct_changed");  // nothing changed, nothing logged
+}
+
 TEST_CASE("Storage: a damaged refill record in the saved state neither stops the hub nor opens the inlet unchecked (SD-082)") {
   TempDir dir;
   { sim::Simulation s(onCard(dir)); }

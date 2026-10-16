@@ -28,6 +28,8 @@ export const de = {
   "shell.stopHint": "Zieh im Notfall den Netzstecker des Hubs.",
   "shell.stopHintPlugs": "Zieh im Notfall den Netzstecker des Hubs und schalte Geräte an Steckdosen direkt aus.",
   "shell.offlineBar": "Keine Verbindung zum Hub – die Werte sind nicht aktuell. Ist der Hub an, steuert er ohne die App weiter.",
+  "shell.platformLost": "Deine Anmeldung über Home Assistant ist abgelaufen – die Werte sind nicht aktuell.",
+  "shell.platformRefused": "Nicht ausgeführt – deine Anmeldung über Home Assistant ist abgelaufen. Versuch es gleich noch einmal; klappt es nicht, lade die Seite neu.",
 } as const;
 
 export const en: Record<keyof typeof de, string> = {
@@ -54,4 +56,6 @@ export const en: Record<keyof typeof de, string> = {
   "shell.stopHint": "In an emergency, unplug the hub.",
   "shell.stopHintPlugs": "In an emergency, unplug the hub and switch off devices on smart plugs directly.",
   "shell.offlineBar": "No connection to the hub – the values are not current. If the hub is on, it keeps controlling without the app.",
+  "shell.platformLost": "Your session through Home Assistant has expired – the values are not current.",
+  "shell.platformRefused": "Not carried out – your session through Home Assistant has expired. Try again in a moment; if that doesn't work, reload the page.",
 };

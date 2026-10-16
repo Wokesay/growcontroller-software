@@ -264,7 +264,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Home Assistant app: the first password needs the setup code from the app's log; a wrong one is named (#79)", async ({ page, request }) => {
+test("Home Assistant server run by hand (not the app): the first password needs the setup code from its output; a wrong one is named (#79, SD-077)", async ({ page, request }) => {
   await scenario(request, "neu");
   await page.goto("/");
   await expect(page.locator("input[name=password2]")).toBeVisible();
@@ -290,7 +290,7 @@ test("Home Assistant app: the first password needs the setup code from the app's
   await page.reload();
   const code = page.getByLabel("Einrichtungscode");
   await expect(code).toBeVisible();
-  await expect(page.getByText("Einstellungen › Apps › growcontroller › Protokoll, in der neuesten Zeile", { exact: false })).toBeVisible();
+  await expect(page.getByText("in der Ausgabe des Servers (Terminal), in der neuesten Zeile", { exact: false })).toBeVisible();
   await code.fill("2222-2222-2222-2222");
   await page.locator("input[name=password]").fill("mein-passwort");
   await page.locator("input[name=password2]").fill("mein-passwort");

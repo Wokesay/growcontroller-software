@@ -24,6 +24,20 @@ struct Event {
 };
 void to_json(json& j, const Event& e);
 
+// Who made the change being logged on this thread: the name of a user the
+// platform signed in, for as long as the API handles that user's request
+// (SD-077); "" otherwise. Events get it as data "by".
+class EventActor {
+ public:
+  explicit EventActor(std::string name);
+  ~EventActor();
+  EventActor(const EventActor&) = delete;
+  EventActor& operator=(const EventActor&) = delete;
+
+ private:
+  std::string before_;
+};
+
 class EventLog {
  public:
   explicit EventLog(size_t cap = 5000) : cap_(cap) {}

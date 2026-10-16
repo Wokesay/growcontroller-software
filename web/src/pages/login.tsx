@@ -89,6 +89,7 @@ export function Login() {
         <button class="btn primary lg block" type="submit" disabled={busy}>
           <KeyRound size={18} /> {first ? t("login.setPassword") : t("login.signIn")}
         </button>
+        {!first && info.value?.platform?.signIn === "home-assistant" && <p class="muted small">{t("login.forgotHa")}</p>}
         <p class="faint small">
           {t("login.localNote")}
         </p>

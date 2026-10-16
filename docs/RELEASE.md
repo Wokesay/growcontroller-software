@@ -188,15 +188,36 @@ entry under `[Unreleased]`.
        version made first, the update from the store keeps password,
        sensors and history, and a restart keeps the data;
      - on a second host (a Raspberry Pi and, where possible, a PC) the
-       app shows in the store, installs, opens its web UI, sets a
-       password and reads sensors;
-     - another device guessing the password six times does not lock out
-       a phone that signed in (SD-051);
+       app shows in the store, installs, opens from the sidebar signed in
+       with Home Assistant's login, and reads sensors;
+     - with port 8099 opened and a password for direct access, another
+       device guessing it six times there does not lock out a phone that
+       signed in there (SD-051);
      - after the update from a version before #80 (the server ran as
        root), the app starts and reads values, so it finds the Supervisor
        in `/etc/hosts`; the host's log (Settings › System › Logs, Host)
        has no `apparmor="DENIED"` for `*_growcontroller`; restoring the
        app's backup and starting it again works;
+     - with Ingress (SD-077), after the update: the app opens from the
+       sidebar and with "Open web UI" for an administrator, without a
+       password of its own, on a computer and in the companion app on a
+       phone; a user who is no administrator sees no panel and cannot
+       open an administrator's copied Ingress address; Settings › Access
+       inside Home Assistant shows the password from before the update as
+       set, and changing it and removing it both work (removed, port 8099
+       shows only the notice again); the event log names the Home
+       Assistant user who made such a change, which checks the real
+       Supervisor's headers; the old bookmark to port 8099: where the
+       app's network settings were never saved, it fails until the port
+       is opened, then asks for the password from before the update;
+       where a mapping was saved on 0.1.0-proto.4, it asks for that
+       password at once; downloads (settings backup, history CSV,
+       diagnostic package) and the import work inside Home Assistant's
+       frame; where Home Assistant is used over HTTPS or from outside the
+       home, the panel loads there and saving a setting works; the
+       watchdog restarts nothing in 10 minutes; whether Home Assistant's
+       remote access reaches the panel is noted against the open product
+       question (#190);
      - a new backup holds the new version, and its entry for the app is
        not empty.
 
@@ -209,7 +230,11 @@ entry under `[Unreleased]`.
      restoring a backup of the app pulls that version's image again.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
-     compares itself with (SD-034).
+     compares itself with (SD-034). The same holds for a change of how
+     the app is reached (Ingress, ports, the watchdog): the server of that
+     version needs it and the version before does not work with it, so
+     the pull request that brings both carries the release itself (step
+     1) and is tagged right after its merge (SD-077).
    - The SBOMs list what ships, not the build tools (SD-075). The web
      build fails when a module the bundler puts into the app is neither
      our source, the page nor a runtime package of the lockfile, and the

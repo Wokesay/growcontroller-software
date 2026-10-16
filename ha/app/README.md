@@ -7,6 +7,7 @@ and shows them with growcontroller's checks (stale, implausible, jumping
 values). It switches nothing.
 
 Experimental: a trial of the growcontroller software on Home Assistant,
-listed in the store only with advanced mode on in your profile. Set its
-password right after the first start. See the Documentation tab and
+listed in the store only with advanced mode on in your profile. It opens
+in Home Assistant's sidebar with your Home Assistant login. See the
+Documentation tab and
 [docs/HOME_ASSISTANT.md](https://github.com/Wokesay/growcontroller-software/blob/main/docs/HOME_ASSISTANT.md).

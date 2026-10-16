@@ -259,6 +259,7 @@ function Events(p: { events: HubEvent[]; groupByDay?: boolean }) {
               <div>
                 <div class="et">{msg(e.title)}</div>
                 {msg(e.text) && <div class="ex">{msg(e.text)}</div>}
+                {typeof e.data?.by === "string" && <div class="ex muted">{t("widgets.by", { name: e.data.by })}</div>}
               </div>
             </div>
           </>

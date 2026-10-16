@@ -12,7 +12,7 @@ UI can do, an integration can do as well.
   a sign-in page without a choice of its own uses (SD-083).
 - `POST /auth/setup {password, code}` sets the initial password, exactly
   once (otherwise 409). Where the platform armed a setup code (the Home
-  Assistant app prints it to its log, SD-068), `code` from the JSON body
+  Assistant server without `--app` prints it, #79), `code` from the JSON body
   must match it, in any case and with or without dashes, or the answer is
   403 `auth.code`, the same for a missing and a wrong code; wrong codes
   lock nobody out and are logged at most once per 15 min. Then at least 8
@@ -42,6 +42,37 @@ UI can do, an integration can do as well.
   `Cookie` header holds exactly one cookie of that name.
 - Security headers on the server: CSP `default-src 'self'`,
   `X-Frame-Options: DENY`, `nosniff`, `no-referrer`.
+
+### The Home Assistant app (SD-077)
+
+The app has two ways in; the listener decides which, never the request.
+
+- **Through Home Assistant's Ingress** (port 8100 in the container, only
+  from the Supervisor): the request is signed in as the user Home
+  Assistant's Supervisor names; no session of the app's own counts there.
+  `GET /auth/session` answers `{authenticated: true, platform: true,
+  user, hasPassword}`; `POST /auth/setup|login|logout` and
+  `PUT /auth/password` answer 403 `auth.platform`. `PUT /auth/direct
+  {password}` sets or replaces the password for direct access (at least
+  8 characters, 422), `DELETE /auth/direct` removes it; both end every
+  session of the direct port and are logged with the user. The events of
+  such a request name the user in `data.by`, as the name and the first 8
+  digits of the ID ("Alex (01234567)"); the diagnostic package leaves it
+  out. `GET /info` names the way in as `platform.signIn:
+  "home-assistant"`.
+- **Directly** (port 8099): without a password for direct access every
+  `/api/*` answers 404 `api.ingress_only` and the pages only a notice.
+  With one, sign-in, sessions and the lockout as above, the cookie with
+  `Path=/api/v1/`; no first password
+  (`POST /auth/setup` 403 `auth.platform`) and no change of it
+  (`PUT /auth/password` and `/auth/direct` 403 `auth.platform`).
+- Headers through Ingress: `frame-ancestors 'self'`, `X-Frame-Options:
+  SAMEORIGIN` (Home Assistant shows the app in its own frame).
+- A password file the app cannot read leaves the direct port closed, with
+  an alarm that points to setting a new password through Ingress; the
+  way through Ingress keeps working. One that is there but cannot be read
+  is kept (SD-081): `PUT` and `DELETE /auth/direct` answer 423
+  `auth.kept.direct` until it can be read again.
 - **Origin:** the `Host` header must be an IP, `localhost` or a name in the
   home network (`.local`, `.lan`, `.home.arpa`, `.internal`, `.fritz.box`;
   against DNS rebinding). Write requests from a browser are accepted only

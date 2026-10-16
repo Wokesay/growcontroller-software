@@ -120,7 +120,7 @@ export type Catalog = {
 
 export type Info = {
   product: string; version: string; api: number; catalogVersion: number; schemaVersion: number;
-  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean }; setupDone: boolean; hasPassword: boolean; setupCode?: boolean; name: string; language?: "de" | "en";
+  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean; signIn?: string }; setupDone: boolean; hasPassword: boolean; setupCode?: boolean; name: string; language?: "de" | "en";
 };
 
 export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: Msg; text: Msg; data: Record<string, any> };
@@ -156,7 +156,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   const abort = timeoutMs ? new AbortController() : undefined;
   const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : undefined;
   try {
-    res = await fetch(`/api/v1${path}`, {
+    res = await fetch(`api/v1${path}`, {
       method,
       headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -177,6 +177,9 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   }
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized();
+    // The Home Assistant app's direct port without a password for it (SD-077):
+    // load the page again, which is then the notice where the app is now
+    if (res.status === 404 && data?.error?.key === "api.ingress_only") location.reload();
     const err = data?.error ?? {};
     throw new ApiError(res.status, err.key ?? "http", err.text ? msg(err) : t("shell.httpError", { status: res.status }), data);
   }
