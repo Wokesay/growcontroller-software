@@ -50,8 +50,8 @@ Epoch qnum(const ApiRequest& r, const char* k, Epoch def) {
   }
 }
 
-std::string sessionCookie(const std::string& token, int maxAge) {
-  return "gc_session=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" + std::to_string(maxAge);
+std::string sessionCookie(const std::string& token, int maxAge, const std::string& path) {
+  return "gc_session=" + token + "; Path=" + path + "; HttpOnly; SameSite=Strict; Max-Age=" + std::to_string(maxAge);
 }
 // The browser keeps the cookie as long as the hub keeps an unused session (SD-064)
 constexpr int kCookieMaxAgeS = static_cast<int>(Auth::kSessionIdle / kSecond);
@@ -59,6 +59,7 @@ constexpr int kCookieMaxAgeS = static_cast<int>(Auth::kSessionIdle / kSecond);
 }  // namespace
 
 bool Api::authorized(const ApiRequest& req) {
+  if (viaPlatform(req)) return true;  // signed in by the platform, never by the hub's password (SD-077)
   std::lock_guard<std::recursive_mutex> l(hub_.mutex());
   const Ms now = clock_.nowMs();
   if (req.token.empty() || !hub_.auth().check(req.token, now)) return false;
@@ -95,7 +96,20 @@ bool writeAllowed(const std::string& method, const std::string& secFetchSite, co
   return true;
 }
 
+std::string sessionCookieValue(const std::string& cookieHeader) {
+  for (size_t pos = 0; pos < cookieHeader.size();) {
+    size_t end = cookieHeader.find(';', pos);
+    if (end == std::string::npos) end = cookieHeader.size();
+    size_t a = pos;
+    while (a < end && cookieHeader[a] == ' ') ++a;
+    if (cookieHeader.compare(a, 11, "gc_session=") == 0 && a + 11 <= end) return cookieHeader.substr(a + 11, end - a - 11);
+    pos = end + 1;
+  }
+  return {};
+}
+
 ApiResponse Api::handle(const ApiRequest& req) {
+  const EventActor actor(viaPlatform(req) ? req.user->actor() : std::string());  // events name who did it (SD-077)
   try {
     return route(req);
   } catch (const json::exception&) {
@@ -127,12 +141,28 @@ ApiResponse Api::route(const ApiRequest& req) {
 
   // ---- öffentlich
   if (is("GET", {"info"})) return jsonResp(200, hub_.info());
+  // Behind the platform's sign-in the hub's own is not the way in (SD-077)
+  const bool firstOrChange = is("POST", {"auth", "setup"}) || is("PUT", {"auth", "password"});
+  const bool ownSignIn = firstOrChange || is("POST", {"auth", "login"}) || is("POST", {"auth", "logout"});
+  if (viaPlatform(req) && ownSignIn) {
+    Msg e = say("auth.platform");
+    return fail(403, e.key, e.text);
+  }
+  // and the direct way never gets a first password nor a change of it
+  if (platform_ && !req.user && firstOrChange) {
+    Msg e = say("auth.platform");
+    return fail(403, e.key, e.text);
+  }
+  if (viaPlatform(req) && is("GET", {"auth", "session"})) {
+    std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    return jsonResp(200, {{"authenticated", true}, {"platform", true}, {"user", req.user->name}, {"hasPassword", hub_.auth().hasPassword()}});
+  }
   if (is("GET", {"auth", "session"})) {
     bool ok = authorized(req);
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     ApiResponse r = jsonResp(200, {{"authenticated", ok}, {"hasPassword", hub_.auth().hasPassword()}});
     // A page left open asks now and then: its cookie lasts as long as the session is in use (SD-064)
-    if (ok) r.headers.emplace_back("Set-Cookie", sessionCookie(req.token, kCookieMaxAgeS));
+    if (ok) r.headers.emplace_back("Set-Cookie", sessionCookie(req.token, kCookieMaxAgeS, cookiePath_));
     return r;
   }
   if (is("POST", {"auth", "setup"})) {
@@ -160,7 +190,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     Msg err;
     auto tok = hub_.auth().login(jstr(body, "password"), now, err, req.client);
     ApiResponse r = jsonResp(200, {{"ok", true}});
-    if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS));
+    if (tok) r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS, cookiePath_));
     return r;
   }
   if (is("POST", {"auth", "login"})) {
@@ -175,19 +205,49 @@ ApiResponse Api::route(const ApiRequest& req) {
     }
     hub_.logEvent("auth", "info", say("ev.auth.signed_in"));
     ApiResponse r = jsonResp(200, {{"ok", true}});
-    r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS));
+    r.headers.emplace_back("Set-Cookie", sessionCookie(*tok, kCookieMaxAgeS, cookiePath_));
     return r;
   }
   if (is("POST", {"auth", "logout"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());
     hub_.auth().logout(req.token);
     ApiResponse r = jsonResp(200, {{"ok", true}});
-    r.headers.emplace_back("Set-Cookie", sessionCookie("", 0));
+    r.headers.emplace_back("Set-Cookie", sessionCookie("", 0, cookiePath_));
     return r;
   }
 
   // ---- ab hier nur angemeldet (EN 18031-1 ACM)
   if (!authorized(req)) return fail(401, "auth.required", "Bitte anmelden");
+
+  // The password for direct access: only through the platform's sign-in (SD-077)
+  if (platform_ && (is("PUT", {"auth", "direct"}) || is("DELETE", {"auth", "direct"}))) {
+    if (!viaPlatform(req)) {
+      Msg e = say("auth.platform");
+      return fail(403, e.key, e.text);
+    }
+    std::lock_guard<std::recursive_mutex> l(hub_.mutex());
+    if (m == "DELETE") {
+      // Also one whose file could not be read: removed, it is no longer missing
+      if (!hub_.auth().hasPassword() && !hub_.credentialsLost()) return jsonResp(200, {{"ok", true}});
+      if (!hub_.removePassword()) return fromResult(Result::fail(500, say("store.failed")));
+      hub_.clearPasswordSet();
+      hub_.logEvent("auth", "notice", say("ev.auth.direct_removed"), say("ev.auth.direct.text"));
+      return jsonResp(200, {{"ok", true}});
+    }
+    const Auth before = hub_.auth();
+    Msg e = hub_.auth().setPassword(jstr(body, "password"));
+    if (!e.key.empty()) return fail(422, e.key, e.text);
+    if (!hub_.saveAuth()) {  // the password before and its sessions stay
+      hub_.auth() = before;
+      return fromResult(Result::fail(500, say("store.failed")));
+    }
+    hub_.markPasswordSet();
+    if (before.hasPassword())
+      hub_.logEvent("auth", "notice", say("ev.auth.direct_changed"), say("ev.auth.direct.text"));
+    else
+      hub_.logEvent("auth", "notice", say("ev.auth.direct_set"), say("ev.auth.direct_set.text"));
+    return jsonResp(200, {{"ok", true}});
+  }
 
   if (is("PUT", {"auth", "password"})) {
     std::lock_guard<std::recursive_mutex> l(hub_.mutex());

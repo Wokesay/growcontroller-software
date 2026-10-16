@@ -155,7 +155,7 @@ test("The setup fits the phone's screen in every step; its footer leaves the sim
   }
 });
 
-test("The Home Assistant app's first-password page with its setup code fits the phone's screen (#79)", async ({ page, request }) => {
+test("The Home Assistant server's first-password page with its setup code fits the phone's screen (#79)", async ({ page, request }) => {
   await scenario(request, "neu");
   // gc_ha_server asks for a code; here the simulator's answer is changed to look like that
   await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {

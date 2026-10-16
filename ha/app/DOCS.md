@@ -47,20 +47,13 @@ the sensors from it and shows them with growcontroller's checks.
 3. Open **growcontroller** in the store and install it. Home Assistant
    downloads a ready-made image of a few MB for your Raspberry Pi (64-bit)
    or PC.
-4. Start it and choose **Open web UI**, or open
-   `http://<address of Home Assistant>:8099` in your browser. Use Home
-   Assistant's IP address or `homeassistant.local`; other names (your own
-   domain, Home Assistant Cloud) are refused, which protects against
-   websites that try to reach devices in your network.
-5. **Set a password for growcontroller.** It is growcontroller's own
-   login, separate from Home Assistant's. The page first asks for a
-   **setup code**: open Settings → Apps → growcontroller → **Log** and take
-   the newest line "Setup code for the first password: …" (upper or lower
-   case, dashes optional). Only Home Assistant's administrators, and apps
-   they gave that right, can read the log, so nobody else in your network
-   can set the password first. Do not share the code. It works once; every
-   restart of the app makes a new one.
-6. A short introduction opens: name, language and colour scheme, one
+4. Start it and choose **Open web UI** (German: **Weboberfläche öffnen**).
+   Switch on **Show in sidebar** to find it in Home Assistant's sidebar
+   from then on. growcontroller opens inside Home Assistant and uses your
+   Home Assistant login: there is no password of its own to set. Only
+   Home Assistant's administrators can open it (with Supervisor 2026.10.2
+   or newer; an older one only hides it from the others' sidebar).
+5. A short introduction opens: name, language and colour scheme, one
    sensor per measurement, and per area whether the app is to do it
    automatically one day or it stays outside the control (in Home
    Assistant or manually). The app switches nothing yet, whatever you
@@ -71,6 +64,22 @@ the sensors from it and shows them with growcontroller's checks.
    calibration filter on the node. A sensor the app does not
    suggest is under **Show other sensors**, and its unit must fit the
    measurement.
+6. **Optional: open it directly,** for example from a bookmark or on a
+   phone on the wall without Home Assistant's app:
+   1. In growcontroller, opened from the sidebar, open **Settings ›
+      Access** (German: Einstellungen › Zugang) and set a password for
+      direct access. Never use your Home Assistant password: on port 8099
+      it travels unencrypted.
+   2. In Home Assistant open **Settings → Apps → growcontroller →
+      Configuration** (German: Konfiguration). Under **Network**
+      (Netzwerk) choose **⋮ → Show disabled ports** (Deaktivierte Ports
+      anzeigen), enter `8099` and save.
+   3. Open `http://homeassistant.local:8099` or
+      `http://<IP address of Home Assistant>:8099` and sign in with that
+      password. Other names (your own domain, Home Assistant Cloud) are
+      refused, which protects against websites that try to reach devices
+      in your network. Until a password for direct access is set, the
+      port shows only a pointer to the sidebar.
 
 There is nothing to configure: the app reaches Home Assistant through the
 Supervisor and gets its access from it. No token is needed.
@@ -78,7 +87,8 @@ Supervisor and gets its access from it. No token is needed.
 ## Your data
 
 - growcontroller keeps its data (configuration, history, events, the hash
-  of its password) in the app's own folder. Home Assistant's backups
+  of the password for direct access if you set one) in the app's own
+  folder. Home Assistant's backups
   include it.
 - Uninstalling the app deletes that folder; keep a backup if you want it
   later.
@@ -94,23 +104,35 @@ Supervisor and gets its access from it. No token is needed.
 
 ## Security
 
-- The web app is plain HTTP on port 8099. Use it inside your own network
-  only. Never forward the port to the internet, and check that your
-  router does not open the Home Assistant host to the internet over IPv6
-  (an "exposed host" or "open all ports" setting). On a shared or open
-  Wi-Fi, others could read the password on its way.
-- To close the port, clear it under the app's **Network** settings. The
-  web app is then not reachable from your network (Home Assistant and
-  other apps on the same host can still reach it).
+- Inside Home Assistant, growcontroller is protected by your Home
+  Assistant login. Secure that login: use multi-factor authentication,
+  and set a limit for failed sign-ins in Home Assistant's HTTP settings
+  (by default Home Assistant bans no address after failed sign-ins). Use
+  HTTPS for Home Assistant if you reach it from outside your home.
+- Port 8099 is closed unless you open it (or saved the app's network
+  settings before, which keeps it as it was). If you open it for direct
+  access, it is plain HTTP: use it inside your own network only. Never
+  forward the port to the internet, and check that your router does not
+  open the Home Assistant host to the internet over IPv6 (an "exposed
+  host" or "open all ports" setting). On a shared or open Wi-Fi, others
+  could read the password on its way, so never use your Home Assistant
+  password for direct access.
+- To close the port again, clear 8099 under **Configuration → Network**
+  and save; to end direct access altogether, remove its password in
+  growcontroller under **Settings › Access**. If you came from version
+  0.1.0-proto.4 or earlier, your old growcontroller password is now the
+  password for direct access: if you are not sure who set it, open
+  growcontroller from Home Assistant's sidebar and change or remove it
+  under **Settings › Access**.
 - The access the app gets from the Supervisor is not limited to reading:
   it is the access of Home Assistant's own administrator. growcontroller
   only reads the states with it, but a flaw in growcontroller's web server
   could let an attacker in your network control Home Assistant. That is
-  why the port belongs in your own network only.
+  why the direct port belongs in your own network only.
 - The image holds nothing but the growcontroller server, the web app and
   the license texts: no shell, no package manager.
 - The server starts with administrator rights (root) only to hand its
-  data folder to an account of its own. Before it opens its port it
+  data folder to an account of its own. Before it opens its ports it
   switches to that account and cannot switch back: no root, no other
   special right. Home Assistant also confines it with the app's AppArmor
   profile (on hosts with AppArmor, such as Home Assistant OS): it reads
@@ -125,7 +147,7 @@ Supervisor and gets its access from it. No token is needed.
 
 ## Source code and license
 
-AGPL-3.0-or-later. The source code of exactly this version is linked on
-the web app's sign-in page and under Settings, and the license texts are
+AGPL-3.0-or-later. The source code of exactly this version is linked
+under Settings and on every page of port 8099, and the license texts are
 in the image under `/licenses`. Problems and ideas:
 <https://github.com/Wokesay/growcontroller-software/issues>.

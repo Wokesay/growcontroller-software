@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer as httpServer, get, request } from "node:http";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -58,6 +58,61 @@ function info(port) {
       })
       .on("error", () => resolve(null));
   });
+}
+
+// A request from a given local address, with headers given as a flat list
+// of names and values: a name may come twice, or spelt otherwise, as a
+// browser or another container could send it.
+function call(port, path, { method = "GET", body, headers = [], from = "127.0.0.1" } = {}) {
+  return new Promise((resolve, reject) => {
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const raw = [...headers];
+    if (data !== undefined) raw.push("Content-Type", "application/json", "Content-Length", String(Buffer.byteLength(data)));
+    const req = request({ host: "127.0.0.1", port, path, method, localAddress: from, headers: raw }, (res) => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (text += c));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
+    });
+    req.on("error", reject);
+    req.end(data);
+  });
+}
+// A request written byte for byte, for header values Node will not send as
+// they are (UTF-8 in a header, as Home Assistant sends a user's name).
+function rawCall(port, method, path, headers, body, host = "127.0.0.1") {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.from(body === undefined ? "" : JSON.stringify(body), "utf8");
+    const lines = [`${method} ${path} HTTP/1.1`, `Host: ${host}`, "Connection: close"];
+    if (body !== undefined) lines.push("Content-Type: application/json", `Content-Length: ${data.length}`);
+    for (let i = 0; i < headers.length; i += 2) lines.push(`${headers[i]}: ${headers[i + 1]}`);
+    const socket = connect({ host: "127.0.0.1", port, localAddress: "127.0.0.1" });
+    const parts = [];
+    socket.on("data", (c) => parts.push(c));
+    socket.on("end", () => resolve(Number(/^HTTP\/1\.1 (\d{3})/.exec(Buffer.concat(parts).toString("utf8"))?.[1])));
+    socket.on("error", reject);
+    socket.end(Buffer.concat([Buffer.from(`${lines.join("\r\n")}\r\n\r\n`, "utf8"), data]));
+  });
+}
+// The user Home Assistant's Supervisor names on a request through Ingress (SD-077)
+const ALEX = ["X-Remote-User-Id", "0123456789abcdef0123456789abcdef", "X-Remote-User-Display-Name", "Alex"];
+// The app as the Supervisor starts it, with its Ingress listener answering
+// this computer instead of the Supervisor; ready once /info answers there.
+async function startApp(data, { web = join(tmp, "no-web"), extraEnv = {} } = {}) {
+  const port = await freePort();
+  let ingressPort = await freePort();
+  while (ingressPort === port) ingressPort = await freePort();
+  const child = spawn(
+    bin,
+    ["--app", "--data", data, "--host", "127.0.0.1", "--web", web, "--port", String(port), "--ingress-port", String(ingressPort), "--ingress-from", "127.0.0.1"],
+    { env: env({ SUPERVISOR_TOKEN: "test-token", ...extraEnv }), stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const app = { port, ingressPort, child, out: "" };
+  child.stdout.on("data", (c) => (app.out += c));
+  child.stderr.on("data", (c) => (app.out += c));
+  app.ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+  for (let i = 0; i < 60 && !(await info(ingressPort)); i++) await new Promise((r) => setTimeout(r, 250));
+  return app;
 }
 
 // The setup code the start printed (#79), once it is out.
@@ -140,42 +195,33 @@ test("an option's value --app does not switch to the app", { skip }, () => {
 });
 
 test("--app starts with the Supervisor's token and honours --data, --host, --web and --port", { skip }, async () => {
-  const port = await freePort();
   const data = join(tmp, "hub");
-  const child = spawn(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
-    env: env({ SUPERVISOR_TOKEN: "test-token" }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  child.stdout.on("data", (c) => (out += c));
-  child.stderr.on("data", (c) => (out += c));
-  const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+  const app = await startApp(data);
   try {
-    let body = null;
-    for (let i = 0; i < 60 && !body; i++) {
-      body = await info(port);
-      if (!body) await new Promise((r) => setTimeout(r, 250));
-    }
-    assert.ok(body, `the server answers on ${port}:\n${out}`);
-    assert.deepEqual(body.platform, { kind: "home-assistant", readOnly: true, simulated: false });
-    assert.match(out, /http:\/\/127\.0\.0\.1:\d+/);
-    assert.match(out, /from http:\/\/supervisor\/core every 5 s/);
+    const body = await info(app.ingressPort);
+    assert.ok(body, `the server answers through Ingress on ${app.ingressPort}:\n${app.out}`);
+    assert.deepEqual(body.platform, { kind: "home-assistant", readOnly: true, signIn: "home-assistant", simulated: false });
+    assert.match(app.out, /http:\/\/127\.0\.0\.1:\d+/);
+    assert.match((await call(app.port, "/")).text, /Direct access at this address is off/, `the direct port on ${app.port}`);
+    assert.match(app.out, /from http:\/\/supervisor\/core every 5 s/);
   } finally {
-    child.kill("SIGTERM");
+    app.child.kill("SIGTERM");
   }
-  assert.deepEqual(await ended, { code: 0, signal: null }, out);
+  assert.deepEqual(await app.ended, { code: 0, signal: null }, app.out);
   assert.equal(statSync(data).mode & 0o777, 0o700, "the data folder");
   const files = readdirSync(data);
   assert.ok(files.length > 0, "the hub wrote its data folder");
   for (const f of files) assert.equal(statSync(join(data, f)).mode & 0o777, 0o600, f);
 });
 
-test("the first password needs the setup code the start printed; a restart makes a new one; once set, a start prints none (#79)", { skip }, async () => {
+test("without --app the first password needs the setup code the start printed; a restart makes a new one; once set, a start prints none (#79)", { skip }, async () => {
   const data = join(tmp, "code");
+  const config = join(tmp, "code-mapping.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
   const start = async () => {
     const port = await freePort();
-    const child = spawn(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
-      env: env({ SUPERVISOR_TOKEN: "test-token" }),
+    const child = spawn(bin, ["--config", config, "--data", data, "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
+      env: env({ GC_HA_TOKEN: "test-token" }),
       stdio: ["ignore", "pipe", "pipe"],
     });
     const run = { port, child, out: "" };
@@ -220,6 +266,184 @@ test("the first password needs the setup code the start printed; a restart makes
   assert.deepEqual(await again.ended, { code: 0, signal: null }, again.out);
 });
 
+test("--ingress-port and --ingress-from go with --app, one address and another port (SD-077)", { skip }, () => {
+  for (const args of [
+    ["--config", "x.json", "--ingress-port", "9000"],
+    ["--config", "x.json", "--ingress-from", "127.0.0.1"],
+  ]) {
+    const r = run(args, { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], args.join(" "));
+    assert.match(r.stderr, /go with --app/);
+  }
+  // Only the Supervisor or this computer may name Home Assistant's user; a
+  // proxy elsewhere on the network would be trusted with that
+  for (const from of ["0.0.0.0/0", "supervisor", "192.168.1.5", "172.30.32.3", "127.0.0.01", "0:0:0:0:0:ffff:ac1e:2002", "::1"]) {
+    const r = run(["--app", "--ingress-from", from], { SUPERVISOR_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], from);
+    assert.match(r.stderr, /--ingress-from takes the Supervisor's address \(172\.30\.32\.2\) or one of this computer's \(127\.x\.x\.x\)/, from);
+  }
+  const same = run(["--app", "--port", "8100"], { SUPERVISOR_TOKEN: "t" });
+  assert.deepEqual([same.status, same.signal], [2, null]);
+  assert.match(same.stderr, /--ingress-port must differ from --port/);
+  // Without --app there is no Ingress listener: 8100 is a port like any other
+  const alone = run(["--config", join(tmp, "missing.json"), "--port", "8100"], { GC_HA_TOKEN: "t" });
+  assert.doesNotMatch(alone.stderr, /ingress/i);
+  assert.match(alone.stderr, /file not found/);
+});
+
+const linuxLoopback = skip || (process.platform !== "linux" && "needs 127.0.0.2 on the loopback (Linux)");
+test("as an app, Ingress answers only the Supervisor and only with the user it signed in; the direct port takes nothing from Home Assistant (SD-077)", { skip: linuxLoopback }, async () => {
+  const app = await startApp(join(tmp, "ingress"));
+  const ing = (path, opts) => call(app.ingressPort, path, opts);
+  const direct = (path, opts) => call(app.port, path, opts);
+  try {
+    assert.doesNotMatch(app.out, /Setup code/, "no first password over the network");
+    assert.match(app.out, /Opens in Home Assistant's sidebar \(Ingress, port \d+, only from 127\.0\.0\.1\); port \d+ shows only a notice/);
+    // Ingress: the user the Supervisor names, nothing else
+    const state = await ing("/api/v1/state", { headers: ALEX });
+    assert.equal(state.status, 200, state.text);
+    assert.equal(state.headers["x-frame-options"], "SAMEORIGIN");
+    assert.match(state.headers["content-security-policy"], /frame-ancestors 'self'/);
+    const session = (await ing("/api/v1/auth/session", { headers: ALEX })).json();
+    assert.deepEqual([session.authenticated, session.platform, session.user], [true, true, "Alex"]);
+    assert.equal((await ing("/api/v1/info")).json().platform.signIn, "home-assistant", "the web app knows its way in");
+    assert.equal((await ing("/api/v1/info")).status, 200, "the watchdog reads /info without a user");
+    for (const [why, headers] of [
+      ["no user", []],
+      ["a copy spelt otherwise", ["x-remote-user-id", ALEX[1]]],
+      ["two copies", [...ALEX, "x-remote-user-id", "ffffffffffffffffffffffffffffffff"]],
+      ["not 32 lowercase hex digits", ["X-Remote-User-Id", ALEX[1].toUpperCase()]],
+      ["too short", ["X-Remote-User-Id", ALEX[1].slice(1)]],
+    ]) {
+      const r = await ing("/api/v1/state", { headers });
+      assert.equal(r.status, 403, why);
+      assert.equal(r.json().error.key, "api.ingress_user", why);
+    }
+    assert.equal((await ing("/", { headers: [] })).status, 403, "the page too needs the user");
+    const other = await ing("/api/v1/state", { headers: ALEX, from: "127.0.0.2" });
+    assert.equal(other.status, 403, "another container, with a user it made up");
+    assert.equal(other.json().error.key, "api.ingress");
+    assert.equal((await ing("/api/v1/info", { from: "127.0.0.2" })).status, 403);
+    assert.equal((await ing("/api/v1/stop", { method: "POST", body: {}, headers: [...ALEX, "Sec-Fetch-Site", "cross-site"] })).status, 403, "cross-site");
+    // Home Assistant passes on the browser's host name, which may be any of its own (a domain, its cloud address); only its form is checked
+    assert.equal((await ing("/api/v1/state", { headers: [...ALEX, "Host", "my-home.example.org"] })).status, 200, "a name of Home Assistant's own");
+    const long = await ing("/api/v1/state", { headers: [...ALEX, "Host", `${"a".repeat(260)}.example.org`] });
+    assert.equal(long.status, 403, "a host name longer than any");
+    assert.equal(long.json().error.key, "api.ingress");
+    assert.equal(await rawCall(app.ingressPort, "GET", "/api/v1/state", ALEX, undefined, "a".repeat(255)), 200, "255 bytes, the longest a host name can be");
+    assert.equal(await rawCall(app.ingressPort, "GET", "/api/v1/state", ALEX, undefined, "a".repeat(256)), 403, "256 bytes");
+    assert.equal(await rawCall(app.ingressPort, "GET", "/api/v1/state", ALEX, undefined, "my home.example.org"), 403, "a space in the host name");
+    // The direct port without a password: a notice, no API, whatever Home Assistant's headers say
+    const notice = await direct("/");
+    assert.equal(notice.status, 200);
+    assert.match(notice.text, /Open growcontroller in Home Assistant:/);
+    assert.match(notice.text, /Öffne growcontroller in Home Assistant:/);
+    assert.match(notice.text, /https:\/\/github\.com\/Wokesay\/growcontroller-software\/tree\/v/);
+    assert.equal(notice.headers["x-frame-options"], "DENY");
+    assert.equal(notice.headers["content-security-policy"], "default-src 'none'; frame-ancestors 'none'", "one policy, the notice's own");
+    for (const path of ["/api/v1/info", "/api/v1/state", "/api/v1/auth/session"]) {
+      const r = await direct(path, { headers: ALEX });
+      assert.equal(r.status, 404, path);
+      assert.equal(r.json().error.key, "api.ingress_only", path);
+    }
+    assert.equal((await direct("/api/v1/auth/setup", { method: "POST", body: { password: "uebernahme-123" } })).status, 404);
+    // The password for direct access, set through Ingress
+    const set = await ing("/api/v1/auth/direct", { method: "PUT", body: { password: "direkt-passwort" }, headers: ALEX });
+    assert.equal(set.status, 200, set.text);
+    assert.equal((await direct("/api/v1/info")).json().hasPassword, true);
+    assert.equal((await direct("/api/v1/state", { headers: ALEX })).status, 401, "Home Assistant's user counts for nothing there");
+    const login = await direct("/api/v1/auth/login", { method: "POST", body: { password: "direkt-passwort" } });
+    assert.equal(login.status, 200, login.text);
+    assert.match(String(login.headers["set-cookie"]), /; Path=\/api\/v1\/;/, "the cookie goes only to the API, the only part that needs it");
+    const cookie = String(login.headers["set-cookie"]).split(";")[0];
+    const renewed = await direct("/api/v1/auth/session", { headers: ["Cookie", cookie] });
+    assert.match(String(renewed.headers["set-cookie"]), /^gc_session=[^;]+; Path=\/api\/v1\/;/, "renewed with the same path");
+    assert.equal((await direct("/api/v1/state", { headers: ["Cookie", cookie] })).status, 200);
+    assert.equal((await direct("/api/v1/state", { headers: ["Cookie", `x${cookie}`] })).status, 401, "the cookie by its exact name");
+    const change = await direct("/api/v1/auth/password", { method: "PUT", body: { old: "direkt-passwort", new: "anderes-passwort" }, headers: ["Cookie", cookie] });
+    assert.equal(change.status, 403, "never changed on the direct port");
+    assert.equal((await ing("/api/v1/state", { headers: ["Cookie", cookie] })).status, 403, "the direct port's session counts for nothing through Ingress");
+    const logout = await direct("/api/v1/auth/logout", { method: "POST", body: {}, headers: ["Cookie", cookie] });
+    assert.match(String(logout.headers["set-cookie"]), /^gc_session=; Path=\/api\/v1\/;.*Max-Age=0/, "signed out: the same cookie, removed");
+    const again = await direct("/api/v1/auth/login", { method: "POST", body: { password: "direkt-passwort" } });
+    const cookie2 = String(again.headers["set-cookie"]).split(";")[0];
+    // Removed through Ingress: the direct port is a notice again at once
+    assert.equal((await ing("/api/v1/auth/direct", { method: "DELETE", headers: ALEX })).status, 200);
+    assert.equal((await direct("/api/v1/state", { headers: ["Cookie", cookie2] })).status, 404);
+    assert.match((await direct("/")).text, /Direct access at this address is off/);
+    const events = (await ing("/api/v1/events?type=auth&limit=50", { headers: ALEX })).json().events;
+    assert.ok(events.some((e) => e.title?.key === "ev.auth.direct_set" && e.data?.by === "Alex (01234567)"), JSON.stringify(events));
+    // The name Home Assistant sends goes into the log cleaned and short, with the ID's start (names need not be unique), or is made from the ID
+    const id = ["X-Remote-User-Id", "0123456789abcdef0123456789abcdef"];
+    for (const [headers, by] of [
+      [[...id, "X-Remote-User-Display-Name", "\u202eAlex\u200b Example\u{E0041}"], "Alex Example (01234567)"],
+      [[...id, "X-Remote-User-Display-Name", "\u200b", "X-Remote-User-Name", "alex"], "alex (01234567)"],
+      [[...id, "X-Remote-User-Display-Name", "\u200b \u200b", "X-Remote-User-Name", "alex"], "alex (01234567)"],
+      [[...id, "X-Remote-User-Display-Name", "\u00a0\u3000\u3164\u2800", "X-Remote-User-Name", "alex"], "alex (01234567)"],  // blank in other ways
+      [[...id, "X-Remote-User-Display-Name", "Ä".repeat(40)], `${"Ä".repeat(32)} (01234567)`],
+      [id, "Home Assistant 01234567"],
+    ]) {
+      assert.equal(await rawCall(app.ingressPort, "PUT", "/api/v1/auth/direct", headers, { password: "direkt-passwort" }), 200, JSON.stringify(headers));
+      const [newest] = (await ing("/api/v1/events?type=auth&limit=1", { headers: ALEX })).json().events;
+      assert.equal(newest.data?.by, by, JSON.stringify(headers));
+    }
+  } finally {
+    app.child.kill("SIGTERM");
+  }
+  assert.deepEqual(await app.ended, { code: 0, signal: null }, app.out);
+});
+
+test("as an app, without its Ingress port it does not start, and the direct port does not stand in (SD-077)", { skip }, async () => {
+  const port = await freePort();
+  const taken = createServer().listen(0, "127.0.0.1");
+  await new Promise((r) => taken.once("listening", r));
+  try {
+    const r = spawnSync(
+      bin,
+      ["--app", "--data", join(tmp, "no-ingress"), "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port), "--ingress-port", String(taken.address().port), "--ingress-from", "127.0.0.1"],
+      { env: env({ SUPERVISOR_TOKEN: "test-token" }), encoding: "utf8", timeout: 15000 },
+    );
+    assert.deepEqual([r.status, r.signal], [1, null], r.stderr);
+    assert.match(r.stderr, /^growcontroller did not start: Port \d+ for Home Assistant's Ingress is not available\.\nYour data is kept\./m);
+    assert.doesNotMatch(r.stdout, /Opens in Home Assistant's sidebar/, "it never said it was serving");
+  } finally {
+    taken.close();
+  }
+});
+
+test("as an app, a password set before Ingress (0.1.0-proto.4) is kept as the password for direct access (SD-077)", { skip }, async () => {
+  const data = join(tmp, "proto4");
+  // 0.1.0-proto.4's app set its password over the network; the server without --app still does, with the setup code (#79)
+  const config = join(tmp, "proto4-mapping.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  const port = await freePort();
+  const before = spawn(bin, ["--config", config, "--data", data, "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
+    env: env({ GC_HA_TOKEN: "test-token" }),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  before.stdout.on("data", (c) => (out += c));
+  before.stderr.on("data", (c) => (out += c));
+  const stopped = new Promise((resolve) => before.on("exit", (code, signal) => resolve({ code, signal })));
+  try {
+    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    const setup = await call(port, "/api/v1/auth/setup", { method: "POST", body: { password: "altes-passwort", code: await setupCode(() => out) } });
+    assert.equal(setup.status, 200, setup.text);
+  } finally {
+    before.kill("SIGTERM");
+  }
+  assert.deepEqual(await stopped, { code: 0, signal: null }, out);
+  const app = await startApp(data);
+  try {
+    assert.equal((await call(app.ingressPort, "/api/v1/auth/session", { headers: ALEX })).json().hasPassword, true, app.out);
+    const login = await call(app.port, "/api/v1/auth/login", { method: "POST", body: { password: "altes-passwort" } });
+    assert.equal(login.status, 200, login.text);
+  } finally {
+    app.child.kill("SIGTERM");
+  }
+  assert.deepEqual(await app.ended, { code: 0, signal: null }, app.out);
+});
+
 // A stand-in for Home Assistant: every read gets these states and a Date
 // header by its own clock, as Home Assistant sends one.
 async function standIn(states, clock) {
@@ -260,18 +484,12 @@ test("started as root, --app gives its data folder to 65532 and runs as it, with
     chmodSync(data, 0o000);
     symlinkSync(join(outside, "file"), join(data, "link"));
     symlinkSync(outside, join(data, "folder-link"));
-    const port = await freePort();
-    const child = spawn(bin, ["--app", "--data", data, "--host", "127.0.0.1", "--web", web, "--port", String(port)], {
-      env: env({ SUPERVISOR_TOKEN: "test-token" }),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let out = "";
-    child.stdout.on("data", (c) => (out += c));
-    child.stderr.on("data", (c) => (out += c));
-    const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+    const app = await startApp(data, { web });
+    const { child } = app;
+    const ended = app.ended;
     try {
-      for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
-      assert.ok(await info(port), out);
+      const out = app.out;
+      assert.ok(await info(app.ingressPort), out);
       const status = Object.fromEntries(
         readFileSync(`/proc/${child.pid}/status`, "utf8").split("\n").filter((l) => l.includes(":")).map((l) => l.split(/:\s*/, 2)),
       );
@@ -281,13 +499,13 @@ test("started as root, --app gives its data folder to 65532 and runs as it, with
       assert.equal(status.CapPrm, "0000000000000000");
       assert.equal(status.CapEff, "0000000000000000");
       assert.equal(status.NoNewPrivs, "1");
-      const page = await fetch(`http://127.0.0.1:${port}/`);
-      assert.match(await page.text(), /^growcontroller's web app cannot be read\./);
-      assert.match(out, new RegExp(`The web app in ${web} cannot be read; growcontroller runs without it\\. Detail: Permission denied`));
+      const page = await call(app.ingressPort, "/", { headers: ALEX });
+      assert.match(page.text, /^growcontroller's web app cannot be read\./);
+      assert.match(app.out, new RegExp(`The web app in ${web} cannot be read; growcontroller runs without it\\. Detail: Permission denied`));
     } finally {
       child.kill("SIGTERM");
     }
-    assert.deepEqual(await ended, { code: 0, signal: null }, out);
+    assert.deepEqual(await ended, { code: 0, signal: null }, app.out);
     // The folder, private again, and what is in it are the account's, lstat:
     // links themselves. The store keeps no subfolders: one is handed over,
     // not entered
@@ -439,18 +657,13 @@ function post(port, path, body, localAddress) {
 }
 
 test("the lockout tells devices apart by the connection's address (SD-051)", { skip: skip || (process.platform !== "linux" && "needs 127.0.0.2 on the loopback (Linux)") }, async () => {
-  const port = await freePort();
-  const child = spawn(bin, ["--app", "--data", join(tmp, "lockout"), "--host", "127.0.0.1", "--web", join(tmp, "no-web"), "--port", String(port)], {
-    env: env({ SUPERVISOR_TOKEN: "test-token" }),
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  let out = "";
-  child.stdout.on("data", (c) => (out += c));
-  const ended = new Promise((resolve) => child.on("exit", resolve));
+  // the direct port of the app, its password set through Ingress (SD-077)
+  const app = await startApp(join(tmp, "lockout"));
+  const { port, child } = app;
+  const ended = app.ended;
   try {
-    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
-    const code = await setupCode(() => out);
-    assert.equal(await post(port, "/api/v1/auth/setup", { password: "mein-passwort", code }, "127.0.0.1"), 200);  // signed in from here
+    assert.equal((await call(app.ingressPort, "/api/v1/auth/direct", { method: "PUT", body: { password: "mein-passwort" }, headers: ALEX })).status, 200);
+    assert.equal(await post(port, "/api/v1/auth/login", { password: "mein-passwort" }, "127.0.0.1"), 200);  // signed in from here
     const tries = [];
     for (let i = 0; i < 6; i++) tries.push(await post(port, "/api/v1/auth/login", { password: "falsch" }, "127.0.0.2"));
     assert.deepEqual(tries, [401, 401, 401, 401, 401, 429]);

@@ -94,6 +94,31 @@ Msg Auth::changePassword(const std::string& oldPw, const std::string& newPw, Ms 
   return {};
 }
 
+Msg Auth::setPassword(const std::string& pw) {
+  Msg m = checkStrength(pw);
+  if (!m.key.empty()) return m;
+  std::uint8_t salt[16];
+  rng_(salt, sizeof salt);
+  salt_ = toHex(salt, sizeof salt);
+  iterations_ = kIterations;
+  hash_ = hashOf(pw, salt_, iterations_);
+  setupCode_.clear();
+  sessions_.clear();
+  known_.clear();
+  shared_ = {};
+  return {};
+}
+
+void Auth::removePassword() {
+  setupCode_.clear();  // as with setPassword(): no first password follows
+  salt_.clear();
+  hash_.clear();
+  iterations_ = kIterations;
+  sessions_.clear();
+  known_.clear();
+  shared_ = {};
+}
+
 Auth::Attempts& Auth::attemptsOf(const std::string& client) {
   auto it = client.empty() ? known_.end() : known_.find(client);
   return it == known_.end() ? shared_ : it->second.tries;

@@ -71,14 +71,31 @@ jobs:
           if [ "$rc" != 2 ]; then echo "::error::Without SUPERVISOR_TOKEN the app ended with $rc, not 2"; exit 1; fi
           rc=0; docker run --rm -e SUPERVISOR_TOKEN=smoke-test "$img" --config /x > /dev/null 2>&1 || rc=$?
           if [ "$rc" != 2 ]; then echo "::error::--config was not refused ($rc)"; exit 1; fi
-          # A stand-in for the Supervisor on a network of its own: it answers
-          # every request with an empty list of states and keeps what it was
-          # asked. The app finds it by name in its /etc/hosts, where Home
-          # Assistant puts the Supervisor's address.
-          docker network create gc-smoke
-          docker run -d --name supervisor --network gc-smoke "$STANDIN" sh -c \
+          # A stand-in for the Supervisor on a network like Home Assistant's,
+          # at the Supervisor's address: it answers every request with an
+          # empty list of states and keeps what it was asked. The app finds it
+          # by name in its /etc/hosts, where Home Assistant puts the
+          # Supervisor's address. It also brings curl, to ask the app through
+          # Ingress from that address, as the Supervisor does (SD-077).
+          # Containers get addresses from 172.30.33.0/24, as on Home Assistant's
+          # network, so the fixed ones below (the Supervisor, another
+          # container) stay free.
+          docker network create --subnet 172.30.32.0/23 --ip-range 172.30.33.0/24 gc-smoke
+          docker run -d --name supervisor --network gc-smoke --ip 172.30.32.2 "$STANDIN" sh -c \
             'while true; do printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]" | nc -l -p 80 >> /tmp/requests 2>&1; done'
-          supervisor=$(docker inspect supervisor --format '{{(index .NetworkSettings.Networks "gc-smoke").IPAddress}}')
+          docker exec supervisor apk add --no-cache curl > /dev/null
+          supervisor=172.30.32.2
+          # Through Ingress, as the Supervisor forwards it: from its address,
+          # with the user Home Assistant signed in. Prints the status, the body
+          # goes to ingress.out.
+          user="0123456789abcdef0123456789abcdef"
+          ingress() {
+            local app="$1" path="$2"; shift 2
+            docker exec supervisor rm -f /tmp/ingress.out
+            # no connection prints 000, which the caller reports
+            docker exec supervisor curl -sS -o /tmp/ingress.out -w '%{http_code}' -H "X-Remote-User-Id: $user" -H 'X-Remote-User-Display-Name: Smoke' "$@" "http://$app:8100$path" || true
+            docker exec supervisor cat /tmp/ingress.out > ingress.out 2> /dev/null || : > ingress.out
+          }
           # The app's AppArmor profile (#80). The Supervisor loads it with the
           # host's parser and fails the install or update if that refuses it,
           # so the oldest parser it may meet reads it too.
@@ -98,17 +115,22 @@ jobs:
           docker run --rm -v gc-data:/data "$STANDIN" sh -ec 'mkdir -m 700 /data/hub; echo old > /data/hub/before-80; chmod 600 /data/hub/before-80'
           # Started like the Supervisor starts it: as root behind docker-init,
           # in its profile, a token and the time zone in the environment, no
-          # arguments.
+          # arguments; the direct port opened as a user can open it.
           start() {
             docker run -d --name "$1" --init --security-opt apparmor=0000ci00_growcontroller --network gc-smoke --add-host "supervisor:$supervisor" \
               -v "$2:/data" -e SUPERVISOR_TOKEN=smoke-test -e TZ=Europe/Berlin -p 127.0.0.1:8099:8099 "$img"
           }
+          # Ready once the Supervisor's watchdog would find it: /info through
+          # Ingress, which needs no user
           answers() {
             for _ in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:8099/api/v1/info -o info.json; then return 0; fi
+              if docker exec supervisor curl -fsS "http://$1:8100/api/v1/info" -o /tmp/info.json 2> /dev/null; then
+                docker exec supervisor cat /tmp/info.json > info.json
+                return 0
+              fi
               sleep 1
             done
-            docker logs "$1"; echo "::error::The app did not answer"; return 1
+            docker logs "$1"; echo "::error::The app did not answer through Ingress"; return 1
           }
           start app gc-data
           answers app
@@ -127,26 +149,40 @@ jobs:
             if [ "$profile" != "0000ci00_growcontroller (enforce)" ]; then echo "::error::$1 runs in \"$profile\""; return 1; fi
           }
           confined app
-          # The first password needs the setup code from the app's log (#79).
-          jq -e '.hasPassword == false and .setupCode == true' info.json
-          setup_code=""
-          for _ in $(seq 1 10); do
-            docker logs app > start.log 2>&1
-            setup_code=$(sed -nE 's/^Setup code for the first password: ([2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){3})$/\1/p' start.log)
-            if [ -n "$setup_code" ]; then break; fi
-            sleep 1
-          done
-          if [ -z "$setup_code" ]; then cat start.log; echo "::error::No setup code in the app's log"; exit 1; fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"password":"smoke-test-1"}' http://127.0.0.1:8099/api/v1/auth/setup)
-          if [ "$code" != 403 ]; then echo "::error::The first password without the code got $code, not 403"; exit 1; fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"password\":\"smoke-test-1\",\"code\":\"$setup_code\"}" http://127.0.0.1:8099/api/v1/auth/setup)
-          if [ "$code" != 200 ]; then echo "::error::The first password with the code got $code, not 200"; exit 1; fi
-          curl -fsS http://127.0.0.1:8099/ -o index.html
+          # No first password over the network, so no setup code (SD-077)
+          docker logs app > start.log 2>&1
+          if grep -q 'Setup code' start.log; then cat start.log; echo "::error::The app printed a setup code"; exit 1; fi
+          grep -q "Opens in Home Assistant's sidebar" start.log
+          # Through Ingress: the user the Supervisor names; without one, or
+          # from another container, nothing but /info
+          code=$(ingress app /api/v1/state)
+          if [ "$code" != 200 ]; then cat ingress.out; echo "::error::Ingress with a user got $code, not 200"; exit 1; fi
+          code=$(docker exec supervisor curl -sS -o /dev/null -w '%{http_code}' http://app:8100/api/v1/state)
+          if [ "$code" != 403 ]; then echo "::error::Ingress without a user got $code, not 403"; exit 1; fi
+          # busybox wget: "server returned error: HTTP/1.1 403 Forbidden"; not a refused connection or a name it could not find
+          rc=0; docker run --rm --network gc-smoke --ip 172.30.32.3 "$STANDIN" wget -q -O /dev/null --header "X-Remote-User-Id: $user" http://app:8100/api/v1/info > other-container.txt 2>&1 || rc=$?
+          if [ "$rc" = 0 ] || ! grep -q 'HTTP/1.1 403' other-container.txt; then cat other-container.txt; echo "::error::Another container on Home Assistant's network did not get 403 from the Ingress port"; exit 1; fi
+          code=$(ingress app /)
+          if [ "$code" != 200 ]; then echo "::error::The web app through Ingress got $code"; exit 1; fi
+          cp ingress.out index.html
           grep -q '<div id="app"' index.html
-          # and the files it loads, which the server's account must read too
-          grep -oE '/assets/[^"]+[.]js' index.html > assets.txt
+          # and the files it loads, below Ingress's path, which the server's account must read too
+          grep -oE '\./assets/[^"]+[.]js' index.html > assets.txt
           test -s assets.txt
-          curl -fsS "http://127.0.0.1:8099$(sed -n 1p assets.txt)" -o /dev/null
+          code=$(ingress app "/$(sed -n 1p assets.txt | cut -c3-)")
+          if [ "$code" != 200 ]; then echo "::error::An asset through Ingress got $code"; exit 1; fi
+          # The direct port without a password for it: a notice, no API
+          curl -fsS http://127.0.0.1:8099/ -o notice.html
+          grep -q 'Direct access at this address is off' notice.html
+          code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/v1/info)
+          if [ "$code" != 404 ]; then echo "::error::The direct port without a password gave its API ($code)"; exit 1; fi
+          # A password for direct access, set through Ingress; then the direct port asks for it
+          code=$(ingress app /api/v1/auth/direct -X PUT -H 'Content-Type: application/json' -d '{"password":"smoke-test-1"}')
+          if [ "$code" != 200 ]; then cat ingress.out; echo "::error::Setting the password for direct access got $code"; exit 1; fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"password":"smoke-test-1"}' http://127.0.0.1:8099/api/v1/auth/login)
+          if [ "$code" != 200 ]; then echo "::error::Signing in on the direct port got $code, not 200"; exit 1; fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -H "X-Remote-User-Id: $user" http://127.0.0.1:8099/api/v1/state)
+          if [ "$code" != 401 ]; then echo "::error::Home Assistant's user header counted on the direct port ($code)"; exit 1; fi
           code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: example.com' http://127.0.0.1:8099/api/v1/info)
           if [ "$code" != 403 ]; then echo "::error::A foreign host name got $code, not 403"; exit 1; fi
           # The longest paths the web server still matches with its recursive

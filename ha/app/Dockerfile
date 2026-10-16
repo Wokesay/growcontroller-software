@@ -91,5 +91,5 @@ LABEL io.hass.version="$BUILD_VERSION" \
       org.opencontainers.image.version="$BUILD_VERSION" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.title="growcontroller for Home Assistant"
-EXPOSE 8099
+EXPOSE 8099 8100
 ENTRYPOINT ["/gc_ha_server", "--app"]

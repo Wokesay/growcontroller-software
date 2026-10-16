@@ -52,22 +52,31 @@ the add-on store (SD-034):
    lists such apps only in advanced mode.
 2. **Settings → Apps → store → ⋮ → Repositories**, add
    `https://github.com/Wokesay/growcontroller-software`.
-3. Install **growcontroller**, start it, **Open web UI** (port 8099). Open
-   it by Home Assistant's IP address or `homeassistant.local`: any other
-   name (a bare `homeassistant`, an own domain, the Home Assistant Cloud
-   address) is refused, the protection against DNS rebinding below.
-4. **Set the password:** the page first asks for the setup code, in the
-   newest line "Setup code for the first password: …" of the app's **Log**
-   tab (Settings → Apps → growcontroller → Log), so nobody else in the
-   network can set it first (#79, SD-068). Then choose the sensors in
-   Devices › Assignment (step 6 below).
+3. Install **growcontroller**, start it, and open it with **Open web UI**
+   or from Home Assistant's sidebar (switch on **Show in sidebar**). It
+   opens inside Home Assistant, signed in with your Home Assistant login;
+   only Home Assistant's administrators can open it (SD-077; enforced from
+   Supervisor 2026.10.2, an older one only hides the panel). Then choose
+   the sensors in Devices › Assignment (the introduction is described in
+   step 6 of the next section; the app has no password to set).
+4. **Optional, direct access** (a bookmark, a phone on the wall without
+   Home Assistant's app): in growcontroller, Settings › Access, set a
+   password for direct access; then in Home Assistant, Settings → Apps →
+   growcontroller → Configuration → Network, choose ⋮ → Show disabled
+   ports, enter 8099 and save. Open it by Home Assistant's IP address or
+   `homeassistant.local`: any other name (a bare `homeassistant`, an own
+   domain, the Home Assistant Cloud address) is refused, the protection
+   against DNS rebinding below. Without that password the port shows only
+   a pointer to the sidebar.
 
 Nothing is configured and no token is made: `gc_ha_server --app` reaches
 Home Assistant at `http://supervisor/core` with the Supervisor's token
 (`SUPERVISOR_TOKEN`, granted by `homeassistant_api` in
 `ha/app/config.yaml`), keeps its data in the app's folder (`/data/hub`,
-part of Home Assistant's backups) and serves the web app on port 8099 of
-the Home Assistant host. Home Assistant downloads a ready-made image of a
+part of Home Assistant's backups) and serves the web app through Home
+Assistant's Ingress on port 8100 of its container, which answers only
+the Supervisor, and directly on port 8099, closed unless a user opens it
+(SD-077). Home Assistant downloads a ready-made image of a
 few MB (`ghcr.io/wokesay/growcontroller-ha`, built and published by the
 release workflow for the version in `ha/app/config.yaml`,
 `docs/RELEASE.md`). The image is `FROM scratch`: the static server, the
@@ -123,7 +132,8 @@ labels follow Home Assistant's developer documentation for apps
    terminal. When Home Assistant refuses the token, reading stops until
    you restart the server: Home Assistant counts every failed login and
    bans the computer after a few, however slowly they come.
-6. Open the address and set a password. The setup for the hub's own
+6. Open the address and set a password, with the setup code the server
+   printed in the terminal (#79; every restart makes a new one). The setup for the hub's own
    dosing hardware is not offered on a read-only hub; a short introduction
    opens instead (SD-037): name, language and colour scheme, a sensor per
    measurement, and per area whether the app is to do it automatically or
@@ -548,12 +558,17 @@ time is no value.
   license texts, and the final image with nothing but their results.
   `.github/workflows/app.yml` builds it for `amd64` and `aarch64`, each on
   its own architecture, and starts it like the Supervisor (a token in the
-  environment, no arguments) next to a stand-in for the Supervisor reached
-  by name: labels and size, refused without a token or with `--config`, it
-  answers, serves the web app, refuses a foreign host name, survives long
-  paths, asks the stand-in only `GET /core/api/states` with the token,
-  stops cleanly on SIGTERM, keeps a private data folder, and carries the
-  license texts and the source code link. This runs on every code change
+  environment, no arguments) next to a stand-in for the Supervisor at its
+  address, 172.30.32.2, found by name: labels and size, refused without a
+  token or with `--config`, no setup code; through Ingress, asked from the
+  stand-in as the Supervisor asks it, it answers with the user it names,
+  refuses a request without one and any other container, and serves the
+  web app and its files; the direct port shows only its notice until a
+  password for direct access is set through Ingress, then asks for it and
+  ignores Home Assistant's user headers; it refuses a foreign host name,
+  survives long paths, asks the stand-in only `GET /core/api/states` with
+  the token, stops cleanly on SIGTERM, keeps a private data folder, and
+  carries the license texts and the source code link. This runs on every code change
   and for a release; `tools/app.test.mjs` keeps `config.yaml`, the server,
   the Dockerfile and the release workflow in step.
 - `web/src/ha.tsx`: the picker in Devices › Assignment and the overview's
@@ -584,16 +599,44 @@ time is no value.
   them. That is the next design step, after a product decision.
 - The HTTP code of `ha/main.cpp` follows `sim/main.cpp`; a shared module
   is a follow-up.
-- **The app's web app is plain HTTP on port 8099 of the Home Assistant
-  host,** reachable by every device in your network (and, with a router
-  that opens the host over IPv6, from outside); the growcontroller
-  password travels in the clear there. The first password needs the
-  one-time setup code the app prints to its log, which only Home
-  Assistant's administrators read, so nobody else in the network can set
-  it first (#79, SD-068). Clearing the port hides the web app from the
-  network, not from Home Assistant's internal network. Home Assistant's
-  ingress (its own login and HTTPS) would need the web app to work below a
-  path; that is a follow-up.
+- **Two ways in (SD-077).** Through Home Assistant's Ingress the app is
+  signed in by Home Assistant, as the user its Supervisor names; only
+  Home Assistant's administrators may open it (enforced by the Supervisor
+  from version 2026.10.2; before, it only hid the panel). The Ingress
+  port (8100 in the container) answers only the Supervisor's address,
+  172.30.32.2, by the connection, and needs exactly one
+  `X-Remote-User-Id` in the Supervisor's spelling for anything but
+  `/info`, which the watchdog reads; the app's own session counts for
+  nothing there. The direct port 8099 is closed unless a user opens it;
+  it never takes Home Assistant's user headers, and without a password
+  for direct access it shows only a notice and no API. That password is
+  set, changed and removed only through Ingress; each ends every direct
+  session. The direct port is plain HTTP: its password and session
+  travel in the clear there, and closing the port hides it from the
+  network, not from Home Assistant and the other apps on the host. A
+  mapping of the port saved in the app's network settings before (also
+  by saving them unchanged) stays in force.
+- **The Ingress port trusts Home Assistant's internal network:** it knows
+  the Supervisor by its address, as every Ingress app does; the
+  Supervisor sends nothing else to check. An app on that network that can
+  pose as that address (Docker's default capabilities allow ARP spoofing
+  there, and the Supervisor does not drop them by default) can name any
+  user.
+- **Home Assistant's login is the app's login:** HTTPS only where Home
+  Assistant uses it, and Home Assistant bans an address after failed
+  sign-ins only when a limit is set in its HTTP settings (by default
+  there is none). Anything else running on Home Assistant's origin
+  (other apps' panels, cards added to its frontend) can use the app
+  through Ingress as the signed-in user, the password for direct access
+  included; an XSS flaw in the app reaches that user's Home Assistant
+  session. Whoever may open the panel reaches it wherever Home Assistant
+  is reachable, through its remote access too, until remote access is
+  decided (#190). Legal points are open in #220.
+- **The server and `config.yaml` go together:** the server of a version
+  with Ingress needs `config.yaml`'s Ingress keys and its watchdog on the
+  Ingress port; the version before it needs the old ones. Since Home
+  Assistant reads `config.yaml` from `main`, that change is merged with
+  the release that brings the server (`docs/RELEASE.md`).
 - **The Supervisor's token is not read-only:** Home Assistant has no
   read-only access for apps; the Supervisor passes every call except its
   own API on to Home Assistant as its administrator. growcontroller sends
@@ -630,9 +673,10 @@ time is no value.
   `/data/hub` from elsewhere in `/data`; the server cannot make such a
   link (the profile has no link rule, and hosts usually protect hard
   links to other accounts' files).
-- The session cookie is not tied to the port: the browser also sends it
-  to Home Assistant and other apps under the same host name. It is
-  HttpOnly and only valid for growcontroller.
+- The session cookie is not tied to the port. It goes only to
+  `/api/v1/`, so under the same host name the browser also sends it to
+  anything else answering there. It is HttpOnly and only valid for
+  growcontroller.
 - If the Supervisor ever refuses the token, reading stops until the app
   is restarted, while the app keeps answering (so its watchdog sees no
   fault), and the web app's hint speaks of a token file. A follow-up

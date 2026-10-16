@@ -12,6 +12,9 @@ export const catalog = signal<Catalog | null>(null);
 export const lastUpdate = signal<number>(0);
 /** The session ran out while the app was open: whatever was clicked last was not carried out. */
 export const sessionExpired = signal(false);
+/** Signed in by Home Assistant through its Ingress (SD-077): the user's name; null otherwise. */
+export const platformUser = signal<string | null>(null);
+type Session = { authenticated: boolean; platform?: boolean; user?: string; hasPassword?: boolean };
 
 // The hub sends its state every second, by the live stream or the polls that
 // stand in for it. Nothing new for longer than this: what the page shows is not
@@ -40,6 +43,8 @@ export function toast(text: string, kind: Toast["kind"] = "ok") {
 /** What a failed action shows: the hub's reason for a refusal, that it got no answer, or
  *  that it did not work; never a raw "TypeError: Failed to fetch". */
 export function errorText(e: unknown): string {
+  // Behind Home Assistant a 401 is its own, its session lapsed (SD-077)
+  if (e instanceof ApiError && e.status === 401 && platformUser.value !== null) return t("shell.platformRefused");
   if (e instanceof ApiError) return e.message;
   if (e instanceof NetworkError) return t("shell.noAnswer");
   return t("shell.failed");
@@ -58,7 +63,7 @@ let renewTimer: number | undefined;
 const RENEW_MS = 10 * 60_000;
 async function renewSession() {
   try {
-    const s = await get<{ authenticated: boolean }>("/auth/session");
+    const s = await get<Session>("/auth/session");
     if (!s.authenticated && authed.value) {
       sessionExpired.value = true;
       authed.value = false;
@@ -81,7 +86,7 @@ function startLive() {
     if (stale.value && !pollTimer) pollTimer = window.setInterval(refreshState, 3000);
   }, 1000);
   try {
-    source = new EventSource("/api/v1/events/stream", { withCredentials: true });
+    source = new EventSource("api/v1/events/stream", { withCredentials: true });
     source.addEventListener("state", (ev) => {
       state.value = JSON.parse((ev as MessageEvent).data);
       lastUpdate.value = Date.now();
@@ -117,10 +122,44 @@ function stopLive() {
   renewTimer = undefined;
 }
 
+// Behind Home Assistant's Ingress its session can lapse, for example on a phone
+// that slept: Home Assistant answers 401 until its page has made a new one.
+// The app asks again for a while before it says so, and never shows its own
+// sign-in there (SD-077).
+export const platformLost = signal(false);
+export const PLATFORM_RETRY_MS = 3000;
+const PLATFORM_TRIES = 4;
+let recovering = false;
+async function recoverPlatform() {
+  if (recovering) return;
+  recovering = true;
+  try {
+    for (let i = 0; i < PLATFORM_TRIES; i++) {
+      await new Promise((r) => setTimeout(r, PLATFORM_RETRY_MS));
+      try {
+        if ((await get<Session>("/auth/session")).authenticated) {
+          platformLost.value = false;
+          if (authed.value) startLive();  // the stream that got a 401 does not come back by itself
+          return;
+        }
+      } catch {
+        /* still lapsed, or no answer */
+      }
+    }
+    platformLost.value = true;
+  } finally {
+    recovering = false;
+  }
+}
+
 export async function refreshState() {
   try {
     state.value = await get<HubState>("/state");
     lastUpdate.value = Date.now();
+    if (platformLost.value) {
+      platformLost.value = false;
+      startLive();
+    }
   } catch {
     /* Verbindung später erneut */
   }
@@ -132,12 +171,14 @@ export async function refreshConfig() {
 
 export async function boot() {
   setUnauthorizedHandler(() => {
+    if (platformUser.value !== null) return void recoverPlatform();
     if (authed.value) sessionExpired.value = true;
     authed.value = false;
     stopLive();
   });
   info.value = await get<Info>("/info");
-  const s = await get<{ authenticated: boolean }>("/auth/session");
+  const s = await get<Session>("/auth/session");
+  platformUser.value = s.platform ? (s.user ?? "") : null;
   authed.value = s.authenticated;
   if (s.authenticated) await afterLogin();
 }

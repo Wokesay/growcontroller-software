@@ -3044,6 +3044,14 @@ leaves `stage: experimental`.
   (SD-076, #190), and the product side's
   decision on remote access through Ingress, which #190 asks for before
   this release.
+- **Merged as the release** (decided by the project owner on
+  2026-10-16): Home Assistant reads `config.yaml` from `main`, and the
+  server of 0.1.0-proto.4 does not work with the new one, so the pull
+  request that builds this also carries the version bump of the release
+  that brings it, and that release is tagged right after its merge. That
+  is 0.1.0-proto.5 unless SD-079 lets it go without Ingress; then it is
+  the next one. The items before the release are conditions of that
+  merge, with the project owner's "mergen".
 - **Residual risks,** for the docs:
   - the web app runs on Home Assistant's origin: an XSS flaw in it
     reaches the session of the Home Assistant user who opened it, and

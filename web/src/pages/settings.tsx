@@ -4,9 +4,9 @@
 import { useEffect, useState } from "preact/hooks";
 import { Bug, Compass, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
 import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
-import { get, post, put } from "../api";
+import { del, get, post, put } from "../api";
 import { dateTime, num, timeZone } from "../format";
-import { config, errorText, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
+import { config, errorText, info, logoutLocal, platformUser, readOnly, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
@@ -21,6 +21,93 @@ const SUMMARY: Record<"neu" | "behoben" | "beachten" | "sicherheit", TextKey> = 
   beachten: "settings.summary.notes",
   sicherheit: "settings.summary.security",
 };
+
+// Through Home Assistant's Ingress (SD-077): signed in by Home Assistant;
+// the password for opening the app directly on port 8099 is set here only.
+function DirectAccess() {
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const has = !!info.value?.hasPassword;
+  // The direct address, where the page is reached by a name it would also take there
+  const host = location.hostname;
+  const direct = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.endsWith(".local") ? `http://${host}:8099` : "";
+  const run = async (action: () => Promise<unknown>, done: TextKey) => {
+    setBusy(true);
+    try {
+      await action();
+      info.value = await get("/info");
+      setPw("");
+      toast(t(done));
+      document.getElementById("direct-password")?.focus();
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="stack">
+      <p class="muted">{t("settings.signedInHa", { name: platformUser.value || "" })}</p>
+      <div class="stack-sm">
+        <div class="row-between">
+          <strong>{t("settings.direct")}</strong>
+          <Pill>{t(has ? "settings.directOn" : "settings.directOff")}</Pill>
+        </div>
+        <p class="muted small">{t("settings.directNote")}</p>
+        <p class="muted small">{t("settings.directPort")}</p>
+        {direct && <p class="muted small">{t("settings.directAddress", { url: direct })}</p>}
+        {has && <p class="muted small">{t("settings.directUnsure")}</p>}
+      </div>
+      <Banner tone="warn">{t("settings.directWarn")}</Banner>
+      <form
+        class="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy && pw.length >= 8) void run(() => put("/auth/direct", { password: pw }), has ? "settings.directChanged" : "settings.directSet");
+        }}
+      >
+        {/* So a password manager keeps this apart from the Home Assistant login */}
+        <input type="text" name="username" autoComplete="username" value="growcontroller-direct" readOnly hidden />
+        <Field label={t(has ? "settings.directNew" : "settings.directPassword")} hint={t("login.minLength")}>
+          <input id="direct-password" class="input" type="password" value={pw} onInput={(e) => setPw((e.target as HTMLInputElement).value)} autoComplete="new-password" />
+        </Field>
+        <div class="row">
+          <Button type="submit" disabled={busy || pw.length < 8}>
+            {t(has ? "settings.directChange" : "settings.directSetButton")}
+          </Button>
+          {has && (
+            <Button variant="ghost" disabled={busy} onClick={() => setConfirmRemove(true)}>
+              {t("settings.directRemove")}
+            </Button>
+          )}
+        </div>
+      </form>
+      {confirmRemove && (
+        <Modal
+          title={t("settings.directRemoveTitle")}
+          message={t("settings.directRemoveText")}
+          onClose={() => setConfirmRemove(false)}
+          returnFocus={() => document.getElementById("direct-password")}
+          footer={
+            <>
+              <Button onClick={() => setConfirmRemove(false)}>{t("common.cancel")}</Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setConfirmRemove(false);
+                  void run(() => del("/auth/direct"), "settings.directRemoved");
+                }}
+              >
+                {t("settings.directRemoveConfirm")}
+              </Button>
+            </>
+          }
+        />
+      )}
+    </div>
+  );
+}
 
 function Markdown(p: { text: string }) {
   // Kleiner Darsteller für den Changelog: Überschriften, Listen, Absätze.
@@ -90,7 +177,7 @@ function Updates() {
         <Button onClick={async () => setSt(await post("/update/check"))}>
           <RefreshCcw size={15} /> {t("settings.checkNow")}
         </Button>
-        <Button variant="ghost" onClick={async () => setLog(await (await fetch("/api/v1/changelog")).text())}>
+        <Button variant="ghost" onClick={async () => setLog(await (await fetch("api/v1/changelog")).text())}>
           {t("settings.changelog")}
         </Button>
         {st?.lastCheck ? <span class="faint small">{t("settings.lastChecked", { when: dateTime(st.lastCheck) })}</span> : null}
@@ -192,6 +279,7 @@ export function SettingsPage() {
   const [hand, setHand] = useState<number | null>(cfg.limits.handDoseMaxMl);
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
+  const haSignIn = info.value?.platform?.signIn === "home-assistant";
   const [theme, setThemeState] = useState<Theme>(currentTheme());
   const setThemeAll = (v: Theme) => {
     setThemeState(v);
@@ -240,38 +328,49 @@ export function SettingsPage() {
           </div>
         </Card>
         <Card title={t("settings.access")} icon={<KeyRound size={18} />}>
-          <div class="stack">
-            <div class="form-grid">
-              <Field label={t("settings.oldPassword")}>
-                <input class="input" type="password" value={oldPw} onInput={(e) => setOldPw((e.target as HTMLInputElement).value)} autoComplete="current-password" />
-              </Field>
-              <Field label={t("login.newPassword")} hint={t("login.minLength")}>
-                <input class="input" type="password" value={newPw} onInput={(e) => setNewPw((e.target as HTMLInputElement).value)} autoComplete="new-password" />
-              </Field>
+          {platformUser.value !== null ? (
+            <DirectAccess />
+          ) : (
+            <div class="stack">
+              {/* The direct way into the Home Assistant app: its password is changed through Home Assistant (SD-077) */}
+              {haSignIn ? (
+                <p class="muted">{t("settings.changeInHa")}</p>
+              ) : (
+                <div class="form-grid">
+                  <Field label={t("settings.oldPassword")}>
+                    <input class="input" type="password" value={oldPw} onInput={(e) => setOldPw((e.target as HTMLInputElement).value)} autoComplete="current-password" />
+                  </Field>
+                  <Field label={t("login.newPassword")} hint={t("login.minLength")}>
+                    <input class="input" type="password" value={newPw} onInput={(e) => setNewPw((e.target as HTMLInputElement).value)} autoComplete="new-password" />
+                  </Field>
+                </div>
+              )}
+              <div class="row">
+                {!haSignIn && (
+                  <Button
+                    disabled={!oldPw || newPw.length < 8}
+                    onClick={async () => {
+                      await put("/auth/password", { old: oldPw, new: newPw });
+                      toast(t("settings.passwordChanged"));
+                      logoutLocal();
+                    }}
+                  >
+                    {t("settings.changePassword")}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    await post("/auth/logout");
+                    logoutLocal();
+                  }}
+                >
+                  {t("settings.signOut")}
+                </Button>
+              </div>
+              <p class="faint small">{t("settings.accessNote")}</p>
             </div>
-            <div class="row">
-              <Button
-                disabled={!oldPw || newPw.length < 8}
-                onClick={async () => {
-                  await put("/auth/password", { old: oldPw, new: newPw });
-                  toast(t("settings.passwordChanged"));
-                  logoutLocal();
-                }}
-              >
-                {t("settings.changePassword")}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  await post("/auth/logout");
-                  logoutLocal();
-                }}
-              >
-                {t("settings.signOut")}
-              </Button>
-            </div>
-            <p class="faint small">{t("settings.accessNote")}</p>
-          </div>
+          )}
         </Card>
       </div>
       <div class="grid-2">
@@ -287,7 +386,7 @@ export function SettingsPage() {
           <div class="stack-sm">
             <p class="muted">{t("settings.dataText")}</p>
             <div class="row">
-              <a class="btn" href="/api/v1/config/export" download>
+              <a class="btn" href="api/v1/config/export" download>
                 <Download size={15} /> {t("settings.backup")}
               </a>
               <label class="btn">
@@ -309,7 +408,7 @@ export function SettingsPage() {
                   }}
                 />
               </label>
-              <a class="btn" href="/api/v1/export.csv" download>
+              <a class="btn" href="api/v1/export.csv" download>
                 <Download size={15} /> {t("settings.historyCsv")}
               </a>
             </div>

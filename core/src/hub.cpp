@@ -218,8 +218,11 @@ void Hub::boot() {
     cfg_.system.passwordSet = true;  // Geräte von vor dieser Kennzeichnung nachziehen
     saveConfig({});
   }
-  if (credentialsLost())
-    log_.add(bootEpoch_, "system", "alarm", say("ev.credentials_lost"), say("ev.credentials_lost.text"));
+  if (credentialsLost()) {
+    // Behind a platform's sign-in only direct access is lost: its user sets a new password (SD-077)
+    const bool platformSignIn = !jstr(platform_, "signIn").empty();
+    log_.add(bootEpoch_, "system", "alarm", say("ev.credentials_lost"), say(platformSignIn ? "ev.credentials_lost.platform" : "ev.credentials_lost.text"));
+  }
   if (auto s = store_.read(kHistoryFile))
     if (!history_.load(*s)) writeFile("history.broken.bin", *s);  // kept: the snapshot at the end of boot replaces it
   if (auto s = store_.read(kHistoryLog)) {
@@ -284,8 +287,27 @@ void Hub::flush() {
 
 bool Hub::saveAuth() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (auth_.hasPassword()) return writeFile(kAuthFile, auth_.toJson().dump());
+  if (auth_.hasPassword()) {
+    authCleared_ = false;
+    return writeFile(kAuthFile, auth_.toJson().dump());
+  }
+  // Without a password only a file emptied on purpose is written (SD-077),
+  // so the password does not come back from the disk. One the hub could not
+  // read stays as it is for whoever can mend it.
+  if (authCleared_) return writeFile(kAuthFile, json::object().dump());
   return stored(true, kAuthFile);  // nothing to save (a setup that was rolled back)
+}
+
+bool Hub::removePassword() {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  const Auth before = auth_;
+  const bool cleared = authCleared_;
+  auth_.removePassword();
+  authCleared_ = true;
+  if (saveAuth()) return true;
+  auth_ = before;  // the password before and its sessions stay, in memory as on disk
+  authCleared_ = cleared;
+  return false;
 }
 
 void Hub::storageFailed(const std::string& name) {
@@ -886,7 +908,10 @@ json Hub::diagnostics() {
   json cfg = cfg_;
   json st = state();
   json evs = json::array();
-  for (const auto& e : log_.query(clock_.epoch() - 72 * 3600, clock_.epoch(), "", 300)) evs.push_back(e);
+  for (const auto& e : log_.query(clock_.epoch() - 72 * 3600, clock_.epoch(), "", 300)) {
+    evs.push_back(e);
+    evs.back()["data"].erase("by");  // a platform user's name stays at home (SD-077)
+  }
   return {{"reportId", "GC-" + toHex(b, sizeof b)},
           {"createdAt", clock_.epoch()},
           {"info", info()},
@@ -898,7 +923,7 @@ json Hub::diagnostics() {
           {"watchdog", st["watchdog"]},
           {"latches", st["latches"]},
           {"events", evs},
-          {"redacted", {"Passwort-Hash", "Sitzungen", "WLAN-Zugang", "IP-Adressen"}}};
+          {"redacted", {"Passwort-Hash", "Sitzungen", "WLAN-Zugang", "IP-Adressen", "Namen von Home-Assistant-Nutzern"}}};
 }
 
 // ------------------------------------------------------------------ Einrichtung
@@ -907,6 +932,13 @@ void Hub::markPasswordSet() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   if (cfg_.system.passwordSet) return;
   cfg_.system.passwordSet = true;
+  saveConfig({});
+}
+
+void Hub::clearPasswordSet() {
+  std::lock_guard<std::recursive_mutex> l(mtx_);
+  if (!cfg_.system.passwordSet) return;
+  cfg_.system.passwordSet = false;
   saveConfig({});
 }
 

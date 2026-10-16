@@ -141,15 +141,22 @@ listed in every release under "Security".
   the first comment wins. A multi-part issue is claimed per part, a claim
   with an open pull request never goes stale, and any other claim quiet
   for 24 hours may be taken over (`CLAUDE.md`, `docs/WORKFLOW.md`).
-- **Plan: the Home Assistant app moves behind Ingress** (#190, SD-077,
-  from PD-225; replaces SD-068's setup code for the app). From
-  0.1.0-proto.5 on, the app opens in Home Assistant's sidebar with Home
-  Assistant's login, and the setup code goes away. Port 8099 is closed by
-  default. A bookmark to it works again once the port is opened in the
-  app's network settings and the app has a password for direct access
-  (set by a Home Assistant administrator in the app; a password from
-  0.1.0-proto.4 is kept); without one, port 8099 only says where the app
-  is now. The ESP keeps its own login. Built in a later change.
+- **The Home Assistant app opens in Home Assistant's sidebar** (#190,
+  SD-077, from PD-225; replaces SD-068's setup code for the app), signed
+  in with your Home Assistant login; only Home Assistant's administrators
+  can open it (from Supervisor 2026.10.2; an older one only hides it from
+  the others' sidebar). **A bookmark to port 8099 stops working:** the
+  port is now closed, unless you saved the app's network settings before
+  (then it stays as it was). To open growcontroller directly again (a
+  bookmark, a phone on the wall), open it from the sidebar, set a
+  password for direct access under Settings › Access, then in Home
+  Assistant open Settings → Apps → growcontroller → Configuration →
+  Network, choose ⋮ → Show disabled ports, enter 8099 and save. Your
+  growcontroller password from 0.1.0-proto.4 is kept as that password.
+  Without one, port 8099 shows only where growcontroller is now. The
+  session cookie of direct access is limited to the app's API path. The
+  event log names the Home Assistant user who made a change. The
+  simulator and the ESP keep their own login.
 - **Product questions are issues here** (#190, SD-072, from PD-226;
   replaces SD-069): the software session files each product question it meets,
   with its software basis, the options and its recommendation, as an
@@ -617,25 +624,26 @@ them, so they get no advisory.
 Vulnerabilities, each with an advisory:
 
 - **Nobody else can set the Home Assistant app's first password** (#79,
-  SD-068): until the owner set it, any device in the home network could
-  set it first, see the names of Home Assistant's sensors and the values of
-  those it could pick, change the app's settings, and lock the owner out
-  until the app was reinstalled. The app now prints a one-time setup code to its log, which
-  only Home Assistant's administrators, and apps they gave that right, can
-  read, and the first password needs it. The code has 80 bits, is kept
-  in memory only and is used up by the password; a restart makes a new
-  one. Wrong codes lock nobody out and are logged at most once per 15
-  minutes.
+  #190, SD-077): until the owner set it, any device in the home network
+  could set it first, see the names of Home Assistant's sensors and the
+  values of those it could pick, change the app's settings, and lock the
+  owner out until the app was reinstalled. The app now opens through Home
+  Assistant's Ingress with Home Assistant's login, and there is no first
+  password over the network at all: the password for direct access on
+  port 8099 is set, changed and removed only inside the app, through Home
+  Assistant, by its administrators (enforced from Supervisor 2026.10.2).
   - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: needs a device in the home network before the owner sets the
     first password; the Home Assistant app switches nothing.
   - Severity: medium, CVSS 3.1 6.4
     (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`), CWE-1188.
-  - Remedy: update to 0.1.0-proto.5. The update keeps a password that is
-    already set: if you did not set it yourself, reinstall the app or
-    restore a backup made before that password was set, then set the
-    password or update at once. On an older version, set the password
-    right after installing.
+  - Remedy: update to 0.1.0-proto.5 and keep Home Assistant's Supervisor
+    at 2026.10.2 or newer. The update keeps a password that is already
+    set, as the password for direct access: if you are not sure you set it
+    yourself, open growcontroller from Home Assistant's sidebar, change or
+    remove it under Settings › Access, and check the sensor assignment and
+    the settings. On an older version, set the password right after
+    installing.
   - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
@@ -670,7 +678,7 @@ Vulnerabilities, each with an advisory:
   instruction first. AMD Zen 5 processors without AMD's fix can return
   zeros there while reporting success, so on such a host part of a session
   token could be zero and easier to guess. They now come from the
-  operating system (`getentropy()`), as does the setup code. Not affected:
+  operating system (`getentropy()`). Not affected:
   aarch64 (a Raspberry Pi), macOS, Windows, and Zen 5 hosts with AMD's
   microcode or BIOS fix. Nothing to do after the update: the restart ends
   every old session, and salts need not be secret.

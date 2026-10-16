@@ -157,6 +157,7 @@ gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest&
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,
                        const std::function<void()>& letHubSee) {
   if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  const gc::EventActor actor(api.viaPlatform(req) ? req.user->actor() : std::string());  // the events name who picked it (SD-077)
   const auto body = gc::json::parse(req.body, nullptr, false);
   // "entity" must be given ("" takes the sensor away), so a request that forgot it removes nothing.
   if (!body.is_object() || !body.contains("entity") || !body["entity"].is_string())
@@ -166,6 +167,7 @@ gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequ
 
 gc::Result lifeRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req) {
   if (!api.authorized(req)) return gc::Result::fail(401, "auth.required", "Bitte anmelden");
+  const gc::EventActor actor(api.viaPlatform(req) ? req.user->actor() : std::string());
   const auto body = gc::json::parse(req.body, nullptr, false);
   // "source" must be given ("" removes it), so a request that forgot it removes nothing
   if (!body.is_object() || !body.contains("source") || !body["source"].is_string() ||

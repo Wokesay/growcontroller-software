@@ -54,6 +54,9 @@ class Hub {
   void tick();
   void flush();     // saves what is not on disk yet: password, state, new events
   bool saveAuth();  // the password file, on disk when it returns true
+  // Removes the password on purpose and empties its file (SD-077). False when
+  // that write failed; the password before and its sessions stay then.
+  bool removePassword();
   // A write the storage could not finish (the simulator's fast-forward): said and written again.
   void storageFailed(const std::string& name);
 
@@ -63,6 +66,8 @@ class Hub {
   // Passwort war gesetzt, auth.json fehlt aber: kein Setup über das Netz.
   bool credentialsLost() const { return cfg_.system.passwordSet && !auth_.hasPassword(); }
   void markPasswordSet();
+  // A password removed on purpose (SD-077): no longer missing, so no alarm.
+  void clearPasswordSet();
   // The platform shows the code to its owner alone (#79); "" when a password
   // is set or its credentials are lost (setup is refused then anyway).
   std::string armSetupCode(Ms validFor = 0);
@@ -226,6 +231,7 @@ class Hub {
   std::set<std::string> unsaved_;      // files whose last write failed
   Epoch lastRetry_ = 0, snapshotRetryAt_ = 0, snapshotBackoffS_ = 10;
   std::string jobOnDisk_;  // what job.json should hold
+  bool authCleared_ = false;  // auth.json emptied on purpose (SD-077), written so again if that fails
   int idSeq_ = 0;
 };
 
