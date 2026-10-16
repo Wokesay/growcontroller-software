@@ -165,6 +165,14 @@ export function logoutLocal() {
 export const tank = computed(() => config.value?.tanks?.[0]);
 export const canisters = computed(() => config.value?.canisters ?? []);
 export const recipes = computed(() => config.value?.recipes ?? []);
+/** A function parameter's definition from the catalog: its range and default. */
+export const paramDef = (fnId: string, key: string) => catalog.value?.functions.find((f) => f.id === fnId)?.params?.find((p) => p.key === key);
+// A recipe's start effect in EC control and the band its chart EC may imply, as on the hub
+// (kEcStartEffect, kRefEffectMin/Max; SD-057, RAT-056): a slip of ten times is caught before saving.
+export const EC_START_EFFECT = 0.275;
+export const REF_EFFECT_BAND: [number, number] = [0.25 * EC_START_EFFECT, 4 * EC_START_EFFECT];
+/** The middle of a recipe's pH range, its proposal for a pH target (RAT-066); null without a range. */
+export const phMiddle = (r: { ph?: [number, number] | null } | undefined) => (r?.ph ? Math.round(((r.ph[0] + r.ph[1]) / 2) * 100) / 100 : null);
 export const fn = (id: string) => state.value?.functions.find((f) => f.id === id);
 export const zone = computed(() => config.value?.zones?.[0]);
 /** Zuordnung einer Rolle: „zone.*“ liegt an der Zone, alles andere am Tank. */

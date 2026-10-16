@@ -1317,6 +1317,22 @@ Result Hub::putRecipe(const json& j) {
     r->steps.clear();
     for (const auto& s : j["steps"]) r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL")});
   }
+  // The chart's EC and pH range (SD-057): a missing key keeps them, null clears them (R5)
+  if (j.contains("refEc")) {
+    if (!j["refEc"].is_null() && !j["refEc"].is_number()) return Result::fail(422, say("recipe.ref_ec"));
+    r->refEc = jnum(j, "refEc");
+  }
+  if (j.contains("ph")) {
+    const json& ph = j["ph"];
+    if (ph.is_null()) {
+      r->phLow = r->phHigh = kNaN;
+    } else if (ph.is_array() && ph.size() == 2 && ph[0].is_number() && ph[1].is_number()) {
+      r->phLow = ph[0].get<double>();
+      r->phHigh = ph[1].get<double>();
+    } else {
+      return Result::fail(422, say("recipe.ph"));
+    }
+  }
   if (r->name.empty()) return Result::fail(422, "recipe.name", "Name fehlt");
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
@@ -1386,7 +1402,12 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
       return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
-    Result r = putRecipe({{"name", localized(t, "name")}, {"note", localized(t, "note")}, {"steps", steps}});
+    // The chart's EC and pH range come along (SD-057)
+    Result r = putRecipe({{"name", localized(t, "name")},
+                          {"note", localized(t, "note")},
+                          {"steps", steps},
+                          {"refEc", t.contains("ec") ? t["ec"] : json(nullptr)},
+                          {"ph", t.contains("ph") ? t["ph"] : json(nullptr)}});
     if (r.status != 200) return r;
     // Ist der Paarname schon an anderen Kanistern vergeben, einen freien
     // wählen (AB2, AB3, …), sonst zählte das Paar vier Kanister.

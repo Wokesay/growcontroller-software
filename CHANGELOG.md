@@ -8,6 +8,22 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A recipe keeps its chart's EC and pH range, and a grow proposes them**
+  (#143, SD-057, step 1): the recipe editor has "Chart EC" and "pH
+  range", and the recipe templates fill them in (2.1 and 2.3 mS/cm
+  from the Athena chart, 1.6 for the general two-part start values;
+  5.8–6.2). The grow dialog proposes each phase's target EC from its
+  recipe and its target pH from the middle of the range, instead of fixed
+  numbers; a value you type stays when you pick another recipe, and an
+  empty field takes the value under Functions and says so. An EC that
+  does not fit the amounts (outside a quarter to four times the usual
+  effect, likely a typo or a very strong concentrate) or a pH range out of
+  order is named before saving, with the EC that would fit, and refused
+  by the hub. Without a grow, the overview names the target ranges that
+  apply. Mixing does not change yet, but a grow started with the
+  proposals controls EC to the recipe's chart EC (2.1 for the Athena
+  template, where the dialog proposed 1.4 before); mixing to the target
+  follows in the next steps.
 - **Firmware for two boards** (SD-043, M1): the firmware is built for
   the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
   N8R8 (8 MB flash) as the fallback with smaller apps and a shorter

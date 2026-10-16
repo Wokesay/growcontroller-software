@@ -377,6 +377,73 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   CHECK(c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}}).first == 404);
 }
 
+TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears them, a wrong range is refused (SD-057)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto recipe = [&](const gc::json& id) {
+    const auto cfg = c.ok("GET", "/api/v1/config");
+    for (const auto& r : cfg["recipes"])
+      if (r["id"] == id) return r;
+    return gc::json();
+  };
+  const gc::json id = c.ok("POST", "/api/v1/recipes/template",
+                           {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"];
+  auto veg = recipe(id);
+  CHECK(veg["refEc"].get<double>() == doctest::Approx(2.1));
+  REQUIRE(veg["ph"].size() == 2);
+  CHECK(veg["ph"][0].get<double>() == doctest::Approx(5.8));
+  CHECK(veg["ph"][1].get<double>() == doctest::Approx(6.2));
+  // A save without the keys keeps them; null clears them, never to 0 (R5)
+  c.ok("POST", "/api/v1/recipes", {{"id", id}, {"name", "Veg"}});
+  CHECK(recipe(id)["refEc"].get<double>() == doctest::Approx(2.1));
+  CHECK(recipe(id)["ph"][1].get<double>() == doctest::Approx(6.2));
+  c.ok("POST", "/api/v1/recipes", {{"id", id}, {"refEc", nullptr}, {"ph", nullptr}});
+  CHECK(recipe(id)["refEc"].is_null());
+  CHECK(recipe(id)["ph"].is_null());
+  c.ok("POST", "/api/v1/recipes", {{"id", id}, {"refEc", 2.0}, {"ph", {5.7, 6.1}}});
+  CHECK(recipe(id)["refEc"].get<double>() == doctest::Approx(2.0));
+  CHECK(recipe(id)["ph"][1].get<double>() == doctest::Approx(6.1));
+  // Refused with the reason, and the recipe stays as it was
+  auto [st1, e1] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"ph", {6.2, 5.8}}});
+  CHECK(st1 == 422);
+  CHECK(e1.dump().find("cfg.recipe.ph_band") != std::string::npos);
+  auto [st2, e2] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"ph", "5.8"}});
+  CHECK(st2 == 422);
+  CHECK(e2["error"]["key"] == "recipe.ph");
+  auto [st3, e3] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"refEc", "2,1"}});
+  CHECK(st3 == 422);
+  CHECK(e3["error"]["key"] == "recipe.ref_ec");
+  auto [st4, e4] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"refEc", 0.4}});  // 0.06 per ml/L over 6.8 ml/L: a typo?
+  CHECK(st4 == 422);
+  CHECK(e4.dump().find("cfg.recipe.ref_far") != std::string::npos);
+  for (const gc::json& half : {gc::json::array({5.8}), gc::json::array({nullptr, 6.2})}) {
+    auto [st, e] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"ph", half}});
+    CHECK(st == 422);
+    CHECK(e["error"]["key"] == "recipe.ph");
+  }
+  auto [st5, e5] = c.call("POST", "/api/v1/recipes", {{"id", id}, {"refEc", 5.0}});  // above the target's range
+  CHECK(st5 == 422);
+  CHECK(e5.dump().find("cfg.recipe.ref_range") != std::string::npos);
+  CHECK(recipe(id)["refEc"].get<double>() == doctest::Approx(2.0));
+  CHECK(recipe(id)["ph"][0].get<double>() == doctest::Approx(5.7));
+  // A new recipe keeps both; the flowering template brings its own
+  const gc::json made = c.ok("POST", "/api/v1/recipes",
+                             {{"name", "Neu"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}}},
+                              {"refEc", 1.2}, {"ph", {5.8, 6.0}}})["id"];
+  CHECK(recipe(made)["refEc"].get<double>() == doctest::Approx(1.2));
+  CHECK(recipe(made)["ph"][1].get<double>() == doctest::Approx(6.0));
+  const gc::json bloom = c.ok("POST", "/api/v1/recipes/template",
+                              {{"id", "athena_blended_bloom"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"];
+  CHECK(recipe(bloom)["refEc"].get<double>() == doctest::Approx(2.3));
+  // An import is checked the same way and changes nothing when refused
+  gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (auto& r : cfg["recipes"])
+    if (r["id"] == id) r["refEc"] = 0.4;
+  CHECK(c.call("POST", "/api/v1/config/import", cfg).first == 422);
+  CHECK(recipe(id)["refEc"].get<double>() == doctest::Approx(2.0));
+}
+
 TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
