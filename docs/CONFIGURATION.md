@@ -133,7 +133,10 @@ writes it anew ("Saved state replaced"). `config.json`: factory settings. `auth.
 password over it (423 `auth.kept`). `job.json`: a second mix within 30
 minutes of the start needs confirmation, and the next job writes it anew.
 Changes the kept files would hold stay in memory; a restart after the file
-is readable again reads it as it was.
+is readable again reads it as it was. A `state.json` that is not there at
+all, while the events are there or kept, is unknown too: the hub ran
+before, since every start writes both, so it starts stopped and says
+"Saved state missing" (SD-086).
 
 **Versioning:**
 

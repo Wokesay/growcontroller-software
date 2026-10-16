@@ -472,6 +472,14 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A missing saved state on a hub that ran before keeps everything
+  stopped** (#238, SD-086): when `state.json` was gone (deleted, or a
+  damaged entry the flash reports as not found) but the hub's events were
+  there, the hub started as a new one: not stopped, with no locks or
+  latches, so a Stop in force was lost and control started again without
+  Resume. Now it starts as with a broken state (stopped, a second mix
+  right after the start needs confirmation, a dry-run latch in the first
+  hour holds) and says "Saved state missing".
 - **Settings files: whole numbers only.** Restoring settings refuses a
   file, with the reason, when a count or index in it is not a whole
   number in its range: the current phase of a running grow cycle (it has

@@ -47,15 +47,20 @@ void fakeRandom(std::uint8_t* p, size_t n) {
 // written whole is the hub's own again and can be read.
 struct LockedStorage : gc::MemoryStorage {
   std::set<std::string> locked;
+  std::set<std::string> gone;  // not there (deleted, or a damaged entry the file system reports as not found)
   std::vector<std::string> writtenOver;
-  std::optional<std::string> read(const std::string& n) override { return locked.count(n) ? std::nullopt : MemoryStorage::read(n); }
+  std::optional<std::string> read(const std::string& n) override {
+    return locked.count(n) || gone.count(n) ? std::nullopt : MemoryStorage::read(n);
+  }
   bool unreadable(const std::string& n) override { return locked.count(n) > 0; }
   bool write(const std::string& n, const std::string& d) override {
     if (locked.erase(n)) writtenOver.push_back(n);
+    gone.erase(n);
     return MemoryStorage::write(n, d);
   }
   bool append(const std::string& n, const std::string& d) override {
     if (locked.count(n)) writtenOver.push_back(n);
+    gone.erase(n);  // an append creates it again
     return MemoryStorage::append(n, d);
   }
   std::optional<std::string> held(const std::string& n) { return MemoryStorage::read(n); }  // what is on "disk"
@@ -505,12 +510,86 @@ TEST_CASE("Restart: a run-time state that cannot be read keeps everything stoppe
   }
 }
 
+TEST_CASE("Restart: a run-time state that is missing on a hub that ran before is unknown: everything stays stopped and it is said (PD-076, RAT-003, SD-086)") {
+  LockedStorage store;
+  test::Clock clk;
+  finishedRun(store, clk);
+  REQUIRE(store.held("events.json"));
+  REQUIRE(store.held("events.log"));
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  SUBCASE("its events are there") {}
+  SUBCASE("only the events' snapshot is there") { store.gone = {"events.log"}; }
+  SUBCASE("only the events' journal is there") { store.gone = {"events.json"}; }
+  SUBCASE("its events are kept unread (SD-081)") { store.locked = {"events.json", "events.log"}; }
+  SUBCASE("a Stop was in force (PD-076)") {
+    gc::Hub before(cat, bus, store, clk, fakeRandom);
+    before.boot();
+    REQUIRE(before.stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);
+    before.flush();
+  }
+  store.gone.insert("state.json");
+  auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  CHECK(h->state()["stopped"] == true);  // whether a Stop was in force is unknown (PD-076)
+  CHECK(said(*h, "ev.state_missing") == 1);
+  CHECK(said(*h, "ev.stop_kept") == 0);  // the alarm says why everything stays off
+  CHECK(mixNeedsConfirmation(*h));  // a mix may have just ended (RAT-003)
+  h->flush();
+  const json saved = json::parse(store.held("state.json").value_or("{}"), nullptr, false);
+  CHECK(saved.value("stopped", false) == true);  // written anew, with the Stop
+  SUBCASE("the next start reads it: still stopped, said as a Stop that holds, not as missing again") {
+    clk.ms += 60000;
+    h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+    h->boot();
+    const gc::Epoch since = h->state()["now"];
+    CHECK(h->state()["stopped"] == true);
+    CHECK(said(*h, "ev.state_missing", since) == 0);
+    CHECK(said(*h, "ev.stop_kept", since) == 1);
+  }
+  SUBCASE("after Resume the next start runs, with nothing to say") {
+    REQUIRE(h->resume().status == 200);
+    h->flush();
+    clk.ms += 60000;
+    h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+    h->boot();
+    const gc::Epoch since = h->state()["now"];
+    CHECK(h->state()["stopped"] == false);
+    CHECK(said(*h, "ev.state_missing", since) == 0);
+    CHECK(said(*h, "ev.stop_kept", since) == 0);
+  }
+}
+
+TEST_CASE("Restart: a hub with no files at all starts as a new one, not stopped (SD-086)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  SUBCASE("nothing there") {}
+  SUBCASE("settings and a password put in place before the first start: no sign that it ran (SD-086)") {
+    gc::Config cfg;
+    cfg.system.name = "Zelt 2";
+    store.write("config.json", json(cfg).dump());
+    store.write("auth.json", "{}");
+  }
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(h.state()["stopped"] == false);
+  CHECK(said(h, "ev.state_missing") == 0);
+  CHECK(said(h, "ev.stop_kept") == 0);
+  CHECK_FALSE(mixNeedsConfirmation(h));
+  // what the next start takes as the sign that it ran: its first start leaves both
+  CHECK(store.read("state.json"));
+  CHECK(store.read("events.json"));
+}
+
 TEST_CASE("Restart: a run-time state that is broken or cannot be read errs on the safe side against mixing twice and a dry run (RAT-003, SD-067, SD-081)") {
   LockedStorage store;
   test::Clock clk;
   finishedRun(store, clk);
   SUBCASE("cannot be read") { store.locked = {"state.json"}; }
   SUBCASE("broken") { store.MemoryStorage::write("state.json", "[1, 2"); }
+  SUBCASE("missing on a hub that ran before (#238)") { store.gone = {"state.json"}; }
   gc::Catalog cat = gc::Catalog::builtin();
   test::FakeBus bus;
   gc::Hub h(cat, bus, store, clk, fakeRandom);
