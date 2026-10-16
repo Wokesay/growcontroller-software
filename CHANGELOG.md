@@ -8,6 +8,37 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
+  bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
+  amount", for an addition the maker gives a fixed amount per litre for,
+  such as a cleanser. It goes in per litre of fresh water in every mix, as
+  all parts do today, but EC control never doses or scales it: its rounds
+  go to the other parts in their ratio, and the effect it learns, like the
+  chart EC's check, counts only those. Marking a part of EC control's
+  recipe this way scales the learned effect up, so the next round doses
+  less, never more; a round running then doses no part that is fixed now
+  and learns nothing, and one left with nothing to dose settles or ends. The recipe card and the mix plan mark it; the bottle
+  editor says before saving that such a bottle cannot join a pair. A
+  recipe of fixed amounts only cannot raise the EC, and the editor and
+  the control line say so. EC control's reasons for not dosing (tank
+  volume or effect unknown, no amounts, EC not below the target) now come
+  in English too.
+- **A recipe keeps its chart's EC and pH range, and a grow proposes them**
+  (#143, SD-057, step 1): the recipe editor has "Chart EC" and "pH
+  range", and the recipe templates fill them in (2.1 and 2.3 mS/cm
+  from the Athena chart, 1.6 for the general two-part start values;
+  5.8–6.2). The grow dialog proposes each phase's target EC from its
+  recipe and its target pH from the middle of the range, instead of fixed
+  numbers; a value you type stays when you pick another recipe, and an
+  empty field takes the value under Functions and says so. An EC that
+  does not fit the amounts (outside a quarter to four times the usual
+  effect, likely a typo or a very strong concentrate) or a pH range out of
+  order is named before saving, with the EC that would fit, and refused
+  by the hub. Without a grow, the overview names the target ranges that
+  apply. Mixing does not change yet, but a grow started with the
+  proposals controls EC to the recipe's chart EC (2.1 for the Athena
+  template, where the dialog proposed 1.4 before); mixing to the target
+  follows in the next steps.
 - **Firmware for two boards** (SD-043, M1): the firmware is built for
   the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
   N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
@@ -64,6 +95,27 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plain words instead of developer terms** (#143, SD-055): in German,
+  locks now say "Freigabe nötig" and "Freigeben", as the help and the
+  English texts do, instead of "Gerastet" and "quittieren". The lock list
+  on Tank & control names the reading of a jump lock instead of an
+  internal key. Control lines, checklists, events and hints no longer say
+  "Sensorwahrheit", "Aktor-Gateway", "Notgrenze", "watchdog" or "job" /
+  "Auftrag"; the Overview no longer speaks of "Stufe 0", and Settings no
+  longer shows a rule number. Events say "Change no. 7" instead of
+  "Settings revision 7", and no longer name internal files when a saved
+  file cannot be read. Message keys stay, so on a German page events saved
+  before show the new words; on an English page they keep the old ones.
+- **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
+  button, its question, the banner, Monitoring, the event log and every
+  message call the function "Stop", in German "Stopp" or "Alles stoppen",
+  never "emergency stop" or "Not-Halt". Examples: "Stop everything?" /
+  "Alles stoppen?", "Stop active." / "Stopp aktiv.", "Stop cleared" /
+  "Stopp aufgehoben". The Home Assistant app's documentation says the
+  same. The message keys stay, so on a German page events saved before
+  show the new words too; on an English page they keep the old ones. A
+  mix refused during a Stop now says so in both languages; for API
+  clients its error key is `act.stopped` instead of `job.stopped`.
 - **Sessions claim an issue before working on it** (SD-078): parallel
   sessions had picked up the same issue. Before a session starts, it
   fetches the issue again and leaves it alone if a live claim or an open
@@ -701,6 +753,24 @@ Hardening, without a vulnerability behind it:
   only from the pair of that name, and only when there is exactly one such
   pair; two cookies of that name count as none. This happens in one place
   in the core (`gc::sessionToken`).
+- **Three security fixes are guarded against coming back** (#234); each
+  check fails when its fix is taken out:
+  - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED
+    and RDRAND instructions in our own code of the core, the simulator,
+    the Home Assistant server and the firmware. The one exception is the
+    Windows branch of `sim::randomBytes`. `std::random_device` tries
+    RDSEED first on Linux x86-64 (AMD-SB-7055). On the code of
+    0.1.0-proto.4 the check names both places that used it. The test of
+    `sim::randomBytes` now also checks that it fills the buffer to the
+    end.
+  - A scenario test leaves a calibration of the hub's own pH probe open
+    for 45 min. A jump must then lock the reading, and pH control must
+    not dose on it (RAT-042). So far the test of that fix covered only a
+    probe from Home Assistant.
+  - A test imports a backup that gives a pH calibrated in Home Assistant
+    the class of the hub's own pH head, with a calibration. That was the
+    way in up to 0.1.0-proto.4. The reading must stay without a value,
+    and the app must not offer a calibration for it (RAT-025, SD-041).
 - **The web build checks every module the bundler puts into the app**
   (#190, PD-228, SD-075): the app's code is to come only from our
   sources and the runtime packages of the lockfile, and the build
@@ -729,7 +799,7 @@ Hardening, without a vulnerability behind it:
   Now the Stop takes effect, everything goes off and the Stop is saved
   first; the gateway refuses any start meanwhile. A dose that cannot be
   booked is dropped, so nothing of it runs or is booked later, and the log
-  says "Emergency stop: dose not fully counted" with the bottle, what to
+  says "Stop: dose not fully counted" with the bottle, what to
   check and the reason. No path to such an error is known today.
 - **Sessions last while they are in use** (SD-064): the browser kept the
   sign-in cookie 12 hours from signing in, a fixed upper limit even for a

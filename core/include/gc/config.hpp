@@ -70,11 +70,19 @@ struct CanisterCfg {
 struct RecipeStep {
   std::string canister;
   double mlPerL = kNaN;
+  // A fixed addition (a cleanser, for example): per litre of fresh water in
+  // every mix, never scaled by EC control (SD-057, RAT-085); never part of a pair
+  bool fixed = false;
 };
 
 struct RecipeCfg {
   std::string id, name, note;
   std::vector<RecipeStep> steps;  // Reihenfolge = Dosierreihenfolge
+  // The chart's EC at these amounts and its pH range (SD-057): a reference
+  // and a proposal for the grow's targets, never a target of its own.
+  // Missing stays NaN (R5).
+  double refEc = kNaN;
+  double phLow = kNaN, phHigh = kNaN;
 };
 
 struct FunctionCfg {
@@ -106,6 +114,12 @@ constexpr double kHardMinRunS = 1.0;          // kürzere Läufe werden nicht do
 constexpr double kHardMaxRunS = 60.0;         // längere Gaben in Teilgaben (RAT-055)
 constexpr double kHardHandDoseMaxMl = 50.0;   // je Handgabe
 constexpr int kHardMaxPartialRuns = 6;        // Teilläufe je Regel-Gabe
+// A recipe's start effect in EC control, mS/cm per ml/L of the recipe
+// (RAT-055). A recipe's chart EC may imply an effect from a quarter to four
+// times of it (SD-057, RAT-056): doses worked out from that reference stay
+// within this band of the start effect, and a slip of ten times is caught.
+constexpr double kEcStartEffect = 0.275;
+constexpr double kRefEffectMin = 0.25, kRefEffectMax = 4.0;  // factors of kEcStartEffect
 
 struct Limits {
   double handDoseMaxMl = 5.0;  // Quelle: RAT-039
@@ -219,7 +233,7 @@ struct RuntimeState {
   double tankVolumeL = kNaN;               // ohne Füllstandskopf: aus Mischläufen
   Epoch lastMixAt = 0;  // start of the running mix, then the end of the last one (RAT-003)
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
-  double ecEffect = kNaN;  // gelernte Wirkung Rezept (mS/cm je ml/L Summe)
+  double ecEffect = kNaN;  // learned effect of the recipe, mS/cm per ml/L of the parts EC control scales (RAT-085)
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund
   std::map<std::string, Epoch> selfReleased;  // latch → when it last released itself (SD-022)
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis
@@ -227,7 +241,7 @@ struct RuntimeState {
   Epoch manualAt = 0;
   std::optional<Stamp> clock;  // time and operating time when saved (PD-069)
   std::uint32_t bootCount = 0;   // number of starts; tells moments of one start apart
-  bool stopped = false;          // emergency stop survives a restart (RAT-036, PD-076)
+  bool stopped = false;          // a Stop survives a restart (RAT-036, PD-076)
 };
 void to_json(json& j, const RuntimeState& s);
 RuntimeState runtimeFromJson(const json& j);

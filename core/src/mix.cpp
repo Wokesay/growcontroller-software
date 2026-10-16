@@ -11,7 +11,7 @@ namespace gc {
 void to_json(json& j, const DoseStep& s) {
   j = {{"canister", s.canister}, {"name", s.name},   {"pump", s.pump},   {"pair", s.pair},
        {"color", s.color},       {"mlPerL", numOrNull(s.mlPerL)},       {"ml", numOrNull(s.ml)},
-       {"flowMlPerMin", numOrNull(s.flowMlPerMin)}, {"runs", s.runs}};
+       {"flowMlPerMin", numOrNull(s.flowMlPerMin)}, {"runs", s.runs}, {"fixed", s.fixed}};
 }
 
 void to_json(json& j, const MixPlan& p) {
@@ -91,6 +91,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     DoseStep d;
     d.canister = s.canister;
     d.mlPerL = s.mlPerL;
+    d.fixed = s.fixed;
     const CanisterCfg* k = cfg.canister(s.canister);
     if (!k) {
       error("mix.canister", "Kanister im Rezept fehlt");
@@ -148,21 +149,26 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
                   double effectPerMlL, double startEffect, double maxEcStep) {
   EcDose d;
   if (!isNum(volumeL) || volumeL <= 0) {
-    d.reason = {"ec.no_volume", "Tankvolumen unbekannt", json::object()};
+    d.reason = say("ec.no_volume");
     return d;
   }
   if (!isNum(effectPerMlL) || effectPerMlL <= 0) {
-    d.reason = {"ec.no_effect", "Wirkung unbekannt", json::object()};
+    d.reason = say("ec.effect_unknown");
     return d;
   }
+  // Only the parts EC control scales; a fixed addition goes in per litre of fresh water (RAT-085)
   double sumMlPerL = 0;
-  for (const auto& s : recipe.steps) sumMlPerL += isNum(s.mlPerL) ? s.mlPerL : 0;
+  bool anyFixed = false;
+  for (const auto& s : recipe.steps) {
+    anyFixed |= s.fixed;
+    sumMlPerL += !s.fixed && isNum(s.mlPerL) ? s.mlPerL : 0;
+  }
   if (sumMlPerL <= 0) {
-    d.reason = {"ec.recipe", "Rezept ohne Mengen", json::object()};
+    d.reason = anyFixed ? say("ec.recipe_no_scaled", {{"name", recipe.name}}) : say("ec.recipe");
     return d;
   }
   if (!isNum(gapEc) || gapEc <= 0) {
-    d.reason = {"mix.ec_reached", "EC liegt nicht unter dem Ziel", json::object()};
+    d.reason = say("mix.ec_reached");
     return d;
   }
   if (!isNum(maxEcStep) || maxEcStep <= 0) maxEcStep = 1.0;  // Katalog-Vorgabe, nie ohne Deckel
@@ -173,7 +179,7 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
   d.factor = totalMlPerL / rawMlPerL;
   for (const auto& s : recipe.steps) {
     const CanisterCfg* k = cfg.canister(s.canister);
-    if (!k) continue;
+    if (!k || s.fixed) continue;
     DoseStep ds;
     ds.canister = k->id;
     ds.name = k->name;

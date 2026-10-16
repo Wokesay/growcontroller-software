@@ -121,6 +121,178 @@ TEST_CASE("Konfiguration: Prüfung fachlich und sicherheitlich") {
   }
 }
 
+TEST_CASE("Recipes: a recipe keeps its chart EC and pH range; a missing one stays missing (SD-057)") {
+  Config c = sample();
+  json j = c;
+  CHECK(j["recipes"][0]["refEc"].is_null());  // never 0 (R5)
+  CHECK(j["recipes"][0]["ph"].is_null());
+  Config d = configFromJson(j);
+  CHECK(std::isnan(d.recipes[0].refEc));
+  CHECK(std::isnan(d.recipes[0].phLow));
+  CHECK(std::isnan(d.recipes[0].phHigh));
+  c.recipes[0].refEc = 1.2;
+  c.recipes[0].phLow = 5.8;
+  c.recipes[0].phHigh = 6.2;
+  d = configFromJson(json(c));
+  CHECK(d.recipes[0].refEc == doctest::Approx(1.2));
+  CHECK(d.recipes[0].phLow == doctest::Approx(5.8));
+  CHECK(d.recipes[0].phHigh == doctest::Approx(6.2));
+  CHECK(json(c) == json(d));
+  // A file saved before has neither and loads as it was
+  json old = sample();
+  old["recipes"][0].erase("refEc");
+  old["recipes"][0].erase("ph");
+  Config e = configFromJson(old);
+  CHECK(std::isnan(e.recipes[0].refEc));
+  CHECK(std::isnan(e.recipes[0].phLow));
+  // A range that is not two numbers is no range
+  old["recipes"][0]["ph"] = json::array({5.8});
+  CHECK(std::isnan(configFromJson(old).recipes[0].phLow));
+  old["recipes"][0]["ph"] = "5.8-6.2";
+  CHECK(std::isnan(configFromJson(old).recipes[0].phHigh));
+}
+
+TEST_CASE("Recipes: a reference far from the start effect is refused, naming the EC that would fit (SD-057, RAT-056)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();  // 2 + 2 ml/L
+  auto keys = [&] {
+    std::set<std::string> out;
+    for (const auto& m : validateConfig(c, cat)) out.insert(m.key);
+    return out;
+  };
+  auto& r = c.recipes[0];
+  // The effect it implies, EC over the sum of the amounts, lies within a quarter and four times the start effect
+  r.refEc = 0.28;  // 0.07 per ml/L, just above a quarter of 0.275
+  CHECK(keys().empty());
+  r.refEc = 0.27;
+  CHECK(keys().count("cfg.recipe.ref_far") == 1);
+  r.refEc = 1.6;
+  CHECK(keys().empty());
+  r.steps = {{"a", 0.5}, {"b", 0.5}};
+  r.refEc = 1.09;  // 1.09 per ml/L, just below four times 0.275
+  CHECK(keys().empty());
+  r.refEc = 1.12;  // too strong for the amounts: a concentrate, not a typo, may be the cause
+  CHECK(keys().count("cfg.recipe.ref_strong") == 1);
+  r.refEc = 1.5;
+  CHECK(keys().count("cfg.recipe.ref_strong") == 1);
+  CHECK(keys().count("cfg.recipe.ref_far") == 0);
+  // The ends of the target's range pass when the amounts fit
+  r.steps = {{"a", 0.5}, {"b", 0.5}};
+  r.refEc = 0.2;
+  CHECK(keys().empty());
+  r.steps = {{"a", 4.0}, {"b", 4.0}};
+  r.refEc = 4.0;
+  CHECK(keys().empty());
+  // It becomes a phase's target, so it lies in the target's range; never 0 or less
+  r.refEc = 4.5;
+  CHECK(keys().count("cfg.recipe.ref_range") == 1);
+  for (double bad : {0.0, -1.0}) {
+    r.refEc = bad;
+    CHECK(keys().count("cfg.recipe.ref_range") == 1);
+  }
+  r.refEc = kNaN;  // no reference: nothing to check
+  CHECK(keys().empty());
+  // The message names the recipe, the amounts and the EC that fits them, within the target's range
+  r.refEc = 0.27;
+  r.steps = {{"a", 2.0}, {"b", 2.0}};
+  bool found = false;
+  for (const auto& m : validateConfig(c, cat))
+    if (m.key == "cfg.recipe.ref_far") {
+      found = true;
+      CHECK(m.args["name"] == "Wachstum");
+      CHECK(m.args["ec"].get<double>() == doctest::Approx(0.27));
+      CHECK(m.args["sum"].get<double>() == doctest::Approx(4.0));
+      CHECK(m.args["lo"].get<double>() == doctest::Approx(0.275));
+      CHECK(m.args["hi"].get<double>() == doctest::Approx(4.0));  // 4.4 would fit, the target ends at 4.0
+    }
+  CHECK(found);
+}
+
+TEST_CASE("Recipes: a pH range is two values, low to high, within the pH target's range (SD-057, RAT-066)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  auto band = [&] {
+    for (const auto& m : validateConfig(c, cat))
+      if (m.key == "cfg.recipe.ph_band") return true;
+    return false;
+  };
+  auto& r = c.recipes[0];
+  r.phLow = 5.8;
+  r.phHigh = 6.2;
+  CHECK_FALSE(band());
+  r.phLow = r.phHigh = 6.0;  // one value is a range too
+  CHECK_FALSE(band());
+  r.phLow = 6.3;
+  CHECK(band());
+  r.phLow = 4.0;  // below the pH target's 4.5
+  CHECK(band());
+  r.phLow = 5.8;
+  r.phHigh = 8.0;
+  CHECK(band());
+  r.phHigh = kNaN;  // half a range
+  CHECK(band());
+  r.phLow = r.phHigh = 4.5;  // the ends of the pH target's range pass
+  CHECK_FALSE(band());
+  r.phLow = r.phHigh = 7.5;
+  CHECK_FALSE(band());
+}
+
+TEST_CASE("Recipes: a part can be a fixed addition, never one of a pair; the chart EC's effect counts the other parts (SD-057, RAT-085)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  c.devices.push_back({"CAP-4", "pump_cap", "Kappe 4"});
+  c.canisters.push_back({"clean", "Cleanse", "nutrient", "CAP-4", "", "#444", 1000});
+  c.recipes[0].steps.push_back({"clean", 0.5, true});
+  CHECK(validateConfig(c, cat).empty());
+  // Saved and read back; a file from before has no flag and nothing is fixed
+  Config d = configFromJson(json(c));
+  CHECK(d.recipes[0].steps[2].fixed);
+  CHECK_FALSE(d.recipes[0].steps[0].fixed);
+  CHECK(json(c) == json(d));
+  json old = c;
+  for (auto& s : old["recipes"][0]["steps"]) s.erase("fixed");
+  CHECK_FALSE(configFromJson(old).recipes[0].steps[2].fixed);
+  // One part of a pair cannot be fixed: the pair would split (RAT-054)
+  auto keys = [&] {
+    std::set<std::string> out;
+    for (const auto& m : validateConfig(c, cat)) out.insert(m.key);
+    return out;
+  };
+  c.recipes[0].steps[0].fixed = true;
+  CHECK(keys().count("cfg.recipe.fixed_pair") == 1);
+  c.recipes[0].steps[0].fixed = false;
+  // 0.29 over 4.5 ml/L would be below a quarter of the start effect; over the 4 ml/L that EC control scales it is not
+  c.recipes[0].refEc = 0.29;
+  CHECK(keys().empty());
+  c.recipes[0].steps[2].fixed = false;
+  CHECK(keys().count("cfg.recipe.ref_far") == 1);
+}
+
+TEST_CASE("Catalog: every recipe template's chart EC and pH range would pass as a recipe's (SD-057)") {
+  // Each template as a recipe of its own, checked the way a saved recipe is
+  Catalog cat = Catalog::builtin();
+  for (const auto& t : cat.templates["recipes"]) {
+    INFO(t.value("id", std::string()));
+    REQUIRE(t.contains("ec"));
+    REQUIRE(t["ph"].size() == 2);
+    Config c;
+    RecipeCfg r{"r", "Vorlage", "", {}};
+    for (const auto& s : t["steps"]) {
+      const std::string role = s["role"].get<std::string>();
+      c.canisters.push_back({role, role, "nutrient", "", s.value("pair", std::string()), "#111", 1000});
+      r.steps.push_back({role, s["mlPerL"].get<double>()});
+    }
+    r.refEc = t["ec"].get<double>();
+    r.phLow = t["ph"][0].get<double>();
+    r.phHigh = t["ph"][1].get<double>();
+    c.recipes = {r};
+    for (const auto& m : validateConfig(c, cat)) {
+      INFO(m.key << ": " << m.text);
+      CHECK(m.key.rfind("cfg.recipe.", 0) != 0);
+    }
+  }
+}
+
 TEST_CASE("Phasen liefern Parameter; der Name ändert nichts (M15-1, RAT-076)") {
   Catalog cat = Catalog::builtin();
   Config c = sample();

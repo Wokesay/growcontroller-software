@@ -559,14 +559,14 @@ test("Home Assistant: the history shows only curves that can have values, and sa
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Home Assistant: no emergency stop where nothing is switched, but a stop from before can be resumed (SD-040)", async ({ page, request }) => {
+test("Home Assistant: no Stop where nothing is switched, but a Stop from before can be resumed (SD-040)", async ({ page, request }) => {
   await scenario(request, "neu");
   await asHomeAssistant(page, "ok");
   await newPassword(page);
-  await expect(page.getByTitle("Not-Halt: alle Pumpen und Ausgänge aus")).toHaveCount(0);
+  await expect(page.getByTitle("Stopp: alle Pumpen und Ausgänge aus")).toHaveCount(0);
   await page.getByTestId("read-only-tag").click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("Kein Not-Halt in dieser App")).toBeVisible();
+  await expect(dialog.getByText("Keine Stopp-Taste in dieser App")).toBeVisible();
   // The window is whole on a phone too, over a dimmed page (it was cut off when opened from the top bar)
   await page.setViewportSize({ width: 375, height: 740 });
   expect((await dialog.boundingBox())!.y).toBeGreaterThanOrEqual(0);
@@ -583,17 +583,17 @@ test("Home Assistant: no emergency stop where nothing is switched, but a stop fr
   // Stopped by an earlier version: it can be cleared, and nothing claims that everything is off
   expect((await page.request.post("/api/v1/stop")).status()).toBe(200);
   await page.reload();
-  await expect(page.getByText("Not-Halt aktiv.")).toBeVisible();
-  await expect(page.getByText(/Er schaltet nichts aus: Was Home Assistant schaltet, läuft weiter/)).toBeVisible();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Er stammt von früher und schaltet nichts aus: Was Home Assistant schaltet, läuft weiter/)).toBeVisible();
   await expect(page.getByText(/Alle Pumpen und Ausgänge sind aus/)).toHaveCount(0);
   await expect(page.getByTestId("read-only-tag")).toBeVisible();
   // On a phone the bar holds both without scrolling sideways
-  const clear = page.getByRole("button", { name: "Not-Halt aufheben" });
+  const clear = page.getByRole("button", { name: "Stopp aufheben" });
   const box = await clear.boundingBox();
   expect(box!.x + box!.width).toBeLessThanOrEqual(375);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await clear.click();
-  await expect(page.getByText("Not-Halt aktiv.")).toHaveCount(0);
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("read-only-tag")).toBeVisible();
 });
 

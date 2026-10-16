@@ -8,7 +8,7 @@ export const de = {
   "shell.ctl.working": "Arbeitet",
   "shell.ctl.waiting": "Wartet",
   "shell.ctl.blocked": "Gesperrt",
-  "shell.ctl.latched": "Gerastet",
+  "shell.ctl.latched": "Freigabe nötig",
 
   // State of a function
   "shell.setup.unavailable": "Nicht verfügbar",
