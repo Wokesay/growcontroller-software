@@ -3624,10 +3624,11 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
 (#143, #18, #73).
 
 1. **English first (SD-014):**
-   - a new hub speaks English (system language `en`). A saved
-     configuration whose system part has no language stays German, as it
-     was saved under the old default; an update never changes a hub's
-     language;
+   - a new hub speaks English (system language `en`), also one whose
+     stored configuration cannot be read (factory settings). A stored or
+     imported configuration without a language, also one without a system
+     part, is German, as it was saved under the old default; an update
+     never changes a hub's language;
    - a browser without a choice of its own shows the hub's language, from
      the sign-in page on: the hub names it in `/info`, so a German hub
      stays German after the update and a new hub starts in English. The
@@ -3638,7 +3639,8 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
    - the first-password page shows the language choice first, with
      English chosen. The choice stays in the browser and carries into
      setup, whose first field is the language (the Home Assistant app's
-     introduction too); setup saves it as the hub's language;
+     introduction too); setup saves it as the hub's language, also when
+     the introduction is skipped;
    - the simulator's demo scenarios stay German, as their names and
      recipes are German;
    - a recipe template in an unknown system language falls back to

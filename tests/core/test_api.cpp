@@ -307,12 +307,14 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   }
   CHECK(csv("en", "tank.ph,zone.vpd,tank.water_temp").status == 200);
   CHECK(csv("en", "tank.ph,,zone.co2").status == 422);  // an empty id between two
+  CHECK(csv("en", "tank.ph,").status == 422);           // and after the last
+  CHECK(csv("en", ",tank.ph").status == 422);
   CHECK(csv("en", std::string(64, 'a')).status == 200);
   CHECK(csv("en", std::string(65, 'a')).status == 422);
   CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
 }
 
-TEST_CASE("API: an imported configuration without a language stays German; the settings file has an English name (SD-082)") {
+TEST_CASE("API: an imported configuration without a language is German; the settings file has an English name (SD-082)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});

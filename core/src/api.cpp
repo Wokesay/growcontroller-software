@@ -266,7 +266,9 @@ ApiResponse Api::route(const ApiRequest& req) {
     Epoch now = hub_.now();
     std::vector<std::string> series;
     auto it = req.query.find("series");
-    std::stringstream ss(it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second);
+    const std::string list = it == req.query.end() ? "tank.ph,tank.ec,tank.water_temp,tank.level" : it->second;
+    if (!list.empty() && list.back() == ',') return fromResult(Result::fail(422, say("history.series_id")));  // an empty last id
+    std::stringstream ss(list);
     std::string s;
     while (std::getline(ss, s, ',')) {
       // A series id is lower-case letters, digits, dots and underscores; it heads a column of the file

@@ -58,7 +58,9 @@ UI can do, an integration can do as well.
   name is refused with 422 `system.timezone` before anything else is checked
   (so other errors in the file are not listed with it, and a running job
   does not turn it into 409); when the saved file is loaded, such a zone
-  falls back to `Europe/Berlin` and an event says so.
+  falls back to `Europe/Berlin` and an event says so. A file without
+  `system.language` sets the hub to German, as files were saved before
+  English became the default (SD-082).
 
 ## Read
 
@@ -70,7 +72,7 @@ UI can do, an integration can do as well.
 | GET | `/catalog` | catalog of the firmware; each device class says `externalCalibration` (calibrated outside the hub, set in code, R7) |
 | GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`) |
 | GET | `/events?type&from&to&limit` | events, newest first |
-| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_` (else 422 `history.series_id`): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
+| GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column): `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
 | GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |

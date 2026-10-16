@@ -101,7 +101,10 @@ listed in every release under "Security".
   is the language, as in the Home Assistant app's introduction. A browser
   where you have not picked a language no longer follows the browser's
   own language: it shows the hub's language, from the sign-in page on. A
-  hub you already use keeps its language through the update.
+  hub you already use keeps its language through the update, and so does
+  an older settings file without a language when imported (German).
+  Skipping the Home Assistant app's introduction still saves the language
+  you picked.
 - **The CSV export in the page's language** (RAT-016, SD-082): from a
   German page as before, with semicolons and a decimal comma
   (`growcontroller-verlauf.csv`); from an English page with commas and a
