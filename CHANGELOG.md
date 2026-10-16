@@ -15,11 +15,12 @@ listed in every release under "Security".
   card shows the minutes left, offers no button to skip or cancel it, and
   says so when the pump is not running. EC and pH control and refill
   decide only after that. A mix ended, stopped, or cut short by a failure,
-  an internal error or a restart with nutrients in makes EC control wait
-  for the circulation pump and settle first, at least 15 min, and pH
-  after EC as always, now also when both waits end together; so does a
-  mix whose pump did not run while it mixed in. Their line says why while the pump does not run, and such a wait
-  logs no correction. Stirring by hand now waits at most 30 minutes after
+  an internal error or a restart with nutrients in makes EC and pH
+  control wait for the circulation pump and settle first, at least 15 min
+  and as long as the longer of their settle times; EC decides first, now
+  also when both waits end together. So does a mix whose pump did not run
+  while it mixed in. Their line says why while the pump does not run, and
+  such a wait logs no correction. Stirring by hand now waits at most 30 minutes after
   a part: then the mix stops, names the parts of a pair still missing
   with their amounts, and can go on ("Resume mix") or be ended ("End
   mix"); a mix cancelled with a pair half in names them too.
