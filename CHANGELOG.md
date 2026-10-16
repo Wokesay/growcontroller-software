@@ -721,7 +721,7 @@ A protective cut-off added:
   the inlet too. A Stop, maintenance, switching the refill off or a level
   calibration keeps what flowed unconfirmed until the level reading has
   moved by 1 L, so a stuck level gets no second full fill through them;
-  while the level is being calibrated the refill waits. A pending check
+  a level calibration ends a fill, and the refill waits while it runs. A pending check
   survives a restart. Residual risk: a
   level reading wrongly low still gets fills up to the target or one
   fill's open time before the latch; with start level and target less
@@ -729,8 +729,8 @@ A protective cut-off added:
   following can let small fills repeat; an inlet on a socket that keeps
   running while the hub loses power or hangs is not counted for that
   time; an irrigation pump that draws more than half a fill in the pause
-  of two refills in a row, or a level curve saved while a refill waits to
-  be checked, latches a sound inlet; and an irrigation pump the hub does
+  of two refills in a row, or a level curve imported while a refill waits
+  to be checked, latches a sound inlet; and an irrigation pump the hub does
   not know can make a correct fill look like a missing rise: bind it as
   the irrigation pump. After the update, check that the inlet rate under
   Functions is about right: one set at more than twice the real rate now

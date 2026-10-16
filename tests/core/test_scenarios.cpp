@@ -1212,6 +1212,22 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     CHECK_FALSE(inletOpen(c));  // two minutes after it, the reading may still follow the hand fill
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
   }
+  SUBCASE("after a Stop the fill waits its settling time too: a person may have been at the tank") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(60000, 5000);
+    s.world().fill(22, 1.3, 5.9);  // drained by hand during the Stop
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/resume");
+    s.step(60000, 5000);
+    CHECK(refillLine(c)["key"] == "refill.settle");
+    CHECK_FALSE(inletOpen(c));
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
+  }
   SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -1554,6 +1570,16 @@ TEST_CASE("Scenario: a person's Stop, maintenance or switching the refill off ke
     s.step(5 * 60 * 1000, 5000);
     c.ok("POST", "/api/v1/maintenance", {{"minutes", 5}});
   }
+  SUBCASE("a level calibration started during the fill ends it") {
+    stuckFill();
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "start"}});
+    s.step(10000, 5000);
+    CHECK_FALSE(inletOpen(c));
+    CHECK(refillLine(c)["key"] == "refill.calibrating");
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "cancel"}});
+  }
   SUBCASE("maintenance in the pause") {
     stuckFill();
     pause();
@@ -1565,6 +1591,62 @@ TEST_CASE("Scenario: a person's Stop, maintenance or switching the refill off ke
     c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
     s.step(60000, 5000);
     c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}});
+  }
+  SUBCASE("a level calibration during a fill with a sound sensor: its new curve shows the sensor follows, the refill fills again") {
+    stuck = false;
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    s.step(3 * 60 * 1000, 5000);
+    const json lvl = {{"device", "LVL-77B210"}, {"kind", "tank_curve"}};
+    const auto probe = [&](json body) {
+      body.update(lvl);
+      c.ok("POST", "/api/v1/probe", body);
+    };
+    probe({{"action", "start"}});
+    s.step(10000, 5000);
+    REQUIRE_FALSE(inletOpen(c));  // still below the start level: what flowed is kept
+    s.step(3 * 60 * 1000, 5000);
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
+    s.world().fill(15, 1.3, 5.9);  // the person drains for the second point, below the start level
+    s.step(4 * 60 * 1000, 5000);
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
+    probe({{"action", "commit"}});
+  }
+  SUBCASE("the refill switched off during the fill, then on") {
+    stuckFill();
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+    s.step(60000, 5000);
+    c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}});
+    s.step(60000, 5000);
+    CHECK(refillLine(c)["key"] == "refill.cooldown");  // the pause, as after a Stop
+  }
+  SUBCASE("a Stop, and a level curve imported meanwhile: a new curve alone does not show the sensor follows") {
+    stuckFill();
+    s.step(5 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(60000, 5000);
+    json cfg = c.ok("GET", "/api/v1/config/export");
+    for (auto& p : cfg["calibrations"]["LVL-77B210"]["tank_curve"]["points"]) p[1] = p[1].get<double>() + 1.5;  // reads 1.5 L more
+    c.ok("POST", "/api/v1/config/import", cfg);
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/resume");
+  }
+  SUBCASE("a water change during a Stop that began with the level head offline: its first reading counts") {
+    stuck = false;
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
+    pause();
+    s.control("fault", {{"device", "LVL-77B210"}, {"fault", "offline"}});
+    s.step(2 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/stop");
+    s.step(60000, 5000);
+    s.control("fault", {{"device", "LVL-77B210"}, {"fault", "none"}});
+    s.step(2 * 60 * 1000, 5000);
+    s.world().fill(26, 1.3, 5.9);
+    s.step(6 * 60 * 1000, 5000);
+    s.world().fill(10, 1.3, 5.9);
+    s.step(2 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/resume");
   }
   SUBCASE("a water change in maintenance: the level reading follows, so nothing is held against the next refill") {
     stuck = false;
@@ -1581,13 +1663,20 @@ TEST_CASE("Scenario: a person's Stop, maintenance or switching the refill off ke
     for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});  // their waits would hide the line
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 15 * 60 * 1000, 5000));
     pause();
-    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "start"}});
-    s.step(60000, 5000);
+    const json lvl = {{"device", "LVL-77B210"}, {"kind", "tank_curve"}};
+    const auto probe = [&](json body) {
+      body.update(lvl);
+      c.ok("POST", "/api/v1/probe", body);
+    };
+    probe({{"action", "start"}});
+    s.step(3 * 60 * 1000, 5000);
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
     s.world().fill(28, 1.3, 5.9);  // drained during the calibration
     s.step(15 * 60 * 1000, 5000);
     CHECK_FALSE(inletOpen(c));
     CHECK(refillLine(c)["key"] == "refill.calibrating");
-    c.ok("POST", "/api/v1/probe", {{"device", "LVL-77B210"}, {"kind", "tank_curve"}, {"action", "cancel"}});
+    probe({{"action", "point"}, {"reference", s.world().tank.volumeL}});
+    probe({{"action", "commit"}});  // a new curve, on which the reading moved: it follows the tank
     s.step(60000, 5000);
     CHECK(refillLine(c)["key"] == "refill.settle");  // then the reading settles first
     CHECK_FALSE(inletOpen(c));
@@ -1867,7 +1956,8 @@ TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pum
     s.step(10000);  // the cut round now waits for the pump
     REQUIRE(c.state()["controllers"]["ec"]["line"]["key"] == "ec.wait_circ");
     c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
-    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 60000));  // not held by the cut round
+    // not held by the cut round, only by the reading's settling time after the Stop (SD-080)
+    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 4 * 60 * 1000));
     bool dosed = false;
     for (int t = 0; t < 4 * 60; t += 5) {
       s.step(5000);

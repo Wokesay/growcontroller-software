@@ -637,13 +637,17 @@ void RefillController::toCheck(const Ctx& c, double expectedL, double openMin) {
   rec.erase("fill");
 }
 
-void RefillController::keepForPerson(const Ctx& c, double levelNow) {
+void RefillController::keepForPerson(const Ctx& c, double levelNow, bool calibrating) {
   json& rec = c.rt.refill;
   if (rec.contains("check")) {
     rec["unconfirmed"] = unconfirmedOf(rec["check"], rec.contains("unconfirmed") ? rec["unconfirmed"] : json(nullptr));
     rec.erase("check");
   }
-  if (rec.contains("unconfirmed") && !rec["unconfirmed"].contains("personL")) rec["unconfirmed"]["personL"] = numOrNull(levelNow);
+  if (!rec.contains("unconfirmed")) return;
+  json& u = rec["unconfirmed"];
+  // The first valid reading of the person's work: a stuck sensor's is the same as its later ones
+  if (!isNum(jnumOr(u, "personL", kNaN))) u["personL"] = numOrNull(levelNow);
+  if (calibrating) u["calibrated"] = true;  // a level calibration ran: a new curve may move the reading
 }
 
 void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args) {
@@ -666,9 +670,10 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   const auto open = env.act.roleState(c.cfg, "tank.inlet");
   const Irrigation irr = irrigation(c, env);
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
-  // happened before it is not known. Only irrigation may end the wait early: it reads the level too
-  // high, so a fill comes out smaller; a hand fill or draining could make it larger (RAT-038, SD-080).
-  if (!booted_ || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
+  // happened before it is not known, and so does a Stop: a person may be at the tank. Only irrigation
+  // may end the wait early: it reads the level too high, so a fill comes out smaller; a hand fill or
+  // draining could make it larger (RAT-038, SD-080).
+  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
   const Ms settleSince = settleSince_;
   settleSince_ = -1;  // kept only by a tick that waits for the reading to settle
@@ -712,11 +717,12 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
       Msg e;
       env.act.setRole(c, "tank.inlet", false, say("who.refill_off"), e);
       filling_ = false;
+      cooldownUntil_ = c.epoch + kRefillPauseS;
       toCheck(c, std::min(plannedL_, flow_ * static_cast<double>(c.now - startedMs_) / kMinute), static_cast<double>(c.now - startedMs_) / kMinute);
     }
     endSteps();
     rec.erase("fill");
-    keepForPerson(c, levelNow);
+    keepForPerson(c, levelNow, env.levelCalibrating);
     return;
   }
   // A mix or a hand dose ends the steps, also one that runs only during a fill or the pause after it:
@@ -753,7 +759,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
         if (c.rt.latches.count("inlet.fault")) rec.erase("fill");
         else {
           toCheck(c, flowedL, ranMin);
-          keepForPerson(c, levelNow);
+          keepForPerson(c, levelNow, env.levelCalibrating);
         }
         st_.state = "latched";
         st_.line = say("refill.stopped");
@@ -770,7 +776,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     if (rec.contains("fill") && c.epoch - jepoch(rec["fill"], "seenAt") >= 60) rec["fill"]["seenAt"] = c.epoch;
     const bool done = c.now - startedMs_ >= plannedMs_;
     const bool sensorStop = level.usable() && *level.value >= targetL_ + 1.0;
-    const bool automatic = automation(c, st_);
+    // A person's Stop or maintenance ends the fill, and so does a level calibration (#256)
+    const bool person = !automation(c, st_);
+    const bool automatic = !person && !env.levelCalibrating;
     if (done || sensorStop || !automatic) {
       Msg e;
       if (!env.act.setRole(c, "tank.inlet", false, say("who.refill_done"), e)) {
@@ -787,8 +795,12 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                 {{"plannedL", plannedL_}, {"measuredL", numOrNull(added)}, {"step", step_}, {"steps", steps_}});
       if (sensorStop || !automatic) endSteps();
       if (!automatic) {
+        if (!person) {
+          st_.state = "waiting";
+          st_.line = say("refill.calibrating");
+        }
         toCheck(c, done ? plannedL_ : flowedL, ranMin);
-        keepForPerson(c, levelNow);  // a person stopped it or works at the tank: not judged now
+        keepForPerson(c, levelNow, env.levelCalibrating);  // a person stopped it or works at the tank: not judged now
         return;
       }
       // Judged at the end of the pause, against what flowed while the valve was open (SD-080)
@@ -810,7 +822,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // does, holds the next fill to what is left (SD-080)
   if (!automation(c, st_)) {
     endSteps();
-    keepForPerson(c, levelNow);
+    keepForPerson(c, levelNow, env.levelCalibrating);
     return;
   }
   if (c.rt.latches.count("inlet.fault")) {
@@ -824,7 +836,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   }
   // A person calibrating the level may fill or drain the tank: kept as through a Stop, from the level
   // read when it began (#256, SD-080)
-  if (env.levelCalibrating) keepForPerson(c, levelNow);
+  if (env.levelCalibrating) keepForPerson(c, levelNow, true);
 
   // At the end of the pause: did the level rise by at least half of what flowed in? If not, a leak,
   // an empty supply, a stuck valve or a level sensor that does not follow look the same: the inlet
@@ -914,6 +926,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     rec.erase("unconfirmed");  // the level is back: nothing waits to be confirmed (the count stays until a rise passes)
     return;
   }
+  if (env.levelCalibrating) {
+    // No fill from readings taken while a person calibrates the level (#256)
+    endSteps();
+    st_.state = "waiting";
+    st_.line = say("refill.calibrating");
+    return;
+  }
   if (c.epoch < cooldownUntil_) {
     st_.state = "waiting";
     st_.line = say("refill.cooldown");
@@ -947,13 +966,6 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     endSteps();
     st_.state = "waiting";
     st_.line = isNum(maxOpen) ? say("refill.open_by_hand_limit", {{"min", maxOpen}}) : say("refill.open_by_hand");
-    return;
-  }
-  if (env.levelCalibrating) {
-    // No fill from readings taken while a person calibrates the level (#256)
-    endSteps();
-    st_.state = "waiting";
-    st_.line = say("refill.calibrating");
     return;
   }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
@@ -995,9 +1007,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // began, nor stay open longer in total than one fill may: a level stuck low would otherwise make
   // each of them plan the whole gap again. When nothing more fits, they are judged now.
   if (rec.contains("unconfirmed")) {
-    // Kept through a person's work, and the reading moved since: it follows the tank
-    const double personL = jnumOr(rec["unconfirmed"], "personL", kNaN);
-    if (isNum(personL) && std::fabs(*level.value - personL) >= kFollowsL) rec.erase("unconfirmed");
+    // Kept through a person's work, and the reading moved since: it follows the tank. Across a new
+    // curve only after a level calibration, which needs a sensor that follows; an imported curve
+    // alone shows nothing of the sensor
+    const json& u = rec["unconfirmed"];
+    const double personL = jnumOr(u, "personL", kNaN);
+    const bool sameCurve = levelCurve(c) == (u.contains("curve") ? u["curve"] : json(nullptr));
+    if (isNum(personL) && std::fabs(*level.value - personL) >= kFollowsL && (sameCurve || jflag(u, "calibrated"))) rec.erase("unconfirmed");
   }
   if (rec.contains("unconfirmed")) {
     const json& u = rec["unconfirmed"];
