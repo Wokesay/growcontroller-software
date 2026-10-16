@@ -112,6 +112,23 @@ listed in every release under "Security".
   to connect and where, and how to add a smart plug if none is added
   yet. The Home Assistant app is unchanged, as it switches nothing
   there.
+- **Plan: factory reset with BOOT held 15 s and a confirmation; an
+  access reset** (#133, SD-080, from PD-197 to PD-199 and PD-217 to
+  PD-219). To reset the ESP32-S3 to its factory state, you hold BOOT for
+  15 s. It first switches off the smart plugs with a water or CO2 role:
+  irrigation and circulation pump, inlet and inlet pump, humidifier,
+  dehumidifier, CO2 and tank heater. Light, fans, room heater and air
+  pump keep their state, and a drain with its own pump stays on. The
+  LEDs show whether every one of these plugs reported "off". Only a
+  short press on BOOT within 30 s then erases; without it nothing is
+  erased. The web app and our flash page switch off the same plugs
+  first. The reset erases Wi-Fi, the password, settings, calibrations,
+  history and the passwords of adopted plugs, and keeps the label's key.
+  If you only lost access, the access reset keeps your data: hold BOOT
+  long (proposed: 8 s), set a new password in the home network within
+  15 min and confirm it with a short press on BOOT. Home Assistant must
+  then be paired again. Before you pass a device on, use the factory
+  reset. Built in a later change.
 - **Plain words instead of developer terms** (#143, SD-055): in German,
   locks now say "Freigabe nötig" and "Freigeben", as the help and the
   English texts do, instead of "Gerastet" and "quittieren". The lock list
@@ -276,9 +293,9 @@ listed in every release under "Security".
   yourself in the browser; later it can come pre-flashed. Wi-Fi is then
   set up through the ESP32-S3's own setup network with the key from the
   label; on a configured device it opens only when you hold BOOT for
-  3 s, for at most 10 min. Holding BOOT for 10 s resets the device to
-  factory state: settings, calibration values, passwords, Wi-Fi and
-  history are erased, the label's key stays. A pre-flashed device asks for
+  3 s, for at most 10 min. A factory reset (see the entry on BOOT held
+  15 s) erases settings, calibration values, passwords, Wi-Fi and
+  history; the label's key stays. A pre-flashed device asks for
   its first password in the home network within 15 min after it joins.
   Every board with our firmware gets security updates for 7 years from
   its delivery, until December (delivered 2028: until at least 12/2035);
@@ -764,6 +781,12 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **The session comes only from a cookie named exactly `gc_session`**
+  (Home Assistant app, simulator and firmware): the servers now split the
+  browser's `Cookie` header into its name=value pairs and take the session
+  only from the pair of that name, and only when there is exactly one such
+  pair; two cookies of that name count as none. This happens in one place
+  in the core (`gc::sessionToken`).
 - **Three security fixes are guarded against coming back** (#234); each
   check fails when its fix is taken out:
   - `tools/arch_check.sh` refuses `std::random_device` and the RDSEED

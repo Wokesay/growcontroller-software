@@ -3,7 +3,9 @@
 
 #include <cctype>
 #include <cstring>
+#include <optional>
 #include <sstream>
+#include <string_view>
 
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -64,6 +66,28 @@ bool Api::authorized(const ApiRequest& req) {
   if (req.token.empty() || !hub_.auth().check(req.token, now)) return false;
   hub_.auth().seen(req.client, now);  // a phone that stays signed in keeps its own count (SD-051)
   return true;
+}
+
+std::string sessionToken(const std::string& authorization, const std::string& cookie) {
+  if (authorization.rfind("Bearer ", 0) == 0) return authorization.substr(7);
+  // name=value pairs split by ';' (RFC 6265, 4.2.1); the name must match whole
+  auto trim = [](std::string_view s) {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
+    return s;
+  };
+  std::optional<std::string_view> found;
+  std::string_view rest = cookie;
+  while (!rest.empty()) {
+    auto semi = rest.find(';');
+    std::string_view pair = rest.substr(0, semi);
+    rest = semi == std::string_view::npos ? std::string_view{} : rest.substr(semi + 1);
+    auto eq = pair.find('=');
+    if (eq == std::string_view::npos || trim(pair.substr(0, eq)) != "gc_session") continue;
+    if (found) return {};  // more than one: their order says nothing about which is ours
+    found = trim(pair.substr(eq + 1));
+  }
+  return found ? std::string(*found) : std::string();
 }
 
 bool hostAllowed(const std::string& hostHeader, const std::string& extraHost) {

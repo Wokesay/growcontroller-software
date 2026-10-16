@@ -3,7 +3,8 @@
 // at the start: a --web folder is no web app, so it starts without it (with
 // the embedded web app or the "not built" page); a --data folder runs it in
 // memory only and is left alone (SD-074). A bad option value or a data folder
-// it cannot create ends or says so (#213). Runs the built server (tools/ci.sh
+// it cannot create ends or says so (#213). The session comes from the one
+// cookie named exactly gc_session. Runs the built server (tools/ci.sh
 // builds it first).
 //   node --test tools/sim_server.test.mjs      (GC_SIM_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
@@ -62,8 +63,9 @@ function fetchStatus(port, path) {
 }
 
 // Starts the server with these options, in its own folder; it must answer
-// and end cleanly on SIGTERM. Gives what it printed.
-async function startsWith(args) {
+// and end cleanly on SIGTERM. `check` runs while it is up, with its port.
+// Gives what it printed.
+async function startsWith(args, check) {
   const child = spawn(bin, ["--host", "127.0.0.1", "--port", String(await freePort()), "--scenario", "neu", "--prefill", "0", ...args], {
     cwd: tmp,
     stdio: ["ignore", "pipe", "pipe"],
@@ -90,6 +92,7 @@ async function startsWith(args) {
     assert.equal(info?.status, 200, `/api/v1/info answers:\n${out}`);
     assert.equal(JSON.parse(info.body).platform?.simulated, true, info.body);
     assert.equal((await fetchStatus(port, "/"))?.status, 200, `the start page answers:\n${out}`);
+    if (check) await check(port);
   } finally {
     child.kill("SIGTERM");
   }
@@ -199,4 +202,42 @@ test("a data folder it cannot create is not named as its data folder (#213)", { 
   const out = await startsWith(["--data", join(dir, "file", "data")]);
   assert.equal(out.match(/Data cannot be saved \(.+\)\. Running in memory only\./g)?.length, 1, out);
   assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+});
+
+test("the session comes from the one cookie named exactly gc_session", { skip, timeout: 120000 }, async () => {
+  await startsWith([], async (port) => {
+    const base = `http://127.0.0.1:${port}`;
+    const login = await fetch(`${base}/api/v1/auth/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ password: "sim-password-1" }),
+    });
+    assert.equal(login.status, 200, await login.text());
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+    assert.match(cookie, /^gc_session=[0-9a-f]+$/);
+    const state = async (c) => (await fetch(`${base}/api/v1/state`, { headers: { Cookie: c } })).status;
+    assert.equal(await state(cookie), 200);
+    assert.equal(await state(`theme=dark; ${cookie}; lang=en`), 200);
+    assert.equal(await state(`x${cookie}`), 401);
+    assert.equal(await state(`note=${cookie}`), 401);
+    assert.equal(await state(`${cookie}; ${cookie}`), 401);
+    // a bearer header comes first
+    const token = cookie.slice("gc_session=".length);
+    const bearer = async (h) => (await fetch(`${base}/api/v1/state`, { headers: h })).status;
+    assert.equal(await bearer({ Authorization: `Bearer ${token}` }), 200);
+    assert.equal(await bearer({ Authorization: `Bearer ${token}`, Cookie: "gc_session=other" }), 200);
+    // the live stream takes its session the same way
+    const stream = async (c) => {
+      const ac = new AbortController();
+      const r = await fetch(`${base}/api/v1/events/stream`, { headers: { Cookie: c }, signal: ac.signal });
+      ac.abort();
+      return r.status;
+    };
+    assert.equal(await stream(`theme=dark; ${cookie}`), 200);
+    assert.equal(await stream(`${cookie}; ${cookie}`), 401);
+    // with two of them the session is not renewed
+    const session = await fetch(`${base}/api/v1/auth/session`, { headers: { Cookie: `${cookie}; ${cookie}` } });
+    assert.equal((await session.json()).authenticated, false);
+    assert.equal(session.headers.get("set-cookie"), null);
+  });
 });
