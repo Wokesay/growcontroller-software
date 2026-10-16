@@ -106,13 +106,7 @@ class HostClock : public gc::IClock {
 };
 
 std::string tokenOf(const httplib::Request& req) {
-  auto auth = req.get_header_value("Authorization");
-  if (auth.rfind("Bearer ", 0) == 0) return auth.substr(7);
-  auto cookie = req.get_header_value("Cookie");
-  auto pos = cookie.find("gc_session=");
-  if (pos == std::string::npos) return {};
-  auto end = cookie.find(';', pos);
-  return cookie.substr(pos + 11, end == std::string::npos ? std::string::npos : end - pos - 11);
+  return gc::sessionToken(req.get_header_value("Authorization"), req.get_header_value("Cookie"));
 }
 
 gc::ApiRequest toApi(const httplib::Request& req) {
