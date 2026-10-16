@@ -32,7 +32,7 @@ if [ -z "$ns" ] || [ -z "$no" ] || [ $((ns + no)) -eq 0 ]; then
   exit 1
 fi
 places() { [ "$2" -gt 0 ] && seq 1 "$2" | sed "s/^/$1 /"; true; }
-again() { echo "$GC_BIN $(filter "$1") --first=$2 --last=$2"; }
+again() { echo "$GC_BIN '$(filter "$1")' --first=$2 --last=$2"; }
 
 # A case passed if it ended with exit 0 after running exactly one test case
 # (doctest prints one "<seconds> s: <name>" line per case it ran)
@@ -40,6 +40,7 @@ ran() { grep -c '^[0-9][0-9]*\.[0-9]\{6\} s: ' "$1" 2> /dev/null || true; }
 show() {
   local log="$GC_OUT/$1$2" n rc
   n=$(ran "$log.log")
+  n=${n:-0}
   rc=$(cat "$log.rc" 2>/dev/null || echo none)
   if [ "$rc" = 0 ] && [ "$n" = 1 ]; then return 0; fi
   if [ "$rc" = none ]; then echo "=== $1$2: did not end ==="
