@@ -957,7 +957,7 @@ TEST_CASE("Home Assistant: a sensor that reports every few minutes stays valid, 
       CHECK(v.get<double>() < 6.2);
     }
   CHECK(values > 0);
-  CHECK(hub.exportCsv({"tank.ph"}, clk.epoch() - 600, clk.epoch()).find(";6") != std::string::npos);  // and exported
+  CHECK(hub.exportCsv({"tank.ph"}, clk.epoch() - 600, clk.epoch(), "de").find(";6") != std::string::npos);  // and exported
   // What fails a check is a gap, never a value (R5). Silent: valid for three
   // of its usual gaps (9 min), then stale.
   auto silent = [&](int minutes) {

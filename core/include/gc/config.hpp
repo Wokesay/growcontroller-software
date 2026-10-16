@@ -136,7 +136,7 @@ struct SystemCfg {
   bool setupDone = false;
   bool passwordSet = false;  // Erstpasswort einmal gesetzt: Setup über das Netz danach gesperrt
   std::string timezone = "Europe/Berlin";
-  std::string language = "de";
+  std::string language = "en";  // English first (SD-014); a file saved without one is German (configFromJson)
   bool updateCheck = true;
   std::string updateChannel = "stable";
   // What the app is to do per area (SD-037): "auto" or "outside" (left to something else, such

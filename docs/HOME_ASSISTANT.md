@@ -135,7 +135,7 @@ labels follow Home Assistant's developer documentation for apps
 6. Open the address and set a password, with the setup code the server
    printed in the terminal (#79; every restart makes a new one). The setup for the hub's own
    dosing hardware is not offered on a read-only hub; a short introduction
-   opens instead (SD-037): name, language and colour scheme, a sensor per
+   opens instead (SD-037): language, name and colour scheme, a sensor per
    measurement, and per area whether the app is to do it automatically or
    it stays outside the control (for example in Home Assistant). The app
    switches nothing yet and says so; the choice is only recorded. The
@@ -292,7 +292,7 @@ app (SD-038, SD-041):
   such boards need a rule first (SD-041). pH is not temperature
   compensated (SD-054). Swapped buffers or a reversed probe are refused as
   running the wrong way, a worn probe as too weak.
-- **Calibrating:** Devices › Assignment › "Kalibrieren" (calibrate), pH 7
+- **Calibrating:** Devices › Assignment › "Calibrate", pH 7
   then pH 4. Each step takes the sensor's first report clearly after
   "Wert übernehmen" (take value), at least 2 s later, and waits for it as
   long as the sensor's freshness limit, at most 30 min (RAT-006, SD-035):

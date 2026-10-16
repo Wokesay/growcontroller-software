@@ -78,6 +78,8 @@ export const de = {
   "settings.restored": "Einstellungen geladen",
   "settings.importNotJson": "Diese Datei ist keine gesicherte Konfiguration.",
   "settings.historyCsv": "Verlauf (CSV, 7 Tage)",
+  // The CSV follows the page's language (RAT-016, SD-083)
+  "settings.csvFormat": "Für eine Tabellenkalkulation auf Deutsch: Semikolon und Dezimalkomma. Für Komma und Dezimalpunkt stell die Seite auf Englisch.",
 
   // Display and info
   "settings.display": "Darstellung und Info",
@@ -167,6 +169,7 @@ export const en: Record<keyof typeof de, string> = {
   "settings.restored": "Settings restored",
   "settings.importNotJson": "This file is not a saved configuration.",
   "settings.historyCsv": "History (CSV, 7 days)",
+  "settings.csvFormat": "For a spreadsheet set to English: commas and a decimal point. For semicolons and a decimal comma, switch this page to German.",
 
   "settings.display": "Display and info",
   "settings.theme": "Colour scheme",

@@ -224,6 +224,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await expect(page.getByTestId("watchdog")).toBeVisible();
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.name).toBe("Zelt 1");
+  expect(sys.language).toBe("de");  // the page's, saved to the hub, which started in English (SD-083)
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({ climate: "outside", light: "auto", irrigation: "outside", refill: "outside", circulation: "outside", dosing: "outside" });
   await expect(page.getByRole("link", { name: "Einrichtung" })).toHaveCount(0);  // no way into the dosing setup
@@ -312,6 +313,7 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   const sys = (await (await page.request.get("/api/v1/config")).json()).system;
   expect(sys.setupDone).toBe(true);
   expect(sys.control).toEqual({});
+  expect(sys.language).toBe("de");  // the page's language still reaches the hub, which started in English (SD-083)
   await page.reload();
   await expect(page.getByTestId("watchdog")).toBeVisible();  // not opened again
   // The overview points to choosing sensors
@@ -329,6 +331,47 @@ test("Read-only trial (Home Assistant): the introduction can be skipped; nothing
   await expect(page.getByTestId("control-note-irrigation")).toContainText("Du schaltest das in Home Assistant oder am Gerät.");
   expect((await (await page.request.get("/api/v1/config")).json()).system.control).toEqual({ irrigation: "outside" });
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test.describe("A new hub and browser", () => {
+  test.use({ pageLang: null });
+
+  test("start in English with the language first; German chosen there carries into setup (SD-014)", async ({ page, request }) => {
+    await scenario(request, "neu");
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    const choice = page.getByTestId("first-lang");
+    await expect(choice.getByRole("tablist", { name: "Language · Sprache" })).toBeVisible();  // the same name in both languages
+    await expect(choice.getByRole("tab")).toHaveText(["English", "Deutsch"]);
+    await expect(choice.getByRole("tab", { name: "English" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "Set password" })).toBeVisible();
+    // The choice is the first thing on the page, above the password
+    const [langBox, pwBox] = [await choice.boundingBox(), await page.locator("input[name=password]").boundingBox()];
+    expect(langBox && pwBox && langBox.y < pwBox.y).toBe(true);
+    await choice.getByRole("tab", { name: "Deutsch" }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await page.locator("input[name=password]").fill("mein-passwort");
+    await page.locator("input[name=password2]").fill("mein-passwort");
+    await page.getByRole("button", { name: "Passwort festlegen" }).click();
+    // Setup opens with the language as its first field, still German
+    const first = page.locator(".form-grid > *").first();
+    await expect(first).toContainText("Sprache");
+    await expect(first.getByRole("tab", { name: "Deutsch" })).toHaveAttribute("aria-selected", "true");
+    expect((await (await page.request.get("/api/v1/config")).json()).system.language).toBe("en");  // the hub's until setup saves it
+    await page.getByTestId("wizard-next").click();
+    await expect.poll(async () => (await (await page.request.get("/api/v1/config")).json()).system.language).toBe("de");
+  });
+
+  test("on a German hub show its language from the sign-in page on, without keeping a choice (SD-083)", async ({ page, request }) => {
+    await scenario(request, "demo");  // the demo's hub speaks German
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await page.locator("input[name=password]").fill("demo-passwort");
+    await page.getByRole("button", { name: "Anmelden" }).click();
+    await expect(page.getByTestId("watchdog")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    expect(await page.evaluate(() => localStorage.getItem("gc.lang"))).toBeNull();  // the hub's language, not a choice of this browser
+  });
 });
 
 test("Without a smart plug, climate, light and watering say how to add one and lead to Devices (SD-056)", async ({ page, request }) => {

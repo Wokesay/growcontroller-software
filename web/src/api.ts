@@ -120,7 +120,7 @@ export type Catalog = {
 
 export type Info = {
   product: string; version: string; api: number; catalogVersion: number; schemaVersion: number;
-  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean; signIn?: string }; setupDone: boolean; hasPassword: boolean; setupCode?: boolean; name: string;
+  platform: { kind: string; simulated?: boolean; scenario?: string; readOnly?: boolean; signIn?: string }; setupDone: boolean; hasPassword: boolean; setupCode?: boolean; name: string; language?: "de" | "en";
 };
 
 export type HubEvent = { id: number; ts: number; type: string; severity: "info" | "notice" | "warn" | "alarm"; title: Msg; text: Msg; data: Record<string, any> };

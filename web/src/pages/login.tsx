@@ -2,12 +2,12 @@
 // Anmeldung und Erstpasswort. Kein Standardpasswort, kein Überspringen
 // (EN 18031-1 AUM-5-1).
 import { useState } from "preact/hooks";
-import { KeyRound, Sprout } from "lucide-preact";
+import { KeyRound, Languages, Sprout } from "lucide-preact";
 import { post } from "../api";
 import { afterLogin, errorText, hasPlugs, info, sessionExpired } from "../store";
-import { t } from "../i18n";
+import { lang, setLang, t, tIn, type Lang } from "../i18n";
 import { sourceUrl } from "../source";
-import { Banner, Field } from "../ui";
+import { Banner, Field, LANGS, Seg } from "../ui";
 
 export function Login() {
   const first = !info.value?.hasPassword;
@@ -55,6 +55,15 @@ export function Login() {
         )}
         {first ? (
           <>
+            {/* The language comes first, English chosen until the user picks another (SD-014) */}
+            <div class="field" data-testid="first-lang">
+              {/* The same label in both languages, so it does not move when the language does */}
+              <span id="first-lang-label" class="row" style="gap:6px">
+                <Languages size={16} aria-hidden="true" />
+                <span lang="en">{tIn("en", "common.language")}</span> · <span lang="de">{tIn("de", "common.language")}</span>
+              </span>
+              <Seg<Lang> value={lang.value} onChange={(l) => setLang(l)} options={LANGS} labelledBy="first-lang-label" large />
+            </div>
             <div>
               <h2>{t("setup.start.h")}</h2>
               <p class="muted">{t("login.firstText")}</p>

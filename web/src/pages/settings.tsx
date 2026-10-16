@@ -7,7 +7,7 @@ import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
 import { del, get, post, put } from "../api";
 import { dateTime, num, timeZone } from "../format";
 import { config, errorText, info, logoutLocal, platformUser, readOnly, refreshConfig, simulated, toast } from "../store";
-import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
+import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
 
@@ -225,7 +225,7 @@ function Report() {
     const blob = new Blob([JSON.stringify({ ...diag, beschreibung: text }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `growcontroller-diagnose-${diag.reportId}.json`;
+    a.download = `growcontroller-diagnostics-${diag.reportId}.json`;
     a.click();
   };
   const issue = diag
@@ -408,9 +408,10 @@ export function SettingsPage() {
                   }}
                 />
               </label>
-              <a class="btn" href="api/v1/export.csv" download>
+              <a class="btn" href={`api/v1/export.csv?lang=${lang.value}`} download aria-describedby="csv-format" data-testid="settings-csv">
                 <Download size={15} /> {t("settings.historyCsv")}
               </a>
+              <small class="muted" id="csv-format">{t("settings.csvFormat")}</small>
             </div>
           </div>
         </Card>
@@ -433,7 +434,8 @@ export function SettingsPage() {
                   await put("/system", { language: l });
                   await refreshConfig();
                 }}
-                options={[["de", "Deutsch"], ["en", "English"]]}
+                options={LANGS}
+                label={t("common.language")}
               />
             </div>
             <div class="divider" />

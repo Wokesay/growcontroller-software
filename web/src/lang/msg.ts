@@ -243,6 +243,7 @@ export const msgDe: Record<string, string> = {
   "ev.storage_ok": "Daten werden wieder gespeichert",
   "ev.storage_ok.text": "Der Hub kann wieder in seinen Datenordner schreiben.",
   "store.failed": "Nicht gespeichert: Der Hub kann nicht in seinen Datenordner schreiben (voll oder schreibgeschützt).",
+  "history.series_id": "Ein Name einer Messreihe besteht nur aus Kleinbuchstaben, Ziffern, Punkten und Unterstrichen, höchstens 64 Zeichen.",
   "ev.tick_fault": "Interner Fehler – alles aus außer den Lüftern",
   "ev.tick_fault.text": "Die Steuerung hat einen Fehler abgefangen und alle Pumpen und Ausgänge abgeschaltet; die Lüfter laufen weiter: {reason}",
   "ev.clock.lost": "Uhrzeit nicht mehr gesichert",

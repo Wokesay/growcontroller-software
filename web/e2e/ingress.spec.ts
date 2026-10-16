@@ -113,6 +113,13 @@ test("the Home Assistant app: its user sets and changes the password for direct 
   });
   const bookmark = `http://127.0.0.1:${port}/`;
   const elsewhere = await browser.newContext({ locale: "de-DE" });  // another device, with the bookmark
+  await elsewhere.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("gc.lang")) localStorage.setItem("gc.lang", "de");  // German, as the helpers set the page (SD-083)
+    } catch {
+      // the notice page has no storage of its own to keep
+    }
+  });
   try {
     await expect.poll(async () => (await fetch(`http://127.0.0.1:${ingressPort}/api/v1/info`).catch(() => null))?.status, { timeout: 30_000 }).toBe(200);
     // Through Home Assistant: signed in as its user, no password asked

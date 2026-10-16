@@ -119,8 +119,8 @@ and "access refused" are said as such, never as "no sensors".
 
 | # | Step | Required |
 |---|---|---|
-| – | Initial password (before anything else) | yes, cannot be skipped (EN 18031-1 AUM-5-1) |
-| 1 | Name, time zone (from the browser); on the hub also Wi-Fi | yes |
+| – | Initial password (before anything else), the language choice above it (English preset, German selectable; SD-014) | yes, cannot be skipped (EN 18031-1 AUM-5-1) |
+| 1 | Language (as chosen with the password), name, time zone (from the browser); on the hub also Wi-Fi | yes |
 | 2 | Detect devices, "Add all" | until the dosing block and a cap are present |
 | 3 | Tank: usable volume, water, circulation pump/inlet on the hub output | usable volume yes |
 | 4 | Assign bottles to the caps (suggestion: part A/B as a pair, CalMag, pH−) | yes |

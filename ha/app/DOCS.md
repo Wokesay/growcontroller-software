@@ -53,14 +53,14 @@ the sensors from it and shows them with growcontroller's checks.
    Home Assistant login: there is no password of its own to set. Only
    Home Assistant's administrators can open it (with Supervisor 2026.10.2
    or newer; an older one only hides it from the others' sidebar).
-5. A short introduction opens: name, language and colour scheme, one
+5. A short introduction opens: language, name and colour scheme, one
    sensor per measurement, and per area whether the app is to do it
    automatically one day or it stays outside the control (in Home
    Assistant or manually). The app switches nothing yet, whatever you
    choose. You can skip it and open it again under **Settings**. Sensors
    are also under **Devices › Assignment**. A pH probe that reports its
    voltage (mV or V) is calibrated there in the app with pH 7 and pH 4
-   buffers (**Kalibrieren**); set `force_update: true` on it and no
+   buffers (**Calibrate**); set `force_update: true` on it and no
    calibration filter on the node. A sensor the app does not
    suggest is under **Show other sensors**, and its unit must fit the
    measurement.
