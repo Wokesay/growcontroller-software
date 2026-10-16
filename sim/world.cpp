@@ -166,6 +166,7 @@ void World::fill(double volumeL, double ec, double ph) {
   tank.ec = ec;
   tank.ph = ph;
   tank.pendingEc = tank.pendingPh = 0;
+  tank.tempDev = 0;
   phTrail_.clear();
 }
 
@@ -287,6 +288,10 @@ void World::step(Ms dt) {
         runningCap_.clear();
       }
     }
+  // Water temperature: a daily curve (assumption). Fresh water moves it towards the inlet water's
+  // temperature by volume, and it returns to the curve with t63 3 h (assumption, docs/SIMULATOR.md).
+  const double dayTemp = 20.5 + 1.5 * std::sin(2 * kPi * static_cast<double>(now_ % 86400000) / 86400000.0);
+  tank.tempDev *= std::exp(-dts / (3 * 3600.0));
   // Zulauf (Ausgang 2): frisches Wasser verdünnt
   if (out[1]) {
     double dV = inletLpm / 60.0 * dts;
@@ -295,6 +300,7 @@ void World::step(Ms dt) {
       tank.ec = (tank.ec * v + 0.02 * dV) / (v + dV);
       tank.pendingEc = tank.pendingEc * v / (v + dV);
       tank.ph += (7.0 - tank.ph) * dV / (v + dV) * 0.5;
+      if (!std::isnan(inletTempC)) tank.tempDev = (tank.tempDev * v + (inletTempC - dayTemp) * dV) / (v + dV);
     }
     tank.volumeL += dV;
   }
@@ -313,7 +319,7 @@ void World::step(Ms dt) {
     tank.volumeL = std::max(0.0, tank.volumeL - 0.025 * hours * tank.volumeL / 60.0 * 2.0);
   }
   tank.ph = std::clamp(tank.ph, 2.5, 9.5);
-  tank.temp = 20.5 + 1.5 * std::sin(2 * kPi * static_cast<double>(now_ % 86400000) / 86400000.0);
+  tank.temp = dayTemp + tank.tempDev;
   phTrail_.emplace_back(now_, tank.ph);
   while (phTrail_.size() > 2 && phTrail_[1].first <= now_ - kPhDeadMs) phTrail_.pop_front();
   // Köpfe liefern alle 5 s einen Messwert
@@ -379,7 +385,7 @@ json World::toJson() const {
   }
   return {{"ports", ps},
           {"tank", {{"volumeL", tank.volumeL}, {"ec", tank.ec}, {"ph", tank.ph}, {"temp", tank.temp},
-                    {"pendingEc", tank.pendingEc}, {"pendingPh", tank.pendingPh}}},
+                    {"tempDev", tank.tempDev}, {"pendingEc", tank.pendingEc}, {"pendingPh", tank.pendingPh}}},
           {"outputs", {out[0], out[1]}},
           {"netPlugs", [&] {
              json a = json::array();
@@ -425,7 +431,8 @@ json World::save() const {
   }
   return {{"ports", ps},
           {"netPlugs", np},
-          {"tank", {{"volumeL", tank.volumeL}, {"ec", tank.ec + tank.pendingEc}, {"ph", tank.ph + tank.pendingPh}}}};
+          {"tank", {{"volumeL", tank.volumeL}, {"ec", tank.ec + tank.pendingEc}, {"ph", tank.ph + tank.pendingPh},
+                    {"tempDev", tank.tempDev}}}};
 }
 
 void World::restore(const json& j) {
@@ -467,6 +474,7 @@ void World::restore(const json& j) {
   }
   const auto& t = j.value("tank", json::object());
   fill(gc::jnum(t, "volumeL", 0), gc::jnum(t, "ec", 0.02), gc::jnum(t, "ph", 7.0));
+  tank.tempDev = gc::jnum(t, "tempDev", 0);
 }
 
 }  // namespace sim
