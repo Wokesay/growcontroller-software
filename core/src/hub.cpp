@@ -644,7 +644,7 @@ void Hub::tickImpl() {
   const json refillBefore = rt_.refill;
   const auto latchesBeforeRefill = rt_.latches;
   refill_.tick(c, env);
-  // A latch or a pending check the refill set is saved at once, also when a later step throws (RAT-063, SD-081)
+  // A latch or a pending check the refill set is saved at once, also when a later step throws (RAT-063, SD-082)
   if (rt_.refill != refillBefore || rt_.latches != latchesBeforeRefill) stateDirty_ = true;
   env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
   // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)

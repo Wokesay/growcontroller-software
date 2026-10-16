@@ -676,7 +676,7 @@ TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and 
   CHECK(c3.state()["stock"]["teil-a"].get<double>() == doctest::Approx(full));
 }
 
-TEST_CASE("Storage: a damaged refill record in the saved state neither stops the hub nor opens the inlet unchecked (SD-081)") {
+TEST_CASE("Storage: a damaged refill record in the saved state neither stops the hub nor opens the inlet unchecked (SD-082)") {
   TempDir dir;
   { sim::Simulation s(onCard(dir)); }
   json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
@@ -700,7 +700,7 @@ TEST_CASE("Storage: a damaged refill record in the saved state neither stops the
   CHECK(s.world().tank.volumeL < 10.0 + 0.5);  // a fill cut by the restart, then nothing more unchecked
 }
 
-TEST_CASE("Storage: a fill record missing how long it was open is not known, not 0 min: the inlet waits for a person (SD-081, R5)") {
+TEST_CASE("Storage: a fill record missing how long it was open is not known, not 0 min: the inlet waits for a person (SD-082, R5)") {
   TempDir dir;
   { sim::Simulation s(onCard(dir)); }
   json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
