@@ -85,7 +85,7 @@ class Simulation {
   explicit Simulation(Options o);
   ~Simulation();
 
-  void step(gc::Ms dt);                       // Uhr vorstellen, Hub tickt je ≤ 1 s
+  void step(gc::Ms dt, gc::Ms tick = 1000);   // Uhr vorstellen, Hub tickt je ≤ tick (a coarser tick makes long tests cheaper)
   void fastForward(double hours, gc::Ms tick = 5000);
   // Power failure: hub restarts, outputs without power. outageMs: how long
   // the power is gone (the world runs on, everything off); timeSecured:

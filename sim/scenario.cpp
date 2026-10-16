@@ -462,10 +462,10 @@ void Simulation::configureDemo() {
   h.completeSetup();
 }
 
-void Simulation::step(gc::Ms dt) {
+void Simulation::step(gc::Ms dt, gc::Ms tick) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   while (dt > 0) {
-    gc::Ms d = std::min<gc::Ms>(1000, dt);
+    gc::Ms d = std::min<gc::Ms>(std::max<gc::Ms>(1, tick), dt);
     clock_->advance(d);
     hub_->tick();
     dt -= d;
@@ -583,8 +583,12 @@ json Simulation::control(const std::string& action, const json& b) {
       // Erst den laufenden Wert festhalten, dann einfrieren (sonst friert NaN ein).
       if (f == "frozen") {
         d->fault.clear();
-        d->frozenPh = world_.rawPh(d);
-        d->frozenEc = world_.rawEc(d);
+        if (d->cls == "head_level") {
+          d->frozenLevel = world_.rawLevelV(d);  // a stuck level sensor (#155)
+        } else {
+          d->frozenPh = world_.rawPh(d);
+          d->frozenEc = world_.rawEc(d);
+        }
       }
       d->fault = f == "none" ? "" : f;
     } else {

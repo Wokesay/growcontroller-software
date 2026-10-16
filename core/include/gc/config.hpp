@@ -242,6 +242,9 @@ struct RuntimeState {
   std::optional<Stamp> clock;  // time and operating time when saved (PD-069)
   std::uint32_t bootCount = 0;   // number of starts; tells moments of one start apart
   bool stopped = false;          // a Stop survives a restart (RAT-036, PD-076)
+  // The refill's open fill, its pending rise check and the count of fills in a row that could not
+  // be checked: a restart judges a pending check and reports a fill it cut (SD-082, RAT-007)
+  json refill = json::object();
 };
 void to_json(json& j, const RuntimeState& s);
 RuntimeState runtimeFromJson(const json& j);

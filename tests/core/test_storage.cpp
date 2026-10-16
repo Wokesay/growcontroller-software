@@ -706,3 +706,50 @@ TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and 
   c3.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
   CHECK(c3.state()["stock"]["teil-a"].get<double>() == doctest::Approx(full));
 }
+
+TEST_CASE("Storage: a damaged refill record in the saved state neither stops the hub nor opens the inlet unchecked (SD-082)") {
+  TempDir dir;
+  { sim::Simulation s(onCard(dir)); }
+  json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
+  REQUIRE(state.is_object());
+  state["refill"] = {{"fill", 5},
+                     {"check", {{"due", "x"}, {"startL", -5}, {"expectedL", "y"}, {"boot", "z"}, {"more", 1}, {"irrigation", "yes"}}},
+                     {"unconfirmed", {{"sumL", -3}, {"openMin", "w"}}},
+                     {"unjudged", "two"}};
+  {
+    std::ofstream out(dir.path / "state.json");
+    out << state.dump();
+  }
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.world().fill(10, 1.3, 5.9);
+  s.step(30 * 60 * 1000, 5000);
+  const json events = c.ok("GET", "/api/v1/events?limit=500&type=system")["events"];
+  for (const auto& e : events) CHECK(e["title"]["key"] != "ev.tick_fault");
+  CHECK(c.state()["controllers"]["refill"]["line"]["key"].is_string());
+  CHECK(s.world().tank.volumeL < 10.0 + 0.5);  // a fill cut by the restart, then nothing more unchecked
+}
+
+TEST_CASE("Storage: a fill record missing how long it was open is not known, not 0 min: the inlet waits for a person (SD-082, R5)") {
+  TempDir dir;
+  { sim::Simulation s(onCard(dir)); }
+  json state = json::parse(onDisk(dir.path / "state.json"), nullptr, false);
+  REQUIRE(state.is_object());
+  // Read as 0 min, nothing would have flowed, and the next fill would plan the whole gap unchecked
+  state["refill"] = {{"fill", {{"startL", 10.0}, {"plannedL", 20.0}, {"plannedMin", "x"}, {"flow", 2.0}, {"step", 1}, {"steps", 1}}}};
+  {
+    std::ofstream out(dir.path / "state.json");
+    out << state.dump();
+  }
+  sim::Simulation s(onCard(dir));
+  test::Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  s.world().fill(10, 1.3, 5.9);
+  s.step(30 * 60 * 1000, 5000);
+  const json st = c.state();
+  REQUIRE(st["latches"].contains("inlet.fault"));
+  CHECK(st["latches"]["inlet.fault"]["why"]["key"] == "why.refill_unconfirmed");
+  CHECK(st["latches"]["inlet.fault"]["why"]["args"]["why"]["key"] == "refill.unjudged.damaged");
+  CHECK(s.world().tank.volumeL < 10.0 + 0.5);
+}
