@@ -95,6 +95,14 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+
+- **Core tests on every core** (#260): `tools/ci.sh` and CI run the C++
+  tests with `tools/core_tests.sh`, each test case in a process of its
+  own, as many at once as there are cores, the scenarios first. On four
+  cores they take about 9 min instead of about 34. A test case that
+  fails or crashes, or a place in the list that runs no test case,
+  fails the run, and its output is shown after all have ended; a
+  passing run names the five slowest cases. `build/gc_tests` alone still runs everything in one process.
 - **English first** (#143, #18, SD-014, SD-083): a new hub is set to
   English. The first-password page starts with the language choice, set
   to English; what you pick there carries into setup, whose first field
