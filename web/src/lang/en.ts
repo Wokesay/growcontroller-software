@@ -208,7 +208,7 @@ const base: Record<keyof typeof deBase, string> = {
   "setup.done.laterDevices": "Expand devices",
   "setup.done.laterDevicesText": "More smart plugs and sensor heads, e.g. level or pH/EC.",
   "setup.done.laterFunctions": "Functions",
-  "setup.done.laterFunctionsText": "Automatic correction, refilling, watchdog.",
+  "setup.done.laterFunctionsText": "Automatic correction, refilling, monitoring.",
   "setup.done.laterProbes": "Calibrate probes",
   "setup.done.laterProbesText": "pH and EC, so the hub can control them.",
   "setup.side.missing": "Still missing for \"Mix nutrient solution\"",

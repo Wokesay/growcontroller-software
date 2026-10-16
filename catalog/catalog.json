@@ -122,7 +122,7 @@
     },
     {
       "id": "monitor_tank", "label": "Tankwerte überwachen", "stage": 1, "group": "Messen", "alwaysOn": true,
-      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorwahrheit läuft immer, auch ohne laufenden Durchgang.",
+      "text": "pH, EC und Wassertemperatur laufend prüfen. Die Sensorprüfung läuft immer, auch ohne laufenden Durchgang.",
       "requires": [ { "role": "tank.ph" }, { "role": "tank.ec" } ],
       "soft": [ { "role": "tank.water_temp", "why": "Ohne Temperatur keine Bewertung der Wassertemperatur." } ]
     },
@@ -149,7 +149,7 @@
       "params": [
         { "key": "ph_target", "label": "Ziel-pH", "type": "number", "min": 4.5, "max": 7.5, "step": 0.05, "default": 5.8, "phase": true },
         { "key": "ph_tolerance", "label": "Toleranz", "type": "number", "min": 0.05, "max": 1.0, "step": 0.05, "default": 0.15, "phase": true },
-        { "key": "ec_floor", "label": "EC-Gate: pH nur ab EC", "type": "number", "unit": "mS/cm", "min": 0.3, "max": 3.0, "step": 0.05, "default": 0.5 },
+        { "key": "ec_floor", "label": "pH-Sperre unter EC", "type": "number", "unit": "mS/cm", "min": 0.3, "max": 3.0, "step": 0.05, "default": 0.5 },
         { "key": "max_ml_per_dose", "label": "Höchstmenge je Teilgabe", "type": "number", "unit": "ml", "min": 0.5, "max": 20, "step": 0.5, "default": 20 },
         { "key": "settle_min", "label": "Wartezeit nach Gabe", "type": "number", "unit": "min", "min": 2, "max": 60, "step": 1, "default": 5 },
         { "key": "max_doses", "label": "Höchstens Teilgaben je Korrektur", "type": "number", "min": 1, "max": 12, "step": 1, "default": 8 }

@@ -84,7 +84,7 @@ UI can do, an integration can do as well.
 | PUT | `/tank` | name, usable volume, minimum level, water, volume without a level head |
 | PUT | `/zone` | growing area: name, kind (`room`, `tent`, `greenhouse`) |
 | POST / DELETE | `/canisters`, `/canisters/{id}`, `/canisters/{id}/stock` | canisters, stock (a stock entered below zero is refused with 422 `canister.stock`, an unchanged one is kept) |
-| POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
+| POST / DELETE | `/recipes`, `/recipes/template` `{id, map, lang}`, `/recipes/{id}` | recipes, with the chart's `refEc` (mS/cm) and `ph` `[low, high]`: a missing key keeps them, `null` clears them, another type is 422 `recipe.ref_ec` or `recipe.ph`, an EC that does not fit the amounts or a range out of order is refused by the configuration check (`cfg.recipe.ref_far`, `cfg.recipe.ref_strong`, `cfg.recipe.ref_range`, `cfg.recipe.ph_band`, SD-057); a template brings its chart EC and pH range; template with a mapping part → canister (422 with `missing`, named in the language); `lang` `de` or `en` picks name, note and part names (default: the system language; other values: 422 `recipe.template.lang`), part names match in either language, the one in `lang` first |
 | PATCH | `/functions/{id}` `{enabled, params}` | enabling only when set up (otherwise 409 with "what is missing") |
 | POST | `/config/import` | validated, actuators off first |
 

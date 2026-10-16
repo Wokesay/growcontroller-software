@@ -4,8 +4,8 @@
 import { useState } from "preact/hooks";
 import { Droplets, ListChecks, Power, ShieldCheck, Sprout, Wrench } from "lucide-preact";
 import { post, put } from "../api";
-import { dateTime, num } from "../format";
-import { config, hasRole, recipes, refreshConfig, refreshState, state, tank, toast } from "../store";
+import { dateTime, num, numUpTo } from "../format";
+import { config, hasRole, paramDef, phMiddle, recipes, refreshConfig, refreshState, state, tank, toast } from "../store";
 import { msg, t as tr } from "../i18n";
 import { Banner, Button, Card, Field, Modal, NumberInput, Pill, Seg } from "../ui";
 import { ControllerRow, latchLabel } from "../widgets";
@@ -57,17 +57,49 @@ function TankSettings() {
   );
 }
 
+// The value a phase without its own target gets: the function's setting, else the catalog's default
+function targetFallback(fnId: string, key: string): number | null {
+  const v = config.value?.functions[fnId]?.params?.[key];
+  if (typeof v === "number") return v;
+  const d = paramDef(fnId, key)?.default;
+  return typeof d === "number" ? d : null;
+}
+
+type PhaseDraft = { name: string; days: number; recipe: string; ph: number | null; ec: number | null; ownPh: boolean; ownEc: boolean };
+
 function GrowCard() {
   const st = state.value!;
   const g = st.grow;
   const rs = recipes.value;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(tr("tank.growDefault"));
-  const [phases, setPhases] = useState([
-    { name: tr("tank.phaseVeg"), days: 21, ph: 5.8 as number | null, ec: 1.4 as number | null, recipe: rs[0]?.id ?? "" },
-    { name: tr("tank.phaseFlower"), days: 56, ph: 5.9 as number | null, ec: 1.8 as number | null, recipe: rs[1]?.id ?? rs[0]?.id ?? "" },
-  ]);
-  const upd = (i: number, k: string, v: unknown) => setPhases(phases.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
+  // Each phase's targets come from its recipe's chart (SD-057): its EC at its amounts and the middle of its
+  // pH range (RAT-066). A value the user typed stays when the recipe changes; empty is not sent, the
+  // function's setting then applies.
+  const fromRecipe = (id: string) => {
+    const r = rs.find((x) => x.id === id);
+    return { ec: r?.refEc ?? null, ph: phMiddle(r) };
+  };
+  const draft = (n: string, days: number, recipe: string): PhaseDraft => ({ name: n, days, recipe, ...fromRecipe(recipe), ownPh: false, ownEc: false });
+  // Proposed afresh each time the dialog opens, from the recipes as they are then
+  const fresh = (): PhaseDraft[] => [draft(tr("tank.phaseVeg"), 21, rs[0]?.id ?? ""), draft(tr("tank.phaseFlower"), 56, rs[1]?.id ?? rs[0]?.id ?? "")];
+  const [phases, setPhases] = useState<PhaseDraft[]>(fresh);
+  const upd = (i: number, k: keyof PhaseDraft, v: unknown) =>
+    setPhases(
+      phases.map((p, j) => {
+        if (j !== i) return p;
+        // Clearing a proposal is a choice too: the function's value then applies, also after another recipe
+        if (k === "ph") return { ...p, ph: v as number | null, ownPh: true };
+        if (k === "ec") return { ...p, ec: v as number | null, ownEc: true };
+        if (k !== "recipe") return { ...p, [k]: v };
+        const proposed = fromRecipe(v as string);
+        return { ...p, recipe: v as string, ph: p.ownPh ? p.ph : proposed.ph, ec: p.ownEc ? p.ec : proposed.ec };
+      }),
+    );
+  const phFallback = targetFallback("ph_control", "ph_target");
+  const ecFallback = targetFallback("ec_control", "ec_target");
+  // Below the pH lock's EC, pH control never doses (RAT-046): said at the field while pH control is on
+  const ecFloor = config.value?.functions["ph_control"]?.enabled ? targetFallback("ph_control", "ec_floor") : null;
   return (
     <Card title={tr("tank.growTitle")} icon={<Sprout size={18} />}>
       {g.state === "running" ? (
@@ -89,7 +121,17 @@ function GrowCard() {
                     {p.name}
                     <div class="small muted">{tr("tank.days", { n: p.days })}</div>
                   </td>
-                  <td class="small muted">{Object.entries(p.params).map(([k, v]) => (k === "recipe" ? tr("tank.paramRecipe", { name: recipes.value.find((r) => r.id === v)?.name ?? v }) : `${k === "ph_target" ? "pH" : k === "ec_target" ? "EC" : k} ${typeof v === "number" ? num(v, 2) : v}`)).join(" · ")}</td>
+                  <td class="small muted">
+                    {[
+                      ...Object.entries(p.params).map(([k, v]) =>
+                        k === "recipe" ? tr("tank.paramRecipe", { name: recipes.value.find((r) => r.id === v)?.name ?? v }) : `${k === "ph_target" ? "pH" : k === "ec_target" ? "EC" : k} ${typeof v === "number" ? numUpTo(v, 2) : v}${k === "ec_target" ? " mS/cm" : ""}`,
+                      ),
+                      // A phase without its own target follows the function's, which can change during the grow
+                      ...([["ph_target", "pH", phFallback], ["ec_target", "EC", ecFallback]] as const)
+                        .filter(([k, , v]) => !(k in p.params) && v !== null)
+                        .map(([, label, v]) => `${label} ${numUpTo(v, 2)}${label === "EC" ? " mS/cm" : ""} (${tr("tank.fromFunctions")})`),
+                    ].join(" · ")}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -112,7 +154,13 @@ function GrowCard() {
         <div class="stack-sm">
           <p class="muted">{g.state === "completed" ? tr("tank.growCompleted", { name: g.name }) : tr("tank.noGrow")} {tr("tank.growIntro")}</p>
           <div>
-            <Button size="sm" onClick={() => setOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setPhases(fresh());
+                setOpen(true);
+              }}
+            >
               {tr("tank.startGrow")}
             </Button>
           </div>
@@ -133,7 +181,11 @@ function GrowCard() {
                 onClick={async () => {
                   await post("/grow/start", {
                     name,
-                    phases: phases.map((p) => ({ name: p.name, days: p.days, params: { ph_target: p.ph, ec_target: p.ec, recipe: p.recipe } })),
+                    phases: phases.map((p) => ({
+                      name: p.name,
+                      days: p.days,
+                      params: { ...(p.ph !== null ? { ph_target: p.ph } : {}), ...(p.ec !== null ? { ec_target: p.ec } : {}), recipe: p.recipe },
+                    })),
                   });
                   setOpen(false);
                   await refreshConfig();
@@ -149,6 +201,7 @@ function GrowCard() {
           <Field label={tr("common.name")}>
             <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
           </Field>
+          <p class="muted small">{tr("tank.targetsFromRecipe")}</p>
           {phases.map((p, i) => (
             <div class="card flat">
               <div class="form-grid">
@@ -158,11 +211,16 @@ function GrowCard() {
                 <Field label={tr("tank.phaseLength")}>
                   <NumberInput value={p.days} onValue={(v) => upd(i, "days", v ?? 0)} unit={tr("tank.daysUnit")} />
                 </Field>
-                <Field label={tr("tank.targetPh")}>
-                  <NumberInput value={p.ph} onValue={(v) => upd(i, "ph", v)} />
+                {/* Keyed by the recipe: a new proposal, also an empty one, shows at once */}
+                <Field label={tr("tank.targetPh")} hint={p.ph === null && phFallback !== null ? tr("tank.targetFallback", { value: numUpTo(phFallback, 2) }) : undefined}>
+                  <NumberInput key={`ph-${p.recipe}`} value={p.ph} onValue={(v) => upd(i, "ph", v)} placeholder={phFallback === null ? undefined : numUpTo(phFallback, 2)} />
                 </Field>
-                <Field label={tr("tank.targetEc")}>
-                  <NumberInput value={p.ec} onValue={(v) => upd(i, "ec", v)} unit="mS/cm" />
+                <Field
+                  label={tr("tank.targetEc")}
+                  hint={p.ec === null && ecFallback !== null ? tr("tank.targetFallback", { value: `${numUpTo(ecFallback, 2)} mS/cm` }) : undefined}
+                  error={ecFloor !== null && (p.ec ?? ecFallback ?? Infinity) < ecFloor ? tr("tank.belowEcFloor", { floor: numUpTo(ecFloor, 2) }) : null}
+                >
+                  <NumberInput key={`ec-${p.recipe}`} value={p.ec} onValue={(v) => upd(i, "ec", v)} unit="mS/cm" placeholder={ecFallback === null ? undefined : numUpTo(ecFallback, 2)} />
                 </Field>
                 <Field label={tr("mix.recipe")}>
                   <select class="select" value={p.recipe} onChange={(e) => upd(i, "recipe", (e.target as HTMLSelectElement).value)}>
@@ -175,7 +233,7 @@ function GrowCard() {
             </div>
           ))}
           <div>
-            <button class="btn sm" onClick={() => setPhases([...phases, { name: tr("tank.phaseN", { n: phases.length + 1 }), days: 14, ph: 5.8, ec: 1.6, recipe: rs[0]?.id ?? "" }])}>
+            <button class="btn sm" onClick={() => setPhases([...phases, draft(tr("tank.phaseN", { n: phases.length + 1 }), 14, rs[0]?.id ?? "")])}>
               {tr("tank.addPhase")}
             </button>
           </div>

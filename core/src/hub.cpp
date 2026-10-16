@@ -1324,6 +1324,22 @@ Result Hub::putRecipe(const json& j) {
     r->steps.clear();
     for (const auto& s : j["steps"]) r->steps.push_back({jstr(s, "canister"), jnum(s, "mlPerL")});
   }
+  // The chart's EC and pH range (SD-057): a missing key keeps them, null clears them (R5)
+  if (j.contains("refEc")) {
+    if (!j["refEc"].is_null() && !j["refEc"].is_number()) return Result::fail(422, say("recipe.ref_ec"));
+    r->refEc = jnum(j, "refEc");
+  }
+  if (j.contains("ph")) {
+    const json& ph = j["ph"];
+    if (ph.is_null()) {
+      r->phLow = r->phHigh = kNaN;
+    } else if (ph.is_array() && ph.size() == 2 && ph[0].is_number() && ph[1].is_number()) {
+      r->phLow = ph[0].get<double>();
+      r->phHigh = ph[1].get<double>();
+    } else {
+      return Result::fail(422, say("recipe.ph"));
+    }
+  }
   if (r->name.empty()) return Result::fail(422, "recipe.name", "Name fehlt");
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
@@ -1393,7 +1409,12 @@ Result Hub::applyRecipeTemplate(const std::string& templateId, const json& map, 
       for (const auto& x : missing) m += (m.empty() ? "" : ", ") + x;
       return Result::fail(422, "recipe.template", "Vorlage braucht Kanister: " + m, {{"missing", missing}});
     }
-    Result r = putRecipe({{"name", localized(t, "name")}, {"note", localized(t, "note")}, {"steps", steps}});
+    // The chart's EC and pH range come along (SD-057)
+    Result r = putRecipe({{"name", localized(t, "name")},
+                          {"note", localized(t, "note")},
+                          {"steps", steps},
+                          {"refEc", t.contains("ec") ? t["ec"] : json(nullptr)},
+                          {"ph", t.contains("ph") ? t["ph"] : json(nullptr)}});
     if (r.status != 200) return r;
     // Ist der Paarname schon an anderen Kanistern vergeben, einen freien
     // wählen (AB2, AB3, …), sonst zählte das Paar vier Kanister.
@@ -1488,7 +1509,7 @@ Result Hub::importConfig(const json& j) {
     }
   if (!errs.empty()) return errors(errs);
   if (userJobActive() || doser_.busy())
-    return Result::fail(409, "job.busy", "Erst den laufenden Auftrag beenden, dann importieren");
+    return Result::fail(409, "job.busy", "Es wird gerade dosiert oder gemischt – lade die Einstellungen danach");
   act_.stopAll(cat_, cfg_, clock_.nowMs());
   // A socket that loses its fan role goes back to "off after power loss";
   // every switched socket in the import gets the setting of its role.
@@ -1539,7 +1560,7 @@ Result Hub::mixPlan(const json& req) {
 
 Result Hub::mixStart(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft bereits ein Auftrag");  // kein Doppelstart (RAT-003)
+  if (userJobActive()) return Result::fail(409, "job.busy", "Es läuft schon ein Mischlauf, eine Handgabe, ein Einmessen oder ein Schlauchfüllen");  // kein Doppelstart (RAT-003)
   // A mix stopped part way is resumed or ended first, never mixed over (RAT-003)
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, "job.dosing", "Die Regelung dosiert gerade – gleich noch einmal versuchen");
@@ -2082,7 +2103,7 @@ Result Hub::probeCalibration(const json& j) {
 Result Hub::ackLatch(const std::string& id) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
   auto it = rt_.latches.find(id);
-  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Keine solche Rastung");
+  if (it == rt_.latches.end()) return Result::fail(404, "latch.unknown", "Diese Sperre ist schon aufgehoben");
   if (id.rfind("jump.", 0) == 0) return Result::fail(409, "latch.jump", "Die Sprungsperre hebt sich nach 15 min Ruhe selbst auf");
   rt_.latches.erase(it);
   stateDirty_ = true;

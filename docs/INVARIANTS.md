@@ -21,6 +21,7 @@ dedicated test or with a deviation · **○** open.
 | Missing quantity → abort, no substitute value | RAT-006, RAT-015 | ✓ | test_mix M1-4 |
 | No double start | RAT-003, RAT-018 | ✓ | confirmation if the last mix ended < 30 min ago (counted from its end, a stop, a failure or a restart, not its start), one job at a time, a mix stopped part way is resumed or ended first (a prime, calibration or hand dose ends it with a report) · test_scenarios, "right after a mix that took longer than 30 minutes, another mix still needs confirmation, however it ended" |
 | Order is recipe data (Athena: Balance → B → A → CaMg → Cleanse) | RAT-080 | ◐ | recipe steps can be reordered |
+| A recipe's chart EC fits its amounts (an effect from a quarter to four times the start effect) and lies in the EC target's range; its pH range runs low to high within the pH target's range; missing stays missing; the grow proposes them as each phase's targets | RAT-066, RAT-056 | ◐ | `validateConfig`, `Hub::putRecipe`, recipe editor, grow dialog · test_catalog_config "a recipe keeps its chart EC and pH range; a missing one stays missing", "a reference far from the start effect is refused", "a pH range is two values", "every recipe template's chart EC and pH range would pass", test_api "a template brings its chart EC and pH range", E2E `mischen.spec.ts`. Mixing to the target and the cap from the reference follow with SD-057's later steps |
 
 ## M2 Dosing execution
 

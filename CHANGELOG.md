@@ -8,6 +8,22 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A recipe keeps its chart's EC and pH range, and a grow proposes them**
+  (#143, SD-057, step 1): the recipe editor has "Chart EC" and "pH
+  range", and the recipe templates fill them in (2.1 and 2.3 mS/cm
+  from the Athena chart, 1.6 for the general two-part start values;
+  5.8–6.2). The grow dialog proposes each phase's target EC from its
+  recipe and its target pH from the middle of the range, instead of fixed
+  numbers; a value you type stays when you pick another recipe, and an
+  empty field takes the value under Functions and says so. An EC that
+  does not fit the amounts (outside a quarter to four times the usual
+  effect, likely a typo or a very strong concentrate) or a pH range out of
+  order is named before saving, with the EC that would fit, and refused
+  by the hub. Without a grow, the overview names the target ranges that
+  apply. Mixing does not change yet, but a grow started with the
+  proposals controls EC to the recipe's chart EC (2.1 for the Athena
+  template, where the dialog proposed 1.4 before); mixing to the target
+  follows in the next steps.
 - **Firmware for two boards** (SD-043, M1): the firmware is built for
   the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
   N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
@@ -64,6 +80,17 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 
 ### Changed
+- **Plain words instead of developer terms** (#143, SD-055): in German,
+  locks now say "Freigabe nötig" and "Freigeben", as the help and the
+  English texts do, instead of "Gerastet" and "quittieren". The lock list
+  on Tank & control names the reading of a jump lock instead of an
+  internal key. Control lines, checklists, events and hints no longer say
+  "Sensorwahrheit", "Aktor-Gateway", "Notgrenze", "watchdog" or "job" /
+  "Auftrag"; the Overview no longer speaks of "Stufe 0", and Settings no
+  longer shows a rule number. Events say "Change no. 7" instead of
+  "Settings revision 7", and no longer name internal files when a saved
+  file cannot be read. Message keys stay, so on a German page events saved
+  before show the new words; on an English page they keep the old ones.
 - **"Stop" instead of "emergency stop"** (SD-045, PD-172; #143): the
   button, its question, the banner, Monitoring, the event log and every
   message call the function "Stop", in German "Stopp" or "Alles stoppen",

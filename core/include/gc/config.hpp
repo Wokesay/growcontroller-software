@@ -75,6 +75,11 @@ struct RecipeStep {
 struct RecipeCfg {
   std::string id, name, note;
   std::vector<RecipeStep> steps;  // Reihenfolge = Dosierreihenfolge
+  // The chart's EC at these amounts and its pH range (SD-057): a reference
+  // and a proposal for the grow's targets, never a target of its own.
+  // Missing stays NaN (R5).
+  double refEc = kNaN;
+  double phLow = kNaN, phHigh = kNaN;
 };
 
 struct FunctionCfg {
@@ -106,6 +111,12 @@ constexpr double kHardMinRunS = 1.0;          // kürzere Läufe werden nicht do
 constexpr double kHardMaxRunS = 60.0;         // längere Gaben in Teilgaben (RAT-055)
 constexpr double kHardHandDoseMaxMl = 50.0;   // je Handgabe
 constexpr int kHardMaxPartialRuns = 6;        // Teilläufe je Regel-Gabe
+// A recipe's start effect in EC control, mS/cm per ml/L of the recipe
+// (RAT-055). A recipe's chart EC may imply an effect from a quarter to four
+// times of it (SD-057, RAT-056): doses worked out from that reference stay
+// within this band of the start effect, and a slip of ten times is caught.
+constexpr double kEcStartEffect = 0.275;
+constexpr double kRefEffectMin = 0.25, kRefEffectMax = 4.0;  // factors of kEcStartEffect
 
 struct Limits {
   double handDoseMaxMl = 5.0;  // Quelle: RAT-039

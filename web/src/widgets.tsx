@@ -154,7 +154,12 @@ function LatchActions() {
 const latchedLine = (key: string) => key.endsWith(".latched") || key === "refill.stopped";
 
 const latchText: Record<string, TextKey> = { "circulation.dry": "widgets.latch.dry", "inlet.fault": "widgets.latch.inletFault", "ph.no_effect": "widgets.latch.phNoEffect", "ec.no_effect": "widgets.latch.ecNoEffect" };
-export const latchLabel = (k: string) => (latchText[k] ? t(latchText[k]) : k);
+// Never the raw key: a jump lock names its reading, anything unknown is a safety cut-off
+export const latchLabel = (k: string) => {
+  if (latchText[k]) return t(latchText[k]);
+  if (k.startsWith("jump.")) return t("widgets.latch.jump", { label: catalog.value?.roles[k.slice(5)]?.label ?? t("widgets.latch.reading") });
+  return t("widgets.latch.other");
+};
 
 const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
 

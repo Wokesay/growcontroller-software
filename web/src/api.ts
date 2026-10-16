@@ -80,7 +80,8 @@ export type HubState = {
 };
 
 export type Canister = { id: string; name: string; kind: "nutrient" | "ph_down" | "ph_up"; pump: string; pair: string; color: string; capacityMl: number | null };
-export type Recipe = { id: string; name: string; note: string; steps: { canister: string; mlPerL: number | null }[] };
+/** A recipe; refEc and ph are its chart's EC at these amounts and its pH range, null when not given (SD-057). */
+export type Recipe = { id: string; name: string; note: string; steps: { canister: string; mlPerL: number | null }[]; refEc?: number | null; ph?: [number, number] | null };
 /** What the app is to do per area (SD-037); an area not listed has no choice yet. Same list as kControlAreas in config.hpp. */
 export const CONTROL_AREAS = ["climate", "light", "irrigation", "refill", "circulation", "dosing"] as const;
 export type ControlArea = (typeof CONTROL_AREAS)[number];
