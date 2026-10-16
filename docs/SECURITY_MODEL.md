@@ -14,7 +14,11 @@ states in the row on faulty input (#71), added on 2026-10-13. The
 changes for SD-076 (pre-flashed devices, the setup network, the first
 password, the board's USB port, Bluetooth, the factory reset, the
 support period) were made on 2026-10-13 by the software session after
-`security`'s review, also to be confirmed by `regulatorik`.
+`security`'s review, also to be confirmed by `regulatorik`. Those for
+SD-080 (the factory reset after BOOT 15 s and a confirmation, the plugs
+switched off first, the access reset) were made on 2026-10-15 by the
+software session after `security`'s review, also to be confirmed by
+`regulatorik`.
 Two kinds of safety and security:
 
 - **functional:** no overdose, no overflow, no dry run;
@@ -43,7 +47,8 @@ Two kinds of safety and security:
 | A sensor lies | sensor truth: freshness, frozen readings, band, jump lock, calibration; EC gate. Home Assistant sensors: freshness learned per sensor, up to 30 min (SD-035), for display only until control has its own freshness check; a pH probe's voltage calibrated in the app is a valid reading, but nothing that can switch reads it (the Home Assistant bus refuses every run and switch and reports no pumps; what control needs first is in `docs/HOME_ASSISTANT.md`); a device whose reported class differs from the configured one has no value, so an import cannot turn a pH calibrated in Home Assistant into one the hub checks (SD-041); with a sign of life a sensor is stale 60 s after its last measurement, and an unavailable or unreadable sign of life, a missing channel, a time in the future, the same text dated again or one that dates the measurement before the sensor's own report makes it stale, never the longer learned limit (SD-042); which sign of life belongs to which sensor rests on the user's pick, which the app marks but cannot prove, so a wrong pick could keep a dead sensor fresh: display only, to be checked before control reads it (`docs/HOME_ASSISTANT.md`) | measurement window with the pump off until the galvanic isolation has passed acceptance (RAT-044) |
 | Power failure in the middle of a run | after start-up everything is off, nothing resumes, a message; exception: fan sockets come back on (PD-050), not during a Stop (PD-076) | the dosing block stops without a sign of life from the hub |
 | A socket switches on by itself when mains returns | only roles on a fixed allowlist in code (exhaust, circulation fan) may be "on after power loss", only continuous loads without a maximum run time; a socket that loses the role, its device or its binding in an import goes back to "off", read back, failure reported | the setting is stored in the socket; the user can change it there |
-| Someone else in the home network sets the first password | prototype: whoever comes first sets it, as the Home Assistant app's documentation says | self-flashed devices: a one-time token over USB (SD-044); pre-flashed devices: within 15 min from the first join to the home network, reopened only by holding BOOT for 3 s, never by a restart (whether a restart also ends an open window is open); never through the relay (SD-062); the open window shown by the setup network's last page, an LED and a countdown; for 60 min the login page shows when it was set, and after login the web app and the event log show from which address; residual risks: anyone in the home network can be first, and the way back is a factory reset with BOOT; the certificate per device is trusted on first use, so an active attacker in the home network can read the first password (SD-076) |
+| Someone else in the home network sets the first password | prototype: whoever comes first sets it, as the Home Assistant app's documentation says | self-flashed devices: a one-time token over USB (SD-044); pre-flashed devices: within 15 min from the first join to the home network, reopened only by holding BOOT for 3 s, never by a restart (whether a restart also ends an open window is open); never through the relay (SD-062); the open window shown by the setup network's last page, an LED and a countdown; for 60 min the login page shows when it was set, and after login the web app and the event log show from which address; residual risks: anyone in the home network can be first, and the way back is the factory reset, which also undoes what the stranger changed, or the access reset with BOOT, which keeps the data and those changes (SD-080); the certificate per device is trusted on first use, so an active attacker in the home network can read the first password (SD-076) |
+| Someone replaces a password that is set | only with the old password (`PUT /auth/password`) | with the old password, or without it only by the access reset: BOOT held long at the device opens a 15-min window in the home network, and the new password counts only after a short BOOT press, the old one until then; a second request or a restart ends the window; never by Home Assistant, an API token, the setup network or the relay; afterwards every session, token and the Home Assistant key (the native API key) are invalid and their live connections end, the lockout forgets its clients, and the level of outside access and the relay address go back to their defaults; the Home Assistant app's own password (SD-077) is not touched; the request comes only directly from the home network, decided by the interface it arrives on; an "access reset" entry stays until a factory reset, shown after login and on the LEDs; residual risks: whoever is at the device and in the home network takes over access, and anyone in the home network can end the window with a second request (SD-080) |
 | A computer on a USB port of the DevKit flashes other firmware or restarts the ESP | – | on the ESP32-S3 only an eFuse stops a host on the board's port from starting download mode for good, which PD-022 and SD-024 exclude, and the DevKit's UART port starts it through its auto-program circuit (to be confirmed on the schematic): the docs say to unplug USB in operation, the firmware shows a message while a USB host is connected, a restart by the USB host counts as a power loss (everything off except the fans, reported, R6, PD-050); JTAG cut at run time by the bridge bit, serial kept for Improv (to be proven on a sample); residual risk: other firmware can feed the board watchdog and use the HMAC key; open product question: the port inside the enclosure, a switch for its data lines, or USB-OTG in operation (SD-076) |
 | Someone in radio range joins the setup network | – | WPA2 with a random key per device of at least 80 bits (pre-flashed: made at production, on the label; self-flashed: made at the first start, shown after login); on a pre-flashed device open while no Wi-Fi is configured (a time limit is open), otherwise only for 10 min after BOOT is held for 3 s, one client; sets Wi-Fi only, never a password; no fallback access point; residual risks: a photo of the label (the key can be changed in the web app, until a factory reset brings the label's key back), the key passing the production PC and the printer, a seller who knows the key of a used device (SD-076) |
 | Someone in radio range sends forged Bluetooth advertisements | – | passive observer only for sensors the user added, off without one; no advertising, no connections, no pairing; their values pass sensor truth like any sensor, encrypted where the sensor can (`COMPATIBILITY.md`); residual risk: a forged value inside the band from an unencrypted sensor (SD-076) |
@@ -60,7 +65,10 @@ The event log records:
 - configuration changes with revision;
 - import;
 - the Stop and maintenance mode;
-- requested updates.
+- requested updates;
+- planned (SD-080): factory resets started, not confirmed or done, and
+  access resets requested, ended by a second request or applied; an
+  applied access reset stays visible until a factory reset.
 
 The log can be exported with the diagnostic package. Users should be able
 to switch it off (open).
@@ -68,13 +76,37 @@ to switch it off (open).
 ## Factory reset and data (CRA 2(m))
 
 Export and import of the settings exist. The factory reset that erases
-securely comes with `firmware/` (SD-076): holding BOOT for 10 s to
-30 s, or the web app from the home network after asking for the password again, switches everything off through `Actuators`, marks the reset,
-erases `history` and `storage`, then the user NVS last, and keeps the
-app and the read-only factory data (`fctry`: serial number, the setup
-network's key from the label). An interrupted reset is finished at the
-next start. A whole-chip erase over USB also loses the factory data; the
-device then behaves like a self-flashed one. There is no telemetry.
+securely comes with `firmware/` (SD-076, SD-080):
+
+- **Triggers:** BOOT held for 15 s; the web app from the home network,
+  after asking for the password again; our flash page over USB. Home
+  Assistant and API tokens cannot start it.
+- **Switch-off first:** the board's dosing pumps and refill valve and
+  the plugs with a water or CO2 role go off through `Actuators`; light, fans, room heater and
+  air pump keep their state, and the drain with its own pump stays on.
+- **Confirmation:** a short BOOT press within 30 s (in the web app: its
+  confirmation), also when a plug did not report "off"; without it
+  nothing is erased.
+- **Erased:** it marks the reset, erases `history` and `storage`, then
+  the user NVS last, and makes a new random value for the storage keys
+  (where it is kept: open, #176).
+  This removes Wi-Fi, the password, settings, calibrations, history and
+  the passwords of adopted plugs; the web app offers an export without
+  passwords first.
+- **Kept:** the app slots, `otadata`, the floor of the downgrade
+  protection (proposed, SD-080) and the read-only factory data (`fctry`:
+  serial number, the setup network's key from the label).
+- **Interrupted:** a reset cut by a power loss is finished at the next
+  start.
+- **Whole-chip erase:** over USB it also loses the factory data and
+  switches no plug off; the device then behaves like a self-flashed one.
+- **Access reset** (BOOT held long, SD-080): replaces only the password,
+  after a short BOOT press, and keeps the data; it ends every session and
+  token and the Home Assistant key, and leaves an entry until a factory
+  reset.
+- **Passing a device on:** the owner uses the factory reset.
+
+There is no telemetry.
 
 ## Before the first device goes to third parties (beta testers included)
 
@@ -112,7 +144,8 @@ List:
    devices need the one-time token from Improv over USB (SD-044),
    pre-flashed devices take it within 15 min after joining the home
    network (PD-191, PD-192). It fails closed when one of its two stores
-   is lost.
+   is lost. Without the old password, a password that is set is replaced
+   only by the access reset at the device (SD-080).
 4. Bluetooth only as a passive observer for sensors the user adds
    (PD-153): no advertising, no connections, no pairing, no setup over
    Bluetooth (PD-186), off while no such sensor is set; JTAG and debug
