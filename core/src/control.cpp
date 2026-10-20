@@ -684,6 +684,7 @@ void RefillController::keepForPerson(const Ctx& c, double levelNow) {
 
 void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args) {
   c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
+  latchSeen_ = true;  // also when it is released before the next tick (SD-088)
   c.log.add(c.epoch, "alarm", "alarm", title, text, args);
   c.rt.refill.erase("check");
   c.rt.refill.erase("unconfirmed");
@@ -702,10 +703,15 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   const auto open = env.act.roleState(c.cfg, "tank.inlet");
   const Irrigation irr = irrigation(c, env);
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
-  // happened before it is not known, and so does a Stop: a person may be at the tank. Only irrigation
-  // may end the wait early: it reads the level too high, so a fill comes out smaller; a hand fill or
-  // draining could make it larger (RAT-038, SD-082).
-  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
+  // happened before it is not known, and so do a Stop and an inlet latch up to the tick that sees it
+  // released: a person may be at the tank, so the first fill after a release plans from a level read
+  // after it (SD-088). Only irrigation may end the wait early: it reads the level too high, so a fill
+  // comes out smaller; a hand fill or draining could make it larger (RAT-038, SD-082).
+  const bool latched = c.rt.latches.count("inlet.fault") > 0;
+  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_) ||
+      latched || latchSeen_)
+    disturbedMs_ = c.now;
+  latchSeen_ = latched;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
   const Ms settleSince = settleSince_;
   settleSince_ = -1;  // kept only by a tick that waits for the reading to settle

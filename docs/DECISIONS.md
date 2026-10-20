@@ -4538,9 +4538,46 @@ follow-up of SD-081 and SD-086).
     check (RAT-055), so EC and pH may dose right after Resume into water a
     cut fill diluted; the 0.8 × gap rule and the caps bound it;
   - the first fill after a Release does not wait for the level to settle
-    again; this holds for every inlet latch and is a follow-up;
+    again; this holds for every inlet latch and is a follow-up (done in
+    SD-088);
   - releasing is one tap, as for every inlet latch; SD-059 plans that a
     latch is released only from the home network (M6, not built yet).
+
+---
+
+## SD-088: The first fill after an inlet latch is released waits for the level to settle
+
+Decided by the project owner on 2026-10-20 in the software session
+("umsetzen" for #288, from the `domain` review of SD-087).
+
+- **What the refill does:** while the inlet latch (`inlet.fault`) stands,
+  for any reason, and up to the tick that sees it released, the level
+  reading counts as disturbed, as during a Stop, maintenance or a level
+  calibration (RAT-038). After a person releases it, the first fill waits
+  until the reading has been undisturbed for 3 min (the refill line says
+  so) and plans from a level read then, not from one read before the
+  release. A latch the refill sets and a person releases before the next
+  tick counts too.
+- **Why:** the refill line and the alarm ask the person to check the tank
+  and the inlet before releasing; they may bail, drain or fill it by hand
+  right then, and the reading lags 1.5–2 min. A fill planned from the
+  level before that could end in a false "did not rise" latch after
+  draining; after a top-up by hand it could overfill, as the capacity
+  cut-off reads the same lagging level (RAT-032), or a faulty inlet could
+  pass its rise check on the water added by hand (SD-082). A Stop is
+  already treated so: a person may be at the tank (RAT-031, RAT-038). 3
+  min, the existing assumption, leaves a margin over the lag; a longer
+  wait would open the valve after the person may have left.
+- **Not covered:**
+  - work at the tank that ends more than about a minute after the
+    release, as the reading lags; then the rise check judges the fill as
+    any fill (RAT-031). Longer work belongs under Stop or maintenance,
+    which keep the wait going while they last;
+  - EC or pH may start a round during the wait, and the fill then waits
+    for it to settle and dilutes it (RAT-055); this happens after a Stop
+    or a start as well (#289);
+  - switching the refill off and on again, which RAT-038 counts as a
+    person at the tank, is not a disturbance of the reading (#289).
 
 ---
 
