@@ -912,7 +912,7 @@ TEST_CASE("Gateway: refusals name their cause by key (SD-032)") {
 TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged still cuts and stays latched") {
   const auto dir = std::filesystem::temp_directory_path() / ("gc-test-latch-why-" + std::to_string(std::random_device{}()));
   int n = 0;
-  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42), json(nullptr)}) {
+  for (const json& why : {json("Füllstand ungültig"), json(gc::say("why.level_invalid")), json(42), json(nullptr), json{{"key", 42}}}) {
     CAPTURE(why.dump());
     std::filesystem::remove_all(dir);
     auto o = test::opts("demo");

@@ -44,6 +44,24 @@ test("Stop switches everything off and can be resumed", async ({ page }) => {
   await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
   await expect(page.getByText("Stopp aktiv.", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".toast").last()).toHaveText("Automatik fortgesetzt");
+});
+
+test("Resume while the inlet stays latched says so, not only that automation resumed (SD-087)", async ({ page }) => {
+  await login(page);
+  // as after a start whose saved state was unknown: the inlet waits for a person
+  await page.route(/\/api\/v1\/state(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const st = await res.json();
+    st.latches = { ...st.latches, "inlet.fault": { at: st.now, why: { key: "why.state_unknown", text: "Saved state unknown" } } };
+    await route.fulfill({ response: res, json: st });
+  });
+  await page.getByTitle("Stopp: alle Pumpen und Ausgänge aus").click();
+  await page.getByRole("button", { name: "Alles stoppen" }).click();
+  await expect(page.getByText("Stopp aktiv.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fortsetzen", exact: true }).click();
+  await expect(page.locator(".toast.info").last()).toHaveText("Automatik fortgesetzt. Der Zulauf bleibt zu, bis du ihn unter Tank & Regelung freigibst.");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("A Stop reaches the hub from a browser without AbortSignal.timeout (before iOS 16)", async ({ page }) => {

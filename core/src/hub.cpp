@@ -201,7 +201,10 @@ void Hub::boot() {
   bootMs_ = clock_.nowMs();
   lastTickEpoch_ = bootEpoch_;
   lastTickMs_ = bootMs_;
+  bool settingsUnknown = false;  // broken, kept unread or gone: whether an inlet is assigned is unknown too
+  bool settingsThere = false;
   if (auto s = read(kConfigFile)) {
+    settingsThere = true;
     auto j = json::parse(*s, nullptr, false);
     std::optional<Msg> broken;
     if (j.is_discarded()) {
@@ -225,17 +228,27 @@ void Hub::boot() {
       // Werkseinstellung, alle Aktoren aus, laut melden (Vorschlag architekt).
       writeFile(kConfigBroken, *s);
       cfg_ = Config{};
+      settingsUnknown = true;
       log_.add(bootEpoch_, "system", "alarm", say("ev.config_unreadable"), say("ev.config_unreadable.text", {{"reason", *broken}}));
     }
   }
   if (cfg_.tanks.empty()) cfg_.tanks.emplace_back();
+  // A hub that ran before and has none: gone, or a damaged entry the flash reports as not found (SD-086)
+  settingsUnknown = settingsUnknown || kept_.count(kConfigFile) > 0 || (!settingsThere && ranBefore);
   // A run-time state that is broken or cannot be read is unknown: what
   // protects the tank errs on the safe side
+  bool inletUnknown = false;  // the inlet latched for it: its alarm names the inlet (SD-087)
   const auto unknownState = [&] {
     rt_ = RuntimeState{};
     rt_.stopped = true;  // whether an emergency stop was active is unknown: stopped until someone resumes (PD-076)
     rt_.lastMixAt = std::max<Epoch>(bootEpoch_, 1);  // a mix may have just ended: a second one needs confirmation (RAT-003)
     rt_.selfReleased["circulation.dry"] = 0;  // when a dry run last released itself is unknown: the next one holds (SD-067)
+    // Whether the inlet was latched, or a fill was being judged, is unknown: the stricter kind, released
+    // by a person, not by Resume alone (RAT-031, RAT-063, SD-087). Also with unknown settings, which may
+    // assign one; never where the hub switches nothing.
+    inletUnknown = !jbool(platform_, "readOnly", false) && (cfg_.binding("tank.inlet") || settingsUnknown);
+    if (inletUnknown)
+      rt_.latches["inlet.fault"] = {{"at", std::max<Epoch>(bootEpoch_, 1)}, {"why", say("why.state_unknown")}, {"cause", "state_unknown"}};
   };
   if (stateRaw) {
     std::optional<Msg> broken;
@@ -251,7 +264,8 @@ void Hub::boot() {
     if (broken) {
       writeFile(kStateBroken, *stateRaw);
       unknownState();
-      log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"), say("ev.state_unreadable.text", {{"reason", *broken}}));
+      log_.add(bootEpoch_, "system", "alarm", say("ev.state_unreadable"),
+               say(inletUnknown ? "ev.state_unreadable.text_inlet" : "ev.state_unreadable.text", {{"reason", *broken}}));
     }
   } else if (kept_.count(kStateFile)) {
     unknownState();  // as with a broken one (SD-081)
@@ -259,7 +273,8 @@ void Hub::boot() {
     // A hub that ran before always left one: a state.json that is gone is
     // unknown, not new (#238)
     unknownState();
-    log_.add(bootEpoch_, "system", "alarm", say("ev.state_missing"), say("ev.state_missing.text", {{"file", kStateFile}}));
+    log_.add(bootEpoch_, "system", "alarm", say("ev.state_missing"),
+             say(inletUnknown ? "ev.state_missing.text_inlet" : "ev.state_missing.text", {{"file", kStateFile}}));
   }
   const bool stateSaid = kept_.count(kStateFile) > 0 || (!stateRaw && ranBefore);
 
@@ -332,13 +347,14 @@ void Hub::boot() {
                events = kind == kEventsFile;
     log_.add(bootEpoch_, "system", "alarm",
              say(config ? "ev.kept.config" : state ? "ev.kept.state" : auth ? "ev.kept.auth" : job ? "ev.kept.job" : events ? "ev.kept.events" : "ev.kept.history"),
-             say(config  ? "ev.kept.config.text"
-                 : state ? "ev.kept.state.text"
-                 : auth && platformSignIn ? "ev.kept.auth.platform"
-                 : auth  ? "ev.kept.auth.text"
-                 : job   ? "ev.kept.job.text"
-                 : events ? "ev.kept.events.text"
-                          : "ev.kept.history.text",
+             say(config                     ? "ev.kept.config.text"
+                 : state && inletUnknown    ? "ev.kept.state.text_inlet"
+                 : state                    ? "ev.kept.state.text"
+                 : auth && platformSignIn   ? "ev.kept.auth.platform"
+                 : auth                     ? "ev.kept.auth.text"
+                 : job                      ? "ev.kept.job.text"
+                 : events                   ? "ev.kept.events.text"
+                                            : "ev.kept.history.text",
                  {{"file", names}}));
   }
   log_.add(bootEpoch_, "system", "info", say("ev.started"), say("ev.started.text", {{"version", embedded::kVersion}}));
@@ -502,9 +518,11 @@ void Hub::saveConfig(const std::optional<Msg>& what) {
 }
 
 void Hub::saveState() {
-  // A state.json kept unread started this run with no lock or latch, so any is new: written anew,
-  // with the Stop, a restart keeps both (RAT-044, RAT-063, SD-081)
-  if (!rt_.latches.empty() || !rt_.jumpLocks.empty()) stopKeepingState();
+  // A state.json kept unread started this run with no lock or latch but the inlet latch its unknown
+  // state set (SD-087), so any other is new: written anew, with the Stop, a restart keeps both
+  // (RAT-044, RAT-063, SD-081). So is that latch once a real cut-off replaced it.
+  const bool newLatch = std::any_of(rt_.latches.begin(), rt_.latches.end(), [](const auto& l) { return !unknownStateLatch(l.second); });
+  if (newLatch || !rt_.jumpLocks.empty()) stopKeepingState();
   rt_.clock = clock_.stamp();
   writeFile(kStateFile, json(rt_).dump());
   stateDirty_ = false;

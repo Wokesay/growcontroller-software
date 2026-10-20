@@ -136,7 +136,10 @@ Changes the kept files would hold stay in memory; a restart after the file
 is readable again reads it as it was. A `state.json` that is not there at
 all, while the events are there or kept, is unknown too: the hub ran
 before, since every start writes both, so it starts stopped and says
-"Saved state missing" (SD-086).
+"Saved state missing" (SD-086). Any of these unknown states also latches
+the inlet when a valve is assigned, or when the settings are unknown too:
+water flows again only after a person releases it, not after Resume
+alone (SD-087).
 
 **Versioning:**
 

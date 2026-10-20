@@ -4498,6 +4498,60 @@ Decided by the project owner on 2026-10-16 in the software session
 
 ---
 
+## SD-087: An unknown run-time state latches the inlet until a person releases it
+
+Decided by the project owner on 2026-10-20 in the software session (#273,
+option A of four, after the `domain`, `security` and `ux` reviews; a
+follow-up of SD-081 and SD-086).
+
+- **When:** the run-time state is unknown at the start: broken, there but
+  unreadable (SD-081), or missing on a hub that ran before (SD-086). And an
+  inlet valve is assigned, or the settings are unknown too (broken, kept
+  unread, or gone on a hub that ran before, as the flash may report a
+  damaged entry as not found), so whether one is assigned is unknown. Not
+  on a platform that switches nothing (the Home Assistant app).
+- **What the hub does:** besides what SD-081 and SD-086 do (stopped, the
+  window against mixing twice, the dry-run guard), it sets the inlet latch
+  (`inlet.fault`) with the reason "Saved state unknown", dated the start
+  and marked by its own field (`cause`), not by the text's key.
+  Whether the inlet was latched, a fill was open or a rise was being judged
+  (RAT-031, RAT-032, SD-082) is unknown. RAT-063's evidence treats a latch
+  of unknown kind as the stricter kind, released only by acknowledgement,
+  and RAT-031 wants a person to look before the inlet opens after a fault.
+  Resume brings back the fans and control; water flows again only after a
+  person taps Release, also for an inlet assigned again in that run. The
+  latch is saved with the state (see the keeping below), holds over
+  restarts and never releases itself.
+- **What the person sees:** the start's alarm names the inlet and that it
+  must be released; the latch, the refill line and a refused switch of the
+  inlet by hand give the reason ("saved state unknown") instead of "after
+  a fault"; after Resume the app says the inlet stays shut until released
+  under Tank & control. Texts reviewed by `ux`.
+- **SD-081's keeping:** a `state.json` kept unread is written anew at a
+  Stop, Resume, or a new lock or latch. The latch the start set itself is
+  not new: it does not end the keeping, and releasing it while the file is
+  kept writes nothing, so a start that still cannot read the file latches
+  again. A real cut-off of the inlet (no valid level, at capacity, open too
+  long) replaces the reason "Saved state unknown" and its time once, an
+  exception RAT-062 names: that latch cut nothing, so there is no reason
+  to freeze. The cut is then new and kept.
+- **Not covered:**
+  - the EC and pH no-effect latches are not set. Their loss allows at most
+    two more capped rounds before they latch again (their counter starts
+    again at every restart anyway), their texts would be wrong here, and
+    three releases after every such start invite tapping through without
+    looking. Setting them would be a product question;
+  - the other holds of a lost state: a dry-run latch's "switch-off
+    failed" and "jump" holds, and the hold of EC and pH by a pending rise
+    check (RAT-055), so EC and pH may dose right after Resume into water a
+    cut fill diluted; the 0.8 × gap rule and the caps bound it;
+  - the first fill after a Release does not wait for the level to settle
+    again; this holds for every inlet latch and is a follow-up;
+  - releasing is one tap, as for every inlet latch; SD-059 plans that a
+    latch is released only from the home network (M6, not built yet).
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |
