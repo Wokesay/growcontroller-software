@@ -249,4 +249,11 @@ struct RuntimeState {
 void to_json(json& j, const RuntimeState& s);
 RuntimeState runtimeFromJson(const json& j);
 
+// The inlet latch an unknown run-time state sets at the start: it cut nothing,
+// its reason is only that nobody knows, so a real cut-off's reason replaces it
+// (SD-087). Told by its own field, as SD-067's cause, not by a text's key.
+inline bool unknownStateLatch(const json& latch) {
+  return latch.is_object() && latch.contains("cause") && latch["cause"] == "state_unknown";
+}
+
 }  // namespace gc

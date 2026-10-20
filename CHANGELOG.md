@@ -480,6 +480,18 @@ listed in every release under "Security".
   Resume. Now it starts as with a broken state (stopped, a second mix
   right after the start needs confirmation, a dry-run latch in the first
   hour holds) and says "Saved state missing".
+- **An unknown saved state keeps the inlet shut until a person releases
+  it** (#273, SD-087): a start whose saved state was broken, unreadable or
+  missing stayed stopped, but an inlet latch from before was lost with it,
+  so after Resume, also from afar, the refill could fill on its own. Now
+  such a start also latches the inlet with the reason "Saved state
+  unknown" when a valve is assigned, or when the settings are broken,
+  unreadable or gone too. Resume brings back the fans and control; water
+  flows only after Release. The start's alarm, the refill line and a
+  refused switch by hand name the reason, and after Resume the app says
+  the inlet stays shut until released under Tank & control. A state file
+  kept unread (SD-081) is not written over for this latch; a real cut-off
+  of the inlet replaces its reason and is kept.
 - **A cold refill no longer locks the water temperature** (#272,
   RAT-042): while the inlet is open and for 5 min after it closes, the
   hub now counts a change of the water temperature as expected, as it

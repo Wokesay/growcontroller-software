@@ -863,7 +863,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     rec.erase("unconfirmed");
     rec["unjudged"] = 0;  // once a person has looked, the count starts again
     st_.state = "latched";
-    st_.line = say("refill.latched");
+    const bool unknown = unknownStateLatch(c.rt.latches.at("inlet.fault"));  // set by an unknown run-time state (SD-087)
+    st_.line = say(unknown ? "refill.latched_unknown" : "refill.latched");
     return;
   }
   // A person calibrating the level may fill or drain the tank: kept as through a Stop, from the level

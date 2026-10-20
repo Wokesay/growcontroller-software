@@ -1952,6 +1952,47 @@ TEST_CASE("Scenario: the inlet opened by hand still closes and latches after max
   CHECK(st["latches"]["inlet.fault"]["why"]["args"]["min"] == 15);
 }
 
+TEST_CASE("Scenario: after an unknown run-time state the refill waits for a person to release the inlet, not for Resume alone, and the latch never releases itself (RAT-031, RAT-063, SD-087)") {
+  struct Dir {
+    std::filesystem::path path = std::filesystem::temp_directory_path() / ("gc-test-unknown-inlet-" + std::to_string(std::random_device{}()));
+    ~Dir() { std::filesystem::remove_all(path); }
+  } d;
+  auto o = test::opts("demo");
+  o.dataDir = d.path.string();
+  {
+    sim::Simulation s(o);  // a hub that ran, with its inlet
+    Client c{s};
+    demoAt(s, c, 40.0);
+    s.step(60000, 5000);
+  }
+  const auto file = d.path / "state.json";
+  // one that cannot be read: tests/core/test_clock.cpp (the simulator then runs in memory, SD-074)
+  SUBCASE("broken") { std::ofstream(file) << "[1, 2"; }
+  SUBCASE("missing (SD-086)") { std::filesystem::remove(file); }
+  o.startEpoch += 600;
+  sim::Simulation s(o);
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  REQUIRE(inletLatched(c));
+  CHECK(latchWhy(c) == "why.state_unknown");
+  c.ok("POST", "/api/v1/resume");
+  s.world().fill(2.3, 1.3, 5.9);  // nearly empty: a refill would start
+  CHECK_FALSE(soon(s, [&] { return inletOpen(c); }, 30 * 60 * 1000, 5000));
+  CHECK(refillLine(c)["key"] == "refill.latched_unknown");
+  CHECK(latchWhy(c) == "why.state_unknown");  // with a valid level all along: no self-release (SD-067)
+  // opened at the valve itself: closed again, naming the reason (RAT-032)
+  s.world().out[1] = true;
+  s.step(5000);
+  CHECK_FALSE(s.world().out[1]);
+  const json cut = lastEvent(c, "alarm", "ev.inlet.cutoff");
+  REQUIRE(cut.is_object());
+  CHECK(cut["text"]["key"] == "ev.inlet.cutoff.latched");
+  CHECK(cut["text"]["args"]["why"]["key"] == "why.state_unknown");
+  // a person releases it: the refill fills
+  c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+  CHECK(soon(s, [&] { return inletOpen(c); }, 20 * 60 * 1000, 5000));
+}
+
 TEST_CASE("Scenario: someone guessing the password cannot keep the owner from stopping a running mix (SD-051)") {
   sim::Simulation s(test::opts("neu"));
   Client phone{s, {}, "192.168.1.20"};  // set up from the owner's phone

@@ -165,7 +165,9 @@ function StopButton() {
     try {
       await post("/resume");
       await refreshState();
-      toast(t(done));
+      // An inlet latch outlasts Resume: say so, not only "resumed" (SD-087)
+      const inletShut = done === "shell.resumed" && !!state.value?.latches?.["inlet.fault"];
+      toast(t(inletShut ? "shell.resumedInletShut" : done), inletShut ? "info" : "ok");
     } catch (e) {
       toastError(e);
     }
