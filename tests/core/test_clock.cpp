@@ -125,6 +125,42 @@ int keptSaid(gc::Hub& h, const std::string& file, gc::Epoch since = 0) {
   return n;
 }
 
+// The text of the newest event with this title, by key ("" if none).
+std::string saidText(gc::Hub& h, const std::string& title, gc::Epoch since = 0) {
+  const json events = h.events(since, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, title)) return e["text"].value("key", std::string());
+  return "";
+}
+
+// A finished run, as finishedRun, with an inlet valve on a plug the bus reports.
+void finishedRunWithInlet(gc::IStorage& store, test::Clock& clk, test::FakeBus& bus) {
+  gc::DeviceReport plug;
+  plug.id = "PLUG-1";
+  plug.cls = "shelly_plug";
+  plug.online = true;
+  bus.devs.push_back(plug);
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::Hub first(cat, bus, store, clk, fakeRandom);
+  first.boot();
+  clk.ms += 60000;
+  first.tick();
+  REQUIRE(first.acceptDevice("PLUG-1", "").status == 200);
+  REQUIRE(first.bindRole("tank.inlet", "PLUG-1", 0).status == 200);
+  for (int i = 0; i < 5; ++i) {
+    clk.ms += 60000;
+    first.tick();
+  }
+  first.flush();
+}
+
+// Why the inlet is latched, by key ("" if it is not).
+std::string inletWhy(gc::Hub& h) {
+  const json latches = h.state()["latches"];
+  if (!latches.contains("inlet.fault")) return "";
+  return latches["inlet.fault"]["why"].value("key", std::string("?"));
+}
+
 }  // namespace
 
 TEST_CASE("Clock: a secured platform clock passes through, operating time continues") {
@@ -578,6 +614,7 @@ TEST_CASE("Restart: a hub with no files at all starts as a new one, not stopped 
   CHECK(said(h, "ev.state_missing") == 0);
   CHECK(said(h, "ev.stop_kept") == 0);
   CHECK_FALSE(mixNeedsConfirmation(h));
+  CHECK(h.state()["latches"].empty());  // nothing unknown to latch (SD-087)
   // what the next start takes as the sign that it ran: its first start leaves both
   CHECK(store.read("state.json"));
   CHECK(store.read("events.json"));
@@ -627,6 +664,212 @@ TEST_CASE("Restart: an unknown run-time state counts a mix as just ended also wi
   REQUIRE(h.resume().status == 200);
   CHECK(h.state()["lastMixAt"].get<gc::Epoch>() > 0);  // 0 would mean "never mixed"
   CHECK(mixNeedsConfirmation(h));
+}
+
+TEST_CASE("Restart: an unknown run-time state latches the inlet: it opens again only after a person releases it, not after Resume alone (RAT-031, RAT-063, SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  std::string alarm;  // what the start says about the state
+  SUBCASE("broken") {
+    store.MemoryStorage::write("state.json", "[1, 2");
+    alarm = "ev.state_unreadable";
+  }
+  SUBCASE("cannot be read (SD-081)") {
+    store.locked = {"state.json"};
+    alarm = "ev.kept.state";
+  }
+  SUBCASE("missing on a hub that ran before (SD-086)") {
+    store.gone = {"state.json"};
+    alarm = "ev.state_missing";
+  }
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  const gc::Epoch bootAt = h->state()["now"];
+  // whether the inlet was latched, or a fill was being judged, is unknown: the stricter kind (RAT-063)
+  CHECK(inletWhy(*h) == "why.state_unknown");
+  CHECK(h->state()["latches"]["inlet.fault"]["at"] == bootAt);
+  CHECK(saidText(*h, alarm) == alarm + ".text_inlet");  // the alarm names the inlet and its release
+  REQUIRE(h->resume().status == 200);
+  for (int i = 0; i < 5; ++i) {
+    clk.ms += 60000;
+    h->tick();
+  }
+  CHECK(inletWhy(*h) == "why.state_unknown");  // Resume alone does not release it
+  const gc::Result r = h->switchRole("tank.inlet", true);
+  CHECK(r.status == 409);
+  CHECK(r.body["error"]["key"] == "act.inlet.latched_unknown");  // by its reason, not "after a fault"
+  CHECK_FALSE(bus.switches["PLUG-1|0"]);
+  const auto restart = [&] {
+    h->flush();
+    clk.ms += 60000;
+    h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+    h->boot();
+  };
+  restart();  // it holds over the next restart until released (RAT-063)
+  CHECK(inletWhy(*h) == "why.state_unknown");
+  CHECK(h->state()["stopped"] == false);
+  REQUIRE(h->ackLatch("inlet.fault").status == 200);  // a person releases it
+  CHECK(inletWhy(*h).empty());
+  restart();
+  CHECK(inletWhy(*h).empty());
+}
+
+TEST_CASE("Restart: with the settings kept unread too, whether an inlet is assigned is unknown: it is latched, and the latch holds once both can be read (SD-081, SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  store.locked = {"state.json", "config.json"};  // as root's files after a start with sudo
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  CHECK(inletWhy(*h) == "why.state_unknown");
+  CHECK(saidText(*h, "ev.kept.state") == "ev.kept.state.text_inlet");
+  REQUIRE(h->resume().status == 200);  // writes the state anew, with the latch
+  CHECK(store.writtenOver == std::vector<std::string>{"state.json"});
+  h->flush();
+  store.locked.clear();  // the owner fixed, and restarted
+  clk.ms += 60000;
+  h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+  h->boot();
+  CHECK(h->state()["stopped"] == false);
+  CHECK(inletWhy(*h) == "why.state_unknown");
+  CHECK(h->switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched_unknown");
+}
+
+TEST_CASE("Restart: with broken or missing settings too, whether an inlet is assigned is unknown: it is latched, also for one assigned again (SD-086, SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  std::string alarm;
+  SUBCASE("settings and state broken") {
+    store.MemoryStorage::write("config.json", "[1,");
+    store.MemoryStorage::write("state.json", "[1, 2");
+    alarm = "ev.state_unreadable";
+  }
+  SUBCASE("settings and state gone, on a hub that ran before (as a damaged entry the flash reports as not found)") {
+    store.gone = {"config.json", "state.json"};
+    alarm = "ev.state_missing";
+  }
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  CHECK(h.configJson()["devices"].empty());  // factory settings
+  CHECK(inletWhy(h) == "why.state_unknown");
+  CHECK(saidText(h, alarm) == alarm + ".text_inlet");
+  REQUIRE(h.resume().status == 200);
+  // the inlet assigned again (set up again, or settings imported): it waits for a person
+  clk.ms += 1000;
+  h.tick();
+  REQUIRE(h.acceptDevice("PLUG-1", "").status == 200);
+  REQUIRE(h.bindRole("tank.inlet", "PLUG-1", 0).status == 200);
+  CHECK(h.switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched_unknown");
+}
+
+TEST_CASE("Restart: an inlet latch saved with a damaged reason or cause still holds as an ordinary one, and no tick fails on it (SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  json st = json::parse(store.held("state.json").value_or("{}"));
+  st["latches"]["inlet.fault"] = {{"at", 1790000000}, {"why", {{"key", 5}}}, {"cause", 7}};
+  store.MemoryStorage::write("state.json", st.dump());
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  const gc::Epoch since = h.state()["now"];
+  for (int i = 0; i < 5; ++i) {
+    clk.ms += 60000;
+    h.tick();
+  }
+  CHECK(said(h, "ev.tick_fault", since) == 0);
+  CHECK(h.state()["latches"].contains("inlet.fault"));
+  CHECK(h.switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched");
+}
+
+TEST_CASE("Restart: an unknown run-time state latches no inlet the hub cannot switch, and says nothing of one (SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  bool readOnly = false;
+  std::string alarm = "ev.state_unreadable";
+  SUBCASE("no inlet valve assigned") {
+    finishedRun(store, clk);
+    store.MemoryStorage::write("config.json", json(gc::Config{}).dump());  // settings saved, with no inlet
+    store.MemoryStorage::write("state.json", "[1, 2");
+  }
+  SUBCASE("a platform that switches nothing (the Home Assistant app), its settings kept unread too") {
+    finishedRun(store, clk);
+    store.locked = {"state.json", "config.json"};
+    readOnly = true;
+    alarm = "ev.kept.state";
+  }
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  if (readOnly) h.setPlatform({{"kind", "home-assistant"}, {"simulated", false}, {"readOnly", true}});
+  h.boot();
+  CHECK(h.state()["stopped"] == true);
+  CHECK(inletWhy(h).empty());
+  CHECK(saidText(h, alarm) == alarm + ".text");
+}
+
+TEST_CASE("Restart: the inlet latch of an unknown run-time state does not end the keeping of a state.json that cannot be read; a real cut does (SD-081, SD-087)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  const auto kept = store.held("state.json");
+  REQUIRE(kept);
+  store.locked = {"state.json"};
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::Epoch since = 0;
+  const auto restart = [&] {
+    clk.ms += 60000;
+    auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
+    h->boot();
+    since = h->state()["now"];
+    return h;
+  };
+  auto h = restart();
+  CHECK(inletWhy(*h) == "why.state_unknown");
+  for (int i = 0; i < 30; ++i) {
+    clk.ms += 60000;
+    h->tick();
+  }
+  h->flush();
+  CHECK(store.writtenOver.empty());  // the latch it set itself is nothing new to keep
+  CHECK(store.held("state.json") == kept);
+  CHECK(said(*h, "ev.kept.state_replaced", since) == 0);
+
+  SUBCASE("released while kept: nothing written, and a start that still cannot read it latches again") {
+    REQUIRE(h->ackLatch("inlet.fault").status == 200);
+    clk.ms += 1000;
+    h->tick();
+    h->flush();
+    CHECK(store.writtenOver.empty());
+    h = restart();
+    CHECK(inletWhy(*h) == "why.state_unknown");
+  }
+  SUBCASE("a real cut replaces its reason and writes it anew, so a restart keeps the cut (RAT-062, RAT-063)") {
+    bus.switches["PLUG-1|0"] = true;  // opened at the plug, with no level reading
+    clk.ms += 1000;
+    h->tick();
+    CHECK_FALSE(bus.switches["PLUG-1|0"]);
+    CHECK(inletWhy(*h) == "why.level_invalid");
+    CHECK(store.writtenOver == std::vector<std::string>{"state.json"});
+    CHECK(said(*h, "ev.kept.state_replaced", since) == 1);
+    h->flush();
+    h = restart();
+    CHECK(inletWhy(*h) == "why.level_invalid");
+  }
 }
 
 TEST_CASE("Restart: each file the hub reads, when it cannot be read, is said once and never written over, nor its journal or snapshot (SD-081)") {
@@ -728,13 +971,14 @@ TEST_CASE("Restart: a current job that cannot be read counts as a mix cut off by
   CHECK_FALSE(mixNeedsConfirmation(h));
 }
 
-TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kept writes it anew, with the Stop (RAT-044, SD-081)") {
+TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kept writes it anew, with the Stop, also beside the inlet latch the unknown state set (RAT-044, SD-081, SD-087)") {
   // a pH probe taken out to be cleaned while everything is off: the jump locks it
   LockedStorage store;
   test::Clock clk;
   gc::Config cfg;
-  cfg.devices = {{"PH-1", "head_ph_ec", "pH/EC"}};
+  cfg.devices = {{"PH-1", "head_ph_ec", "pH/EC"}, {"PLUG-1", "shelly_plug", ""}};
   cfg.tank().roles["tank.ph"] = {"PH-1", 0};
+  cfg.tank().roles["tank.inlet"] = {"PLUG-1", 0};
   cfg.calibrations["PH-1"]["ph"] = {{"points", {{7.18, 7.0}, {4.27, 4.0}}}};
   store.MemoryStorage::write("config.json", json(cfg).dump());
   store.MemoryStorage::write("state.json", R"({"stopped": false})");  // what it held: running
@@ -745,6 +989,7 @@ TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kep
   auto h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
   h->boot();
   REQUIRE(h->state()["stopped"] == true);
+  REQUIRE(inletWhy(*h) == "why.state_unknown");  // the latch its unknown state set: nothing new (SD-087)
   for (int i = 0; i < 6; ++i) {
     bus.set("PH-1", "measure.ph", 6.18 + 0.001 * i, clk.ms);  // about pH 6.0
     clk.ms += 5000;
@@ -760,10 +1005,12 @@ TEST_CASE("Restart: a lock set while a run-time state that cannot be read is kep
   const json saved = json::parse(store.held("state.json").value_or("{}"), nullptr, false);
   CHECK(saved.value("stopped", false) == true);
   CHECK(saved.value("/jumpLocks/tank.ph"_json_pointer, json()).is_number());
+  CHECK(saved.value("/latches/inlet.fault/cause"_json_pointer, json()) == "state_unknown");  // and the inlet latch (SD-087)
   // a restart that reads it keeps both: stopped, and the reading locked
   h = std::make_unique<gc::Hub>(cat, bus, store, clk, fakeRandom);
   h->boot();
   CHECK(h->state()["stopped"] == true);
+  CHECK(inletWhy(*h) == "why.state_unknown");
   bus.set("PH-1", "measure.ph", 7.401, clk.ms);
   clk.ms += 1000;
   h->tick();

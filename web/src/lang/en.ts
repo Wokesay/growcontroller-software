@@ -232,6 +232,7 @@ const base: Record<keyof typeof deBase, string> = {
 
   "shell.resume": "Resume",
   "shell.resumed": "Automation resumed",
+  "shell.resumedInletShut": "Automation resumed. The inlet stays shut until you release it under Tank & control.",
   "shell.stopTitle": "Stop: all pumps and outputs off",
   "shell.stopAsk": "Stop everything?",
   "shell.stopAll": "Stop everything",

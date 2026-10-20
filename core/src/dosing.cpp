@@ -140,7 +140,10 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     return std::nullopt;
   }
   if (role == "tank.inlet") {
-    if (c.rt.latches.count("inlet.fault")) return say("act.inlet.latched");
+    if (auto l = c.rt.latches.find("inlet.fault"); l != c.rt.latches.end()) {
+      const bool unknown = unknownStateLatch(l->second);  // set by an unknown run-time state (SD-087)
+      return say(unknown ? "act.inlet.latched_unknown" : "act.inlet.latched");
+    }
     if (!levelBound || !level.usable()) return say("act.inlet.level");
     if (isNum(tank.capacityL) && *level.value >= tank.capacityL) return say("act.inlet.full");
     if (!isNum(tank.capacityL)) return say("act.inlet.capacity");
@@ -427,8 +430,9 @@ void Actuators::enforce(const Ctx& c) {
     if (why) {
       // Grund und Zeitpunkt werden beim Rasten eingefroren (RAT-062); ein
       // späterer Grund steht in seiner eigenen Meldung. The reason is kept
-      // as a message, so it shows in the page language (SD-032).
-      if (latch == c.rt.latches.end()) {
+      // as a message, so it shows in the page language (SD-032). A real reason
+      // replaces the one an unknown state set, so the cut is kept (SD-087).
+      if (latch == c.rt.latches.end() || unknownStateLatch(latch->second)) {
         c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", *why}};
         rearm("tank.inlet", key);
       }

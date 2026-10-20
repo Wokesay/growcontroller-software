@@ -240,6 +240,7 @@ export const deBase = {
   // Rahmen der App
   "shell.resume": "Fortsetzen",
   "shell.resumed": "Automatik fortgesetzt",
+  "shell.resumedInletShut": "Automatik fortgesetzt. Der Zulauf bleibt zu, bis du ihn unter Tank & Regelung freigibst.",
   "shell.stopTitle": "Stopp: alle Pumpen und Ausgänge aus",
   "shell.stopAsk": "Alles stoppen?",
   "shell.stopAll": "Alles stoppen",
