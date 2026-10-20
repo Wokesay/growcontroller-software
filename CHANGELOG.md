@@ -487,6 +487,14 @@ listed in every release under "Security".
   Resume. Now it starts as with a broken state (stopped, a second mix
   right after the start needs confirmation, a dry-run latch in the first
   hour holds) and says "Saved state missing".
+- **A cold refill no longer locks the water temperature** (#272,
+  RAT-042): while the inlet is open and for 5 min after it closes, the
+  hub now counts a change of the water temperature as expected, as it
+  already did for EC, pH and the level. Before, fresh water much colder
+  than a small tank could move the water temperature by more than 3 °C
+  within 5 min, and the hub raised a jump lock and an alarm for a change
+  it had caused itself. In tests, the simulator can now give the inlet
+  water a temperature of its own.
 - **Settings files: whole numbers only.** Restoring settings refuses a
   file, with the reason, when a count or index in it is not a whole
   number in its range: the current phase of a running grow cycle (it has

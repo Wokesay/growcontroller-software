@@ -706,8 +706,10 @@ void Hub::tickImpl() {
   // Eigene EC-Runde: Deckel 1,0 mS/cm liegt über der Sprungschwelle 0,5 – ankündigen.
   // pH-Gaben bleiben unangekündigt (Deckel 0,3 pH unter der Schwelle 1,0).
   if (ec_.busy()) truth_.expectChange("tank.ec", now + 10 * kMinute);
+  // Fresh water changes EC, pH, level and water temperature; announced until 5 min after the
+  // valve closes, as the readings follow late (RAT-042, #272)
   if (act_.roleState(cfg_, "tank.inlet").value_or(false))
-    for (const char* r : {"tank.ec", "tank.ph", "tank.level"}) truth_.expectChange(r, now + 5 * kMinute);
+    for (const char* r : {"tank.ec", "tank.ph", "tank.level", "tank.water_temp"}) truth_.expectChange(r, now + 5 * kMinute);
   if (epoch < maintenanceUntil_)
     for (const auto& [role, def] : cat_.roles) truth_.expectChange(role, now + (maintenanceUntil_ - epoch) * kSecond);
   for (const auto& [key, sess] : probeSessions_) {
