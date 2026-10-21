@@ -96,7 +96,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.state = "off";
     st_.line = say("ec.off");
     reset();
-    cut_ = false;
+    cut_ = quiet_ = false;
+    cutFloor_ = 0;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ec_control");
@@ -147,15 +148,20 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;  // its effect is not learned (RAT-057)
-      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+      settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       wantsCirc_ = true;
       if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
       // A refusal the gateway knows shows at once (the circulation line names why); a pump that
       // just does not come on after 2 min, as for a round waiting to dose (RAT-037, RAT-039)
       const bool late = c.now - cutWaitSince_ > 2 * kMinute;
-      st_.state = !circOk || late ? "blocked" : "working";
-      st_.line = say(!circOk ? "ec.cut_circ_blocked" : late ? "ec.cut_no_circ" : "ec.wait_circ");
+      st_.state = !circOk || late ? "blocked" : quiet_ ? "waiting" : "working";
+      st_.line = say(!circOk && cutByMix_ ? "ec.mixcut_circ_blocked"
+                     : !circOk            ? "ec.cut_circ_blocked"
+                     : late && cutByMix_  ? "ec.mixcut_no_circ"
+                     : late               ? "ec.cut_no_circ"
+                     : quiet_             ? "ec.mixcut_wait_circ"
+                                          : "ec.wait_circ");
       return;
     }
   }
@@ -163,12 +169,20 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ec-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
-      st_.state = "working";
-      st_.line = say("ec.settling", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
-                                     {"left", mmss(settleUntil_ - c.now)}});
+      st_.state = quiet_ ? "waiting" : "working";
+      st_.line = quiet_ ? say("ec.mixcut_settling", {{"left", mmss(settleUntil_ - c.now)}})
+                        : say("ec.settling", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
+                                              {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     cut_ = false;  // a cut round has settled: decide as after any settle time
+    cutFloor_ = 0;
+  }
+  if (phase_ == Phase::Settling && quiet_) {
+    quiet_ = false;  // nothing of its own to judge: decide afresh below
+    phase_ = Phase::Idle;
+  }
+  if (phase_ == Phase::Settling) {
     if (!ec.usable()) {
       st_.state = "blocked";
       st_.line = say("ec.invalid", {{"reason", ec.reason}});
@@ -346,6 +360,7 @@ void EcController::recipeChanged(const RecipeCfg& r) {
 void EcController::stopRound() {
   if (phase_ == Phase::Idle) return;
   cut_ = true;
+  cutByMix_ = false;  // the Stop's words; a quiet settle stays quiet and keeps its floor
   reset();
 }
 
@@ -359,7 +374,8 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.state = "off";
     st_.line = say("ph.off");
     reset();
-    cut_ = false;
+    cut_ = quiet_ = false;
+    cutFloor_ = 0;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ph_control");
@@ -409,25 +425,38 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;
-      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+      settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       pendingCirc_ = true;
       if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
       const bool late = c.now - cutWaitSince_ > 2 * kMinute;
-      st_.state = !circOk || late ? "blocked" : "working";
-      st_.line = say(!circOk ? "ph.cut_circ_blocked" : late ? "ph.cut_no_circ" : "ph.wait_circ");
+      st_.state = !circOk || late ? "blocked" : quiet_ ? "waiting" : "working";
+      st_.line = say(!circOk && cutByMix_ ? "ph.mixcut_circ_blocked"
+                     : !circOk            ? "ph.cut_circ_blocked"
+                     : late && cutByMix_  ? "ph.mixcut_no_circ"
+                     : late               ? "ph.cut_no_circ"
+                     : quiet_             ? "ph.mixcut_wait_circ"
+                                          : "ph.wait_circ");
       return;
     }
   }
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ph-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
-      st_.state = "working";
-      st_.line = say("ph.settling", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_},
-                                     {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
+      st_.state = quiet_ ? "waiting" : "working";
+      st_.line = quiet_ ? say("ph.mixcut_settling", {{"left", mmss(settleUntil_ - c.now)}})
+                        : say("ph.settling", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_},
+                                              {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     cut_ = false;
+    cutFloor_ = 0;
+  }
+  if (phase_ == Phase::Settling && quiet_) {  // as in EcController
+    quiet_ = false;
+    phase_ = Phase::Idle;
+  }
+  if (phase_ == Phase::Settling) {
     if (!phOk) {
       st_.state = "blocked";
       st_.line = say("ph.invalid", {{"reason", ph.reason}});
@@ -563,6 +592,7 @@ void PhController::onDoseFinished(const Ctx& c, const DoseProgress& p) {
 void PhController::stopRound() {
   if (phase_ == Phase::Idle) return;
   cut_ = true;
+  cutByMix_ = false;  // the Stop's words; a quiet settle stays quiet and keeps its floor
   reset();
 }
 

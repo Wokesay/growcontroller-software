@@ -2,7 +2,7 @@
 // Mixing to the phase's target EC (SD-057): a recipe's chart values and the
 // targets they propose for a grow cycle.
 import type { Page } from "@playwright/test";
-import { expect, login, scenario, test } from "./helpers";
+import { expect, login, scenario, simSpeed, test } from "./helpers";
 
 test.beforeAll(async ({ request }) => {
   await scenario(request, "demo");
@@ -142,4 +142,30 @@ test("Without a grow the overview names the target ranges that apply, and the gr
   expect(phases[1].params.ph_target).toBe(6);
   // The phase line says where a target comes from
   await expect(page.getByText("pH 5,8 (aus Funktionen)")).toBeVisible();
+});
+
+test("A mix with the circulation pump mixes in before it ends; the card says for how long and offers no way to skip or cancel it (SD-057)", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/mischen");
+  await simSpeed(page, 20);  // the parts go in within seconds; the 5 min of mixing in last 15 s
+  // A mix does not start over a control dose: tried until none runs
+  const start = () =>
+    page.evaluate(async () => {
+      const res = await fetch("/api/v1/mix/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipe: "wachstum", waterL: 20, guided: false, confirmRepeat: true }),
+      });
+      return res.status;
+    });
+  await expect.poll(start, { timeout: 120_000 }).toBe(200);
+  const job = page.getByTestId("job");
+  await expect(job.getByText(/^Alles drin\. Durchmischen mit der Umwälzpumpe \(5\smin\) – danach übernimmt die Regelung\./)).toBeVisible({ timeout: 60_000 });
+  await simSpeed(page, 0);  // held while the card is read
+  await expect(job).toContainText(/Noch etwa \d\smin\./);
+  await expect(job.getByText("mischt durch", { exact: true })).toBeVisible();
+  await expect(job.getByRole("button")).toHaveCount(0);  // control needs the mixed tank, and nothing is left to dose
+  await simSpeed(page, 20);
+  await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await simSpeed(page, 1);
 });
