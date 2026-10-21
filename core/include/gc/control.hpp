@@ -41,6 +41,7 @@ struct ControlEnv {
   bool ecBusy = false;
   bool phBusy = false;       // pH dosiert oder schwingt ein: EC-Runde wartet (RAT-057)
   bool refilling = false;    // Zulauf offen: Wirkung nicht messbar, nicht dosieren (RAT-055)
+  bool refillDue = false;    // a fill is due and waits for a dose to settle: no new round meanwhile (SD-090)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
 };
@@ -153,10 +154,14 @@ class RefillController {
   void tick(const Ctx& c, ControlEnv& env);
   const CtlStatus& status() const { return st_; }
   bool filling() const { return filling_; }
+  // A fill is due and waits only for a running dose or round to settle: EC and pH start no new round
+  // (SD-090). The running one goes on and is learned from (RAT-057), unlike while holding().
+  bool dueAfterDose() const { return dueAfterDose_; }
   // From the first opening of a refill until the rise of its last fill is checked, EC and pH wait:
-  // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-082)
+  // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-082). So
+  // they do while a fill that is due waits for the level reading to settle (SD-090).
   bool holding(const RuntimeState& rt) const {
-    return filling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
+    return filling_ || settling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
   }
   void shiftClock(RuntimeState& rt, Epoch d);
   // A level calibration of the bound level sensor committed this new curve (SD-082)
@@ -175,8 +180,10 @@ class RefillController {
   void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
   bool booted_ = false;
   bool filling_ = false;
+  bool settling_ = false;  // a fill is due and waits in this tick for the level reading to settle (SD-090)
+  bool dueAfterDose_ = false;  // a fill is due and waits in this tick for a dose to settle (SD-090)
   Ms startedMs_ = 0, plannedMs_ = 0;
-  Ms disturbedMs_ = 0;  // the level reading was last disturbed: a start, Stop, maintenance, a level calibration, a hand on the valve, an inlet latch
+  Ms disturbedMs_ = 0;  // the level reading was last disturbed: a start, Stop, maintenance, the function off, a level calibration, a hand on the valve, an inlet latch
   bool latchSeen_ = false;  // the inlet latch stood at the last tick, or was set in it: the tick that sees it released is a disturbance too (SD-088)
   Ms irrigatedMs_ = std::numeric_limits<Ms>::min() / 2;  // the irrigation pump last ran; not since the start
   Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle after irrigation

@@ -4575,9 +4575,10 @@ Decided by the project owner on 2026-10-20 in the software session
     which keep the wait going while they last;
   - EC or pH may start a round during the wait, and the fill then waits
     for it to settle and dilutes it (RAT-055); this happens after a Stop
-    or a start as well (#289);
+    or a start as well (#289; done in SD-090);
   - switching the refill off and on again, which RAT-038 counts as a
-    person at the tank, is not a disturbance of the reading (#289).
+    person at the tank, is not a disturbance of the reading (#289; done
+    in SD-090).
 
 ---
 
@@ -4630,6 +4631,54 @@ The rest of SD-057 stands.
   known effect, or uncapped only once the recipe has learned its own
   effect (S4); way 1 dosing its 80 % and stopping, or a correction of
   the mix's own next to EC control (S20).
+
+---
+
+## SD-090: EC and pH wait while a due fill settles; the refill off is a person at the tank; a released latch resets the count
+
+Decided by the project owner on 2026-10-21 in the software session
+("umsetzen" for #289, from the `domain` and `reviewer` reviews of
+SD-088). Three gaps around the refill, each there before SD-088.
+
+- **EC and pH wait while a due fill waits for the level to settle:** after
+  a Stop, a start, a released inlet latch or irrigation, a fill that is
+  due waits until the level reading has settled (RAT-038). EC and pH now
+  wait then too (`RefillController::holding`), as they already do from the
+  first opening of a refill to its last check (RAT-055). Before, a round
+  could start in that wait, for example after a top-up by hand; the fill
+  then waited for it to settle and diluted it.
+- **No new round while a due fill waits for a dose:** a round already
+  running is not cut: the refill waits for it to settle first, as before,
+  and the round is learned from (RAT-057). But no next round of the same
+  correction starts meanwhile (`ControlEnv::refillDue`); before, the next
+  one started in the very tick the last settled, so the fill waited for
+  the whole correction and then diluted it. The line of EC and pH reads
+  "Waiting: refill first" in both cases (before "Waiting: refilling",
+  also shown while the valve is closed; the refill's own line says what
+  it waits for).
+- **The refill switched off is a person at the tank:** RAT-038 already
+  treats it so for what flowed (kept unconfirmed); now the level reading
+  also counts as disturbed while it is off, so a fill after it is switched
+  on again waits until the reading has settled, as after a Stop.
+- **A released inlet latch resets the count of fills not judged:** a
+  latch drops the pending check and the fills not confirmed, and starts
+  the count of fills in a row that could not be judged again (SD-082,
+  "once a person has looked"). Before, this happened only while
+  automation ran; a latch released during a Stop, maintenance or with the
+  function off left the old records, so the next fill not judged could
+  latch the inlet at once. Now it happens in every tick the latch stands.
+  It drops what flowed unconfirmed as well, as it does under automation:
+  with a stuck level sensor the first fill after the release can plan the
+  whole gap once more, bounded by the inlet's open time, before its rise
+  check latches again (SD-082).
+- **Not covered:**
+  - how long EC and pH wait follows the refill's own waits: 3 min after a
+    disturbance; during irrigation up to half an hour (RAT-038), which
+    starts over when a tick does not reach the wait (for example a level
+    read at the start level);
+  - in ebb and flow, water still draining back after the irrigation pump
+    stops makes the level read low; a fill planned then may overfill.
+    That is a product question (#294).
 
 ---
 
