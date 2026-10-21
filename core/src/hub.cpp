@@ -23,8 +23,7 @@ Result Result::fail(int st, const Msg& m, json extra) {
 
 namespace {
 
-// How long a mix waits for the user to stir by hand before it stops (SD-057; 30 min is proposed and
-// waits for the owner's decision)
+// How long a mix waits for the user to stir by hand before it stops, open to go on (SD-057, SD-089)
 constexpr Ms kStirWaitMax = 30 * kMinute;
 // A pump that reads off or unknown this long while a mix mixes in stands still; a single missed
 // report does not (an assumption, like the mixing time per volume)

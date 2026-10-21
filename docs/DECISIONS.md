@@ -4581,6 +4581,41 @@ Decided by the project owner on 2026-10-20 in the software session
 
 ---
 
+## SD-089: Mixing to the target: three details from building SD-057
+
+Decided by the project owner on 2026-10-21 in the software session, from
+the choices `domain` listed for building SD-057 (S4, S9, S20). They fill
+in what SD-057 leaves open; the rest of SD-057 stands.
+
+- **Stirring by hand waits at most 30 min (S9).** After each part a
+  guided mix waits at most 30 minutes of operating time for "Continue".
+  Then it stops and stays open: "Resume mix" goes on with the next part,
+  "End mix" ends it. The message names every part of a pair still
+  missing, with its amount (RAT-054). This reads SD-057's "a timeout ...
+  ends the mix" as "stops the mix", so a missing part of a pair can still
+  be caught up through the hub, which a hand dose (at most 5 ml) cannot
+  do. Cancelling ends the mix with the pair's message, as SD-057 says.
+  Built in #268.
+- **The first step to the target uses the largest known effect, without
+  the step cap (S4).** Way 1 turns about 80 % of the gap into millilitres
+  with the largest of the start effect fixed in code, the recipe's
+  reference and the learned effect, the same choice the step limit makes
+  (RAT-055): a typo in a recipe can never raise the dose. `max_ec_step`
+  does not cap this first step; the 80 % already bound it. A product
+  weaker than the start effect gets a smaller first step and more
+  correction rounds.
+- **Mixing to the target needs EC control switched on (S20).** With EC
+  control off, the hub offers way 2 (a fixed pattern) and proposes the
+  probe's EC as the water's EC. There stays one correction path, with
+  its latches and its learning.
+
+Not chosen: ending the mix at the stir limit, or a limit of 60 min (S9);
+EC control's own scheme with the step cap for the first step, which
+roughly halves it on a fresh fill (S4); way 1 dosing its 80 % and
+stopping, or a correction of the mix's own next to EC control (S20).
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |
