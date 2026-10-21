@@ -282,7 +282,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ec.wait_job");
     return;
   }
-  if (env.refilling) {
+  if (env.refilling || env.refillDue) {
     st_.state = "waiting";
     st_.line = say("ec.wait_refill");
     return;
@@ -500,7 +500,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ph.wait_job");
     return;
   }
-  if (env.refilling) {
+  if (env.refilling || env.refillDue) {
     st_.state = "waiting";
     st_.line = say("ph.wait_refill");
     return;
@@ -696,6 +696,8 @@ void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title
 
 void RefillController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
+  settling_ = false;
+  dueAfterDose_ = false;
   json& rec = c.rt.refill;
   if (!rec.is_object()) rec = json::object();
   for (const char* r : {"fill", "check", "unconfirmed"})
@@ -703,13 +705,14 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   const auto open = env.act.roleState(c.cfg, "tank.inlet");
   const Irrigation irr = irrigation(c, env);
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
-  // happened before it is not known, and so do a Stop and an inlet latch up to the tick that sees it
-  // released: a person may be at the tank, so the first fill after a release plans from a level read
-  // after it (SD-088). Only irrigation may end the wait early: it reads the level too high, so a fill
-  // comes out smaller; a hand fill or draining could make it larger (RAT-038, SD-082).
+  // happened before it is not known, and so do a Stop, the function switched off (SD-089) and an inlet
+  // latch up to the tick that sees it released: a person may be at the tank, so the first fill after a
+  // release plans from a level read after it (SD-088). Only irrigation may end the wait early: it reads
+  // the level too high, so a fill comes out smaller; a hand fill or draining could make it larger
+  // (RAT-038, SD-082).
   const bool latched = c.rt.latches.count("inlet.fault") > 0;
-  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_) ||
-      latched || latchSeen_)
+  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || !enabled(c, "refill") || env.levelCalibrating ||
+      (open.value_or(false) && !filling_) || latched || latchSeen_)
     disturbedMs_ = c.now;
   latchSeen_ = latched;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
@@ -745,6 +748,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                                                 {"steps", static_cast<int>(std::clamp(jnumOr(k, "steps", 1), 1.0, 1000.0))}}));
       rec["check"]["more"] = false;
     }
+  }
+  // A latch waits for a person: once they have looked, the count starts again, also when they release
+  // it during a Stop, maintenance or with the function off, when the refill does not run (SD-082, SD-089)
+  if (latched) {
+    rec.erase("check");
+    rec.erase("unconfirmed");
+    rec["unjudged"] = 0;
   }
   const auto& level = c.truth.get("tank.level");
   const double levelNow = level.usable() ? *level.value : kNaN;
@@ -863,11 +873,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     keepForPerson(c, levelNow);
     return;
   }
-  if (c.rt.latches.count("inlet.fault")) {
-    endSteps();
-    rec.erase("check");
-    rec.erase("unconfirmed");
-    rec["unjudged"] = 0;  // once a person has looked, the count starts again
+  if (latched) {
+    endSteps();  // its check, the fills not confirmed and the count were reset above (SD-089)
     st_.state = "latched";
     const bool unknown = unknownStateLatch(c.rt.latches.at("inlet.fault"));  // set by an unknown run-time state (SD-087)
     st_.line = say(unknown ? "refill.latched_unknown" : "refill.latched");
@@ -1008,7 +1015,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
-    // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055)
+    // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055). Meanwhile no new
+    // round starts, so the fill does not wait for a whole correction and then dilute it (SD-089)
+    dueAfterDose_ = true;
     st_.state = "waiting";
     st_.line = say("refill.dosing");
     return;
@@ -1018,6 +1027,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // (irrigation every few minutes) does not keep the tank short: the fill goes ahead, marked as irrigated.
   bool unsettled = false;
   if (c.now - disturbedMs_ < kSettleMs) {
+    settling_ = true;  // EC and pH wait too: the fill would dilute a round started now (RAT-055, SD-089)
     st_.state = "waiting";
     st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - disturbedMs_))}});
     return;
@@ -1025,6 +1035,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   if (c.now - irrigatedMs_ < kSettleMs) {
     settleSince_ = settleSince < 0 ? c.now : settleSince;
     if (c.now - settleSince_ < kSettleMaxMs) {
+      settling_ = true;
       st_.state = "waiting";
       st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - irrigatedMs_))}});
       return;
