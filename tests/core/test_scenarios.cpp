@@ -1988,9 +1988,53 @@ TEST_CASE("Scenario: after an unknown run-time state the refill waits for a pers
   REQUIRE(cut.is_object());
   CHECK(cut["text"]["key"] == "ev.inlet.cutoff.latched");
   CHECK(cut["text"]["args"]["why"]["key"] == "why.state_unknown");
-  // a person releases it: the refill fills
+  // a person releases it: the refill waits for the level to settle, then fills (SD-088)
   c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+  s.step(5000);
+  CHECK(refillLine(c)["key"] == "refill.settle");
+  CHECK_FALSE(soon(s, [&] { return inletOpen(c); }, 2 * 60 * 1000, 5000));
   CHECK(soon(s, [&] { return inletOpen(c); }, 20 * 60 * 1000, 5000));
+}
+
+TEST_CASE("Scenario: the first fill after a person releases the inlet waits for the level to settle and plans from a level read after the release (#288, RAT-031, RAT-038, SD-088)") {
+  // Demo: 60 L tank, refill below 30 L to 45 L at 2 L/min, the valve open at most 15 min
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 10.0);
+  // a valve opened by hand stays open too long: the inlet latches, at about 40 L
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+  REQUIRE(soon(s, [&] { return inletLatched(c); }, 20 * 60 * 1000, 5000));
+  CHECK(latchWhy(c) == "why.open_too_long");
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}});
+  s.world().fill(25.0, 1.3, 5.9);  // below the start: a refill is due once released
+  s.step(15 * 60 * 1000, 5000);     // long past any wait after the valve was open by hand
+  REQUIRE_FALSE(inletOpen(c));
+  // the person checks the tank and releases the inlet
+  c.ok("POST", "/api/v1/latches/inlet.fault/ack");
+  s.step(5000);
+  CHECK_FALSE(inletOpen(c));
+  CHECK(refillLine(c)["key"] == "refill.settle");  // as after a Stop: a person may be at the tank
+  SUBCASE("the tank bailed a minute after the release: planned from the new level, no false \"did not rise\"") {
+    s.step(55000, 5000);
+    REQUIRE_FALSE(inletOpen(c));
+    s.world().fill(10.0, 1.3, 5.9);
+    CHECK_FALSE(soon(s, [&] { return inletOpen(c); }, 90 * 1000, 5000));
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 2 * 60 * 1000, 5000));
+    const json line = refillLine(c);
+    CHECK(line["key"] == "refill.filling_step");
+    CHECK(line["args"]["from"].get<double>() == doctest::Approx(10.0).epsilon(0.1));  // not the 25 L before
+    REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.ok"; }, 60 * 60 * 1000, 5000));
+    CHECK_FALSE(inletLatched(c));
+    CHECK(s.world().tank.volumeL == doctest::Approx(45.0).epsilon(0.05));
+  }
+  SUBCASE("the tank filled by hand right after the release: no fill on top of it") {
+    s.world().fill(40.0, 1.3, 5.9);
+    CHECK_FALSE(soon(s, [&] { return inletOpen(c); }, 10 * 60 * 1000, 5000));
+    CHECK(refillLine(c)["key"] == "refill.ok");
+    CHECK_FALSE(inletLatched(c));
+    CHECK(s.world().tank.volumeL == doctest::Approx(40.0).epsilon(0.05));
+  }
 }
 
 TEST_CASE("Scenario: someone guessing the password cannot keep the owner from stopping a running mix (SD-051)") {

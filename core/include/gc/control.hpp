@@ -150,7 +150,8 @@ class RefillController {
   bool booted_ = false;
   bool filling_ = false;
   Ms startedMs_ = 0, plannedMs_ = 0;
-  Ms disturbedMs_ = 0;  // the level reading was last disturbed by maintenance, a hand on the valve or a start
+  Ms disturbedMs_ = 0;  // the level reading was last disturbed: a start, Stop, maintenance, a level calibration, a hand on the valve, an inlet latch
+  bool latchSeen_ = false;  // the inlet latch stood at the last tick, or was set in it: the tick that sees it released is a disturbance too (SD-088)
   Ms irrigatedMs_ = std::numeric_limits<Ms>::min() / 2;  // the irrigation pump last ran; not since the start
   Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle after irrigation
   Epoch bootEpoch_ = 0;

@@ -492,6 +492,13 @@ listed in every release under "Security".
   the inlet stays shut until released under Tank & control. A state file
   kept unread (SD-081) is not written over for this latch; a real cut-off
   of the inlet replaces its reason and is kept.
+- **The first fill after the inlet is released waits for the level to
+  settle** (#288, SD-088): a person who released the inlet latch could
+  have the refill open in the very next second, planned from the level
+  before the release, though they had just been asked to check the tank.
+  Bailing it then could end in a false "did not rise" latch. Now the first
+  fill after a release waits 3 min, as after a Stop, and plans from the
+  level read then.
 - **A cold refill no longer locks the water temperature** (#272,
   RAT-042): while the inlet is open and for 5 min after it closes, the
   hub now counts a change of the water temperature as expected, as it
