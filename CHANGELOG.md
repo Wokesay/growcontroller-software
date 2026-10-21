@@ -539,6 +539,8 @@ listed in every release under "Security".
   folder. The port search stops at 65535. The download's smoke test also
   starts it plainly with a data folder it cannot read (SD-074) and with no
   folder for the data, on macOS and Linux (#214).
+  `tools/ha_server.test.mjs` now also starts `gc_ha_server` with a
+  `--config` below a folder it may not enter (not as root).
 - **The hub keeps a file it cannot read** (#211, SD-081): a file of the
   hub that is there but cannot be read (no permission, for example root's
   files after a start with `sudo`, or a read error of the disk or flash)
