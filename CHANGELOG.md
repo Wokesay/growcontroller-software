@@ -515,6 +515,18 @@ listed in every release under "Security".
   Bailing it then could end in a false "did not rise" latch. Now the first
   fill after a release waits 3 min, as after a Stop, and plans from the
   level read then.
+- **Three gaps around the refill** (#289, SD-090): while a fill that is
+  due waited for the level to settle (after a Stop, a start, a release or
+  irrigation), EC or pH could start a round that the fill then diluted;
+  now they wait too. While a due fill waited for a round to settle, EC or
+  pH started the next round of their correction at once, so the fill
+  waited for all of it; now no new round starts, and the line reads
+  "Waiting: refill first". Switching the refill off and on again let a fill open
+  at once from a reading taken while someone worked at the tank; now it
+  waits for the level to settle, as after a Stop. And an inlet latch
+  released during a Stop, maintenance or with the refill off kept the
+  count of fills not judged, so the next such fill could latch the inlet
+  at once; now a latch resets it however it is released.
 - **A cold refill no longer locks the water temperature** (#272,
   RAT-042): while the inlet is open and for 5 min after it closes, the
   hub now counts a change of the water temperature as expected, as it

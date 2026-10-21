@@ -1890,12 +1890,18 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     CHECK_FALSE(inletOpen(c));
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
   }
-  SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour") {
+  SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour, and EC with it") {
     sim::Simulation s(test::opts("demo"));
     Client c{s};
     demoAt(s, c, 28, 25, 30);
+    s.world().fill(28, 1.4, 5.8);  // EC and pH on target: no round runs when the irrigation begins
     irrigationPlug(s, c);
-    s.world().fill(20, 1.3, 5.9);
+    REQUIRE(soon(s, [&] {
+      const json ctl = c.state()["controllers"];
+      return ctl["ec"]["state"] == "idle" && ctl["ph"]["state"] == "idle";
+    }, 60 * 60 * 1000, 5000));
+    s.world().fill(20, 0.9, 5.9);  // EC well below its target too
+    const size_t doses = findEvents(c, "dose").size();
     bool opened = false;
     for (int i = 0; i < 18 && !opened; ++i) {  // on 1 min, off 1 min
       c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
@@ -1903,9 +1909,13 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
       c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
       s.step(60000, 5000);
       opened = inletOpen(c) || refills(c) > 0;
-      if (i < 13) CHECK_FALSE(opened);  // waits while the reading does not settle
+      if (i < 13) {
+        CHECK_FALSE(opened);  // waits while the reading does not settle
+        CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.wait_refill");  // the fill would dilute a round (SD-090)
+      }
     }
     CHECK(opened);
+    CHECK(findEvents(c, "dose").size() == doses);
   }
 }
 
@@ -2535,6 +2545,76 @@ TEST_CASE("Scenario: the first fill after a person releases the inlet waits for 
   }
 }
 
+TEST_CASE("Scenario: while a due fill waits for the level to settle, EC and pH wait too, so the fill dilutes no round (#289, RAT-055, SD-090)") {
+  // Demo: refill below 30 L to 45 L, EC target 1.4
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 40.0);
+  c.ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+  s.world().fill(40.0, 1.4, 5.8);  // EC and pH on target: no round runs, or is cut, when the Stop comes
+  REQUIRE(soon(s, [&] {
+    const json ctl = c.state()["controllers"];
+    return ctl["ec"]["state"] == "idle" && ctl["ph"]["state"] == "idle";
+  }, 60 * 60 * 1000, 5000));
+  c.ok("POST", "/api/v1/stop");
+  // a person at the tank: below the refill start, and EC or pH off its target
+  std::string ctl;
+  SUBCASE("EC well below its target") {
+    s.world().fill(25.0, 0.9, 5.9);
+    ctl = "ec";
+  }
+  SUBCASE("pH well above its target") {
+    s.world().fill(25.0, 1.4, 7.0);
+    ctl = "ph";
+  }
+  s.step(10 * 60 * 1000, 5000);
+  const size_t doses = findEvents(c, "dose").size();
+  c.ok("POST", "/api/v1/resume");
+  s.step(5000);
+  REQUIRE(refillLine(c)["key"] == "refill.settle");  // the fill waits for the level, as after any Stop
+  CHECK(c.state()["controllers"][ctl]["line"]["key"] == ctl + ".wait_refill");
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 5 * 60 * 1000, 5000));
+  CHECK(findEvents(c, "dose").size() == doses);  // nothing dosed before the fill opened
+}
+
+TEST_CASE("Scenario: a fill that falls due while EC settles a round waits for that round, and EC starts no next round before the fill (#289, RAT-055, RAT-057, SD-090)") {
+  // Demo: EC target 1.4; at EC 0.9 a correction takes more than one round
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 40.0);
+  c.ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+  s.world().fill(40.0, 0.9, 5.9);
+  REQUIRE(soon(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling"; }, 30 * 60 * 1000, 5000));
+  const json effectBefore = c.state()["effects"]["ec"];
+  const size_t doses = findEvents(c, "dose").size();
+  // a fill falls due while the round settles (the start level raised above the level)
+  c.ok("PATCH", "/api/v1/functions/refill", {{"params", {{"start_below_l", 45}, {"target_l", 48}}}});
+  s.step(5000);
+  CHECK(refillLine(c)["key"] == "refill.dosing");  // the round is not cut: the fill waits for it
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 30 * 60 * 1000, 5000));
+  CHECK(findEvents(c, "dose").size() == doses);  // no next round between the settled one and the fill
+  CHECK(c.state()["effects"]["ec"] != effectBefore);  // the settled round was learned from (RAT-057)
+}
+
+TEST_CASE("Scenario: the refill switched off and on again waits for the level to settle before it fills (#289, RAT-038, SD-090)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 40.0);
+  for (const char* fn : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + fn, {{"enabled", false}});  // no dose in between
+  // a person switches the refill off, bails the tank and switches it on again (by less than a jump)
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  s.step(60000, 5000);
+  s.world().fill(25.0, 1.3, 5.9);
+  s.step(30000, 5000);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}});
+  s.step(5000);
+  CHECK_FALSE(inletOpen(c));
+  CHECK(refillLine(c)["key"] == "refill.settle");  // as after a Stop: a person may be at the tank
+  CHECK_FALSE(soon(s, [&] { return inletOpen(c); }, 2 * 60 * 1000, 5000));
+  REQUIRE(soon(s, [&] { return inletOpen(c); }, 2 * 60 * 1000, 5000));
+  CHECK(refillLine(c)["args"].value("litres", -1.0) == doctest::Approx(20.0).epsilon(0.05));  // planned from 25 L, to 45 L
+}
+
 TEST_CASE("Scenario: someone guessing the password cannot keep the owner from stopping a running mix (SD-051)") {
   sim::Simulation s(test::opts("neu"));
   Client phone{s, {}, "192.168.1.20"};  // set up from the owner's phone
@@ -2705,7 +2785,15 @@ TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pum
     CHECK_FALSE(circOff);
     CHECK_FALSE(refilled);  // refill waits while the cut round settles (RAT-055)
     CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling");
-    CHECK(until(s, [&] { return purpose(c) == "ec"; }, 4 * 60 * 1000));  // then it decides again
+    // then the fill that fell due meanwhile goes first, with no next round before it (SD-090) ...
+    bool ecFirst = false;
+    CHECK(until(s, [&] {
+      ecFirst = ecFirst || purpose(c) == "ec";
+      return c.state()["outputs"]["tank.inlet"] == true;
+    }, 4 * 60 * 1000));
+    CHECK_FALSE(ecFirst);
+    // ... and EC decides again once the fill's rise is checked
+    CHECK(until(s, [&] { return purpose(c) == "ec"; }, 30 * 60 * 1000));
   }
   {  // pH cut while its dose settles: 15 min with circulation before the next pH dose
     sim::Simulation s(test::opts("demo"));
@@ -2831,8 +2919,11 @@ TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pum
     CHECK(c.state()["controllers"]["ec"]["line"]["key"] == "ec.cut_circ_blocked");
     CHECK_FALSE(s.world().circulating());
     c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", true}, {"params", {{"start_below_l", 45}, {"target_l", 48}}}});
-    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 60000));  // not held by the cut round
-    CHECK(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));            // the level is back
+    s.step(5000);
+    // not held by the cut round, only by the reading's settling time after the refill was off (SD-090)
+    CHECK(c.state()["controllers"]["refill"]["line"]["key"] == "refill.settle");
+    CHECK(until(s, [&] { return c.state()["outputs"]["tank.inlet"] == true; }, 4 * 60 * 1000));
+    CHECK(until(s, [&] { return s.world().circulating(); }, 2 * 60 * 1000));  // the level is back
     CHECK(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling"; }, 30000));
   }
 }

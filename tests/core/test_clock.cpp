@@ -773,6 +773,44 @@ TEST_CASE("Restart: with broken or missing settings too, whether an inlet is ass
   CHECK(h.switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched_unknown");
 }
 
+TEST_CASE("Refill: a latch released while automation does not run starts the count of fills not judged again, as one released while it runs (#289, SD-082, SD-090)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  // saved: the inlet latched, one fill in a row not judged, a check pending and fills not confirmed
+  json st = json::parse(store.held("state.json").value_or("{}"));
+  st["latches"]["inlet.fault"] = {{"at", 1790000000}, {"why", {{"key", "why.level_invalid"}, {"text", "No valid level reading"}}}};
+  st["refill"] = {{"unjudged", 1},
+                  {"check", {{"at", 1790000000}, {"due", 1790000600}, {"expectedL", 3.0}, {"openMin", 1.5}}},
+                  {"unconfirmed", {{"startL", 20.0}, {"sumL", 3.0}, {"openMin", 1.5}}}};
+  json cfg = json::parse(store.held("config.json").value_or("{}"));
+  cfg["functions"]["refill"] = {{"enabled", true}, {"params", json::object()}};
+  bool maintenance = false;
+  SUBCASE("during a Stop") { st["stopped"] = true; }
+  SUBCASE("during maintenance") { maintenance = true; }
+  SUBCASE("with the refill switched off") { cfg["functions"]["refill"]["enabled"] = false; }
+  store.MemoryStorage::write("state.json", st.dump());
+  store.MemoryStorage::write("config.json", cfg.dump());
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  if (maintenance) REQUIRE(h.maintenance(30).status == 200);
+  for (int i = 0; i < 3; ++i) {
+    clk.ms += 1000;
+    h.tick();
+  }
+  REQUIRE(h.ackLatch("inlet.fault").status == 200);  // a person has looked
+  clk.ms += 1000;
+  h.tick();
+  h.flush();
+  const json saved = json::parse(store.held("state.json").value_or("{}"));
+  CHECK(saved.value("/refill/unjudged"_json_pointer, json()) == 0);
+  CHECK_FALSE(saved.value("/refill/check"_json_pointer, json()).is_object());
+  CHECK_FALSE(saved.value("/refill/unconfirmed"_json_pointer, json()).is_object());
+}
+
 TEST_CASE("Restart: an inlet latch saved with a damaged reason or cause still holds as an ordinary one, and no tick fails on it (SD-087)") {
   LockedStorage store;
   test::Clock clk;
