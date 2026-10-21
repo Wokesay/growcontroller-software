@@ -488,6 +488,20 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The Home Assistant server names a token file it cannot read** (#213):
+  a `gc_ha_server --token-file` that was missing, could not be read (no
+  permission, a folder it may not enter, a link that loops), was a folder
+  or held no token said only "No token: --token-file FILE or GC_HA_TOKEN",
+  even with `GC_HA_TOKEN` set, which sent you looking for the token rather
+  than the file. Now it names the file and why, as `--config` does. The
+  file named still wins over `GC_HA_TOKEN`, and `--token-file ""` (an unset
+  shell variable) is refused instead of quietly taking `GC_HA_TOKEN`. A
+  token given in place of its file is refused without showing it, since
+  the output may go to a log. Both files are opened once, so a named pipe
+  works as `--config` too. A `--config` that is a folder now says so
+  instead of "the mapping must be a JSON object". `tools/ha_server.test.mjs`
+  now also starts it with a `--data` it cannot create and a `--web` it
+  cannot read (a link that loops; a folder it may not enter, not as root).
 - **A missing saved state on a hub that ran before keeps everything
   stopped** (#238, SD-086): when `state.json` was gone (deleted, or a
   damaged entry the flash reports as not found) but the hub's events were
