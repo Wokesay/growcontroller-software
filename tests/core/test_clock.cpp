@@ -773,7 +773,7 @@ TEST_CASE("Restart: with broken or missing settings too, whether an inlet is ass
   CHECK(h.switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched_unknown");
 }
 
-TEST_CASE("Refill: a latch released while automation does not run starts the count of fills not judged again, as one released while it runs (#289, SD-082, SD-089)") {
+TEST_CASE("Refill: a latch released while automation does not run starts the count of fills not judged again, as one released while it runs (#289, SD-082, SD-090)") {
   LockedStorage store;
   test::Clock clk;
   test::FakeBus bus;

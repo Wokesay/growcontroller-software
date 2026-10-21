@@ -8,6 +8,22 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A mix mixes in before it ends** (#143, SD-057, step 3): with a
+  circulation pump, a mix now ends only once its nutrients have mixed in
+  (as long as EC or pH control waits after a dose, whichever is longer,
+  at least about 100 s per 20 L in the tank, at most 60 min); the mix
+  card shows the minutes left, offers no button to skip or cancel it, and
+  says so when the pump is not running (off or unknown for 10 s). EC and
+  pH control and refill decide only after that. A mix ended, stopped, or cut short by a failure,
+  an internal error or a restart with nutrients in makes EC and pH
+  control wait for the circulation pump and settle first, at least 15 min
+  and as long as the longer of their settle times; EC decides first, now
+  also when both waits end together. So does a mix whose pump did not run
+  while it mixed in. Their line says why while the pump does not run, and
+  such a wait logs no correction. Stirring by hand now waits at most 30
+  minutes after a part (SD-089): then the mix stops, names the parts of a pair
+  still missing with their amounts, and can go on ("Resume mix") or be
+  ended ("End mix"); a mix cancelled with a pair half in names them too.
 - **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
   bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
   amount", for an addition the maker gives a fixed amount per litre for,
@@ -499,7 +515,7 @@ listed in every release under "Security".
   Bailing it then could end in a false "did not rise" latch. Now the first
   fill after a release waits 3 min, as after a Stop, and plans from the
   level read then.
-- **Three gaps around the refill** (#289, SD-089): while a fill that is
+- **Three gaps around the refill** (#289, SD-090): while a fill that is
   due waited for the level to settle (after a Stop, a start, a release or
   irrigation), EC or pH could start a round that the fill then diluted;
   now they wait too. While a due fill waited for a round to settle, EC or
@@ -570,6 +586,8 @@ listed in every release under "Security".
   folder. The port search stops at 65535. The download's smoke test also
   starts it plainly with a data folder it cannot read (SD-074) and with no
   folder for the data, on macOS and Linux (#214).
+  `tools/ha_server.test.mjs` now also starts `gc_ha_server` with a
+  `--config` below a folder it may not enter (not as root).
 - **The hub keeps a file it cannot read** (#211, SD-081): a file of the
   hub that is there but cannot be read (no permission, for example root's
   files after a start with `sudo`, or a read error of the disk or flash)
