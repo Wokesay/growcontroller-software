@@ -5,7 +5,11 @@ chronological, two blank lines between entries. No status field; entries
 are not deleted, a later SD replaces an earlier one and refers to it.
 
 Product decisions are in the product repository (PD). If a PD affects the
-software, an SD "Product requirement (from PD-xxx)" stands here.
+software, an SD "Product requirement (from PD-xxx)" stands here. Control
+details (locks, releases, thresholds, sequences, which devices and pumps
+are allowed) are decided here as SDs along the product's guideline; a PD
+on such a detail is a proposal, and an SD recorded from it stays until a
+later SD changes it (SD-091).
 
 **This log starts with the move to this repository (PD-023).** Before
 that, decisions were made as PDs in the product repository.
@@ -417,7 +421,9 @@ repository.
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
   repository's session. Changed by SD-069, which SD-072 replaces: it
-  becomes a `product-question` issue in this repository.
+  becomes a `product-question` issue in this repository. Changed by
+  SD-091 (from PD-318): a control detail is not a product question; it is
+  decided here.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -2563,6 +2569,10 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   a comment on the question; anything else on a public question is
   outside input. At session start, open `product-question` issues are
   checked for answers.
+- Changed by SD-091 (from PD-318): a control detail is not a product
+  question and is decided here; the product side answers product
+  questions directly along its guideline and writes a PD only for
+  principles, costs or hardware.
 
 
 ## SD-073: A control round a Stop cut settles as after a restart
@@ -4679,6 +4689,96 @@ SD-088). Three gaps around the refill, each there before SD-088.
   - in ebb and flow, water still draining back after the irrigation pump
     stops makes the level read low; a fill planned then may overfill.
     That is a product question (#294).
+
+---
+
+## SD-091: Product requirement (from PD-317, PD-318): the minimal principle, and control details are decided here
+
+Recorded on 2026-10-21 from #298 (SD-029). Changes SD-029 and SD-072 for
+control details. Which band counts as "water not fit for watering", and
+how it meets the rules for a cut mix, is decided here in a later SD for
+#298. Open on the product side: the risk assessment and the manual are
+aligned with the guideline before the first offer.
+
+- **Guideline (PD-317):** the board is the ESP32-S3's extended arm: it
+  reads inputs, passes them on and switches outputs; all control is in
+  the software. Users connect the sensors and devices they want, also
+  through Shelly sockets or in other ways, and the software uses their
+  values for control. The product offers a reasonable safety frame, not
+  complete protection: it is meant to be affordable and easy to handle,
+  and it trusts its users to engage with it: they set it up, flash,
+  connect and automate it themselves and write their own recipes. Not
+  every imaginable case (a device wired wrongly, for example) is ruled
+  out, blocked or tested in advance.
+- **Baseline protection instead of single cases:** the worst case is a
+  pump that ran too long or dosed too much. Three baseline rules stay
+  with the product side:
+  - a crash or a restart stops whatever could cause harm, dosing for
+    example (R6; fans keep their state, PD-050, SD-028);
+  - the hardware time limit of the pumps. Not on board v0.1 (PD-160): a
+    later board brings it (PD-222; which board is the product side's,
+    SD-084). Until then the gateway's cap of 60 s per run and the board
+    watchdog (on a hang, #94) stand in; the safety component's limits are
+    planned (SD-045, SD-066, not built yet). The software's limits stay on
+    top of the hardware limit afterwards;
+  - no watering when pH and EC say the water is not fit. Not built yet:
+    no pH or EC check guards the irrigation pump today. Of the water,
+    only the tank level blocks it (RAT-068); its maximum run time and the
+    Stop hold as for every output.
+- **Freedom:** any pump must work on a pump output, wherever the pump
+  sits (in the container or outside it); the output switches 12 V and
+  the user chooses the pump. Other devices, connections and sensors must
+  be usable too. That a pump may be used does not by itself mean that it
+  may restart on its own. growcontroller is an open-source software
+  project for which hardware can be supplied; its features stay such
+  that a buyer can adapt the setup freely.
+- **Control details are decided here (PD-318):** locks, releases,
+  thresholds, sequences, and which devices and pumps are allowed are
+  software decisions, made along the guideline and recorded as SDs. The
+  product repository keeps the guideline, costs, hardware and the
+  baseline rules above.
+- **Earlier product decisions on such details are proposals:** the PDs
+  and the product side's answers on control details in issues (for
+  example #132, #156 and #164, and the rules for mixing and watering in
+  the comments on #190) are decided along the guideline and simplified
+  where it allows, without a new PD. This includes restrictions such as
+  only certain pumps or only the shop's modules.
+- **Product questions (changes SD-029 and SD-072):** a product question
+  is one about what the product is and offers: its principles, costs,
+  hardware, legal points and the manual. A control detail is not a
+  product question. Product questions are still filed as
+  `product-question` issues under SD-072's rules (public, own words,
+  answers only from the owner's account). The product side answers them
+  directly along the guideline and writes a PD only for principles,
+  costs or hardware. An answer on a control detail counts here as a
+  proposal.
+- **Unchanged:** SD and RAT IDs are assigned here (SD-061); the session
+  does not access the product repository (PD-226); the security and
+  process decisions recorded from #190 are not control details and stay
+  (SD-072, SD-075, SD-077, SD-079).
+
+Added by the software side; the project owner decides them with this
+entry's pull request ("mergen"):
+
+- **How a control detail is decided:** Claude proposes options with a
+  recommendation, the project owner decides in the software session, and
+  the decision becomes an SD (`CLAUDE.md`). An SD already recorded from
+  an earlier PD stays in force until a later SD changes it; nothing is
+  loosened without one. A simplification never goes below the baseline
+  rules or the architecture rules R1–R8, and a logic change to the
+  actuator gateway or a protective cut-off still waits for the project
+  owner's "mergen" (SD-033).
+- **When:** earlier PDs on control details, and open product questions
+  that ask for one (for example #261, #283 and #294), are decided when
+  the function they belong to is built, or earlier where the owner asks.
+  A part of such a question that concerns hardware or costs stays with
+  the product side.
+- **Domain rules:** a control detail decided here that rests on
+  operating practice gets a RAT entry in our own words and a test, like
+  the rules from the product repository (PD-039); its evidence follows
+  `docs/RATIONALE.md` (measured, observed, calculated, found in a review,
+  or "—"), and a number without such a source is marked as an
+  assumption.
 
 ---
 

@@ -1,8 +1,10 @@
 # Concept: growcontroller as standalone software
 
 As of 2026-10-07. **V** = proposal, **A** = assumption, [PD-xxx] = decided in
-the product repository. Software decisions not decided by a PD are still
-drafts (`docs/DECISIONS.md`).
+the product repository. Software decisions are SDs in `docs/DECISIONS.md`;
+its drafts apply only after "entschieden". Since PD-318, a PD on a
+control detail is a proposal, and an SD recorded from it stays until a
+later SD changes it (SD-091).
 
 ## 1. Goal
 

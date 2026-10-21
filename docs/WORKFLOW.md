@@ -215,3 +215,11 @@ devices, so 2–5 h per week with Claude triage. Rules:
   instead of deciding them (PD-100, SD-029). Claude files these questions
   as `product-question` issues here and never decides them as a PD
   (SD-072).
+- **Control details** (locks, releases, thresholds, sequences, which
+  devices and pumps are allowed) are not product questions: they are
+  decided here as SDs along the product's guideline. Earlier PDs on them
+  are proposals; an SD recorded from one stays until a later SD changes
+  it (PD-317, PD-318, SD-091). A product question is one about what the
+  product is and offers (principles, costs, hardware, legal points, the
+  manual); the product side answers it along the guideline and writes a
+  PD only for principles, costs or hardware.
