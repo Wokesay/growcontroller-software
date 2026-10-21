@@ -717,8 +717,11 @@ void Hub::tickImpl() {
   // valve closes, as the readings follow late (RAT-042, #272)
   if (act_.roleState(cfg_, "tank.inlet").value_or(false))
     for (const char* r : {"tank.ec", "tank.ph", "tank.level", "tank.water_temp"}) truth_.expectChange(r, now + 5 * kMinute);
+  // Maintenance explains a change only 10 s ahead, never past its end, renewed every tick before
+  // the readings are judged: ended early, a jump locks again within 10 s (RAT-042, #292)
   if (epoch < maintenanceUntil_)
-    for (const auto& [role, def] : cat_.roles) truth_.expectChange(role, now + (maintenanceUntil_ - epoch) * kSecond);
+    for (const auto& [role, def] : cat_.roles)
+      truth_.expectChange(role, now + std::min<Ms>((maintenanceUntil_ - epoch) * kSecond, 10 * kSecond));
   for (const auto& [key, sess] : probeSessions_) {
     if (sess.value("idle", false)) continue;  // left for 30 min: a jump is a jump again (RAT-042)
     std::string dev = jstr(sess, "device");
