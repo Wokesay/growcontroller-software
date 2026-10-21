@@ -21,7 +21,7 @@ listed in every release under "Security".
   also when both waits end together. So does a mix whose pump did not run
   while it mixed in. Their line says why while the pump does not run, and
   such a wait logs no correction. Stirring by hand now waits at most 30
-  minutes after a part: then the mix stops, names the parts of a pair
+  minutes after a part (SD-089): then the mix stops, names the parts of a pair
   still missing with their amounts, and can go on ("Resume mix") or be
   ended ("End mix"); a mix cancelled with a pair half in names them too.
 - **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a

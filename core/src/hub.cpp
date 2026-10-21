@@ -2021,7 +2021,7 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
     j.message = say("mix.circulate");
   } else if (j.guided) {
     j.state = "waiting_user";
-    j.waitUntil = c.now + kStirWaitMax;  // a mix never waits without end (SD-057)
+    j.waitUntil = c.now + kStirWaitMax;  // a mix never waits without end (SD-057, SD-089)
     j.message = say("mix.stir", {{"name", st.dose.name}, {"ml", st.mlDone}});
   } else {
     startJobStep(c);

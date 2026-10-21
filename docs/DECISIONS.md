@@ -4584,35 +4584,52 @@ Decided by the project owner on 2026-10-20 in the software session
 ## SD-089: Mixing to the target: three details from building SD-057
 
 Decided by the project owner on 2026-10-21 in the software session, from
-the choices `domain` listed for building SD-057 (S4, S9, S20). They fill
-in what SD-057 leaves open; the rest of SD-057 stands.
+the choices `domain` listed in #143 for building SD-057 (S4, S9, S20).
+They fill in what SD-057 leaves open and change one point of it: a
+timeout while stirring by hand stops the mix instead of ending it (S9).
+The rest of SD-057 stands.
 
-- **Stirring by hand waits at most 30 min (S9).** After each part a
-  guided mix waits at most 30 minutes of operating time for "Continue".
-  Then it stops and stays open: "Resume mix" goes on with the next part,
-  "End mix" ends it. The message names every part of a pair still
-  missing, with its amount (RAT-054). This reads SD-057's "a timeout ...
-  ends the mix" as "stops the mix", so a missing part of a pair can still
-  be caught up through the hub, which a hand dose (at most 5 ml) cannot
-  do. Cancelling ends the mix with the pair's message, as SD-057 says.
-  Built in #268.
-- **The first step to the target uses the largest known effect, without
-  the step cap (S4).** Way 1 turns about 80 % of the gap into millilitres
-  with the largest of the start effect fixed in code, the recipe's
-  reference and the learned effect, the same choice the step limit makes
-  (RAT-055): a typo in a recipe can never raise the dose. `max_ec_step`
-  does not cap this first step; the 80 % already bound it. A product
-  weaker than the start effect gets a smaller first step and more
-  correction rounds.
+- **Stirring by hand waits at most 30 min (S9).** After each part but
+  the last, a guided mix waits at most 30 minutes of operating time for
+  "Continue". Then it stops and stays open: "Resume mix" goes on with the
+  next part, "End mix" ends it, and so do a prime, a calibration, a hand
+  dose or a restart (R6). The message names every part of a pair still
+  missing, with its amount (RAT-054). SD-057 had the timeout end the mix;
+  a stopped mix lets a missing part of a pair still be caught up through
+  the hub, which a hand dose (5 ml by default, RAT-039) cannot do.
+  Cancelling ends the mix with the pair's message, as SD-057 says. Built
+  in #268.
+- **The first step to the target is capped like every EC step (S4).**
+  Way 1 turns about 80 % of the gap into millilitres with the largest of
+  the start effect fixed in code, the recipe's reference and the learned
+  effect, and the step limit (`max_ec_step`, RAT-056) caps it, converted
+  with the same largest effect, as SD-057's first safeguard says. An
+  overshoot can only be undone by draining and diluting. With the cap,
+  the overshoot of a product stronger than the largest known effect
+  stays bounded, whatever the gap: at most the step limit times how far
+  the product exceeds 1.25 times that effect (0.75 mS/cm for a product
+  twice as strong, with the default limit); without it, the overshoot
+  grows with the gap (1.2 mS/cm for a gap of 2.0). A large gap (above
+  1.25 times the step limit, a fresh fill from RO water, for example)
+  costs one more correction round; a product weaker than the start
+  effect gets a smaller first step and more rounds. This replaces the
+  owner's first answer (no step cap), which was given without the
+  overshoot risk; `domain` assessed it (common concentrates are up to
+  about 1.8 times the start effect, and the reference is optional). Not
+  built yet; comes with way 1 (a later step of SD-057).
 - **Mixing to the target needs EC control switched on (S20).** With EC
   control off, the hub offers way 2 (a fixed pattern) and proposes the
-  probe's EC as the water's EC. There stays one correction path, with
-  its latches and its learning.
-
-Not chosen: ending the mix at the stir limit, or a limit of 60 min (S9);
-EC control's own scheme with the step cap for the first step, which
-roughly halves it on a fresh fill (S4); way 1 dosing its 80 % and
-stopping, or a correction of the mix's own next to EC control (S20).
+  probe's EC as the water's EC, only from a valid reading (SD-054),
+  never a missing one (R5). There stays one correction path, with its
+  latches and its learning. Not covered yet: EC control switched on but
+  latched. Not built yet; comes with ways 1 and 2 (later steps of
+  SD-057).
+- **Not chosen:** ending the mix at the stir limit, or a limit of 60 min
+  (S9); the first step without the step cap, faster on a fresh fill
+  but overshooting with a product stronger than 1.25 times the largest
+  known effect, or uncapped only once the recipe has learned its own
+  effect (S4); way 1 dosing its 80 % and stopping, or a correction of
+  the mix's own next to EC control (S20).
 
 ---
 

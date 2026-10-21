@@ -150,7 +150,7 @@ nutrient solution". This comes straight from the resolver.
 | pH bottle in the recipe | the recipe editor does not list pH bottles; the bottle editor does not save a bottle a recipe holds as a pH bottle and says how to take it out (#159) |
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
-| Walked away during a guided mix without a circulation pump | after 30 min without "Continue" the mix stops, names a part of a pair still missing with its amount, offers "Resume mix" / "End mix"; the minutes left show while it waits (SD-057) |
+| Walked away during a guided mix without a circulation pump | after 30 min without "Continue" the mix stops, names a part of a pair still missing with its amount, offers "Resume mix" / "End mix"; the minutes left show while it waits (SD-057, SD-089) |
 | Skipping the mixing-in at the end | not offered, nor "Cancel": nothing is left to dose, and control decides only on a mixed tank; the Stop stays for an emergency (SD-057) |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | while the hub runs: event "Pump A not responding", then "Pump A is back" with "Pump 2 on the dosing block. Is it still on the bottle 'Part A'?". A start logs neither, also for devices that answer later, so a pump that first answers after a start asks nothing; Devices shows it offline until it answers (#115) |
