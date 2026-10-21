@@ -101,14 +101,35 @@ test("--app takes the token only from SUPERVISOR_TOKEN and writes nothing withou
   assert.ok(!existsSync(data));
 });
 
-test("a --config it cannot read ends with a message, not a crash (#213)", { skip }, () => {
-  // its status cannot be read (a link to itself; also a folder it may not enter)
+test("a --config through a link to itself ends with a message, not a crash (#213)", { skip }, () => {
+  // its status cannot be read, for root too
   const dir = mkdtempSync(join(tmp, "config-"));
   symlinkSync("loop", join(dir, "loop"));
   const r = run(["--config", join(dir, "loop", "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
   assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
   assert.match(r.stderr, /ha\.json: cannot be read \(.+\)\n/);
   assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --config below a folder it may not enter ends with a message, not a crash (#213)", { skip }, (t) => {
+  // the file is there, but its status cannot be read
+  const dir = mkdtempSync(join(tmp, "config-"));
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  writeFileSync(join(locked, "ha.json"), JSON.stringify({ url: "http://127.0.0.1:9" }));
+  chmodSync(locked, 0o000);
+  try {
+    try {
+      statSync(join(locked, "ha.json"));
+      return t.skip("this process enters any folder");
+    } catch {}
+    const r = run(["--config", join(locked, "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    assert.match(r.stderr, /ha\.json: cannot be read \(Permission denied\)\n/);
+    assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+  } finally {
+    chmodSync(locked, 0o700); // so it can be removed
+  }
 });
 
 test("a --config that is there but cannot be opened says so, not that it holds no mapping (#213)", { skip }, (t) => {
