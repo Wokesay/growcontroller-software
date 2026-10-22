@@ -29,7 +29,7 @@ export const de = {
   "area.manual": "Handbetrieb",
   "area.manual.climate": "Der Hub regelt das Klima noch nicht und schaltet nur ein, wenn du tippst. Was dein Klimaregler steuert, lass vorerst daran. Befeuchter und Entfeuchter am Hub gehen bei jedem Neustart aus, Abluft und Umluft nach einem Stromausfall von selbst wieder an.",
   "area.manual.light": "Der Hub schaltet das Licht nur ein, wenn du tippst, und bei jedem Neustart aus. Für feste Lichtzeiten steck es vorerst direkt in deine Zeitschaltuhr, nicht in eine WLAN-Steckdose des Hubs.",
-  "area.manual.irrigation": "Der Hub schaltet die Gießpumpe nur ein, wenn du tippst, und gießt noch nicht nach Plan. Lass deine Bewässerungssteuerung laufen; eine Pumpe daran schützt der Hub aber nicht vor Trockenlauf.",
+  "area.manual.irrigation": "Der Hub schaltet die Gießpumpe nur ein, wenn du tippst, und gießt noch nicht nach Plan. Lass deine Bewässerungssteuerung laufen; eine Pumpe daran prüft der Hub aber nicht – weder auf Trockenlauf noch auf pH und EC.",
   // Nothing assigned: what to connect, and where to assign it
   "area.empty.climate": "Keine Klimageräte zugeordnet",
   "area.empty.climateText": "Steck jedes Gerät, das der Hub schalten soll (Abluft, Umluft, Befeuchter, Entfeuchter), in eine eigene schaltbare WLAN-Steckdose (Shelly). Unter Geräte wählst du an der Steckdose, was eingesteckt ist.",
@@ -69,7 +69,7 @@ export const en: Record<keyof typeof de, string> = {
   "area.manual": "Manual mode",
   "area.manual.climate": "The hub does not control the climate yet and switches on only when you tap. Leave what your climate controller runs on it for now. A humidifier or dehumidifier on the hub goes off at every restart; exhaust and circulation fans come back on by themselves after a power cut.",
   "area.manual.light": "The hub switches the light on only when you tap, and off at every restart. For fixed light hours, plug it straight into your own timer for now, not into a smart plug the hub switches.",
-  "area.manual.irrigation": "The hub switches the watering pump on only when you tap and does not water on a schedule yet. Keep your watering controller running, but the hub does not protect a pump on it from running dry.",
+  "area.manual.irrigation": "The hub switches the watering pump on only when you tap and does not water on a schedule yet. Keep your watering controller running, but the hub checks no pump on it – neither for running dry nor for pH and EC.",
   "area.empty.climate": "No climate devices assigned",
   "area.empty.climateText": "Plug each device the hub should switch (exhaust, circulation fan, humidifier, dehumidifier) into its own smart plug (Shelly). Then, under Devices, set on the plug's card what is plugged in.",
   "area.empty.light": "No light assigned",

@@ -145,7 +145,13 @@ std::string Hub::newId(const std::string& prefix) {
 }
 
 Ctx Hub::ctx() {
-  return Ctx{cat_, cfg_, rt_, truth_, log_, pumps_, clock_.nowMs(), clock_.epoch(), stopped_, maintenanceUntil_};
+  // A calibration on the device of the tank's pH or EC probe, idle ones too: its readings are not the tank's
+  bool probeCalibrating = false;
+  for (const char* role : {"tank.ph", "tank.ec"})
+    if (const Binding* b = cfg_.binding(role))
+      for (const auto& [key, sess] : probeSessions_)
+        probeCalibrating = probeCalibrating || jstr(sess, "device") == b->device;
+  return Ctx{cat_, cfg_, rt_, truth_, log_, pumps_, clock_.nowMs(), clock_.epoch(), stopped_, maintenanceUntil_, probeCalibrating};
 }
 
 void Hub::logEvent(const std::string& type, const std::string& sev, Msg title, Msg text) {
@@ -311,6 +317,7 @@ void Hub::boot() {
   // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
+  act_.holdWatering(clock_.nowMs());  // a dose the restart cut has not mixed in (SD-093)
   if (stopped_ && !stateSaid)  // a kept or missing state says why everything stays off
     log_.add(bootEpoch_, "system", "alarm", say("ev.stop_kept"), say("ev.stop_kept.text"));
   if (auto s = read(kJobFile)) {

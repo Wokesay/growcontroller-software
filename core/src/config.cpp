@@ -607,6 +607,10 @@ std::string ParamView::str(const std::string& key) const {
 }
 
 ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn) {
+  return effectiveParams(cat, c, fn, c.grow.state == "running" ? c.grow.phase : -1);
+}
+
+ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn, int phase) {
   json v = json::object();
   const FunctionDef* fd = cat.function(fn);
   if (!fd) return ParamView(v);
@@ -615,8 +619,8 @@ ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string
   auto it = c.functions.find(fn);
   if (it != c.functions.end())
     for (const auto& [k, val] : it->second.params.items()) v[k] = val;
-  if (c.grow.state == "running" && c.grow.phase >= 0 && c.grow.phase < static_cast<int>(c.grow.phases.size())) {
-    const auto& ph = c.grow.phases[static_cast<size_t>(c.grow.phase)].params;
+  if (c.grow.state == "running" && phase >= 0 && phase < static_cast<int>(c.grow.phases.size())) {
+    const auto& ph = c.grow.phases[static_cast<size_t>(phase)].params;
     for (const auto& p : fd->params)
       if (p.phase && ph.contains(p.key)) v[p.key] = ph[p.key];
   }
