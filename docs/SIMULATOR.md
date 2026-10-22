@@ -31,6 +31,7 @@ default password (EN 18031-1).
 |---|---|---|
 | EC effect part A, part B | 0.275 mS/cm per ml/L each | RAT-055 (0.275 per ml/L of the pair, RO water, 20 L) |
 | EC effect CalMag | 0.217 mS/cm per ml/L | RAT-080 |
+| EC of a blend | the parts' effects add up, linear and independent of the tank's EC | **Assumption**; real EC rises somewhat more slowly at high concentrations. The demo recipes come out at about 0.267 and 0.271 per ml/L, so the twin shows where each recipe's learned effect is kept, not recipes learning very different values (SD-092) |
 | pH− | −4.0 pH per ml/L × buffer factor 1.6/(0.6+EC); +1.04 mS/cm per ml/L | RAT-050 measured −5.0 (once, at EC 2.96), RAT-053; the buffer factor is an **assumption** |
 | pH drop from A/B | −0.12/−0.10 pH per ml/L | **Assumption** (based on an observation on the reference installation) |
 | Mixing | t63 26 s with circulation pump, 240 s without, each × V/20 L (at least × 0.5) | RAT-052, measured at 20.4 L with circulation; the scaling with volume and the value without pump are **assumptions** |

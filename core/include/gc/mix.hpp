@@ -87,4 +87,32 @@ PhDose planPhDose(double ph, double target, double effectPerMlL, double volumeL,
 // Wirkung klemmen: beobachtet < 0,25 × Start → Start; > 4 × Start → 4 × Start (RAT-055).
 double clampEffect(double observed, double start);
 
+// A recipe's EC effect, per ml/L of the parts EC control scales (RAT-085). Nothing learned, it
+// starts from the larger of the start effect fixed in code and the effect its reference implies
+// (if within a quarter to four times that start effect), so a reference only ever makes a round
+// smaller. The dose uses the learned effect within that band; the cap converts with the larger of
+// the start and the dose's effect, so neither a small reference nor a small learned effect widens
+// it (SD-057, SD-092, RAT-056, RAT-081).
+struct RecipeEffect {
+  double start = kEcStartEffect;
+  double dose = kEcStartEffect;
+  double largest = kEcStartEffect;
+};
+RecipeEffect recipeEffect(const RecipeCfg& recipe, double learned);
+// A learned EC effect within a quarter to four times the start effect fixed in code; below it, or
+// missing, the recipe's start (RAT-055)
+double clampEcEffect(double observed, double start);
+// What EC control learned for a recipe; missing = nothing learned (R5)
+double learnedEcEffect(const RuntimeState& rt, const std::string& recipe);
+// What an edit of a recipe keeps of its learned EC effect (SD-092, RAT-085). A change of the parts
+// EC control scales or of their ratio (not one of all amounts alike or the name) scales it up by
+// what is no longer scaled (fixed now or removed), at most to the band's top, so a round doses no
+// more than if it were kept; then it stays only if it is at least the recipe's new start, else
+// nothing is learned. A reference raised above it forgets it too.
+struct EffectEdit {
+  bool changed = false;  // the scaled parts or their ratio changed: a round planned on them learns nothing (RAT-057)
+  double learned = kNaN;
+};
+EffectEdit editEcEffect(const RecipeCfg& before, const RecipeCfg& after, double learned);
+
 }  // namespace gc
