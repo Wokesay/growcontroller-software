@@ -15,6 +15,9 @@ computer.
 
 ![The web app in the demo: tank with pH, EC and water temperature, the control rows with their state, room climate and switched outputs](docs/images/overview.png)
 
+> **For testing only:** this version does not meet the requirements of
+> the EU Cyber Resilience Act (CRA).
+
 > **Status: prototype `0.1.0-proto.4`.** Core, simulator and web app run;
 > the port to the ESP32-S3 follows (`firmware/README.md`). The Home
 > Assistant app only reads sensors and switches nothing. Do not use it to

@@ -127,6 +127,37 @@ TEST_CASE("Watchdog: neutral mit Grund – Pflegemodus, Anlauf, kein Ziel") {
   CHECK(f.item(f.eval(), "band.ph")->status == "neutral");
 }
 
+TEST_CASE("Watchdog: maintenance rests the pH, EC and water temperature bands, never a failed reading (#297)") {
+  Fix f;
+  f.cfg.functions["ec_control"].enabled = true;
+  f.cfg.functions["water_temp_watch"].enabled = true;
+  f.readings["tank.ph"].value = 7.5;  // out of band
+  Reading ec;
+  ec.role = "tank.ec";
+  ec.quality = Quality::Implausible;  // as the maintenance event says: impossible values are still reported
+  ec.reason = say("truth.implausible", {{"value", 25.0}, {"unit", " mS/cm"}, {"min", 0.0}, {"max", 20.0}});
+  f.readings["tank.ec"] = ec;
+  Reading wt;
+  wt.role = "tank.water_temp";
+  wt.quality = Quality::Frozen;  // and frozen ones
+  wt.reason = say("truth.frozen");
+  f.readings["tank.water_temp"] = wt;
+  const Epoch now = 1790010000, maint = now + 1800;
+  auto w = f.eval(now, 1790000000, maint);
+  CHECK(f.item(w, "band.ph")->status == "neutral");
+  CHECK(f.item(w, "band.ph")->text.key == "watch.maintenance");
+  REQUIRE(f.item(w, "reading.tank.ec"));
+  CHECK(f.item(w, "reading.tank.ec")->status == "problem");
+  REQUIRE(f.item(w, "reading.tank.water_temp"));
+  CHECK(f.item(w, "reading.tank.water_temp")->status == "problem");
+  CHECK(w.overall != "ok");
+  // a valid water temperature out of its range rests too, while maintenance lasts
+  f.readings["tank.water_temp"].quality = Quality::Ok;
+  f.readings["tank.water_temp"].value = 35.0;
+  REQUIRE(f.item(f.eval(now, 1790000000, maint), "band.water_temp"));
+  CHECK(f.item(f.eval(now, 1790000000, maint), "band.water_temp")->text.key == "watch.maintenance");
+}
+
 TEST_CASE("Watchdog: gesperrter Regler und fehlender Einmesswert sind Probleme") {
   Fix f;
   f.cfg.canisters = {{"a", "A", "nutrient", "C1", "", "", kNaN}};

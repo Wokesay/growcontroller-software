@@ -43,6 +43,15 @@ struct MixRequest {
   double waterL = kNaN;        // frisches Wasser für diesen Lauf
   std::string mode = "new";    // new = neu ansetzen | topup = auffüllen
   bool confirmRepeat = false;  // Rückfrage "vor kurzem gemischt" bestätigt
+  // A fixed pattern to a target EC (SD-057 way 2, SD-098): "recipe" = the recipe's amounts, "target" = scaled
+  // to targetEc from the water's EC; missing values stay NaN, never 0 (R5)
+  std::string amounts = "recipe";
+  double targetEc = kNaN, waterEc = kNaN;
+  double targetMin = kNaN, targetMax = kNaN;  // the EC target's range from the catalog
+  // EC control switched on and not locked would take the tank to its own target afterwards (SD-089 S20)
+  bool ecControlOn = false;
+  double ecControlTarget = kNaN;
+  double phEcFloor = kNaN;  // the EC below which pH control never doses (RAT-046); NaN with pH control off
 };
 
 struct MixPlan {
@@ -54,6 +63,11 @@ struct MixPlan {
   Msg after;  // Hinweis nach dem Lauf (pH zuletzt)
   double totalMl = 0;
   Ms totalMs = 0;
+  // A fixed pattern to a target EC (SD-098): the common factor on the scaled parts (at most 1, missing while
+  // refused) and the EC to expect; infos are notes, not warnings
+  std::string amounts = "recipe";
+  double targetEc = kNaN, waterEc = kNaN, factor = 1.0, expectedEc = kNaN;
+  std::vector<Msg> infos;
 };
 void to_json(json& j, const MixPlan& p);
 
@@ -99,6 +113,12 @@ struct RecipeEffect {
   double largest = kEcStartEffect;
 };
 RecipeEffect recipeEffect(const RecipeCfg& recipe, double learned);
+// The effect a fixed pattern to a target EC works from (SD-098): the reference's over all the recipe's
+// parts (fixed ones taken as strong as the rest, an assumption), NaN without a reference inside the
+// band; a learned effect from the band's bottom counts only where it is larger (one above the band at
+// its top, RAT-056), so it only makes amounts smaller. No floor at the start effect: without feedback,
+// a weak product would never reach its target.
+double patternEffect(const RecipeCfg& recipe, double learned);
 // A learned EC effect within a quarter to four times the start effect fixed in code; below it, or
 // missing, the recipe's start (RAT-055)
 double clampEcEffect(double observed, double start);

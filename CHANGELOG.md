@@ -8,6 +8,14 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A prototype says it is for testing only** (SD-096, from #250): the
+  sign-in page (also when the first password is set), the Home Assistant
+  app's introduction and Settings › Display and info say "For testing
+  only: this version does not meet the requirements of the EU Cyber
+  Resilience Act (CRA)" whenever the version is a pre-release
+  (`-proto`, `-beta`) or cannot be read; a Stable release shows nothing.
+  The README says so too, and the release notes of a pre-release start
+  with it.
 - **No watering on water not fit for it** (#298, SD-093, RAT-086): the
   watering pump no longer switches on, by hand, over the API or for a
   test, and a running one goes off, when the tank's pH is below 4.0 or
@@ -23,6 +31,25 @@ listed in every release under "Security".
   longer in a large tank), and a run that starts stops the pump. There is no override. A refused
   switch-on says why and when to try again, and an event says why the
   pump went off.
+- **Mixing to an EC without measuring** (#143, SD-057, step 5, SD-098):
+  without a probe, or without circulation, the mix page can now scale a
+  recipe to a target EC from the water's EC, taken from a meter or
+  entered as 0 for reverse-osmosis water. The hub works from the larger
+  of the effect the recipe's chart EC implies and what EC control learned
+  for it, scales every part (but a fixed one) by one factor, and never
+  doses more than the recipe's own amounts: a target above that is not
+  met, and the plan says what EC to expect and how to get more. Without a
+  chart EC that fits the amounts, a target in the EC target's range or
+  the water's EC (never taken as 0), it is refused with the reason; the
+  recipe's amounts can always be mixed. It is offered while EC control
+  is off or locked: switched on, EC control takes the tank to its own
+  target after the mix, and the page says so. The plan says it runs
+  without measuring, warns of water above 0.4 mS/cm on a new fill and,
+  with pH control on, of the EC the pH correction adds, or that the pH
+  is corrected by hand when the EC to expect is below pH control's EC
+  lock; a water EC above the EC target's range is refused as a likely
+  µS/cm. On a new fill the probe's reading can be taken over as the
+  water's EC. The mix card names the target and the EC to expect.
 - **Each recipe learns its own EC effect** (#143, SD-057, step 4,
   SD-092): EC control learned one effect for whatever recipe it dosed;
   a phase moving to another recipe started from it. Now each recipe
@@ -163,9 +190,16 @@ listed in every release under "Security".
   app does.
 
 ### Changed
-- **Plan: the demo goes public after 0.1.0-proto.5** (SD-098): the demo
+- **Plan: the demo goes public after 0.1.0-proto.5** (SD-099): the demo
   starting in English (#302) is a precondition of proto.5, and the demo
   is announced to a wider public only once proto.5 is released.
+- **The mix plan's, a dose split's and a pH dose's messages in both
+  languages** (#143, SD-057, step 5): the hub sends them in English with a
+  key, the web app shows them in German by that key. For API clients: a
+  dose split's reason inside a mix plan's error or an EC round's reason is
+  now wrapped as `mix.part` with the split's own message in `args.reason`,
+  and a recipe step without an amount is `mix.amount_missing` instead of
+  `mix.amount` (`docs/API.md`).
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,
@@ -566,6 +600,18 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Maintenance mode says what it does** (#297, RAT-042): its entry in
+  the event log and the overview no longer say that locks and sensor
+  checks all stay active. While it lasts, readings may jump without
+  locking, and monitoring does not assess pH, EC and water temperature;
+  missing, frozen or impossible values are still reported, and every
+  lock stays on. Next to the button that ends it, a hint says to end it
+  once the work at the tank is done and the readings are steady: after
+  that, a jump locks the reading until it has stayed steady for 15 min.
+- **The smart-plug safety note names the fans that come back on** (#266):
+  it said that every outlet stays off after a power cut. The outlets of
+  the exhaust and circulation fans come back on by themselves (PD-050),
+  unless a Stop is active (PD-076), and the note now says so.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder
@@ -1159,6 +1205,19 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **CI and the app image build with Node 22.23.4** (SD-070, SD-071): the
+  Node that builds the web app and checks its packages' registry
+  signatures moves from 22.23.3 to Node's security release of
+  2026-10-20: OpenSSL 3.5.9, new root certificates and, for Node 22,
+  CVE-2026-105481, CVE-2026-105482, CVE-2026-106069, CVE-2026-106072,
+  CVE-2026-106073, CVE-2026-106074 and CVE-2026-111497
+  (https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+  No Node code ships, and npm stays 10.9.9; every package it fetches is
+  checked against its sha512 in the lockfile and its registry signature,
+  so none of these could have changed a published artifact. On amd64,
+  the app image's `node` image now unpacks the build from `nodejs.org`,
+  checked against the Node release keys, instead of an unofficial build.
+  No published version affected.
 - **The session comes only from a cookie named exactly `gc_session`**
   (Home Assistant app, simulator and firmware): the servers now split the
   browser's `Cookie` header into its name=value pairs and take the session
