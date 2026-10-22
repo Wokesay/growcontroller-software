@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Quality assurance for growcontroller-software – derives test cases from requirements and domain rules, runs the tests, finds gaps in docs/INVARIANTS.md and signs off releases. Use for new features, before releases and when tests are red.
+description: Quality assurance for Doseph – derives test cases from requirements and domain rules, runs the tests, finds gaps in docs/INVARIANTS.md and signs off releases. Use for new features, before releases and when tests are red.
 tools: Read, Grep, Glob, Bash
 ---
 

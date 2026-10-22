@@ -25,8 +25,9 @@ only the sync workflow may write there.
 **Done:**
 
 1. The project owner created the private repository
-   `Wokesay/growcontroller-software` (PD-017). The Claude GitHub app is
-   approved for it (PD-017).
+   `Wokesay/growcontroller-software` (PD-017), renamed to
+   `Wokesay/doseph` with the project's new name (PD-347, #312). The
+   Claude GitHub app is approved for it (PD-017).
 2. `software/` moved from the product repository with its Git history
    (PD-023). CI, agents and `CLAUDE.md` moved along; the workflows run
    from the repository root.

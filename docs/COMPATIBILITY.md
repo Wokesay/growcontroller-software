@@ -1,6 +1,6 @@
 # Hardware compatibility
 
-What works with growcontroller, sorted by how it is connected (SD-049).
+What works with Doseph, sorted by how it is connected (SD-049).
 As of 2026-10-12. The list describes the code on `main`; what the latest
 release (`0.1.0-proto.4`) does not have yet is marked "from the next
 release". The list grows with every report
@@ -175,7 +175,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 | Connection | What fits | Status | Notes |
 |---|---|---|---|
-| 8 sensor ports | growcontroller sensor heads, found automatically; wired sensors of other makers that use Modbus over RS485 (9600 baud), once you pick their type in the app | Not yet (M1) | Each port is its own bus with 12 V. Which sensors of other makers the app will know is open; report yours. The app uses a value only after a plausibility check, and pH and EC only with a calibration made in growcontroller: a value calibrated in the sensor shows as "Calibrated elsewhere" and is never used for control (RAT-025). |
+| 8 sensor ports | the hub's own sensor heads, found automatically; wired sensors of other makers that use Modbus over RS485 (9600 baud), once you pick their type in the app | Not yet (M1) | Each port is its own bus with 12 V. Which sensors of other makers the app will know is open; report yours. The app uses a value only after a plausibility check, and pH and EC only with a calibration made in Doseph: a value calibrated in the sensor shows as "Calibrated elsewhere" and is never used for control (RAT-025). |
 | pH and EC inputs | a pH electrode; an EC probe with K=1 (calculated for about 20 µS/cm to 20 mS/cm); a 10 kΩ NTC for the water temperature (B 3950, assumed) | Not yet (M1) | Each input is isolated on its own, so the probes do not disturb each other. They take the probe itself: a signal board with its own amplifier (DFRobot Gravity) or an Atlas EZO circuit does not belong there. The pin assignment in #94 has no 1-Wire input for a DS18B20. At setup you choose whether the ESP32-S3 compensates EC for the water temperature (needs a water temperature sensor, for example the NTC) or not (about 2 % off per °C away from the calibration temperature; calibrate when the tank is at its coolest usual temperature). With compensation, EC and pH are not corrected while the water temperature sensor fails (SD-054, SD-060). A pH probe whose zero point is more than 30 mV off is refused at calibration: clean it, soak it, use fresh buffers, otherwise replace it; until then pH is corrected only after you confirm a warning (SD-060). |
 | 3 contact inputs | switch contacts, for example a float switch, and leak sensors | Not yet (M1) | |
 | 10 dosing pump outputs, 12 V | 12 V DC dosing pumps | Not yet (M1) | One pump runs at a time. All 10 outputs together switch off above about 1.8 A (calculated). There is no time limit in the hardware; the firmware limits run time, volume and pause per pump (SD-045). For pH− in a tank under about 30 L, choose a pump of about 20–30 ml/min or less: a first pH− dose is capped at about 0.06 ml per litre of tank (0.6 ml in 10 L), and a pump runs at least 1 s (RAT-050; calculated, pH− products differ in strength). |
@@ -202,7 +202,7 @@ values marked "calculated" or "assumed" are checked on the first samples.
 
 ## Report a device
 
-- [Report a device](https://github.com/Wokesay/growcontroller-software/issues/new?template=device.yml)
+- [Report a device](https://github.com/Wokesay/doseph/issues/new?template=device.yml)
   with the issue form "Device or sensor": the device, how it is connected,
   whether it works, what the app showed, and the software version. You do
   not need to open a pull request; the issue is enough.

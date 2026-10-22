@@ -49,7 +49,7 @@ function scalar(s) {
 
 const config = parseFlatYaml(read("ha/app/config.yaml"));
 const version = read("VERSION").trim();
-const IMAGE = "ghcr.io/wokesay/growcontroller-ha";
+const IMAGE = "ghcr.io/wokesay/doseph-ha";
 
 test("the reader of the app's YAML refuses what it does not know", () => {
   assert.deepEqual(parseFlatYaml('a: "1.0"\nb:\n  - x\nc:\n  8099/tcp: 8099\nd: true\n'), {
@@ -63,6 +63,12 @@ test("the reader of the app's YAML refuses what it does not know", () => {
   assert.throws(() => parseFlatYaml("a: [x, y]\n"));
   assert.throws(() => parseFlatYaml("a: x # comment\n"));
   assert.throws(() => parseFlatYaml("a:\n  - x\n  k: v\n"));
+});
+
+test("the app is Doseph; its slug is new since 0.1.0-proto.4 (#312)", () => {
+  assert.equal(config.name, "Doseph");
+  assert.equal(config.slug, "doseph");
+  assert.match(config.description, /^Doseph's /);
 });
 
 test("the app installs the image of this release", () => {
@@ -158,9 +164,9 @@ test("the server's --app mode and the image match the app", () => {
 test("the app's AppArmor profile allows only what the server needs, and the smoke test runs the image in it (#80)", () => {
   const text = read("ha/app/apparmor.txt");
   // The Supervisor takes the name from the one line that starts with
-  // "profile" and renames it to the app's full slug (<hash>_growcontroller).
+  // "profile" and renames it to the app's full slug (<hash>_doseph).
   assert.deepEqual([...text.matchAll(/^profile ([^ ]+).*$/gm)].map((m) => m[1]), [config.slug]);
-  assert.match(text, /^#include <tunables\/global>\n+profile growcontroller flags=\(attach_disconnected,mediate_deleted\) \{$/m);
+  assert.match(text, /^#include <tunables\/global>\n+profile doseph flags=\(attach_disconnected,mediate_deleted\) \{$/m);
   const profile = text.slice(text.search(/^profile /m));
   const rules = profile.slice(profile.indexOf("{") + 1, profile.lastIndexOf("}")).split("\n").map((l) => l.trim()).filter(Boolean);
   // A new rule needs a review: it widens what a flaw in the web server can reach.
@@ -180,7 +186,7 @@ test("the app's AppArmor profile allows only what the server needs, and the smok
     "signal (receive) peer=runc,",
     "signal (receive) peer=crun,",
     "signal (receive) peer=dockerd,",
-    "signal (send,receive) peer=*_growcontroller,",
+    "signal (send,receive) peer=*_doseph,",
     // docker-init starts the server (the Supervisor's init: true)
     "/sbin/docker-init ix,",
     "/gc_ha_server ix,",
@@ -197,13 +203,13 @@ test("the app's AppArmor profile allows only what the server needs, and the smok
   // /etc/hosts) and fails on anything the profile refused.
   const workflow = read(".github/workflows/app.yml");
   const smoke = workflow.slice(workflow.indexOf("name: Smoke test"), workflow.indexOf("name: Core tests with the image's toolchain"));
-  assert.ok(smoke.includes(`sed 's/^profile growcontroller /profile 0000ci00_growcontroller /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"`));
+  assert.ok(smoke.includes(`sed 's/^profile doseph /profile 0000ci00_doseph /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"`));
   assert.ok(smoke.includes(`sudo apparmor_parser -r -W "$RUNNER_TEMP/apparmor.txt"`));
-  assert.match(smoke, /docker run -d --name "\$1" --init --security-opt apparmor=0000ci00_growcontroller .*--add-host "supervisor:\$supervisor"/);
+  assert.match(smoke, /docker run -d --name "\$1" --init --security-opt apparmor=0000ci00_doseph .*--add-host "supervisor:\$supervisor"/);
   for (const run of ["start app gc-data", "start fresh gc-fresh", "confined app", "confined fresh"]) assert.ok(smoke.includes(run), run);
   assert.match(main, /if \(host\.empty\(\)\) host = app \? "0\.0\.0\.0"/, "IPv4, as the profile allows");
   assert.doesNotMatch(smoke, /--network-alias supervisor/, "the app finds the Supervisor in /etc/hosts, not by DNS");
-  assert.ok(smoke.includes(`grep -F 'profile="0000ci00_growcontroller"' > denied.txt`));
+  assert.ok(smoke.includes(`grep -F 'profile="0000ci00_doseph"' > denied.txt`));
   assert.ok(smoke.includes(`apparmor_parser -Q -K /apparmor.txt`), "the oldest parser reads it too");
   assert.match(workflow, /^ {6}DEBIAN: debian:12@sha256:[0-9a-f]{64}$/m);
   assert.match(workflow, /-e GC_HA_ROOT_TEST=1 "\$STANDIN"/, "the image's server runs the tests as root, never skipping them");
@@ -222,6 +228,7 @@ test("Home Assistant finds exactly this one app in the repository", () => {
 
 test("the repository is a Home Assistant app repository", () => {
   const repo = parseFlatYaml(read("repository.yaml"));
-  assert.equal(repo.url, "https://github.com/Wokesay/growcontroller-software");
+  assert.equal(repo.url, "https://github.com/Wokesay/doseph");
+  assert.equal(repo.name, "Doseph");
   assert.deepEqual(Object.keys(repo).sort(), ["maintainer", "name", "url"]);
 });

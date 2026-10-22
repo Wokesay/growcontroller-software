@@ -1,6 +1,6 @@
-# growcontroller-software – project context
+# Doseph – project context
 
-The software of the growcontroller fertigation controller: core (C++17),
+The software of Doseph, a fertigation controller: core (C++17),
 simulator, web app and, later, the firmware of the hub (ESP32-S3).
 Product, hardware and business live in the private product repository
 `Wokesay/growcontroller`; product decisions there are called PD-xxx.

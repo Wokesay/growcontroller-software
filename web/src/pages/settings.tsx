@@ -12,7 +12,7 @@ import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
 
 // Target for public bug reports.
-const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
+const ISSUE_URL = "https://github.com/Wokesay/doseph/issues/new";
 
 // Sections of the update summary (field names of the API) and their labels.
 const SUMMARY: Record<"neu" | "behoben" | "beachten" | "sicherheit", TextKey> = {
@@ -138,7 +138,7 @@ function Report() {
     const blob = new Blob([JSON.stringify({ ...diag, beschreibung: text }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `growcontroller-diagnostics-${diag.reportId}.json`;
+    a.download = `doseph-diagnostics-${diag.reportId}.json`;
     a.click();
   };
   const issue = diag

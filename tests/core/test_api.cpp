@@ -287,7 +287,7 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(enRow.find(';') == std::string::npos);
   CHECK(enRow.find('.') != std::string::npos);  // decimal point
   CHECK(enRow.back() == ',');                    // CO2 left empty, never 0
-  CHECK(header(en).find("growcontroller-history.csv") != std::string::npos);
+  CHECK(header(en).find("doseph-history.csv") != std::string::npos);
   const auto de = csv("de");
   CHECK(de.body.rfind("zeit_utc;tank.ph;zone.co2\n", 0) == 0);
   const std::string deRow = row(de.body);
@@ -295,7 +295,7 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(deRow.find(',') != std::string::npos);  // decimal comma
   CHECK(deRow.find('.') == std::string::npos);
   CHECK(deRow.back() == ';');
-  CHECK(header(de).find("growcontroller-verlauf.csv") != std::string::npos);
+  CHECK(header(de).find("doseph-verlauf.csv") != std::string::npos);
   // Without a language the hub's own decides; the demo's hub speaks German
   CHECK(csv("").body.rfind("zeit_utc;", 0) == 0);
   CHECK(csv("xx").body.rfind("zeit_utc;", 0) == 0);  // an unknown one counts as none
@@ -447,7 +447,7 @@ TEST_CASE("API: an imported configuration without a language is German; the sett
     res = s.api().handle(r);
   }
   bool named = false;
-  for (const auto& [k, v] : res.headers) named = named || (k == "Content-Disposition" && v.find("growcontroller-config.json") != std::string::npos);
+  for (const auto& [k, v] : res.headers) named = named || (k == "Content-Disposition" && v.find("doseph-config.json") != std::string::npos);
   CHECK(named);
 }
 
@@ -455,7 +455,7 @@ TEST_CASE("API: Herkunftsprüfung gegen DNS-Rebinding und CSRF") {
   CHECK(gc::hostAllowed("127.0.0.1:8080"));
   CHECK(gc::hostAllowed("localhost:8080"));
   CHECK(gc::hostAllowed("192.168.1.20"));
-  CHECK(gc::hostAllowed("growcontroller.local"));
+  CHECK(gc::hostAllowed("doseph.local"));
   CHECK(gc::hostAllowed("[::1]:8080"));
   CHECK(gc::hostAllowed("mein-hub", "mein-hub"));
   CHECK(gc::hostAllowed("hub.fritz.box"));
@@ -1197,12 +1197,31 @@ TEST_CASE("API: a stock entered is never below zero (SD-066)") {
   CHECK(c.call("POST", "/api/v1/canisters/" + id.get<std::string>() + "/stock", {{"ml", -1}}).first == 422);
 }
 
+TEST_CASE("System: the default name from before Doseph reads as the new default, a name of one's own stays (#312)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
+  CHECK(c.ok("GET", "/api/v1/info")["product"] == "Doseph");
+  gc::json file = c.ok("GET", "/api/v1/config/export");
+  file["system"]["name"] = "growcontroller";
+  CHECK(gc::configFromJson(file).system.name == "Doseph");
+  c.ok("PUT", "/api/v1/system", {{"name", "Zelt 1"}});
+  c.ok("POST", "/api/v1/config/import", file);
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "Doseph");
+  CHECK(c.ok("GET", "/api/v1/info")["name"] == "Doseph");
+  for (const char* own : {"Growcontroller", "growcontroller 2", "Zelt 1"}) {
+    CAPTURE(own);
+    file["system"]["name"] = own;
+    CHECK(gc::configFromJson(file).system.name == own);
+  }
+}
+
 TEST_CASE("System: abgelehnte Änderung lässt alles unverändert") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   CHECK(c.call("PUT", "/api/v1/system", {{"name", "Neu"}, {"language", "fr"}}).first == 422);
-  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "growcontroller");
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "Doseph");
 }
 
 TEST_CASE("Zone: Name und Art setzen, unbekannte Art abgelehnt") {
@@ -1278,7 +1297,7 @@ TEST_CASE("System: what the app is to do per area is stored, only known areas an
   CHECK(st == 422);
   CHECK(err["error"]["key"] == "system.control");
   gc::json cfg = c.ok("GET", "/api/v1/config");
-  CHECK(cfg["system"]["name"] == "growcontroller");
+  CHECK(cfg["system"]["name"] == "Doseph");
   CHECK(cfg["system"]["control"] == gc::json{{"climate", "outside"}, {"refill", "auto"}});
   // Read back from a saved configuration: what is unknown there is left out, a configuration
   // written before this field has nothing chosen
@@ -1322,7 +1341,7 @@ TEST_CASE("System: a time zone that is no zone name is refused when saved and im
     CHECK(err["error"]["key"] == "system.timezone");
     const gc::json sys = c.ok("GET", "/api/v1/config")["system"];
     CHECK(sys["timezone"] == "Europe/Vienna");
-    CHECK(sys["name"] == "growcontroller");
+    CHECK(sys["name"] == "Doseph");
   }
   CHECK(gc::isTimeZoneName("America/Argentina/ComodRivadavia"));
   CHECK(gc::isTimeZoneName("Europe/" + std::string(57, 'x')));  // 64 characters
@@ -1344,7 +1363,7 @@ TEST_CASE("System: a time zone that is no zone name is refused when saved and im
     CHECK(st == 422);
     CHECK(err["error"]["key"] == "system.timezone");
   }
-  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "growcontroller");
+  CHECK(c.ok("GET", "/api/v1/config")["system"]["name"] == "Doseph");
   file["system"]["timezone"] = "Asia/Tokyo";
   c.ok("POST", "/api/v1/config/import", file);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["timezone"] == "Asia/Tokyo");

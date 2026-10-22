@@ -10,13 +10,13 @@ version = 1
 [[annotations]]
 path = "**"
 precedence = "closest"
-SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
+SPDX-FileCopyrightText = "2026 The Doseph contributors"
 
 # Files without comment syntax: Markdown, JSON, SVG, plain text.
 [[annotations]]
 path = ["**/*.md", "*.md", "**/*.json", "*.json", "**/*.svg", "sim/README.txt", "VERSION", ".nvmrc"]
 precedence = "closest"
-SPDX-FileCopyrightText = "2026 The growcontroller-software contributors"
+SPDX-FileCopyrightText = "2026 The Doseph contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 # Verbatim Apache License 2.0 text, shipped with the license notices of

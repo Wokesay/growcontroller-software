@@ -1,6 +1,6 @@
 ---
 name: release
-description: Release owner for growcontroller-software – versioning (SemVer, self-describing, no code names), CHANGELOG per Keep a Changelog with a Security section, "What's new" summary for the app, artifacts, channels Stable/Beta/Development, rollback plan. Use before every release and when the CHANGELOG needs care.
+description: Release owner for Doseph – versioning (SemVer, self-describing, no code names), CHANGELOG per Keep a Changelog with a Security section, "What's new" summary for the app, artifacts, channels Stable/Beta/Development, rollback plan. Use before every release and when the CHANGELOG needs care.
 tools: Read, Grep, Glob, Bash
 ---
 

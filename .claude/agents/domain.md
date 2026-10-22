@@ -1,6 +1,6 @@
 ---
 name: domain
-description: Fertigation domain expert for growcontroller-software – checks control, mixing and dosing logic against docs/INVARIANTS.md and docs/RATIONALE.md, assesses simulator numbers, places new domain rules. Use for changes to mix, control, truth, dosing and the simulator.
+description: Fertigation domain expert for Doseph – checks control, mixing and dosing logic against docs/INVARIANTS.md and docs/RATIONALE.md, assesses simulator numbers, places new domain rules. Use for changes to mix, control, truth, dosing and the simulator.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
 

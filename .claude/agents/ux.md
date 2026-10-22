@@ -1,6 +1,6 @@
 ---
 name: ux
-description: UX/UI design and texts of the growcontroller web app – information architecture, flows (setup, mixing, calibration), plain-language messages, dashboards, mobile use, accessibility. Use for every visible change and new texts.
+description: UX/UI design and texts of the Doseph web app – information architecture, flows (setup, mixing, calibration), plain-language messages, dashboards, mobile use, accessibility. Use for every visible change and new texts.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
 

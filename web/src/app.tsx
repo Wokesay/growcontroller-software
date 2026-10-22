@@ -341,8 +341,8 @@ export function App() {
             <Sprout size={18} />
           </div>
           <div>
-            growcontroller
-            <small>{config.value.system.name !== "growcontroller" ? config.value.system.name : t("app.tagline")}</small>
+            Doseph
+            <small>{config.value.system.name && config.value.system.name !== "Doseph" ? config.value.system.name : t("app.tagline")}</small>
           </div>
         </div>
         <nav class="nav" aria-label={t("nav.label")}>

@@ -1,4 +1,4 @@
-# Concept: growcontroller as standalone software
+# Concept: Doseph as standalone software
 
 As of 2026-10-07. **V** = proposal, **A** = assumption, [PD-xxx] = decided in
 the product repository. Software decisions are SDs in `docs/DECISIONS.md`;

@@ -327,7 +327,7 @@ test("a --data below a folder it may not enter ends with a message", { skip }, (
 // A --web whose status cannot be read is no web app, not a crash at the
 // start: it runs without it, says why (its wording is the C library's) and
 // stops cleanly.
-const webSaysWhy = (web) => new RegExp(`The web app in ${web.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} cannot be read; growcontroller runs without it\\. Detail: .+\\.\\n`);
+const webSaysWhy = (web) => new RegExp(`The web app in ${web.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} cannot be read; Doseph runs without it\\. Detail: .+\\.\\n`);
 
 test("a --web through a link to itself: it runs without the web app and says why", { skip, timeout: 120000 }, async () => {
   // for root too: the app job runs this file as root
@@ -549,8 +549,8 @@ test("started as root, --app gives its data folder to 65532 and runs as it, with
       assert.equal(status.CapEff, "0000000000000000");
       assert.equal(status.NoNewPrivs, "1");
       const page = await fetch(`http://127.0.0.1:${port}/`);
-      assert.match(await page.text(), /^growcontroller's web app cannot be read\./);
-      assert.match(out, new RegExp(`The web app in ${web} cannot be read; growcontroller runs without it\\. Detail: Permission denied`));
+      assert.match(await page.text(), /^Doseph's web app cannot be read\./);
+      assert.match(out, new RegExp(`The web app in ${web} cannot be read; Doseph runs without it\\. Detail: Permission denied`));
     } finally {
       child.kill("SIGTERM");
     }
@@ -593,7 +593,7 @@ test("started as root, --app refuses a data folder that is a link or a file and 
         timeout: 15000,
       });
       assert.equal(r.status, 2, `${data}: ${r.stderr}`);
-      assert.match(r.stderr, /^growcontroller did not start: it could not give up its administrator rights \(root\)\. Detail: .*\.\nYour data is kept\. Start the app again\./m, data);
+      assert.match(r.stderr, /^Doseph did not start: it could not give up its administrator rights \(root\)\. Detail: .*\.\nYour data is kept\. Start the app again\./m, data);
       assert.match(r.stderr, why, data);
       assert.doesNotMatch(r.stderr, /reinstall/i, "reinstalling deletes the app's data");
       for (const p of [target, join(target, "file"), join(parent, "a-file")]) assert.equal(statSync(p).uid, 0, `${data}: ${p} is left alone`);

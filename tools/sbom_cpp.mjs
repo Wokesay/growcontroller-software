@@ -51,7 +51,7 @@ export function sbom(depsText, version) {
     specVersion: "1.5",
     version: 1,
     metadata: {
-      component: { type: "application", name: "growcontroller-simulator", version },
+      component: { type: "application", name: "doseph-simulator", version },
     },
     components,
   };

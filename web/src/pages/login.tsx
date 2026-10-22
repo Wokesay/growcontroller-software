@@ -41,8 +41,8 @@ export function Login() {
             <Sprout size={22} />
           </div>
           <div>
-            <h1 style="font-size:1.3rem">growcontroller</h1>
-            <p class="muted small">{info.value?.name && info.value.name !== "growcontroller" ? info.value.name : t("login.tagline")}</p>
+            <h1 style="font-size:1.3rem">Doseph</h1>
+            <p class="muted small">{info.value?.name && info.value.name !== "Doseph" ? info.value.name : t("login.tagline")}</p>
           </div>
         </div>
         {/* What was clicked when the session ran out was not carried out: never silent */}

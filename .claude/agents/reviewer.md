@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Code review for growcontroller-software – checks a diff for correctness, architecture rules R1–R8, domain rules (docs/RATIONALE.md), tests and readability. Use before every merge; pass the diff or the file list in the task.
+description: Code review for Doseph – checks a diff for correctness, architecture rules R1–R8, domain rules (docs/RATIONALE.md), tests and readability. Use before every merge; pass the diff or the file list in the task.
 tools: Read, Grep, Glob
 ---
 

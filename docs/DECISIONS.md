@@ -576,6 +576,8 @@ apply the rules above and add no new ones):
   pinned by digest, gets no token, runs only in the read-only job and is
   updated by hand. The smoke test's stand-in for the Supervisor is the
   build's own pinned Alpine base image.
+- Changed by SD-098: the app is called Doseph, with the slug `doseph`
+  and the image `ghcr.io/wokesay/doseph-ha` from 0.1.0-proto.5 on.
 
 
 ## SD-035: Freshness of sensors that report on their own schedule is learned
@@ -1390,6 +1392,8 @@ customer and a grower.
 - Changed by SD-065: the project owner's test comes in two parts, before
   "mergen" with the release branch's server and after the tag with the
   published app.
+- Changed by SD-098: the test of 0.1.0-proto.5 checks the move to the
+  new Doseph app instead of the update from proto.4.
 
 
 ## SD-056: Menu grouped by topic; pages without automation say "manual"
@@ -1993,6 +1997,8 @@ needs the whole repository.
 - Not chosen: a test image published before the tag under its own name (a
   second way to publish, to be reviewed by `security`); the whole test
   only after the tag.
+- Changed by SD-098: for 0.1.0-proto.5 the move to the new Doseph app
+  takes the update's place in part two.
 
 
 ## SD-066: Product requirement (from PD-187 to PD-190): one dosing pump type with speed stages, feedback and an ID chip
@@ -3106,6 +3112,9 @@ leaves `stage: experimental`.
   <https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/http/const.py>;
   a saved port mapping overrides the default:
   <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/apps/app.py>.
+- Changed by SD-098: the release pull request of 0.1.0-proto.5 merges
+  right before the rename to Doseph, which merges last; what assumes an
+  update from 0.1.0-proto.4 does not apply to a moved app.
 
 
 ## SD-078: A session claims an issue before it works on it
@@ -4847,7 +4856,6 @@ effect on every edit (a strong product would then overshoot on its next
 round); keeping it when a reference is raised above it (a product
 change in the same bottles would dose with the old, too small value).
 
----
 
 ## SD-093: No watering on water not fit for it: a wide band, the probes the hub judges, a dose mixed in first
 
@@ -4984,6 +4992,9 @@ simulator's demo scenarios stay German").
 - **Not chosen:** a German demo with a hint where to switch (the first
   impression for testers abroad would be a language they do not read);
   two demos chosen by a start option (two to keep up and test).
+- Changed by SD-098: the data folder is `doseph-data`; a
+  `growcontroller-daten` from before is still used while there is no
+  `doseph-data`.
 
 
 ## SD-096: Product requirement (from #250, F5): a prototype says it is for testing only
@@ -5065,6 +5076,113 @@ Settles SD-079's point 1 and its open point #200.
 - **Not chosen:** keeping "no vulnerability" (narrower than the CRA's
   term); a short "no attacker path" with the reasoning only in
   `SECURITY.md` (the release notes would not name the CRA's terms).
+
+
+## SD-098: Product requirement (from PD-333, PD-334, PD-336, PD-341, PD-343, PD-345 to PD-347): the name Doseph, and ready for the first public post
+
+Recorded on 2026-10-22 from #312. The details are the software side's
+(PD-100); the project owner decided the Home Assistant app's new ID and
+the order on 2026-10-22 in the software session, after `release`,
+`security`, `qa` and `reviewer` had weighed them. Changes SD-055, SD-065
+and SD-077 for 0.1.0-proto.5, and SD-095's point on the simulator's data
+folder: the new folder is `doseph-data`, and a demo saved before keeps
+its data and its language, as SD-095 wants, because its
+`growcontroller-daten` is still used.
+
+- **The name (PD-341, PD-343):** the project and its software are called
+  Doseph (dose + pH, said like "Joseph"). Hardware from others that works
+  with it is described as "… for Doseph", never "Doseph …". It is not a
+  registered trademark (PD-345): no ®. The domain is getdoseph.com
+  (PD-346). The project owner renames this repository to `Wokesay/doseph`
+  (PD-347); GitHub forwards the old address.
+- **Before the first public post (PD-333, PD-334, PD-336):** the README
+  says what is a plan (the ESP32-S3 firmware is a skeleton, M1) and that
+  control is to run on an ESP32-S3 on the carrier board; it shows two or
+  three screenshots near the top; releases carry SHA-256 checksums next
+  to the packages; GitHub Discussions holds one pinned thread "Hardware &
+  plans" with a poll, written by the project owner. Bugs and wishes keep
+  their ways, security reports stay with `SECURITY.md` (PD-182), and
+  README and CHANGELOG stay free of shop and sales (PD-061).
+
+Decided by the software side:
+
+- **What is renamed:** every text a user reads (web app in both
+  languages, simulator, Home Assistant app, downloads, docs, issue forms),
+  the source code link (AGPL §13), the file names the app saves, the
+  packages (`doseph-simulator-…`, `doseph-web-…`, the npm package
+  `doseph-web`), the CMake and firmware projects (`doseph_hub.bin`), the
+  flash manifest, `/info`'s `product`, the Home Assistant app's name, slug
+  (`doseph`), image (`ghcr.io/wokesay/doseph-ha`) and AppArmor profile,
+  `repository.yaml`, and the copyright line in `REUSE.toml`. The
+  CHANGELOG's released sections, this log and the notes of earlier
+  releases stay as they were; entries not yet released name what the next
+  release ships.
+- **What stays:** the internal prefix `gc` (C++ namespace and include
+  path, `GC_*` build options, the developer binaries `gc_sim_server` and
+  `gc_ha_server`), the session cookie `gc_session` and the browser keys
+  for language and theme. Nobody sees them; renaming the cookie signs
+  everyone out and the keys reset language and theme. Report numbers keep
+  their prefix `GC-`, so those in issues filed before stay recognisable.
+  The product repository keeps its name.
+- **Existing installs:** a configuration with the old default name
+  `growcontroller` reads as unnamed, so the hub shows "Doseph"; any other
+  name stays. The simulator's data folder is `doseph-data`; a
+  `growcontroller-daten` next to the program is used as it is while there
+  is no `doseph-data`, and nothing is moved.
+- **The Home Assistant app moves by a reinstall (decided by the project
+  owner):** the new slug makes Doseph a new app for Home Assistant.
+  Users back up the old app's settings, stop it (both used port 8099),
+  install Doseph from the same repository (an old address keeps working),
+  restore the settings in it and uninstall the old app; the history stays
+  in the old app. The old app keeps its last image, which is never
+  deleted, and gets no updates, also no security fixes: the fixes of
+  0.1.0-proto.5 reach Home Assistant users only by the move, and the
+  CHANGELOG, `SECURITY.md` and the advisories say so. Home Assistant
+  reports the old app as removed from its repository and offers to
+  uninstall it, which deletes its data, so the steps say to back up
+  first. Until it is uninstalled, starting it again is the way back.
+  Restored settings now read their sensors at once (`ha::importRoute`),
+  not only after a restart. Not chosen: keeping the old slug, image and
+  profile (0.1.0-proto.5 would have been an update with its fixes, the
+  data and the password kept, but the old name would stay in the app's
+  ID, profile and addresses); keeping only the slug (the same, with a new
+  image name); a last version of the old app that hands its data over
+  (more access in its AppArmor profile, two apps in every release).
+- **The project owner's test of 0.1.0-proto.5** (changes SD-055 and
+  SD-065 for this release): "update from proto.4" becomes the move as in
+  `docs/RELEASE.md`: the store lists Doseph and shows the old app as
+  removed, Doseph installs with the old app stopped, the old app's
+  settings backup restores in it with its sensors read at once, and the
+  old app starts again as the way back. SD-077's points that assume an
+  update from 0.1.0-proto.4 (a password kept, a bookmark on port 8099)
+  do not apply to a moved app.
+- **The old address:** GitHub forwards
+  `Wokesay/growcontroller-software` only while that name is free, so it
+  is never created again, and the account is not renamed. The renamed
+  repository's access to the old package `growcontroller-ha` is set to
+  Read, so no push changes an image a backup pulls again
+  (`docs/RELEASE.md`).
+- **Checksums:** the release notes end with the same list as
+  `SHA256SUMS` and how to check a download on Linux, macOS and Windows.
+- **Not used yet:** the domain, in code and docs, until it serves a page;
+  a name built into firmware is hard to change. Hardware stays "the
+  carrier board" until #303 is answered.
+- **Guard:** `tools/old_name.test.mjs` finds the old name outside the
+  history and outside lines that speak of the time before it.
+- **Order (decided by the project owner):** the pull request is built on
+  the old name. The store offers what `config.yaml` on `main` names, so
+  the new slug and image go to `main` only with the release: #267 merges
+  first, as SD-077 has it; this pull request then takes it in (its texts
+  that assume an update from 0.1.0-proto.4 included), the project owner
+  renames the repository, CI runs again, it merges, and
+  `v0.1.0-proto.5` is tagged at once. So no link on `main` points to a
+  name that does not exist yet, and the store never offers a Doseph
+  without its image for longer than the release takes. This changes
+  SD-077's "this pull request merges last". Not chosen: merging before
+  #267 (for days the store would offer a Doseph that cannot install while
+  the old app shows as removed), one pull request together with #267 (too
+  large to review), renaming the repository first (sessions at work could
+  lose their access to GitHub midway).
 
 ---
 

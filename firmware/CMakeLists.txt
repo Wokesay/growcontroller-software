@@ -27,4 +27,4 @@ endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # The app's version is the core's (VERSION), not git describe
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../VERSION" PROJECT_VER LIMIT_COUNT 1)
-project(growcontroller_hub)
+project(doseph_hub)

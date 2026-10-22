@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# growcontroller
+# Doseph
 
-growcontroller's own web app, running next to Home Assistant. Home
+Doseph's own web app, running next to Home Assistant. Home
 Assistant stays the device layer (ESPHome nodes, sensors); the app reads
-the sensors from it and shows them with growcontroller's checks.
+the sensors from it and shows them with Doseph's checks.
 
 ## What it does and does not do
 
@@ -28,13 +28,13 @@ the sensors from it and shows them with growcontroller's checks.
   app when the sensor last measured; then a value is outdated 60 s after
   its last measurement. An ESPHome example is in the section "Sign of
   life" of
-  <https://github.com/Wokesay/growcontroller-software/blob/main/docs/HOME_ASSISTANT.md>.
+  <https://github.com/Wokesay/doseph/blob/main/docs/HOME_ASSISTANT.md>.
 - A sensor that Home Assistant marks as unavailable shows as **Not
   responding** at once.
-- pH, EC and level were calibrated in Home Assistant, which growcontroller
+- pH, EC and level were calibrated in Home Assistant, which Doseph
   has not checked; their tiles say so. They are recorded in the history,
   but never used for control.
-- It is experimental: a trial of the growcontroller software on Home
+- It is experimental: a trial of the Doseph software on Home
   Assistant, not the finished product.
 
 ## Install
@@ -43,8 +43,8 @@ the sensors from it and shows them with growcontroller's checks.
    Assistant open your **profile** and switch on **Advanced mode**.
 2. Open **Settings → Apps** (older versions: Add-ons), then the store, the
    menu at the top right, **Repositories**, and add
-   `https://github.com/Wokesay/growcontroller-software`.
-3. Open **growcontroller** in the store and install it. Home Assistant
+   `https://github.com/Wokesay/doseph`.
+3. Open **Doseph** in the store and install it. Home Assistant
    downloads a ready-made image of a few MB for your Raspberry Pi (64-bit)
    or PC.
 4. Start it and choose **Open web UI**, or open
@@ -52,9 +52,9 @@ the sensors from it and shows them with growcontroller's checks.
    Assistant's IP address or `homeassistant.local`; other names (your own
    domain, Home Assistant Cloud) are refused, which protects against
    websites that try to reach devices in your network.
-5. **Set a password for growcontroller.** It is growcontroller's own
+5. **Set a password for Doseph.** It is Doseph's own
    login, separate from Home Assistant's. The page first asks for a
-   **setup code**: open Settings → Apps → growcontroller → **Log** and take
+   **setup code**: open Settings → Apps → Doseph → **Log** and take
    the newest line "Setup code for the first password: …" (upper or lower
    case, dashes optional). Only Home Assistant's administrators, and apps
    they gave that right, can read the log, so nobody else in your network
@@ -75,9 +75,40 @@ the sensors from it and shows them with growcontroller's checks.
 There is nothing to configure: the app reaches Home Assistant through the
 Supervisor and gets its access from it. No token is needed.
 
+## Coming from growcontroller
+
+Up to 0.1.0-proto.4 this app was called growcontroller. Home Assistant
+treats Doseph as a new app: the old one gets no more updates, also no
+security fixes, your settings do not move over by themselves, and the two
+should not run at the same time (both use port 8099). Moving takes a few
+minutes:
+
+1. Open the old app: Settings → Apps → growcontroller → **Open web UI**.
+   In its web UI, open **Settings › Data › Back up settings** (German:
+   Einstellungen › Daten › Einstellungen sichern). Your browser saves the
+   file. It holds devices, sensor assignments, recipes, bottles and
+   calibrations, not the password. To keep readings, also save **History
+   (CSV, 7 days)** (German: Verlauf (CSV, 7 Tage)); older history and the
+   events stay behind.
+2. Stop the old app: Settings → Apps → growcontroller → **Stop**, and
+   switch off **Start on boot**.
+3. Install **Doseph** from the store. It is in the same repository, so you
+   add nothing. Start it and set its password (Install, steps 4 and 5).
+4. When the introduction opens, choose **Skip** (German: Überspringen).
+   Then open **Settings › Data › Restore settings** (German: Einstellungen
+   › Daten › Einstellungen laden) and choose the file.
+5. Under **Devices › Assignment** (German: Geräte › Zuordnung), check that
+   each measurement shows its sensor with a current value.
+6. Uninstall the old app. This deletes its data, its history included.
+
+Home Assistant reports the old app as removed from its repository and
+offers to uninstall it. Accept that only after step 1: uninstalling
+deletes the old app's data. Until you uninstall it, you can go back by
+stopping Doseph and starting the old app again.
+
 ## Your data
 
-- growcontroller keeps its data (configuration, history, events, the hash
+- Doseph keeps its data (configuration, history, events, the hash
   of its password) in the app's own folder. Home Assistant's backups
   include it.
 - Uninstalling the app deletes that folder; keep a backup if you want it
@@ -103,11 +134,11 @@ Supervisor and gets its access from it. No token is needed.
   web app is then not reachable from your network (Home Assistant and
   other apps on the same host can still reach it).
 - The access the app gets from the Supervisor is not limited to reading:
-  it is the access of Home Assistant's own administrator. growcontroller
-  only reads the states with it, but a flaw in growcontroller's web server
+  it is the access of Home Assistant's own administrator. Doseph
+  only reads the states with it, but a flaw in Doseph's web server
   could let an attacker in your network control Home Assistant. That is
   why the port belongs in your own network only.
-- The image holds nothing but the growcontroller server, the web app and
+- The image holds nothing but the Doseph server, the web app and
   the license texts: no shell, no package manager.
 - The server starts with administrator rights (root) only to hand its
   data folder to an account of its own. Before it opens its port it
@@ -120,7 +151,7 @@ Supervisor and gets its access from it. No token is needed.
   not open, and the newest lines of the app's **Log** say why. Your data
   is kept. Start the app again. If it still does not start, restore the
   backup from before the update (see **Your data**) and report the log
-  lines at <https://github.com/Wokesay/growcontroller-software/issues>.
+  lines at <https://github.com/Wokesay/doseph/issues>.
   Do not uninstall the app to fix it: that deletes its data.
 
 ## Source code and license
@@ -128,4 +159,4 @@ Supervisor and gets its access from it. No token is needed.
 AGPL-3.0-or-later. The source code of exactly this version is linked on
 the web app's sign-in page and under Settings, and the license texts are
 in the image under `/licenses`. Problems and ideas:
-<https://github.com/Wokesay/growcontroller-software/issues>.
+<https://github.com/Wokesay/doseph/issues>.

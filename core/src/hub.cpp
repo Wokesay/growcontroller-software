@@ -886,7 +886,7 @@ std::string Hub::armSetupCode(Ms validFor) {
 
 json Hub::info() const {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  return {{"product", "growcontroller"},
+  return {{"product", "Doseph"},
           {"version", embedded::kVersion},
           {"api", 1},
           {"catalogVersion", cat_.version},

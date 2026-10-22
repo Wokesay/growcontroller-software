@@ -4,7 +4,7 @@
 // revision at build time; CI and release builds fail without one.
 declare const __GC_SOURCE_REV__: string;
 
-export const SOURCE_REPO = "https://github.com/Wokesay/growcontroller-software";
+export const SOURCE_REPO = "https://github.com/Wokesay/doseph";
 export const sourceRev: string = __GC_SOURCE_REV__;
 /** Is the exact revision of this build known? */
 export const sourceKnown: boolean = sourceRev !== "";

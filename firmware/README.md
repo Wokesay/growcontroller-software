@@ -36,7 +36,7 @@ N8R8; on the N32R16V GPIO 47 and 48 run at 1.8 V.
 ```bash
 (cd ../web && npm ci && npm run build) && node ../tools/embed_web.mjs
 idf.py -B build-n32r16v -D GC_BOARD=n32r16v -D IDF_TARGET=esp32s3 build   # or n8r8
-idf.py -B build-n32r16v menuconfig    # growcontroller › Wi-Fi (development only), output GPIOs
+idf.py -B build-n32r16v menuconfig    # Doseph › Wi-Fi (development only), output GPIOs
 idf.py -B build-n32r16v flash monitor
 ```
 

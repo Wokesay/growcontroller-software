@@ -86,10 +86,10 @@ COPY --from=licenses /out /licenses
 LABEL io.hass.version="$BUILD_VERSION" \
       io.hass.type="app" \
       io.hass.arch="$BUILD_ARCH" \
-      org.opencontainers.image.source="https://github.com/Wokesay/growcontroller-software" \
+      org.opencontainers.image.source="https://github.com/Wokesay/doseph" \
       org.opencontainers.image.revision="$GC_SOURCE_REV" \
       org.opencontainers.image.version="$BUILD_VERSION" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
-      org.opencontainers.image.title="growcontroller for Home Assistant"
+      org.opencontainers.image.title="Doseph for Home Assistant"
 EXPOSE 8099
 ENTRYPOINT ["/gc_ha_server", "--app"]

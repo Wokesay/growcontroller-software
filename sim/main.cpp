@@ -61,7 +61,7 @@ gc::ApiRequest toApi(const httplib::Request& req) {
 }
 
 void usage() {
-  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << "\n"
+  std::cout << "Doseph Simulator " << gc::embedded::kVersion << "\n"
             << "  --port N            HTTP-Port (8080)\n"
             << "  --host ADR          Adresse (127.0.0.1)\n"
             << "  --scenario NAME     demo | neu | stufe1 (demo)\n"
@@ -118,8 +118,17 @@ int main(int argc, char** argv) {
     const std::filesystem::path base = ec ? std::filesystem::current_path(cwdErr) : exe.parent_path();
     if (cwdErr)
       std::cerr << "No folder for the data (" << cwdErr.message() << "). Running in memory only.\n";
-    else
-      opts.dataDir = (base / "growcontroller-daten").lexically_normal().string();
+    else {
+      // A folder kept from before the name Doseph is used as it is, as long as there is no new one (#312).
+      // Links are not followed here: one that cannot be entered is still there (SD-074). The error
+      // codes only keep these calls from throwing; a missing entry reads as not_found.
+      const auto fresh = base / "doseph-data", before = base / "growcontroller-daten";
+      std::error_code freshErr, beforeErr;
+      const auto beforeType = std::filesystem::symlink_status(before, beforeErr).type();
+      const bool keep = std::filesystem::symlink_status(fresh, freshErr).type() == std::filesystem::file_type::not_found &&
+                        (beforeType == std::filesystem::file_type::directory || beforeType == std::filesystem::file_type::symlink);
+      opts.dataDir = (keep ? before : fresh).lexically_normal().string();
+    }
     open = true;
   }
   for (int i = 1; i < argc; ++i) {
@@ -364,7 +373,7 @@ int main(int argc, char** argv) {
   });
 
   const std::string url = "http://" + (host == "0.0.0.0" ? std::string("127.0.0.1") : host) + ":" + std::to_string(bound);
-  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
+  std::cout << "Doseph Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
   if (simulation.storage().persistent()) std::cout << "Daten: " << simulation.dataDir() << "\n";

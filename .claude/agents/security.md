@@ -1,6 +1,6 @@
 ---
 name: security
-description: Product security for growcontroller-software – threat model, EN 18031-1 and CRA in practice, login, sessions, web server, OTA and signing, dependencies and SBOM, diagnostic data. Use for changes to gateway, sensor truth, login, API, updates and before releases.
+description: Product security for Doseph – threat model, EN 18031-1 and CRA in practice, login, sessions, web server, OTA and signing, dependencies and SBOM, diagnostic data. Use for changes to gateway, sensor truth, login, API, updates and before releases.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
 

@@ -355,6 +355,12 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   await page.goto("/#/einstellungen");
   await page.getByRole("button", { name: "Diagnosepaket erstellen" }).click();
   await expect(page.getByText(/Vorgang GC-/)).toBeVisible();
+  // The files the browser saves carry the name Doseph (#312)
+  await expect(page.locator(".side .brand")).toContainText("Doseph");
+  const [diagFile] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Herunterladen" }).click()]);
+  expect(diagFile.suggestedFilename()).toMatch(/^doseph-diagnostics-GC-[^/]+\.json$/);
+  const [backup] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Einstellungen sichern" }).click()]);
+  expect(backup.suggestedFilename()).toBe("doseph-config.json");
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
@@ -439,7 +445,7 @@ test("The CSV links ask for the page's format (RAT-016, SD-083)", async ({ page 
   await expect(de).toHaveAttribute("href", /&lang=de$/);
   const deRes = await page.request.get((await de.getAttribute("href"))!);
   expect((await deRes.text()).startsWith("zeit_utc;")).toBe(true);
-  expect(deRes.headers()["content-disposition"]).toContain("growcontroller-verlauf.csv");
+  expect(deRes.headers()["content-disposition"]).toContain("doseph-verlauf.csv");
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
   await page.goto("/#/einstellungen");
   await page.reload();
@@ -449,7 +455,7 @@ test("The CSV links ask for the page's format (RAT-016, SD-083)", async ({ page 
   const body = await res.text();
   expect(body.startsWith("time_utc,")).toBe(true);
   expect(body.split("\n")[1]).toMatch(/^\d+,(\d+\.\d{3})?(,|$)/);  // a time, then a number with a decimal point or a gap
-  expect(res.headers()["content-disposition"]).toContain("growcontroller-history.csv");
+  expect(res.headers()["content-disposition"]).toContain("doseph-history.csv");
 });
 
 test("Recipe template: an English page stores the English name, even on a German hub (#32)", async ({ page }) => {
@@ -1332,7 +1338,7 @@ test("Dialogs: focus moves into a dialog, Tab stays inside, focus returns to the
 
 test("A refusal from the hub shows in the page's language: a backup from a newer version (SD-083)", async ({ page }) => {
   await login(page);
-  const newer = { name: "growcontroller-config.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ schemaVersion: 99 })) };
+  const newer = { name: "doseph-config.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ schemaVersion: 99 })) };
   const restore = async () => {
     await page.goto("/#/einstellungen");
     await page.locator('input[type=file][accept="application/json"]').setInputFiles(newer);

@@ -53,11 +53,11 @@ jobs:
           # by release.yml for the published image.
           docker build --pull --provenance=false --sbom=false -f ha/app/Dockerfile \
             --build-arg BUILD_VERSION="$v" --build-arg BUILD_ARCH="$ARCH" --build-arg GC_SOURCE_REV="$GC_SOURCE_REV" \
-            -t "growcontroller-ha:$ARCH" .
+            -t "doseph-ha:$ARCH" .
       - name: Smoke test
         run: |
           v="$(tr -d '\r\n' < VERSION)"
-          img="growcontroller-ha:$ARCH"
+          img="doseph-ha:$ARCH"
           # What the Supervisor reads from the image, and its size
           labels=$(docker image inspect "$img" --format '{{index .Config.Labels "io.hass.version"}} {{index .Config.Labels "io.hass.type"}} {{index .Config.Labels "io.hass.arch"}} {{index .Config.Labels "org.opencontainers.image.revision"}}')
           if [ "$labels" != "$v app $ARCH $GC_SOURCE_REV" ]; then
@@ -89,8 +89,8 @@ jobs:
             apparmor_parser -Q -K /apparmor.txt'
           # Loaded and renamed as the Supervisor does it; every start below
           # runs in it.
-          sed 's/^profile growcontroller /profile 0000ci00_growcontroller /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"
-          grep -q '^profile 0000ci00_growcontroller ' "$RUNNER_TEMP/apparmor.txt"
+          sed 's/^profile doseph /profile 0000ci00_doseph /' ha/app/apparmor.txt > "$RUNNER_TEMP/apparmor.txt"
+          grep -q '^profile 0000ci00_doseph ' "$RUNNER_TEMP/apparmor.txt"
           sudo apparmor_parser -r -W "$RUNNER_TEMP/apparmor.txt"
           # The app's own folder, mounted at /data as Home Assistant mounts it,
           # with a file a version before #80 left there as root.
@@ -100,7 +100,7 @@ jobs:
           # in its profile, a token and the time zone in the environment, no
           # arguments.
           start() {
-            docker run -d --name "$1" --init --security-opt apparmor=0000ci00_growcontroller --network gc-smoke --add-host "supervisor:$supervisor" \
+            docker run -d --name "$1" --init --security-opt apparmor=0000ci00_doseph --network gc-smoke --add-host "supervisor:$supervisor" \
               -v "$2:/data" -e SUPERVISOR_TOKEN=smoke-test -e TZ=Europe/Berlin -p 127.0.0.1:8099:8099 "$img"
           }
           answers() {
@@ -124,7 +124,7 @@ jobs:
               grep -qxF "$want" status.txt || { echo "::error::$1 does not run with \"$want\" (#80)"; return 1; }
             done
             profile=$(sudo cat "/proc/$server/attr/current" | tr -d '\0')
-            if [ "$profile" != "0000ci00_growcontroller (enforce)" ]; then echo "::error::$1 runs in \"$profile\""; return 1; fi
+            if [ "$profile" != "0000ci00_doseph (enforce)" ]; then echo "::error::$1 runs in \"$profile\""; return 1; fi
           }
           confined app
           # The first password needs the setup code from the app's log (#79).
@@ -206,16 +206,16 @@ jobs:
           sleep 2
           sudo dmesg > dmesg.txt
           test -s dmesg.txt
-          grep 'apparmor="DENIED"' dmesg.txt | grep -F 'profile="0000ci00_growcontroller"' > denied.txt || true
+          grep 'apparmor="DENIED"' dmesg.txt | grep -F 'profile="0000ci00_doseph"' > denied.txt || true
           if [ -s denied.txt ]; then cat denied.txt; echo "::error::The app's AppArmor profile refused it something"; exit 1; fi
           # and a refusal would show: a file the profile does not allow, read
           # in it, is refused and logged (the kernel logs it a moment later).
-          rc=0; docker run --rm --security-opt apparmor=0000ci00_growcontroller "$STANDIN" cat /etc/passwd > /dev/null 2>&1 || rc=$?
+          rc=0; docker run --rm --security-opt apparmor=0000ci00_doseph "$STANDIN" cat /etc/passwd > /dev/null 2>&1 || rc=$?
           if [ "$rc" = 0 ]; then echo "::error::The profile let a tool read /etc/passwd"; exit 1; fi
           seen=""
           for _ in $(seq 1 10); do
             sudo dmesg > dmesg.txt
-            if grep -qE 'apparmor="DENIED".* profile="0000ci00_growcontroller".* name="/etc/passwd"' dmesg.txt; then seen=1; break; fi
+            if grep -qE 'apparmor="DENIED".* profile="0000ci00_doseph".* name="/etc/passwd"' dmesg.txt; then seen=1; break; fi
             sleep 1
           done
           if [ -z "$seen" ]; then echo "::error::A refusal of the profile does not show in the kernel log"; exit 1; fi
@@ -252,7 +252,7 @@ jobs:
           # and as root, as the Supervisor starts it, giving up root (#80).
           # CI set: a missing binary fails instead of skipping; GC_HA_ROOT_TEST
           # set: the tests as root fail instead of skipping.
-          docker create --name shipped "growcontroller-ha:$ARCH" > /dev/null
+          docker create --name shipped "doseph-ha:$ARCH" > /dev/null
           docker cp shipped:/gc_ha_server "$RUNNER_TEMP/gc_ha_server"
           docker rm shipped > /dev/null
           docker run --rm -v "$PWD:/src:ro" -v "$RUNNER_TEMP/gc_ha_server:/gc_ha_server:ro" -w /src \
@@ -264,13 +264,13 @@ jobs:
         if: inputs.release
         run: |
           mkdir -p out
-          docker save "growcontroller-ha:$ARCH" | gzip -n > "out/growcontroller-ha-$ARCH.tar.gz"
+          docker save "doseph-ha:$ARCH" | gzip -n > "out/doseph-ha-$ARCH.tar.gz"
           ls -l out
           # release.yml accepts only this checksum.
-          echo "sum=$(sha256sum "out/growcontroller-ha-$ARCH.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sum=$(sha256sum "out/doseph-ha-$ARCH.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.release
         with:
-          name: growcontroller-ha-${{ inputs.arch }}
-          path: out/growcontroller-ha-${{ inputs.arch }}.tar.gz
+          name: doseph-ha-${{ inputs.arch }}
+          path: out/doseph-ha-${{ inputs.arch }}.tar.gz
           retention-days: 7

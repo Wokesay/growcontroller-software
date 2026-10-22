@@ -40,7 +40,7 @@ void onWifi(void*, esp_event_base_t base, int32_t id, void*) {
 
 void startWifi() {
   if (std::strlen(CONFIG_GC_WIFI_SSID) == 0) {
-    ESP_LOGW(kTag, "Kein WLAN konfiguriert (menuconfig › growcontroller). Einrichtung per Assistent folgt.");
+    ESP_LOGW(kTag, "Kein WLAN konfiguriert (menuconfig › Doseph). Einrichtung per Assistent folgt.");
     return;
   }
   ESP_ERROR_CHECK(esp_netif_init());
@@ -88,7 +88,7 @@ extern "C" void app_main() {
   g_hub->setPlatform({{"kind", "esp32s3"}, {"simulated", false}});
   g_api = std::make_unique<gc::Api>(*g_hub, g_clock);
   g_hub->boot();
-  ESP_LOGI(kTag, "growcontroller %s gestartet", gc::embedded::kVersion);
+  ESP_LOGI(kTag, "Doseph %s gestartet", gc::embedded::kVersion);
 
   xTaskCreatePinnedToCore(coreTask, "gc_core", 16384, nullptr, 10, nullptr, 1);
   gcfw::startWebServer(*g_api);

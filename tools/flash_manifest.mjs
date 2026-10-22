@@ -106,7 +106,7 @@ export function flashFiles(board, args) {
 export function manifest(board, version, files) {
   if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) throw new Error(`not a version: "${version}"`);
   return {
-    name: `growcontroller hub for ${boards[board].name}`,
+    name: `Doseph firmware for ${boards[board].name}`,
     version,
     // Ask before erasing: without the prompt, ESP Web Tools erases a new
     // install unasked. Its erase (this prompt, and "Erase User Data" once

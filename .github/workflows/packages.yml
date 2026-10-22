@@ -21,15 +21,15 @@ jobs:
         include:
           - os: ubuntu-22.04
             name: linux-x64
-            bin: growcontroller-simulator
+            bin: doseph-simulator
             cmake: -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
           - os: macos-14
             name: macos-universal
-            bin: growcontroller-simulator
+            bin: doseph-simulator
             cmake: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           - os: windows-2022
             name: windows-x64
-            bin: growcontroller-simulator.exe
+            bin: doseph-simulator.exe
             cmake: -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -70,6 +70,6 @@ jobs:
           if command -v zip > /dev/null; then zip -r "$PKG_ZIP" "$(basename "$PKG_DIR")"; else 7z a "$PKG_ZIP" "$(basename "$PKG_DIR")"; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: growcontroller-simulator-${{ matrix.name }}
+          name: doseph-simulator-${{ matrix.name }}
           path: dist/*.zip
           retention-days: 30

@@ -1,6 +1,6 @@
 # Home Assistant (read-only spike)
 
-A trial of running the growcontroller software next to Home Assistant
+A trial of running the Doseph software next to Home Assistant
 instead of on its own hardware: Home Assistant stays the device layer
 (ESPHome nodes, sensors, smart plugs), and the hub's core reads the
 sensors from it. Whether the product goes this way is a product question
@@ -51,14 +51,14 @@ the add-on store (SD-034):
    marked experimental (`stage` in `ha/app/config.yaml`), and the store
    lists such apps only in advanced mode.
 2. **Settings → Apps → store → ⋮ → Repositories**, add
-   `https://github.com/Wokesay/growcontroller-software`.
-3. Install **growcontroller**, start it, **Open web UI** (port 8099). Open
+   `https://github.com/Wokesay/doseph`.
+3. Install **Doseph**, start it, **Open web UI** (port 8099). Open
    it by Home Assistant's IP address or `homeassistant.local`: any other
    name (a bare `homeassistant`, an own domain, the Home Assistant Cloud
    address) is refused, the protection against DNS rebinding below.
 4. **Set the password:** the page first asks for the setup code, in the
    newest line "Setup code for the first password: …" of the app's **Log**
-   tab (Settings → Apps → growcontroller → Log), so nobody else in the
+   tab (Settings → Apps → Doseph → Log), so nobody else in the
    network can set it first (#79, SD-068). Then choose the sensors in
    Devices › Assignment (step 6 below).
 
@@ -68,7 +68,7 @@ Home Assistant at `http://supervisor/core` with the Supervisor's token
 `ha/app/config.yaml`), keeps its data in the app's folder (`/data/hub`,
 part of Home Assistant's backups) and serves the web app on port 8099 of
 the Home Assistant host. Home Assistant downloads a ready-made image of a
-few MB (`ghcr.io/wokesay/growcontroller-ha`, built and published by the
+few MB (`ghcr.io/wokesay/doseph-ha`, built and published by the
 release workflow for the version in `ha/app/config.yaml`,
 `docs/RELEASE.md`). The image is `FROM scratch`: the static server, the
 web app and the license texts, no shell. The app's own documentation in
@@ -76,6 +76,44 @@ the store is `ha/app/DOCS.md`. The keys of `config.yaml` and the image
 labels follow Home Assistant's developer documentation for apps
 (<https://developers.home-assistant.io/docs/apps/configuration>, retrieved
 2026-10-10).
+
+### From growcontroller to Doseph (#312)
+
+Up to 0.1.0-proto.4 the app was called growcontroller, with that slug,
+image (`ghcr.io/wokesay/growcontroller-ha`) and AppArmor profile. Home
+Assistant knows an app by its repository and its slug, so Doseph is a new
+app, installed next to the old one (decided by the project owner, SD-098).
+The steps for users are in `ha/app/DOCS.md`, in "Coming from growcontroller":
+back up the settings in the old app, stop it, install Doseph, restore the
+settings there, then uninstall the old app. The history does not move.
+
+- The old app keeps its last image, which is never deleted
+  (`docs/RELEASE.md`), but gets no updates and no security fixes: its
+  `config.yaml` is no longer in the repository. Home Assistant reloads the
+  store every 3 hours, then reports the old app as removed from the
+  repository it was installed from and offers to uninstall it, which
+  deletes its data
+  (<https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/misc/tasks.py>,
+  <https://raw.githubusercontent.com/home-assistant/supervisor/main/supervisor/resolution/fixups/app_execute_remove.py>,
+  retrieved 2026-10-22). So the steps say to back up first.
+- Both apps used host port 8099 up to 0.1.0-proto.4, so the old app is
+  stopped before Doseph starts. Until it is uninstalled, starting it again
+  is the way back.
+- Restored settings read their sensors at once: the app's own route for
+  `POST /api/v1/config/import` hands the picks to the bus, as the start
+  does (`ha::importRoute`).
+- A repository added under the old address
+  (`https://github.com/Wokesay/growcontroller-software`) keeps working:
+  GitHub forwards it to `https://github.com/Wokesay/doseph`. The
+  Supervisor names a repository by a hash of the address as it was added,
+  so Doseph installed from there keeps that address in its ID. The
+  forwarding holds only while no repository takes the old name again
+  (`docs/RELEASE.md`).
+- Not chosen: keeping the old slug and image, which would have made
+  0.1.0-proto.5 an update with its fixes, the data and the password kept,
+  but left the old name in the app's ID, profile and addresses; a last
+  version of the old app that hands its data over (more access in its
+  profile, two apps in every release).
 
 ## Run it on a computer of your own
 
@@ -491,7 +529,7 @@ time is no value.
     stay. Everything else (energy, power, text, dates, people, switches) is
     dropped at once, never kept or logged.
   The list shows the names of these sensors to whoever is signed in to
-  growcontroller, like the suggestions (`docs/SECURITY_MODEL.md`).
+  Doseph, like the suggestions (`docs/SECURITY_MODEL.md`).
 - What the hub cannot tell: whether a sensor with the right unit sits in
   the right place. A soil sensor's EC or a pool's pH looks like the tank's;
   the picker says so, and the name and live value are the guard. pH, EC
@@ -586,7 +624,7 @@ time is no value.
   is a follow-up.
 - **The app's web app is plain HTTP on port 8099 of the Home Assistant
   host,** reachable by every device in your network (and, with a router
-  that opens the host over IPv6, from outside); the growcontroller
+  that opens the host over IPv6, from outside); the Doseph
   password travels in the clear there. The first password needs the
   one-time setup code the app prints to its log, which only Home
   Assistant's administrators read, so nobody else in the network can set
@@ -596,7 +634,7 @@ time is no value.
   path; that is a follow-up.
 - **The Supervisor's token is not read-only:** Home Assistant has no
   read-only access for apps; the Supervisor passes every call except its
-  own API on to Home Assistant as its administrator. growcontroller sends
+  own API on to Home Assistant as its administrator. Doseph sends
   only `GET /api/states` (tested), but a flaw in its web server could give
   an attacker in the network control of Home Assistant. The image has no
   shell and the app no other rights (`tools/app.test.mjs` refuses any
@@ -632,7 +670,7 @@ time is no value.
   links to other accounts' files).
 - The session cookie is not tied to the port: the browser also sends it
   to Home Assistant and other apps under the same host name. It is
-  HttpOnly and only valid for growcontroller.
+  HttpOnly and only valid for Doseph.
 - If the Supervisor ever refuses the token, reading stops until the app
   is restarted, while the app keeps answering (so its watchdog sees no
   fault), and the web app's hint speaks of a token file. A follow-up

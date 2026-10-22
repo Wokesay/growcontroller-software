@@ -207,7 +207,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await page.locator("input[name=password2]").fill("mein-passwort");
   await page.getByRole("button", { name: "Passwort festlegen" }).click();
   await expect(page).toHaveURL(/#\/willkommen/);
-  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Willkommen bei Doseph" })).toBeVisible();
   // Basics: the name, the colour scheme
   await page.locator("input[name=hubname]").fill("Zelt 1");
   await page.getByRole("tab", { name: "Dunkel" }).click();
@@ -267,7 +267,7 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
   // Opened again from Settings, without "skip"
   await page.getByTestId("open-welcome").click();
-  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Willkommen bei Doseph" })).toBeVisible();
   await expect(page.getByTestId("welcome-skip")).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -298,7 +298,7 @@ test("Home Assistant app: the first password needs the setup code from the app's
   await page.reload();
   const code = page.getByLabel("Einrichtungscode");
   await expect(code).toBeVisible();
-  await expect(page.getByText("Einstellungen › Apps › growcontroller › Protokoll, in der neuesten Zeile", { exact: false })).toBeVisible();
+  await expect(page.getByText("Einstellungen › Apps › Doseph › Protokoll, in der neuesten Zeile", { exact: false })).toBeVisible();
   await code.fill("2222-2222-2222-2222");
   await page.locator("input[name=password]").fill("mein-passwort");
   await page.locator("input[name=password2]").fill("mein-passwort");
@@ -436,7 +436,7 @@ test("A hub with its own hardware has no introduction of the Home Assistant app"
   await expect(page.getByTestId("wizard-next")).toBeVisible();
   await page.goto("/#/willkommen");
   await expect(page.getByTestId("watchdog")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Willkommen bei Doseph" })).toHaveCount(0);
 });
 
 test("The overview points to devices waiting to be accepted", async ({ page, request }) => {
