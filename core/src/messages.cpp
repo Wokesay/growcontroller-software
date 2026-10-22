@@ -302,7 +302,7 @@ constexpr Entry kMessages[] = {
     {"ev.resumed", "Automation resumed"},
     {"ev.resumed.text", "Stop cleared"},
     {"ev.maintenance", "Maintenance mode started"},
-    {"ev.maintenance.text", "Automation pauses for {min:0}\u00a0min. Locks and sensor checks stay active."},
+    {"ev.maintenance.text", "Automation pauses for {min:0}\u00a0min. Readings may jump without locking, and monitoring does not assess pH, EC and water temperature. Missing, frozen or impossible values are still reported, and every lock stays on."},
     {"ev.maintenance_end", "Maintenance mode ended"},
     {"auth.code", "Setup code missing or wrong. Use the newest one – every restart makes a new one."},
     {"auth.kept", "You can't sign in until the hub can read {file} again. Your password stays safe in it – don't reset the hub to factory settings. Restart the hub to try again."},

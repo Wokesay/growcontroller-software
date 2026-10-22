@@ -247,6 +247,31 @@ test("The German mix page shows the hub's notes in German", async ({ page }) => 
   await expect(preview).not.toContainText("pH comes last");
 });
 
+test("Maintenance mode says that readings may jump without locking, and when to end it (#297, RAT-042)", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/tank");
+  await page.getByRole("button", { name: "Pflegemodus starten" }).click();
+  // at the button that ends it: end it once the readings have settled
+  await expect(page.getByTestId("maintenance-end-hint")).toHaveText(/Beende den Pflegemodus, wenn deine Arbeit am Tank fertig ist und die Werte ruhig sind\. Danach sperrt ein Sprung den Wert, bis er 15/);
+  // the overview and the event say that jump checks are off, never that every check stays active
+  await page.goto("/#/");
+  await expect(page.getByText(/Messwerte dürfen springen, ohne zu sperren, und pH, EC und Wassertemperatur werden nicht bewertet\. Sperren bleiben aktiv/).first()).toBeVisible();
+  const ev = await (await page.request.get("/api/v1/events?limit=20")).json();
+  const start = ev.events.find((e: { title: { key: string } }) => e.title.key === "ev.maintenance");
+  expect(start).toBeDefined();
+  expect(start.text.key).toBe("ev.maintenance.text");
+  await expect(page.getByTestId("event").filter({ hasText: "Pflegemodus" }).first()).toContainText("Messwerte dürfen springen, ohne zu sperren, und die Überwachung bewertet pH, EC und Wassertemperatur nicht. Fehlende, stillstehende oder unmögliche Werte werden weiter gemeldet");
+  await expect(page.getByTestId("event").filter({ hasText: "Sperren und Sensorprüfungen bleiben aktiv" })).toHaveCount(0);
+  await page.goto("/#/tank");
+  // the button names the hint for screen readers
+  const end = page.getByTestId("maintenance-end-hint").locator("..").getByRole("button", { name: "Beenden" });
+  await expect(end).toHaveAccessibleDescription(/Beende den Pflegemodus/);
+  await end.click();
+  await expect(page.getByTestId("maintenance-end-hint")).toHaveCount(0);
+  // ended, the hub still explains a change for 10 s (RAT-042, #292): let them pass, so a jump locks again
+  await page.request.post("/api/v1/sim/advance", { data: { hours: 15 / 3600 } });
+});
+
 test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await login(page);
   const st = await (await page.request.get("/api/v1/sim")).json();
