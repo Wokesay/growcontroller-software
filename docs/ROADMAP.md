@@ -1,17 +1,18 @@
 # Software roadmap
 
-Status 2026-10-15, order decided by the project owner on 2026-10-12: the
+Status 2026-10-22, order decided by the project owner on 2026-10-12: the
 freshness fix, then a polish block and the prototype 0.1.0-proto.5
-(SD-055), then the ESP32-S3 before new Home Assistant features. The
-ESP32-S3 on the carrier board runs control and safety on its own; Home
-Assistant and the Home Assistant app are options (PD-145 to PD-174, #91,
-#94, SD-045).
+(SD-055), then the ESP32-S3 before new Home Assistant features. proto.5
+is a release for testers and does not wait for the rest of SD-057
+(SD-093). The ESP32-S3 on the carrier board runs control and safety on
+its own; Home Assistant and the Home Assistant app are options (PD-145
+to PD-174, #91, #94, SD-045).
 
 | Step | Content | Depends on |
 |---|---|---|
 | **M0 Prototype** (done) | Core, simulator, web app, tests, CI; Home Assistant app that reads sensors and switches nothing (releases 0.1.0-proto.1 to proto.4) | – |
 | **Freshness by sign of life** (done) | A sensor is fresh by its last measurement: sign-of-life text or timestamp sensor per sensor, stale after 60 s, age in colour (SD-042, SD-047); open before control: jump lock for calm sensors from Home Assistant | – |
-| **Polish and 0.1.0-proto.5** (next) | What the review of 2026-10-12 found visible: phone fixes, a message when Stop or a switch fails, developer words out, "Stopp" instead of "Not-Halt", chart axis and setup fixes, English complete (#18, #73), the menu grouped by topic with "manual" pages (SD-056), mixing to the phase's target EC in three ways (SD-057); the Home Assistant app behind Home Assistant's Ingress with its login, port 8099 closed by default (SD-077, PD-225); then the release after the project owner's test on a real Home Assistant (SD-055) | – |
+| **Polish and 0.1.0-proto.5** (next) | What the review of 2026-10-12 found visible: phone fixes, a message when Stop or a switch fails, developer words out, "Stopp" instead of "Not-Halt", chart axis and setup fixes, English complete (#18, #73), the menu grouped by topic with "manual" pages (SD-056), SD-057's steps 1 to 4 (a recipe's chart EC as the phase's target, fixed amounts, mixing in before a mix ends, each recipe's own EC effect), while mixing to the target (ways 1 and 2) follows with the next prototype (SD-093); the Home Assistant app behind Home Assistant's Ingress with its login, port 8099 closed by default (SD-077, PD-225); for testers a getting-started and a feedback page, feedback in Discussions, an English demo and a notice that a prototype is for testing only (SD-094 to SD-096); then the release after the project owner's test on a real Home Assistant (SD-055, SD-065) | – |
 | **M1 ESP foundation** (board profiles done; the rest after proto.5) | In small steps: board profiles N32R16V and N8R8 with browser flashing (ESP Web Tools manifests); safety component apart from control (fixed-end jobs, dose end by timer, one pump at a time, budgets and pauses, release only on request, sign of life to the board watchdog, actuators off before flash writes); Wi-Fi over Improv, also on the board's USB port, and the setup network; the BOOT button for the setup network (3 s) and reading the factory data; a message while a computer is connected over USB, a restart by it counted as a power loss, JTAG cut at run time (SD-044, SD-076); LittleFS and history ring buffer; board v0.1 drivers (expanders, ADCs, pumps, refill valve, RS485/Modbus per port, contacts, light output, buzzer); EC compensated by the hub from the water temperature as the user chooses, and the pH zero-point check (SD-054, SD-060); dosing modules with a fixed rate and an ID chip, caps from the usable volume, runs into a cup and mixing into a bucket, in steps, simulator first (SD-066, SD-084, #132); a step-by-step guide for flashing for end users (SD-049) | SD-043, SD-045; board samples for the hardware tests; for the dosing modules the open points each step needs (SD-084, SD-085, #282, #283, #284) and module samples |
 | **M2 Secure by default** | Local HTTPS, signed OTA with own downgrade check and self-test, encrypted NVS, factory reset (BOOT held 15 s and a short press to confirm, or the web app; the plugs with a water or CO2 role off first, SD-080) that keeps the factory data, an access reset with BOOT that keeps the data, a first password that fails closed after a lost store, update manifest from releases; the owner keeps their own firmware (PD-022, SD-021, SD-024) | SD-043 |
 | **Pre-flashed devices** (with the series, PD-179) | Provisioning tool for the factory data and a label template, the flash page starting the firmware's factory reset, with a whole-chip erase only when the firmware does not answer and after a warning (SD-080), the first password in a window, the support end in the web app, an EN 18031-1 and -2 self-assessment per firmware version (SD-076) | M2; product questions in SD-076 and SD-080 |

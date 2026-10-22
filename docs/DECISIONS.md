@@ -1390,6 +1390,8 @@ customer and a grower.
 - Changed by SD-065: the project owner's test comes in two parts, before
   "mergen" with the release branch's server and after the tag with the
   published app.
+- Changed by SD-093: 0.1.0-proto.5 ships without SD-057's ways 1 and 2;
+  they come with a later prototype.
 
 
 ## SD-056: Menu grouped by topic; pages without automation say "manual"
@@ -1423,7 +1425,8 @@ a check by `domain` of the manufacturer's guidance; the safeguards marked
 It replaces the fixed targets of the grow dialog; the EC correction
 (RAT-054, RAT-055, RAT-080) already keeps the recipe's ratio. Not built
 yet; built in the polish block (SD-055), with a RAT entry, tests and
-simulator numbers per `docs/SIMULATOR.md`.
+simulator numbers per `docs/SIMULATOR.md`. Changed by SD-093: ways 1 and 2
+come with a later prototype; steps 1 to 4 ship with 0.1.0-proto.5.
 
 - **The target is the phase's target EC** (`ec_target`), as the total EC
   of the solution, the water's own EC included, as the manufacturers'
@@ -3300,6 +3303,9 @@ The software side's proposals, as decided:
 - **Open:** product question #200 (point 1); on the product side, what
   counts as the first offer, which CSIRT coordinates (probably the BSI),
   and a lawyer's view of Art. 14.
+- Settled by SD-097 (PD-320, #200): point 1 stands; the block of the
+  other fixes is labelled "Safety and robustness fixes, not exploitable
+  by an attacker (CRA Art. 3(41)); disclosed under Annex I, Part II (4)".
 - **Where:** in this pull request the changelog's Security section (its
   blocks, the fields per item), `SECURITY.md` (advisories, what triggers
   reporting, severe incidents) and `docs/RELEASE.md` (the advisory
@@ -3967,7 +3973,7 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
      introduction too); setup saves it as the hub's language, also when
      the introduction is skipped;
    - the simulator's demo scenarios stay German, as their names and
-     recipes are German;
+     recipes are German (changed by SD-095: the demo speaks English);
    - a recipe template in an unknown system language falls back to
      English.
 2. **The CSV export follows the page's language** (extends RAT-016):
@@ -4843,6 +4849,194 @@ low reference raises a round, up to the cap); forgetting the learned
 effect on every edit (a strong product would then overshoot on its next
 round); keeping it when a reference is raised above it (a product
 change in the same bottles would dose with the old, too small value).
+
+
+## SD-093: 0.1.0-proto.5 without the rest of SD-057; a release for testers
+
+Decided by the project owner on 2026-10-22 in the software session,
+after `release`, `qa`, `domain` and `ux` checked `main` at 4027e1f for
+the release; step 4 of SD-057 (#308, SD-092) merged after that, at
+34276ae, where `reviewer` checked the claims below. Changes SD-055's "the
+target EC (SD-057)" and the order in `docs/ROADMAP.md`; the rest of
+SD-055 stands.
+
+- **proto.5 does not wait for SD-057's last steps:** way 2 (a fixed
+  pattern from a target EC and the water's EC) and way 1 (mixing to the
+  target with the capped first step, SD-089 S4), with what belongs to
+  both (S20, the note for water above 0.4 mS/cm on a new fill, the mix
+  plan's note when EC runs without temperature compensation), come with
+  a later prototype. What is on `main` when the release pull request
+  merges ships, steps 1 to 4 included.
+- **The Home Assistant app behind Ingress comes with proto.5** (SD-077,
+  PD-225): its pull request #267 carries the release (the version, the
+  release notes' heading, `ha/app/CHANGELOG.md`) and merges last, right
+  before the tag, as the project owner decided on 2026-10-16 (recorded
+  with #267).
+- **Why it is safe as a simulator release** (`domain`, from the code): a
+  mix still doses the recipe's amounts per litre, and EC control, when it
+  is switched on and not latched, closes the gap to the phase's target
+  in rounds capped by the step limit (RAT-056); a recipe's chart EC only
+  ever makes a round smaller (SD-092). The simulator's nutrients are
+  about 14 to 24 % weaker than the templates' charts (calculated from
+  the templates and `docs/SIMULATOR.md`'s numbers), so a mix lands below
+  the chart EC and EC control adds the rest. "Known limitations" says so.
+- **Still before the release:** as SD-055 asks, English complete,
+  including the mix plan's texts (#73), and the release notes with a
+  summary and "Known limitations"; the two wrong safety texts that `qa`
+  found (#297, #266); the newest Node 22 security release (SD-070); the
+  owner's acceptance test (SD-065). Added for testers: SD-094 to SD-096.
+- **proto.5 is meant to be handed out** for feedback. A software release
+  is not the trigger for reporting under CRA Art. 14; the first offer or
+  the first device lent is (#200, F1, the product side's assumption).
+  Handing testers a device would change that.
+- **Not chosen:** waiting for all of SD-057, by `release`'s estimate 1.5
+  to 3 more weeks, with the tag after 2026-11-14, when the advisories of
+  proto.5 are published anyway (SD-079).
+
+
+## SD-094: Testers get a getting-started page and a feedback page; feedback goes to Discussions
+
+Decided by the project owner on 2026-10-22 in the software session, after
+a review by `ux` of what a first-time tester finds: the README and
+`docs/` are written for developers, and nothing says what feedback we
+want.
+
+- **`docs/GETTING_STARTED.md`:** what growcontroller is and what it
+  cannot do yet, with two lines on safety; the simulator in five steps
+  (which file, unpack, start, the demo password, starting over); the Home
+  Assistant app (what it needs, install, open, pick sensors); a tour of
+  about 15 minutes, each step with "you should see"; a link to the
+  release's known limitations.
+- **`docs/FEEDBACK.md`:** the questions we ask testers; where each kind
+  of report goes (feedback to Discussions, a bug that can be repeated to
+  the bug form, a device to the device form, a vulnerability to the
+  private report, `SECURITY.md`); what to include; what never to post
+  (passwords, tokens, the address of your Home Assistant, your
+  location); the diagnostic package only when we ask for it, after a
+  look at what it holds; what happens next.
+- **Pointers instead of repeats:** a box at the top of the README, a row
+  for users first in `docs/README.md`, one line each in `sim/README.txt`
+  and `ha/app/DOCS.md`, and "Testers: start here" in the release notes.
+- **Feedback in Discussions:** a category "Tester feedback" in the
+  open-ended discussion format, with a form
+  (`.github/DISCUSSION_TEMPLATE/tester-feedback.yml`, named after the
+  category's slug), and a pinned post in "Announcements" for each
+  release for testers. The project owner creates the category on the
+  Discussions page and pins the post. Ideas that are accepted become
+  issues, as `CONTRIBUTING.md` says.
+- **Bugs that can be repeated** go to the bug form. It gets the Home
+  Assistant app as a choice, the steps, and the browser and system.
+  "Report a problem" in the web app opens that form
+  (`template=bug.yml`) with its text fields filled in from the query:
+  the title with the report ID, `what` with the user's description,
+  `version`, and `report` with the report ID; the user picks the
+  hardware, as a form fills only text fields from the query. The link
+  carries no `labels`: GitHub answers a query parameter the visitor has
+  no right to with "404 Not Found", so for anyone outside the project
+  today's link fails; the form sets its labels itself. It attaches
+  nothing. The diagnostic package stays on the user's device; when we
+  ask for it in the issue, the user looks at it and attaches it there,
+  as there is no private way to send it yet.
+- **Not chosen:** only a section in the README (no guided tour, feedback
+  without structure); a full manual of every page (weeks of work that
+  changes with each version, and the product's manual is a product
+  question); an issue form for feedback (opinions fill the issue list);
+  an outside survey form (a third party handles the data, a privacy
+  notice is needed, a second channel next to "no cloud").
+
+
+## SD-095: The simulator's demo speaks English
+
+Decided by the project owner on 2026-10-22 in the software session, for
+testers who do not read German. Changes SD-083, point 1 ("the
+simulator's demo scenarios stay German").
+
+- The demo scenarios start in English, with English names for devices,
+  bottles and recipes. German is chosen under Settings as before. Names
+  the demo sets then stay English; a device without a name of its own is
+  still named by its class in the page's language (SD-083, point 3).
+- The simulator's own messages on the console and `--help` are in
+  English too; `sim/README.txt` and `docs/SIMULATOR.md` say where to
+  switch the language. The demo password stays `demo-passwort`, as the
+  docs, the release notes and the tests name it.
+- A hub's stored language is kept (SD-083): a demo folder from an older
+  version stays German.
+- **Not chosen:** a German demo with a hint where to switch (the first
+  impression for testers abroad would be a language they do not read);
+  two demos chosen by a start option (two to keep up and test).
+
+
+## SD-096: Product requirement (from #250, F5): a prototype says it is for testing only
+
+Recorded on 2026-10-22 from the product side's answer to #250 (F5, of
+2026-10-21, marked preliminary; SD-072); where it shows in the web app
+decided by the project owner on 2026-10-22 in the software session.
+
+- **The requirement:** every `-proto` and `-beta` release and the web app
+  carry a notice that the version is for testing only and does not meet
+  the requirements of the EU Cyber Resilience Act (CRA).
+- **Where:** the release notes of every such release, also the Home
+  Assistant app's `ha/app/CHANGELOG.md`, the README's status, and in the
+  web app on the sign-in page (also when the first password is set;
+  behind Home Assistant's Ingress, where there is none, in the app's
+  introduction) and under Settings › Display and info.
+- **When the web app shows it:** when its version has a SemVer
+  pre-release part (a hyphen after `X.Y.Z`, before any `+`), which
+  covers `-proto`, `-beta` and the builds of the Development channel, and
+  when the version is missing or cannot be read. A Stable release drops
+  it without a change of text.
+- **Text,** in both languages with a key: "For testing only: this
+  version does not meet the requirements of the EU Cyber Resilience Act
+  (CRA)." It names no channel, as a Beta is meant for real devices
+  (`docs/RELEASE.md`); the README's safety note stays as it is.
+- It stays until the product side changes its answer; a confirmation by
+  a test lab or a lawyer comes later (#250).
+- **Not chosen:** a strip on every page (it costs room on a phone and
+  competes with alarms); the release notes and the README only (the
+  answer names the web app).
+
+
+## SD-097: Product requirement (from PD-320): an advisory only for what an attacker can trigger; the label of the other fixes
+
+Recorded on 2026-10-22 from the product side's answer to #200 (PD-320, of
+2026-10-21; SD-072); the label decided by the project owner on
+2026-10-22 in the software session, from the product side's proposal.
+Settles SD-079's point 1 and its open point #200.
+
+- **PD-320:** a fixed defect gets its own GitHub Security Advisory only
+  if someone without the needed rights can trigger it, for example over
+  the network, through a crafted file or another input. This confirms
+  SD-079's point 1 and replaces PD-220's "every security item gets an
+  advisory". Fixed safety and robustness defects without an attacker
+  stay in the release notes under Security, with what they are, the
+  affected versions, the impact, the severity and the remedy. Timing and
+  CVEs stay as SD-079 says.
+- **The label of their block** in the changelog's Security section is
+  "Safety and robustness fixes, not exploitable by an attacker (CRA
+  Art. 3(41)); disclosed under Annex I, Part II (4)", instead of "Safety
+  and robustness fixes, no vulnerability": by the product side's
+  regulatory review, the CRA's notion of a vulnerability (Art. 3(40))
+  is wider than "exploitable by an attacker", which is closer to an
+  exploitable vulnerability (Art. 3(41)). Such an item's severity reads
+  "no CVSS, as it is not exploitable by an attacker" instead of "…, as it
+  is not a vulnerability". The rule goes into `SECURITY.md` and
+  `docs/RELEASE.md`.
+- **To check before the CVE requests for proto.5:** the Security item
+  "An abandoned probe calibration no longer keeps jump checks off" can be
+  reached in the Home Assistant app through a crafted import, the case of
+  point 1, and so can the fix "Settings files: whole numbers only" (#270,
+  under Fixed). `security` checks both against PD-320. An item that a
+  crafted file can trigger moves to the vulnerabilities, with an advisory
+  of its own or within one it shares a cause with.
+- **Answered without a new decision** (#200, F1 and F3, assumptions of
+  the product side's regulatory review): reporting under Art. 14 starts
+  with the first offer or the first device lent, as SD-079 says; until
+  then we report voluntarily (`SECURITY.md`). A plan for the 24-hour
+  early warning is needed anyway; who covers it is open on the product
+  side.
+- **Not chosen:** keeping "no vulnerability" (narrower than the CRA's
+  term); a short "no attacker path" with the reasoning only in
+  `SECURITY.md` (the release notes would not name the CRA's terms).
 
 ---
 
