@@ -193,6 +193,21 @@ listed in every release under "Security".
 - **Plan: the demo goes public after 0.1.0-proto.5** (SD-099): the demo
   starting in English (#302) is a precondition of proto.5, and the demo
   is announced to a wider public only once proto.5 is released.
+- **The simulator's demo speaks English** (SD-095): a new demo starts
+  with the hub's language English, so the sign-in page and the app are
+  English in a browser that has not chosen a language, and the demo's
+  devices, bottles, recipes, area and grow have English names ("Dosing
+  block 1", "Part A", "Part B", "Veg", "Bloom", "Room 1", "Grow 1" …;
+  the bottle and recipe IDs follow, for example `part-a` and `veg`).
+  German is chosen under Settings › Display and info › Language, as
+  `sim/README.txt` and `docs/SIMULATOR.md` say. The simulator's own
+  messages on the console and its `--help` are English too, and so is
+  its stand-in for updates under Settings › Updates: the sample of what
+  is new, and the messages when you install or roll back, now by key in
+  the page's language. A demo folder saved by an older version keeps its
+  German and its German names, as a hub keeps its stored language
+  (SD-083); delete it for the English demo. The demo password stays
+  `demo-passwort`.
 - **The mix plan's, a dose split's and a pH dose's messages in both
   languages** (#143, SD-057, step 5): the hub sends them in English with a
   key, the web app shows them in German by that key. For API clients: a
@@ -600,6 +615,19 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The mix plan says what to do next; the diagnostic package's "Not
+  included" follows the page's language** (#73, SD-055): a pump not
+  calibrated says to calibrate it under Devices, a bottle without a pump
+  where to choose one, a bottle running short to refill it and mark it
+  full under Recipes & bottles, and a recipe whose bottle is gone says to
+  edit the recipe. EC control names a bottle without a pump, or with a
+  pump the hub does not know, as such instead of as a pump to calibrate.
+  What the diagnostic package leaves out ("Not included: password hash,
+  …") came in German on an English page; it is named in the page's
+  language now. For API clients: every message of a mix plan that names
+  a bottle, and an EC round's `mix.part`, `mix.no_pump` and
+  `mix.pump_offline`, carry its ID as `canister`, and the package's
+  `redacted` lists keys.
 - **Maintenance mode says what it does** (#297, RAT-042): its entry in
   the event log and the overview no longer say that locks and sensor
   checks all stay active. While it lasts, readings may jump without

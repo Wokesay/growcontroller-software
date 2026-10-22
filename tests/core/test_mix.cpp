@@ -54,9 +54,110 @@ TEST_CASE("Mischen: ohne Einmesswert kein Auftrag (M3-4, strenger als RAT-015)")
   f.pumps["C2"].flowMlPerMin = kNaN;
   auto p = f.plan(10);
   CHECK_FALSE(p.ok);
-  bool found = false;
+  bool found = false;  // the bottle's own error, with the pump's reason (#73)
   for (const auto& e : p.errors) found = found || (e.key == "mix.part" && e.args["reason"]["key"] == "dose.no_flow");
   CHECK(found);
+}
+
+TEST_CASE("Mix plan: every error and warning comes in English by its key, with the bottle's name (#73, SD-083)") {
+  Fix f;
+  auto all = [](const MixPlan& p) {
+    std::vector<Msg> m = p.errors;
+    m.insert(m.end(), p.warnings.begin(), p.warnings.end());
+    return m;
+  };
+  auto text = [&](const MixPlan& p, const std::string& key) {
+    for (const auto& e : all(p))
+      if (e.key == key) return e.text;
+    return std::string("(no " + key + ")");
+  };
+  auto canister = [&](const MixPlan& p, const std::string& key) {  // the bottle's ID next to its name
+    for (const auto& e : all(p))
+      if (e.key == key) return e.args.value("canister", std::string("(none)"));
+    return std::string("(no " + key + ")");
+  };
+  CHECK(text(f.plan(80), "mix.over_capacity") == "More than the tank holds (60 L). Check the amount (litres or gallons?)");
+  f.rt.lastMixAt = 1790000000 - 600;
+  CHECK(text(f.plan(10), "mix.recent") == "This tank was mixed 10\u00a0min ago. Dosing again doubles the nutrients.");
+  f.rt.lastMixAt = 0;
+  f.rt.stockMl["a"] = 5;
+  CHECK(text(f.plan(10), "mix.stock") == "Teil A: not enough in the bottle (20 ml needed, 5 ml left) – refill it, then mark it full under Recipes & bottles");
+  f.rt.stockMl.erase("a");
+  CHECK(text(f.plan(0.4), "mix.small") == "Teil A: 0.8 ml – under 1 ml is not exact. Use more water or dose by hand.");
+  CHECK(canister(f.plan(0.4), "mix.small") == "a");
+  f.pumps["C2"].online = false;
+  CHECK(text(f.plan(10), "mix.pump_offline") == "Teil B: pump not found – plugged into the dosing block?");
+  f.pumps["C2"].online = true;
+  f.pumps["C1"].flowMlPerMin = kNaN;
+  CHECK(text(f.plan(10), "mix.part") == "Teil A: Pump not calibrated – calibrate it under Devices first");
+  f.pumps["C1"].flowMlPerMin = 50.0;
+  f.cfg.recipes[0].steps.push_back({"down", 0.1});
+  CHECK(text(f.plan(10), "mix.ph_in_recipe") == "pH− is a pH correction – it always comes last, not in the recipe");
+  CHECK(canister(f.plan(10), "mix.ph_in_recipe") == "down");
+  f.cfg.recipes[0].steps.pop_back();
+  f.cfg.canisters[1].pump = "";
+  CHECK(text(f.plan(10), "mix.no_pump") == "Teil B: no pump assigned – choose one under Recipes & bottles");
+  f.cfg.canisters[1].pump = "C2";
+  f.cfg.recipes[0].steps = {{"a", kNaN}, {"missing", 1.0}};
+  CHECK(text(f.plan(10), "mix.amount_missing") == "Teil A: amount per litre missing");
+  CHECK(canister(f.plan(10), "mix.amount_missing") == "a");
+  CHECK(text(f.plan(10), "mix.canister") == "A bottle of the recipe is missing – edit the recipe");
+  CHECK(text(f.plan(kNaN), "mix.no_volume") == "Amount of water missing");
+  CHECK(planMix(f.cfg, f.rt, f.pumps, {"none", 10.0, "new", false}, 1790000000, false).errors.at(0).text == "Recipe not found");
+  // the reasons a dose cannot be split into runs, with the numbers they name
+  Limits lim;
+  Msg err;
+  splitRuns(0.5, 50, lim, 0, err);
+  CHECK(err.text == "0.5 ml is under 1.0\u00a0s of pumping – not exact enough");
+  CHECK(err.args["s"] == doctest::Approx(1.0));
+  splitRuns(500, 50, lim, 6, err);
+  CHECK(err.text == "500.0 ml would need more than 6 runs");
+  splitRuns(10, kNaN, lim, 0, err);
+  CHECK(err.text == "Pump not calibrated – calibrate it under Devices first");
+  CHECK(planPhDose(kNaN, 5.8, 5.0, 20, 1.0).reason.text == "pH value missing");
+  CHECK(planPhDose(6.5, 5.8, 5.0, kNaN, 1.0).reason.text == "Tank volume unknown");
+  CHECK(planPhDose(5.5, 5.8, 5.0, 20, 1.0).reason.text == "pH is not above the target");
+  // a key the table has, never German text written next to it
+  f.cfg.recipes[0].steps = {{"a", 2.0}, {"b", 1.0}};
+  f.pumps["C1"].flowMlPerMin = kNaN;
+  f.rt.stockMl["b"] = 1;
+  for (double water : {80.0, 10.0, 0.4})
+    for (const auto& m : all(f.plan(water))) {
+      INFO(m.key << ": " << m.text);
+      for (const char* german : {"Pumpe", "fehlt", "Vorrat", "Menge", "Kanister", "nicht", " ist "})
+        CHECK(m.text.find(german) == std::string::npos);
+    }
+}
+
+TEST_CASE("EC dose: a part that cannot be split names its bottle, in both languages by key (#73, RAT-054)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
+  f.pumps["C2"].flowMlPerMin = kNaN;
+  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
+  CHECK_FALSE(d.ok);
+  CHECK(d.steps.empty());  // all or none (RAT-054)
+  CHECK(d.reason.key == "mix.part");
+  CHECK(d.reason.args["name"] == "Teil B");
+  CHECK(d.reason.args["canister"] == "b");
+  CHECK(d.reason.args["reason"]["key"] == "dose.no_flow");
+  CHECK(d.reason.text == "Teil B: Pump not calibrated – calibrate it under Devices first");
+}
+
+TEST_CASE("EC dose: a bottle without a pump, or with one the hub does not know, is named as such, not as one to calibrate (#73)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
+  f.cfg.canisters[1].pump = "";
+  auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
+  CHECK_FALSE(d.ok);
+  CHECK(d.steps.empty());  // all or none (RAT-054)
+  CHECK(d.reason.key == "mix.no_pump");
+  CHECK(d.reason.args["canister"] == "b");
+  CHECK(d.reason.text == "Teil B: no pump assigned – choose one under Recipes & bottles");
+  f.cfg.canisters[1].pump = "C9";  // gone from the dosing block
+  d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 1.0, 0.275, 0.275, 1.0);
+  CHECK(d.steps.empty());
+  CHECK(d.reason.key == "mix.pump_offline");
+  CHECK(d.reason.text == "Teil B: pump not found – plugged into the dosing block?");
 }
 
 TEST_CASE("Mischen: pH im Rezept wird abgelehnt (M1-3, RAT-004)") {

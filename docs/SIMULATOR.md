@@ -23,7 +23,7 @@ default password (EN 18031-1).
 |---|---|---|
 | `neu` | dosing block on port 1 with 3 caps (A, B, CalMag) | not set up, first-time setup; the hub speaks English, as a new one does (SD-014) |
 | `stufe1` | plus a pH/EC head on port 3, a pH− cap, 40 L in the tank | not set up |
-| `demo` | plus a level head on port 5, a climate head on port 6, circulation pump and inlet valve on the hub outputs, a Wi-Fi power strip with light, exhaust fan, circulating fan and humidifier | set up through the real API; light, exhaust fan and circulating fan on; mix run, cultivation run, lead-in (default 48 h) with refill, EC and pH control and one jump lock; the hub speaks German, as its names and recipes are German |
+| `demo` | plus a level head on port 5, a climate head on port 6, circulation pump and inlet valve on the hub outputs, a Wi-Fi power strip with light, exhaust fan, circulating fan and humidifier | set up through the real API; light, exhaust fan and circulating fan on; mix run, cultivation run, lead-in (default 48 h) with refill, EC and pH control and one jump lock; the hub speaks English, with English names for devices, bottles, recipes and the grow (SD-095); German is chosen under Settings › Display and info › Language, and a demo folder saved in German by an older version stays German |
 
 ## Model and numbers
 
