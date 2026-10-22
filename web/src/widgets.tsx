@@ -181,6 +181,9 @@ export function JobView(p: { job: Job; compact?: boolean }) {
           {stateText}
         </Pill>
       </div>
+      {j.type === "mix" && j.info.amounts === "target" && typeof j.info.targetEc === "number" && (
+        <p class="small muted">{t(j.info.mode === "topup" ? "widgets.jobTargetTopup" : "widgets.jobTarget", { target: num(j.info.targetEc, 2), expected: num(typeof j.info.expectedEc === "number" ? j.info.expectedEc : null, 2) })}</p>
+      )}
       {/* the state, not the minutes, for screen readers: a stopped mix needs an action */}
       <span class="sr-only" role="status">
         {title}: {stateText}

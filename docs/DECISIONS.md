@@ -1455,7 +1455,9 @@ simulator numbers per `docs/SIMULATOR.md`.
      0 for reverse-osmosis water. Without the water's EC only the recipe's
      amounts are offered; it is never taken as 0 (R5, RAT-006, review).
      The hub works out the amounts from the recipe's ratio and reference,
-     runs the pattern without feedback and says so.
+     runs the pattern without feedback and says so. Changed by SD-098:
+     from the larger of the reference's and the learned effect, and never
+     more than the recipe's own amounts.
   3. **Stirring by hand:** after each part the hub stops and asks to stir,
      and goes on only when the user confirms, in the recipe's order. The
      wait has a time limit; cancelling or a timeout after one part of a
@@ -3300,6 +3302,9 @@ The software side's proposals, as decided:
 - **Open:** product question #200 (point 1); on the product side, what
   counts as the first offer, which CSIRT coordinates (probably the BSI),
   and a lawyer's view of Art. 14.
+- Settled by SD-097 (PD-320, #200): point 1 stands; the block of the
+  other fixes is labelled "Safety and robustness fixes, not exploitable
+  by an attacker (CRA Art. 3(41)); disclosed under Annex I, Part II (4)".
 - **Where:** in this pull request the changelog's Security section (its
   blocks, the fields per item), `SECURITY.md` (advisories, what triggers
   reporting, severe incidents) and `docs/RELEASE.md` (the advisory
@@ -3967,7 +3972,7 @@ point 1 carries out SD-014 (PD-027, PD-035) as SD-055 asks for proto.5
      introduction too); setup saves it as the hub's language, also when
      the introduction is skipped;
    - the simulator's demo scenarios stay German, as their names and
-     recipes are German;
+     recipes are German (changed by SD-095: the demo speaks English);
    - a recipe template in an unknown system language falls back to
      English.
 2. **The CSV export follows the page's language** (extends RAT-016):
@@ -4636,8 +4641,8 @@ The rest of SD-057 stands.
   probe's EC as the water's EC, only from a valid reading (SD-054),
   never a missing one (R5). There stays one correction path, with its
   latches and its learning. Not covered yet: EC control switched on but
-  latched. Not built yet; comes with ways 1 and 2 (later steps of
-  SD-057).
+  latched; covered by SD-098: a fixed pattern is offered then. Way 2 is
+  built with SD-098; way 1 comes with a later step of SD-057.
 - **Not chosen:** ending the mix at the stir limit, or a limit of 60 min
   (S9); the first step without the step cap, faster on a fresh fill
   but overshooting with a product stronger than 1.25 times the largest
@@ -4844,7 +4849,6 @@ effect on every edit (a strong product would then overshoot on its next
 round); keeping it when a reference is raised above it (a product
 change in the same bottles would dose with the old, too small value).
 
----
 
 ## SD-093: No watering on water not fit for it: a wide band, the probes the hub judges, a dose mixed in first
 
@@ -4919,6 +4923,216 @@ it (SD-091).
     leaves no event (#307);
   - deep water culture, RDWC and NFT have no watering role yet, so the
     rule protects pulsed watering only.
+
+## SD-094: Testers start from the docs for newcomers (#304); "Report a problem" opens the bug form
+
+Decided by the project owner on 2026-10-22 in the software session, after
+a review by `ux` of what a first-time tester finds, and after two sessions
+had written docs for testers in parallel (#304 and #316): #304 is the
+base, and #316 keeps only what #304 does not bring.
+
+- **The pages for testers are #304's:** `docs/DEMO.md` (download, start,
+  a short tour, what feedback helps), `docs/FAQ.md`, `SUPPORT.md` and
+  `CODE_OF_CONDUCT.md`, with the README pointing to them. Feedback goes
+  to the Discussions category "Feedback" (slug `feedback`, open-ended
+  format) with #304's form; the project owner creates the category.
+  Ideas that are accepted become issues, as `CONTRIBUTING.md` says.
+- **Every release's notes** get a line "Testers: start here" that
+  `release.yml` adds, as it adds "Try it without hardware", pointing to
+  `docs/DEMO.md` and `SUPPORT.md`.
+- **Bugs that can be repeated** go to the bug form, which asks for the
+  steps. "Report a problem" in the web app opens it
+  (`template=bug.yml`) with its text fields filled in from the query:
+  the title with the report ID, `what` with the user's description,
+  `version`, and `report` with the report ID; the user picks where it
+  happened, as a form fills only text fields from the query. The link
+  carries no `labels`: GitHub answers a query parameter the visitor has
+  no right to with "404 Not Found", so for anyone outside the project
+  the link failed (#305); the form sets its labels itself. It attaches
+  nothing. The diagnostic package stays on the user's device; when we
+  ask for it in the issue, the user looks at it and attaches it there,
+  as there is no private way to send it yet, and the app says so.
+- **Not chosen:** the pages of #316 (`docs/GETTING_STARTED.md`,
+  `docs/FEEDBACK.md` and a category "Tester feedback") next to #304's,
+  as they repeat them; merging both into one pull request (more work and
+  new reviews for little gain); a full manual of every page (weeks of
+  work that changes with each version, and the product's manual is a
+  product question); an outside survey form (a third party handles the
+  data, a privacy notice is needed, a second channel next to "no
+  cloud").
+
+
+## SD-095: The simulator's demo speaks English
+
+Decided by the project owner on 2026-10-22 in the software session, for
+testers who do not read German (#302; #304's decision makes it a
+precondition of 0.1.0-proto.5). Changes SD-083, point 1 ("the
+simulator's demo scenarios stay German").
+
+- The demo scenarios start in English, with English names for devices,
+  bottles and recipes. German is chosen under Settings as before. Names
+  the demo sets then stay English; a device without a name of its own is
+  still named by its class in the page's language (SD-083, point 3).
+- The simulator's own messages on the console and `--help` are in
+  English too; `sim/README.txt` and `docs/SIMULATOR.md` say where to
+  switch the language. Unchanged: the demo password `demo-passwort`, as
+  the docs, the release notes and the tests name it; the data folder
+  `growcontroller-daten`, so a demo saved before keeps its data and its
+  language; the scenario names `demo`, `neu` and `stufe1` of the
+  command line and the API.
+- A hub's stored language is kept (SD-083): a demo folder from an older
+  version stays German.
+- **Not chosen:** a German demo with a hint where to switch (the first
+  impression for testers abroad would be a language they do not read);
+  two demos chosen by a start option (two to keep up and test).
+
+
+## SD-096: Product requirement (from #250, F5): a prototype says it is for testing only
+
+Recorded on 2026-10-22 from the product side's answer to #250 (F5, of
+2026-10-21, marked preliminary; SD-072); where it shows in the web app
+decided by the project owner on 2026-10-22 in the software session.
+
+- **The requirement:** every `-proto` and `-beta` release and the web app
+  carry a notice that the version is for testing only and does not meet
+  the requirements of the EU Cyber Resilience Act (CRA).
+- **Where:** the release notes of every such release, also the Home
+  Assistant app's `ha/app/CHANGELOG.md`, the README's status, and in the
+  web app on the sign-in page (also when the first password is set;
+  behind Home Assistant's Ingress, where there is none, in the app's
+  introduction, which can be skipped) and always under Settings › Display
+  and info. In `ha/app/CHANGELOG.md` each pre-release's section starts
+  with it.
+- **When the web app shows it:** when its version has a SemVer
+  pre-release part (a hyphen after `X.Y.Z`, before any `+`), which
+  covers `-proto` and `-beta`, and when the version is missing or cannot
+  be read. A Stable release drops it without a change of text. Builds of
+  the Development channel show it while `VERSION` on `main` is a
+  pre-release, as it is until the first Stable release; how a Development
+  build after a Stable release is named is decided with that release.
+  `VERSION` has no build part (`tools/version.test.mjs`), so a hyphen in
+  it always marks a pre-release.
+- **Text,** in both languages with a key: "For testing only: this
+  version does not meet the requirements of the EU Cyber Resilience Act
+  (CRA)." It names no channel, as a Beta is meant for real devices
+  (`docs/RELEASE.md`); the README's safety note stays as it is.
+- It stays until the product side changes its answer; a confirmation by
+  a test lab or a lawyer comes later (#250).
+- **Not chosen:** a strip on every page (it costs room on a phone and
+  competes with alarms); the release notes and the README only (the
+  answer names the web app).
+
+
+## SD-097: Product requirement (from PD-320): an advisory only for what an attacker can trigger; the label of the other fixes
+
+Recorded on 2026-10-22 from the product side's answer to #200 (PD-320, of
+2026-10-21; SD-072); the label decided by the project owner on
+2026-10-22 in the software session, from the product side's proposal.
+Settles SD-079's point 1 and its open point #200.
+
+- **PD-320:** a fixed defect gets its own GitHub Security Advisory only
+  if someone without the needed rights can trigger it, for example over
+  the network, through a crafted file or another input. This confirms
+  SD-079's point 1 and replaces PD-220's "every security item gets an
+  advisory". Fixed safety and robustness defects without an attacker
+  stay in the release notes under Security, with what they are, the
+  affected versions, the impact, the severity and the remedy. Timing and
+  CVEs stay as SD-079 says.
+- **The label of their block** in the changelog's Security section is
+  "Safety and robustness fixes, not exploitable by an attacker (CRA
+  Art. 3(41)); disclosed under Annex I, Part II (4)", instead of "Safety
+  and robustness fixes, no vulnerability": by the product side's
+  regulatory review, the CRA's notion of a vulnerability (Art. 3(40))
+  is wider than "exploitable by an attacker", which is closer to an
+  exploitable vulnerability (Art. 3(41)). Such an item's severity reads
+  "no CVSS, as it is not exploitable by an attacker" instead of "…, as it
+  is not a vulnerability". The rule goes into `SECURITY.md` and
+  `docs/RELEASE.md`.
+- **To check before the CVE requests for proto.5** (requested by
+  2026-11-10, three working days before the advisories' date): the
+  Security item
+  "An abandoned probe calibration no longer keeps jump checks off" can be
+  reached in the Home Assistant app through a crafted import, the case of
+  point 1, and so can the fix "Settings files: whole numbers only" (#270,
+  under Fixed). `security` checks both against PD-320. An item that a
+  crafted file can trigger moves to the vulnerabilities, with an advisory
+  of its own or within one it shares a cause with.
+- **Answered without a new decision** (#200, F1 and F3, assumptions of
+  the product side's regulatory review): reporting under Art. 14 starts
+  with the first offer or the first device lent, as SD-079 says; until
+  then we report voluntarily (`SECURITY.md`). A plan for the 24-hour
+  early warning is needed anyway; who covers it is open on the product
+  side.
+- **Not chosen:** keeping "no vulnerability" (narrower than the CRA's
+  term); a short "no attacker path" with the reasoning only in
+  `SECURITY.md` (the release notes would not name the CRA's terms).
+
+
+## SD-098: A fixed pattern doses at most the recipe's amounts, from the larger of the reference's and the learned effect
+
+Decided by the project owner on 2026-10-22 in the software session, a
+control detail (SD-091), for step 5 of SD-057 (#143), after `domain`
+weighed the choices. A fixed pattern to a target EC (SD-057's way 2) runs
+without any feedback, often with reverse-osmosis water entered as 0 and no
+meter; a reference typed too low (1.2 for 2.1 passes the band, RAT-056)
+would make it dose up to four times the chart amounts, which only
+draining and diluting undo (RAT-055). The grow proposes each phase's
+target from the same reference (RAT-066), so such a slip usually sets the
+target too and no warning on the amounts would catch it. This changes
+SD-057's point on way 2; the rest of SD-057 stands.
+
+- **The effect:** the reference's over all the recipe's parts (a fixed
+  part taken as strong as the rest, an assumption), and the recipe's
+  learned effect where it is larger (SD-092). The reference counts only
+  inside the band of a quarter to four times the start effect; a learned
+  value counts from the band's bottom, one stored above it at its top,
+  as for a round (RAT-056). No floor at the start effect: without
+  feedback, a product weaker than it would never reach its target. With
+  a learned effect, the EC to expect takes the fixed parts as strong as
+  it; a fixed part weaker than that (a cleanser, for example) leaves the
+  tank lower than said, on the safe side.
+- **The amounts:** every scaled part by one factor, (target − water's EC
+  − what the fixed parts add) over the effect, at most 1, so never more
+  than the recipe's own ml/L; a fixed part per litre of fresh water, also
+  on a top-up (RAT-011, RAT-085). A target above what the recipe's
+  amounts reach is not met: the plan names the EC to expect and how to
+  get more (higher amounts and the matching chart EC in the recipe).
+- **Only with EC control off or locked (SD-089, S20):** EC control
+  switched on and free raises the tank to its own target after the mix,
+  over the one asked for. Until mixing to the target with the probe is
+  built (way 1, step 6), the hub refuses a fixed pattern to a target EC
+  then, and the mix page offers only the recipe's amounts, says why and
+  how to switch EC control off. A locked EC control that a person
+  releases after a fixed pattern takes the tank to its own target then;
+  a person acts there.
+- **The water's EC** comes from a meter, is entered as 0 for
+  reverse-osmosis water, or on a new fill is the probe's valid reading,
+  taken over with one tap (SD-089, S20); the page asks that the fresh water is
+  already in the tank, and rounds it to 0.01.
+- **Refused, with the reason:** without a reference inside the band
+  (also when a learned effect exists: it may stem from another recipe or
+  from the start's fallback), a target outside the EC target's range,
+  without the water's EC, which is never taken as 0 (R5, RAT-006), or
+  with a water EC above the EC target's range (most likely entered in
+  µS/cm). A request that gives a target or water EC without asking for
+  the target way, or a choice of amounts the hub does not know, is
+  refused too, so an API client never gets the full recipe by mistake.
+  The recipe's amounts can always be mixed.
+- **Said in the plan:** that it runs without measuring, the EC to expect,
+  water above the 0.4 the charts are made for on a new fill, and with pH
+  control on that the pH correction afterwards adds up to about 0.3
+  mS/cm, or, when the EC to expect lies below pH control's EC lock
+  (RAT-046), that the pH is corrected by hand. Its note for after the
+  mix asks to check the EC with a meter. Water at or above the target,
+  alone or with the fixed parts, gets only the fixed parts.
+- The step limit (`max_ec_step`) does not bound a fixed pattern; the
+  recipe's amounts do (RAT-087).
+- It sets how much may be dosed without feedback, so its step waits for
+  the project owner's "mergen" (SD-033).
+
+Not chosen: the reference alone with a warning above 25 % of the chart
+(misses a slip the grow carried into the target); a floor at the start
+effect as in SD-092 (a weak product would never reach its target).
 
 ---
 
