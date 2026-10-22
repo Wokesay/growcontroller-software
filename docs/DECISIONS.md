@@ -2427,8 +2427,8 @@ no longer accesses the product repository.
 Decided by the project owner on 2026-10-15 (#163, PR #183). Adds to
 SD-058, whose check runs with the npm that comes with Node.
 
-- **The pin:** `.nvmrc` names one exact Node version, today 22.23.3, the
-  newest of Node 22. Every job that sets up Node reads it
+- **The pin:** `.nvmrc` names one exact Node version, 22.23.3 when this
+  was decided, the newest of Node 22 (raised to 22.23.4 on 2026-10-22). Every job that sets up Node reads it
   (`tools/workflows.test.mjs`). Before, `node-version: 22` took whatever
   the runner image had, so the npm that checks the signatures changed
   without review, and a failure could not be reproduced.
@@ -2502,9 +2502,11 @@ amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
   from the `nodejs.org` sources, checked against those keys
   (`22/alpine3.24/Dockerfile` there and
   `https://nodejs.org/dist/v22.23.3/SHASUMS256.txt`, read 2026-10-15).
-  That gap on amd64 ends with Node 24, whose images take the signed
-  build from `nodejs.org`. Node is not shipped, though it builds what is
-  (the web app in the image) and checks the packages, so a tampered Node
+  That gap on amd64 ended earlier than expected: from Node 22.23.4 on
+  (docker-node commit `80f02a5`, read 2026-10-22), the image takes the
+  musl build from `nodejs.org` on amd64 too, checked against the release
+  keys' signature of `SHASUMS256.txt.asc`. Node is not shipped, though it
+  builds what is (the web app in the image) and checks the packages, so a tampered Node
   could pass a bad package and change the web app.
 - **Docker Hub:** both base images come from it, as alpine did before.
   The digest pins their content, so a changed image on the registry
@@ -2531,7 +2533,8 @@ amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
     keys: on amd64 that could take `nodejs.org`'s signed musl build,
     stronger than the image's unofficial one; on arm64 there is none, so
     it would mean the unofficial build or a build from source. More code
-    of our own to keep, for a gap that ends with Node 24.
+    of our own to keep, for a gap that was expected to end with Node 24
+    (it ended with 22.23.4, see above).
   - Leaving Alpine's Node and printing its version (as before): the
     checker would still differ from CI and change unseen.
 
