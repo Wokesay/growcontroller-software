@@ -36,6 +36,7 @@ default password (EN 18031-1).
 | pH drop from A/B | −0.12/−0.10 pH per ml/L | **Assumption** (based on an observation on the reference installation) |
 | Mixing | t63 26 s with circulation pump, 240 s without, each × V/20 L (at least × 0.5) | RAT-052, measured at 20.4 L with circulation; the scaling with volume and the value without pump are **assumptions** |
 | pH dead time | 60 s | RAT-052 measured 80–99 s; shortened |
+| pH probe in water with little salt | reads the true pH at any EC, also in RO water | **Assumption**; real probes read arbitrary values there (RAT-046), so a test of plain water passing the watering check (SD-093) holds only in the twin |
 | Noise | pH σ 0.006, EC σ 0.004, temperature σ 0.02, level 2 mV | RAT-082 (EC set larger here) |
 | Measurement interval | 5 s per head | as on the reference installation |
 | Flow rate of the caps | 42–53 ml/min, random per cap | RAT-054: 38–53 ml/min |
@@ -43,6 +44,7 @@ default password (EN 18031-1).
 | Bottles | never run empty: a cap always delivers into the tank | **Assumption**; an empty bottle is not modelled (SD-066) |
 | Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
+| EC of the inlet water | 0.02 mS/cm | **Assumption** (about reverse-osmosis water), also the EC of every fill a scenario makes; a fixed pattern with the water's EC entered as 0 lands 0.02 higher in the twin when the recipe's chart EC matches the twin's parts (SD-098, test_scenarios "a fixed pattern to a target EC without a probe lands where the plan says") |
 | Water temperature | a daily curve of 19–22 °C; fresh water moves it towards the inlet water's temperature by volume, at once, with no layering and no lag of the probe, and it returns to the curve with t63 3 h; the inlet water is as warm as the tank unless a test sets it (`inletTempC`) | **Assumption**, not measured |
 | Level reading | follows the volume at once, every 5 s | assumption: no lag (the real one lags 1.5–2 min, RAT-038); irrigation draws no water from the tank; both do not change a refill test's result |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |

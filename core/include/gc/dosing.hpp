@@ -4,10 +4,12 @@
 // Actuators is the ONLY way to pumps and switched outputs (rule R1).
 // It holds the hard-coded safety minimum that the catalog can only make
 // stricter (R7): a calibration value present, run time limits, one run at
-// a time, the Stop, dry-run protection, the inlet's emergency limit.
+// a time, the Stop, dry-run protection, the inlet's emergency limit, no
+// watering on water not fit for it (SD-093).
 // The watchdog never includes this header (architecture test, R2).
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <set>
@@ -34,6 +36,7 @@ struct Ctx {
   Epoch epoch = 0;
   bool stopped = false;          // Stop active
   Epoch maintenanceUntil = 0;    // Pflegemodus: Automatik ruht
+  bool probeCalibrating = false;  // a pH or EC probe of the tank is in a calibration: its readings are not the tank's
 };
 
 // Minimum pause of a compressor device after switching off (rationale:
@@ -43,6 +46,19 @@ constexpr Ms kCompressorPause = 5 * kMinute;
 // Obergrenze der Luftfeuchte für den Befeuchter: Kondensat an Lampen und
 // Steckdosen vermeiden (Annahme, Vorschlag hardware 06.10.2026).
 constexpr double kHumidifierMaxRh = 85.0;
+// Water not fit for watering (SD-093, RAT-086), fixed in code (R7): a pH outside 4.0–8.5, or an EC
+// more than 1.0 mS/cm above the EC target. The band catches a pump that ran too long or dosed too
+// much, not a recipe missed: uncorrected tap water stays fit (RAT-084). The values are assumptions.
+constexpr double kWaterPhMin = 4.0;
+constexpr double kWaterPhMax = 8.5;
+constexpr double kWaterEcAboveTarget = 1.0;
+// The EC limit whatever the target, and the limit when no EC target is set and EC control is off
+constexpr double kWaterEcMax = 5.0;
+// After a dose and after a start, watering waits until it has mixed in: at least 240 s, 100 s per
+// 20 L in the tank (RAT-052; the scaling is an assumption), never more than 60 min (R7)
+constexpr Ms kWaterMixMinMs = 240 * kSecond;
+constexpr Ms kWaterMixPer20LMs = 100 * kSecond;
+constexpr Ms kWaterMixMaxMs = 60 * kMinute;
 
 // Protection setting in the network device per profile: off after a power
 // loss (rationale: RAT-019); for puls and heizen an auto-off slightly above
@@ -70,6 +86,11 @@ class Actuators {
   std::optional<bool> roleState(const Config& cfg, const std::string& role) const;
   // Warum eine Rolle gerade nicht eingeschaltet werden darf (Einschaltsperre).
   std::optional<Msg> inhibit(const Ctx& c, const std::string& role) const;
+  // After a start: a dose the restart cut is not known, so watering waits as after one (SD-093).
+  void holdWatering(Ms now) {
+    doseUntil_ = std::max(doseUntil_.value_or(now), now);
+    holdFromStart_ = true;
+  }
 
   // Stop: all pumps and outputs off, idempotent (RAT-036).
   // Counts as switching off: minimum pauses hold afterwards too.
@@ -100,6 +121,11 @@ class Actuators {
   void noteReported(const std::string& role, const std::string& key);
   // A dry-run latch caused only by a low level releases itself once the tank is refilled (SD-022).
   void releaseDryLatch(const Ctx& c);
+  // Why the tank's water is not fit for watering now (SD-093, RAT-086): a pH or EC probe in a
+  // calibration or without a usable reading, a reading outside the band, or a dose running or mixing
+  // in. Nothing when fit. A probe not assigned, or of a class calibrated outside the hub, is not
+  // checked (RAT-025); with neither probe checked, nothing is.
+  std::optional<Msg> waterUnfit(const Ctx& c) const;
 
   IBus& bus_;
   INetBus* net_ = nullptr;
@@ -116,6 +142,10 @@ class Actuators {
   std::map<std::string, Cut> cuts_;
   std::string runningPump_;
   std::string runningPurpose_;
+  // A dosing pump ran until then at the latest: its planned end, or the last tick it still ran;
+  // after a start the start itself (SD-093). None before the first.
+  std::optional<Ms> doseUntil_;
+  bool holdFromStart_ = false;  // the hold is the start's, no dose ran since
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit
   std::optional<Ms> dryBackSince_;     // level back above the release level since (SD-022)
   bool dryOffSeen_ = false;            // the latched pump has been read as off (SD-067)

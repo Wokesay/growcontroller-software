@@ -114,9 +114,13 @@ the rest. A refusal has a key of its own and an English text: those of
 the API, the sign-in, the configuration check, a calibration, the
 import, the checks of a job request, the transport's (`api.origin`,
 `api.too_large`, `api.timeout`) and the simulator panel's (`sim.err.*`)
-(SD-083). Still German until their work follows: the reasons a mix plan
-or a dose split gives (`mix.*`, `dose.no_flow`, `dose.too_small`, …;
-with SD-057). A
+(SD-083), and since SD-057's step 5 the reasons a mix plan, a dose split
+and a pH dose give (`mix.*`, `dose.*`, `ph.no_value`, …). A dose split's
+reason inside a mix plan's error or an EC round's reason is wrapped as
+`mix.part` `{name, reason, canister}`, the split's own message in
+`args.reason` (before, `dose.no_flow` and the others stood at the top);
+a recipe step without an amount is `mix.amount_missing` (before,
+`mix.amount`). A
 device's own error text inside `act.bus`,
 `act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
 `dose.failed` is English and has no key. A message an event saved
@@ -166,7 +170,7 @@ for example `job.dosing_step`, `job.dose_failed`, `job.pair_failed` and
 
 | Method | Path | |
 |---|---|---|
-| POST | `/mix/plan`, `/mix/start` `{recipe, waterL, mode, guided, confirmRepeat}` | preview, start |
+| POST | `/mix/plan`, `/mix/start` `{recipe, waterL, mode, guided, confirmRepeat, amounts, targetEc, waterEc}` | preview, start; `amounts` `"recipe"` (default) or `"target"`: a fixed pattern to `targetEc` from the water's EC `waterEc`, without measuring, never more than the recipe's amounts, refused while EC control is on and not locked (SD-098); a `targetEc` or `waterEc` without `"target"`, or `amounts` of another value or type, is refused as `mix.amounts`. The plan gives `factor` (`null` while refused) and `expectedEc`, and `infos`, notes that are no warnings; the job's `info` keeps `amounts`, `targetEc`, `waterEc` and `expectedEc` |
 | POST | `/jobs/{id}/continue`, `/abort`, `/resume`, `/result {ml}` | continue after stirring (refused while a mix mixes in at its end), abort (a mix cancelled with a pair half in names the parts still missing, `job.aborted_pair`), catch up a pair or, after 30 min without "Continue", go on with the next part (SD-057), calibration result (`flowMlPerMin`, `changed` when clearly different from before, `message`) |
 | POST | `/dose {canister, ml}` | manual dose |
 | POST | `/pumps/{id}/calibrate {seconds}`, `/pumps/{id}/prime {seconds}` | calibration, prime tubing |

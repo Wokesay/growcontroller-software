@@ -74,7 +74,8 @@ TEST_CASE("Szenario Stufe 0: ohne Einmesswert wird nichts dosiert") {
   s.world().fill(20, 0.02, 7.0);
   auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
   CHECK(st == 422);
-  CHECK(j["error"]["text"].get<std::string>().find("eingemessen") != std::string::npos);
+  CHECK(j["error"]["key"] == "mix.part");  // a part not calibrated, with its reason (SD-032)
+  CHECK(j["error"]["args"]["reason"]["key"] == "dose.no_flow");
   s.step(5000);
   for (const char* id : {kA, kB, kC}) CHECK(s.world().cap(id)->state == 0);  // keine Pumpe lief
   CHECK(s.world().tank.ec + s.world().tank.pendingEc == doctest::Approx(0.02));
@@ -119,6 +120,50 @@ TEST_CASE("Szenario Stufe 0: Einmessen und geführtes Mischen treffen die Mengen
   CHECK(a / b == doctest::Approx(1.0).epsilon(0.03));
   // Vorrat je Lauf gebucht
   CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(1000.0 - a).epsilon(0.001));
+}
+
+TEST_CASE("Scenario stage 0: a fixed pattern to a target EC without a probe lands where the plan says, the pair together (SD-057, SD-098, RAT-087, RAT-054)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  // The chart EC 1.2 over 4.5 ml/L: 0.267 per ml/L; the twin's parts give 1.21 (SIMULATOR.md)
+  json steps = {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.5}}};
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps}, {"refEc", 1.2}});
+  for (double waterEc : {0.02, 0.0}) {
+    CAPTURE(waterEc);
+    s.world().fill(20, 0.02, 7.0);  // the inlet's 0.02, entered as measured or as 0
+    json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 0.9}, {"waterEc", waterEc}};
+    const json plan = c.ok("POST", "/api/v1/mix/plan", req);
+    REQUIRE(plan["ok"] == true);
+    CHECK(plan["factor"].get<double>() == doctest::Approx((0.9 - waterEc) / (1.2 / 4.5) / 4.5));
+    const double stockA = c.state()["stock"]["teil-a"].get<double>();
+    auto doses = [&](const char* canister) {
+      double ml = 0;
+      for (const auto& e : findEvents(c, "dose"))
+        if (e["data"]["canister"] == canister) ml += e["data"]["ml"].get<double>();
+      return ml;
+    };
+    const double a0 = doses("teil-a"), b0 = doses("teil-b");
+    const json job = c.ok("POST", "/api/v1/mix/start", req)["job"];
+    CHECK(job["info"]["expectedEc"].get<double>() == doctest::Approx(0.9));
+    const std::string id = job["id"];
+    for (int step = 0; step < 2; ++step) {
+      REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "waiting_user"; }, 120000));
+      c.ok("POST", "/api/v1/jobs/" + id + "/continue");
+    }
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 120000));
+    CHECK(c.state()["lastJob"]["state"] == "done");
+    s.step(30 * 60 * 1000);
+    // Without measuring, it lands where the plan says plus the water's EC it was not told of
+    const double ec = s.world().tank.ec + s.world().tank.pendingEc;
+    CHECK(ec == doctest::Approx(0.9 + 0.02 - waterEc).epsilon(0.015));  // tells 0.02 apart
+    const double a = doses("teil-a") - a0, b = doses("teil-b") - b0;
+    CHECK(a == doctest::Approx(plan["steps"][0]["ml"].get<double>()).epsilon(0.03));
+    CHECK(a / b == doctest::Approx(1.0).epsilon(0.03));
+    CHECK(stockA - c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(a).epsilon(0.001));
+    s.step(31 * 60 * 1000);  // the next mix needs no repeat confirmation beyond the one sent
+  }
 }
 
 TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another mix still needs confirmation, however it ended (RAT-003)") {
@@ -1916,6 +1961,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     demoAt(s, c, 28, 25, 30);
     for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
     irrigationPlug(s, c);
+    s.step(10 * 60 * 1000, 5000);  // a round EC or pH began before has mixed in: watering waits for it (SD-093)
     s.world().fill(20, 1.3, 5.9);
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
     s.step(60000, 5000);
