@@ -127,8 +127,8 @@ test("Einrichtung zeigt vorhandene Rezepte und schaltet auf Englisch", async ({ 
   await scenario(request, "demo");
   await login(page);
   await page.goto("/#/einrichtung?s=3");
-  await expect(page.getByTestId("existing-recipes")).toContainText("Wachstum");
-  await expect(page.getByTestId("existing-recipes")).toContainText("Blüte");
+  await expect(page.getByTestId("existing-recipes")).toContainText("Veg");
+  await expect(page.getByTestId("existing-recipes")).toContainText("Bloom");
   await page.getByTestId("wizard-back").click();
   await page.getByTestId("wizard-back").click();
   await page.getByTestId("wizard-back").click();
@@ -372,8 +372,30 @@ test.describe("A new hub and browser", () => {
     await expect.poll(async () => (await (await page.request.get("/api/v1/config")).json()).system.language).toBe("de");
   });
 
+  test("the demo starts in English, with English names, without keeping a choice (SD-095)", async ({ page, request }) => {
+    await scenario(request, "demo");
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await page.locator("input[name=password]").fill("demo-passwort");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByTestId("watchdog")).toBeVisible();
+    await page.goto("/#/rezepte");
+    await expect(page.getByRole("heading", { name: "Bottles", exact: true })).toBeVisible();
+    await expect(page.locator(".rtable tbody tr").filter({ hasText: "Part A" })).toHaveCount(1);
+    await expect(page.locator(".card.flat").getByRole("heading", { name: "Veg", exact: true })).toBeVisible();
+    await expect(page.locator("main")).not.toContainText(/Teil A|Wachstum|Blüte|Kanister/);
+    await page.goto("/#/geraete?tab=geraete");
+    await expect(page.getByTestId("device-DB-7A31C0")).toContainText("Dosing block 1");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    expect(await page.evaluate(() => localStorage.getItem("gc.lang"))).toBeNull();  // the hub's language, not a choice of this browser
+  });
+
   test("on a German hub show its language from the sign-in page on, without keeping a choice (SD-083)", async ({ page, request }) => {
-    await scenario(request, "demo");  // the demo's hub speaks German
+    await scenario(request, "demo");
+    // The demo's hub speaks English (SD-095): set to German, as a hub that stayed German after an update.
+    // Through this test's own API context, so the browser still starts at the sign-in page.
+    expect((await request.post("/api/v1/auth/login", { data: { password: "demo-passwort" } })).ok()).toBe(true);
+    expect((await request.put("/api/v1/system", { data: { language: "de" } })).ok()).toBe(true);
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "de");
     await page.locator("input[name=password]").fill("demo-passwort");

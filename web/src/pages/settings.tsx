@@ -3,8 +3,8 @@
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
 import { Bug, Compass, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
-import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
-import { get, post, put } from "../api";
+import { lang, msg as msgText, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
+import { get, post, put, type Msg } from "../api";
 import { dateTime, num, timeZone } from "../format";
 import { config, errorText, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
 import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, TestingNotice, Toggle } from "../ui";
@@ -117,7 +117,7 @@ function Updates() {
           )}
           <p class="muted small">{t("settings.installNote")}</p>
           <div class="row">
-            <Button variant="primary" onClick={async () => setMsg((await post("/update/install", { version: av.version })).message)}>
+            <Button variant="primary" onClick={async () => setMsg(msgText((await post<{ message: Msg }>("/update/install", { version: av.version })).message))}>
               {t("settings.install")}
             </Button>
           </div>

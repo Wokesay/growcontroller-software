@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -296,11 +297,11 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(deRow.find('.') == std::string::npos);
   CHECK(deRow.back() == ';');
   CHECK(header(de).find("growcontroller-verlauf.csv") != std::string::npos);
-  // Without a language the hub's own decides; the demo's hub speaks German
-  CHECK(csv("").body.rfind("zeit_utc;", 0) == 0);
-  CHECK(csv("xx").body.rfind("zeit_utc;", 0) == 0);  // an unknown one counts as none
-  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  // Without a language the hub's own decides; the demo's hub speaks English (SD-095)
   CHECK(csv("").body.rfind("time_utc,", 0) == 0);
+  c.ok("PUT", "/api/v1/system", {{"language", "de"}});
+  CHECK(csv("").body.rfind("zeit_utc;", 0) == 0);
+  CHECK(csv("xx").body.rfind("zeit_utc;", 0) == 0);  // an unknown one counts as none: the hub's, never a fixed one
   // Only a series id heads a column: anything else is refused, nothing is written
   for (const char* bad : {"=1+1", "tank.ph\n=2", "tank.ph;x", "Tank.PH", "-1", "@a", "\"q\"", "tank ph"}) {
     const auto r = csv("en", bad);
@@ -313,7 +314,7 @@ TEST_CASE("API: the CSV export follows the language, gaps stay empty (RAT-016, S
   CHECK(csv("en", ",tank.ph").status == 422);
   CHECK(csv("en", std::string(64, 'a')).status == 200);
   CHECK(csv("en", std::string(65, 'a')).status == 422);
-  CHECK(csv("de").body.rfind("zeit_utc;", 0) == 0);  // the page's language beats the hub's
+  CHECK(csv("en").body.rfind("time_utc,", 0) == 0);  // the page's language beats the hub's
 }
 
 TEST_CASE("API: history and CSV name at most 16 series, none twice, each a series id (SD-083)") {
@@ -722,7 +723,7 @@ TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines A
   old["system"]["passwordSet"] = false;
   c.ok("POST", "/api/v1/config/import", old);
   CHECK(c.ok("GET", "/api/v1/config")["system"]["passwordSet"] == true);
-  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
+  c.ok("POST", "/api/v1/dose", {{"canister", "part-a"}, {"ml", 3}});
   auto [busy, busyBody] = c.call("POST", "/api/v1/config/import", cfg);
   CHECK(busy == 409);
   CHECK(busyBody["error"]["key"] == "config.busy");
@@ -773,6 +774,47 @@ TEST_CASE("Demo: jede Phase verweist auf ein vorhandenes Rezept") {
   }
 }
 
+TEST_CASE("Demo: the hub speaks English, and so do the names it sets up (SD-095)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  // A browser without a choice of its own shows the hub's language from the sign-in page on (SD-083)
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "en");
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  CHECK(cfg["system"]["language"] == "en");
+  auto names = [&](const char* list) {
+    std::map<std::string, std::string> out;
+    for (const auto& x : cfg[list]) out[x["id"].get<std::string>()] = x["name"].get<std::string>();
+    return out;
+  };
+  std::map<std::string, std::string> devices = names("devices");
+  std::string strip;
+  for (const auto& d : cfg["devices"])
+    if (d["class"].get<std::string>().rfind("shelly_", 0) == 0) strip = d["id"];
+  REQUIRE_FALSE(strip.empty());
+  CHECK(devices == std::map<std::string, std::string>{{"DB-7A31C0", "Dosing block 1"},
+                                                      {"CAP-1F02A4", "Pump green"},
+                                                      {"CAP-1F02B7", "Pump orange"},
+                                                      {"CAP-1F02C1", "Pump blue"},
+                                                      {"CAP-1F02D9", "Pump red"},
+                                                      {"PHEC-3F2A91", "pH/EC tank"},
+                                                      {"LVL-77B210", "Tank level"},
+                                                      {"HUB-OUT", "Hub outputs"},
+                                                      {"CLIM-5D20C4", "Room climate"},
+                                                      {strip, "Power strip"}});
+  // Bottle and recipe IDs come from the names
+  CHECK(names("canisters") == std::map<std::string, std::string>{{"part-a", "Part A"}, {"part-b", "Part B"}, {"calmag", "CalMag"}, {"ph", "pH−"}});
+  CHECK(names("recipes") == std::map<std::string, std::string>{{"veg", "Veg"}, {"bloom", "Bloom"}});
+  CHECK(names("tanks") == std::map<std::string, std::string>{{"t1", "Tank 1"}});
+  CHECK(names("zones") == std::map<std::string, std::string>{{"z1", "Room 1"}});
+  CHECK(cfg["grow"]["name"] == "Grow 1");
+  REQUIRE(cfg["grow"]["phases"].size() == 2);
+  CHECK(cfg["grow"]["phases"][0]["name"] == "Veg");
+  CHECK(cfg["grow"]["phases"][0]["params"]["recipe"] == "veg");
+  CHECK(cfg["grow"]["phases"][1]["name"] == "Bloom");
+  CHECK(cfg["grow"]["phases"][1]["params"]["recipe"] == "bloom");
+}
+
 TEST_CASE("Kurznamen: Umlaute werden umschrieben") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -785,7 +827,7 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-  // Demo hat Teil A, Teil B, CalMag → die Grundvorlage passt über die Namen
+  // The demo has Part A, Part B and CalMag: the basic template matches them by name
   auto j = c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}});
   auto cfg = c.ok("GET", "/api/v1/config");
   const gc::json* made = nullptr;
@@ -797,7 +839,7 @@ TEST_CASE("Vorlagen: Zuordnung über Rollen, sonst über Namen, sonst Liste der 
   auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}});
   CHECK(st == 422);
   CHECK(err["missing"].size() == 3);
-  c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}});
+  c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_veg"}, {"map", {{"a", "part-a"}, {"b", "part-b"}, {"calmag", "calmag"}}}});
   auto [nf, nfBody] = c.call("POST", "/api/v1/recipes/template", {{"id", "gibtsnicht"}});
   CHECK(nf == 404);
   CHECK(nfBody["error"]["key"] == "recipe.template.unknown");
@@ -814,7 +856,7 @@ TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears the
     return gc::json();
   };
   const gc::json id = c.ok("POST", "/api/v1/recipes/template",
-                           {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"];
+                           {{"id", "athena_blended_veg"}, {"map", {{"a", "part-a"}, {"b", "part-b"}, {"calmag", "calmag"}}}})["id"];
   auto veg = recipe(id);
   CHECK(veg["refEc"].get<double>() == doctest::Approx(2.1));
   REQUIRE(veg["ph"].size() == 2);
@@ -858,12 +900,12 @@ TEST_CASE("Recipes: a template brings its chart EC and pH range; null clears the
   CHECK(recipe(id)["ph"][0].get<double>() == doctest::Approx(5.7));
   // A new recipe keeps both; the flowering template brings its own
   const gc::json made = c.ok("POST", "/api/v1/recipes",
-                             {{"name", "Neu"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}}},
+                             {{"name", "Neu"}, {"steps", {{{"canister", "part-a"}, {"mlPerL", 2.0}}, {{"canister", "part-b"}, {"mlPerL", 2.0}}}},
                               {"refEc", 1.2}, {"ph", {5.8, 6.0}}})["id"];
   CHECK(recipe(made)["refEc"].get<double>() == doctest::Approx(1.2));
   CHECK(recipe(made)["ph"][1].get<double>() == doctest::Approx(6.0));
   const gc::json bloom = c.ok("POST", "/api/v1/recipes/template",
-                              {{"id", "athena_blended_bloom"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"];
+                              {{"id", "athena_blended_bloom"}, {"map", {{"a", "part-a"}, {"b", "part-b"}, {"calmag", "calmag"}}}})["id"];
   CHECK(recipe(bloom)["refEc"].get<double>() == doctest::Approx(2.3));
   // An import is checked the same way and changes nothing when refused
   gc::json cfg = c.ok("GET", "/api/v1/config");
@@ -878,15 +920,15 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   auto steps = [](bool calmagFixed, const gc::json& aFixed) {
-    return gc::json::array({{{"canister", "teil-a"}, {"mlPerL", 2.0}, {"fixed", aFixed}},
-                            {{"canister", "teil-b"}, {"mlPerL", 2.0}},
+    return gc::json::array({{{"canister", "part-a"}, {"mlPerL", 2.0}, {"fixed", aFixed}},
+                            {{"canister", "part-b"}, {"mlPerL", 2.0}},
                             {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", calmagFixed}}});
   };
-  auto [st1, e1] = c.call("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, true)}});
+  auto [st1, e1] = c.call("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(false, true)}});
   CHECK(st1 == 422);
   CHECK(e1.dump().find("cfg.recipe.fixed_pair") != std::string::npos);
   for (const gc::json& wrong : {gc::json("true"), gc::json(1)}) {
-    auto [st, e] = c.call("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, wrong)}});
+    auto [st, e] = c.call("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(false, wrong)}});
     CHECK(st == 422);
     CHECK(e["error"]["key"] == "recipe.fixed");
   }
@@ -899,9 +941,9 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   for (int h = 0; h < 12 && !c.state()["effects"]["ec"].is_number(); ++h) s.fastForward(1);
   REQUIRE(c.state()["effects"]["ec"].is_number());
   const double learned = c.state()["effects"]["ec"].get<double>();
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(true, false)}});
   CHECK(c.state()["effects"]["ec"].get<double>() == doctest::Approx(learned * 4.6 / 4.0));
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, false)}});
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(false, false)}});
   CHECK(c.state()["effects"]["ec"].get<double>() == doctest::Approx(learned * 4.6 / 4.0));
   auto effect = [&] { return c.state()["effects"]["ec"].get<double>(); };
   auto idOf = [&](const std::string& name) {
@@ -913,8 +955,8 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   // A recipe EC control does not use leaves its effect alone
   double e = effect();
   c.ok("POST", "/api/v1/recipes",
-       {{"id", idOf("Blüte")},
-        {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}, {"fixed", true}}}}});
+       {{"id", idOf("Bloom")},
+        {"steps", {{{"canister", "part-a"}, {"mlPerL", 2.6}}, {{"canister", "part-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}, {"fixed", true}}}}});
   CHECK(effect() == doctest::Approx(e));
   // Ticked while a round settles: that round was planned on the old parts and learns nothing
   s.world().fill(40, 0.6, 5.9);
@@ -922,7 +964,7 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   for (int i = 0; i < 2 * 720 && line() != "ec.settling"; ++i) s.step(5000);
   REQUIRE(line() == "ec.settling");
   e = effect();
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(true, false)}});
   const double scaled = e * 4.6 / 4.0;
   CHECK(effect() == doctest::Approx(scaled));
   for (int i = 0; i < 720 && line() == "ec.settling"; ++i) s.step(5000);
@@ -930,12 +972,12 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   CHECK(effect() == doctest::Approx(scaled));
   // EC control set to a recipe that was deleted uses the first one, and so does the scaling
   c.ok("POST", "/api/v1/grow/complete", gc::json::object());  // the phase's recipe would win (R4)
-  const gc::json gone = c.ok("POST", "/api/v1/recipes", {{"name", "Weg"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 1.0}}, {{"canister", "teil-b"}, {"mlPerL", 1.0}}}}})["id"];
+  const gc::json gone = c.ok("POST", "/api/v1/recipes", {{"name", "Weg"}, {"steps", {{{"canister", "part-a"}, {"mlPerL", 1.0}}, {{"canister", "part-b"}, {"mlPerL", 1.0}}}}})["id"];
   c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", gone}}}});
   CHECK(c.call("DELETE", "/api/v1/recipes/" + gone.get<std::string>()).first == 200);
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(false, false)}});
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(false, false)}});
   e = effect();
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps(true, false)}});
   CHECK(effect() == doctest::Approx(e * 4.6 / 4.0));
 }
 
@@ -954,19 +996,19 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   };
   auto useRecipe = [&](const std::string& id) { c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", id}}}}); };
   auto bloomSteps = [](double calmag, bool fixed) {
-    return gc::json::array({{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}},
+    return gc::json::array({{{"canister", "part-a"}, {"mlPerL", 2.6}}, {{"canister", "part-b"}, {"mlPerL", 2.6}},
                             {{"canister", "calmag"}, {"mlPerL", calmag}, {"fixed", fixed}}});
   };
   // The demo's mix mixes in first; a lower EC then gives EC control a round on its recipe
   for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);
   s.world().fill(40, 1.0, 5.9);
-  for (int h = 0; h < 12 && !learned("wachstum"); ++h) s.fastForward(1);
-  REQUIRE(learned("wachstum"));
-  const double veg = effects()["ecByRecipe"]["wachstum"].get<double>();
+  for (int h = 0; h < 12 && !learned("veg"); ++h) s.fastForward(1);
+  REQUIRE(learned("veg"));
+  const double veg = effects()["ecByRecipe"]["veg"].get<double>();
   CHECK(effects()["ec"].get<double>() == doctest::Approx(veg));
   // Another recipe has learned nothing: it starts from its own start, not from the other's
   c.ok("POST", "/api/v1/grow/complete", gc::json::object());  // the phase's recipe would win (R4)
-  const std::string bloom = idOf("Blüte");
+  const std::string bloom = idOf("Bloom");
   REQUIRE_FALSE(bloom.empty());
   useRecipe(bloom);
   CHECK(effects()["ec"].is_null());
@@ -974,13 +1016,13 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   s.world().fill(40, 0.6, 5.9);
   for (int h = 0; h < 12 && !learned(bloom); ++h) s.fastForward(1);
   REQUIRE(learned(bloom));
-  CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));  // left alone
+  CHECK(effects()["ecByRecipe"]["veg"].get<double>() == doctest::Approx(veg));  // left alone
   // A recipe EC control does not use: its own value scales up when a part is fixed (RAT-085)
   const double bloomLearned = effects()["ecByRecipe"][bloom].get<double>();
-  useRecipe("wachstum");
+  useRecipe("veg");
   c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(0.4, true)}});
   CHECK(effects()["ecByRecipe"][bloom].get<double>() == doctest::Approx(bloomLearned * 5.6 / 5.2));
-  CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));
+  CHECK(effects()["ecByRecipe"]["veg"].get<double>() == doctest::Approx(veg));
   // A chart EC above what it learned forgets it (SD-092): 2.4 over 5.6 ml/L
   c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(0.4, false)}, {"refEc", 2.4}});
   REQUIRE_FALSE(learned(bloom));
@@ -989,7 +1031,7 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   s.world().fill(40, 0.6, 5.9);
   for (int i = 0; i < 2 * 720 && line() != "ec.settling"; ++i) s.step(5000);
   REQUIRE(line() == "ec.settling");
-  useRecipe("wachstum");
+  useRecipe("veg");
   auto settle = [&] {
     for (int i = 0; i < 720 && line() == "ec.settling"; ++i) s.step(5000);
     REQUIRE(line() != "ec.settling");
@@ -997,7 +1039,7 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   SUBCASE("left as it is: the round learns into the recipe it dosed, the other keeps its own") {
     settle();
     CHECK(learned(bloom));
-    CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));
+    CHECK(effects()["ecByRecipe"]["veg"].get<double>() == doctest::Approx(veg));
   }
   SUBCASE("its recipe edited while it settles: it learns nothing, though EC control doses another now") {
     c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(1.2, false)}, {"refEc", 2.4}});
@@ -1006,7 +1048,7 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   }
   SUBCASE("its recipe deleted and one of that name created while it settles: the new one learns nothing of it") {
     REQUIRE(c.call("DELETE", "/api/v1/recipes/" + bloom).first == 200);
-    REQUIRE(c.ok("POST", "/api/v1/recipes", {{"name", "Blüte"}, {"steps", bloomSteps(0.4, false)}})["id"] == bloom);
+    REQUIRE(c.ok("POST", "/api/v1/recipes", {{"name", "Bloom"}, {"steps", bloomSteps(0.4, false)}})["id"] == bloom);
     settle();
     CHECK_FALSE(learned(bloom));
   }
@@ -1018,7 +1060,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);  // the demo's own mix first
   auto plan = [&](const gc::json& extra) {
-    gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "target"}};
+    gc::json req = {{"recipe", "veg"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "target"}};
     req.update(extra);
     return c.ok("POST", "/api/v1/mix/plan", req);
   };
@@ -1032,7 +1074,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   CHECK(keys(p["errors"]).count("mix.target_ec_control") == 1);
   {
     for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
-    const auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 1.0}, {"waterEc", 0.0}});
+    const auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 1.0}, {"waterEc", 0.0}});
     CHECK(st == 422);
     CHECK(j["error"]["key"] == "mix.target_ec_control");
     CHECK(c.state()["job"].is_null());
@@ -1046,15 +1088,15 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   p = plan({{"targetEc", 1.0}, {"waterEc", 0.0}});
   CHECK_FALSE(p["ok"].get<bool>());
   CHECK(keys(p["errors"]).count("mix.no_reference") == 1);
-  CHECK(c.ok("POST", "/api/v1/mix/plan", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}})["ok"] == true);
-  // The demo's Wachstum: 2 + 2 + 0.6 ml/L; a chart EC of 1.15 is 0.25 per ml/L over all parts
+  CHECK(c.ok("POST", "/api/v1/mix/plan", {{"recipe", "veg"}, {"waterL", 20}, {"confirmRepeat", true}})["ok"] == true);
+  // The demo's Veg: 2 + 2 + 0.6 ml/L; a chart EC of 1.15 is 0.25 per ml/L over all parts
   gc::json cfg = c.ok("GET", "/api/v1/config");
   gc::json steps;
   for (const auto& r : cfg["recipes"])
-    if (r["id"] == "wachstum") steps = r["steps"];
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps}, {"refEc", 1.15}});
-  // From the reference's 0.25, or a larger effect EC control learned for Wachstum before it was switched off
-  const gc::json learned = c.state()["effects"]["ecByRecipe"].value("wachstum", gc::json());
+    if (r["id"] == "veg") steps = r["steps"];
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps}, {"refEc", 1.15}});
+  // From the reference's 0.25, or a larger effect EC control learned for Veg before it was switched off
+  const gc::json learned = c.state()["effects"]["ecByRecipe"].value("veg", gc::json());
   const double lo = gc::kRefEffectMin * gc::kEcStartEffect, hi = gc::kRefEffectMax * gc::kEcStartEffect;  // the band (RAT-056)
   const double e = learned.is_number() && learned.get<double>() >= lo ? std::max(0.25, std::min(learned.get<double>(), hi)) : 0.25;
   p = plan({{"targetEc", 0.85}, {"waterEc", 0.1}});  // (0.85 − 0.1) / 0.25 = 3 of 4.6 ml/L
@@ -1076,7 +1118,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   CHECK(keys(p["warnings"]).count("mix.capped") == 1);
   // Started: the job and its event keep what it aimed at
   for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
-  gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true},
+  gc::json req = {{"recipe", "veg"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true},
                   {"amounts", "target"}, {"targetEc", 0.85}, {"waterEc", 0.1}};
   const gc::json job = c.ok("POST", "/api/v1/mix/start", req)["job"];
   CHECK(job["info"]["amounts"] == "target");
@@ -1102,14 +1144,16 @@ TEST_CASE("Templates: the recipe is stored in the language of the request, by de
       if (r["id"] == id) return r;
     return gc::json();
   };
-  c.ok("PUT", "/api/v1/system", {{"language", "en"}});
+  // The demo's hub speaks English (SD-095): a German one shows that the default follows the hub
+  c.ok("PUT", "/api/v1/system", {{"language", "de"}});
   auto veg = recipe(c.ok("POST", "/api/v1/recipes/template",
-                         {{"id", "athena_blended_veg"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}})["id"]);
-  CHECK(veg["name"] == "Vegetative wk 1–4 (per Athena A01.004)");
-  CHECK(veg["note"].get<std::string>().find("Manufacturer data, not binding") != std::string::npos);
-  // The request names the language of the page, which may differ from the hub's
-  auto basic = recipe(c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "de"}})["id"]);
-  CHECK(basic["name"] == "Zweikomponenten-Dünger");
+                         {{"id", "athena_blended_veg"}, {"map", {{"a", "part-a"}, {"b", "part-b"}, {"calmag", "calmag"}}}})["id"]);
+  CHECK(veg["name"] == "Wachstum Wo. 1–4 (nach Athena A01.004)");
+  CHECK(veg["note"].get<std::string>().find("Herstellerangabe, unverbindlich") != std::string::npos);
+  // The request names the language of the page, which may differ from the hub's; the demo's
+  // English bottle names match the template's English part names
+  auto basic = recipe(c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "en"}})["id"]);
+  CHECK(basic["name"] == "Two-part nutrient");
   auto [st, err] = c.call("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"lang", "fr"}});
   CHECK(st == 422);
   CHECK(err["error"]["key"] == "recipe.template.lang");
@@ -1305,19 +1349,19 @@ TEST_CASE("Vorlagen: Paarname schon vergeben → freier Name, A/B skalieren geme
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-  // Demo: Teil A/B tragen Paar AB. Zwei neue, ungepaarte Kanister auf freien Pumpen
+  // The demo: Part A and B are pair AB. Two new bottles without a pair on free pumps
   c.ok("DELETE", "/api/v1/canisters/ph");  // pH− räumt Pumpe 4
   auto a2 = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom A"}, {"kind", "nutrient"}, {"pump", "CAP-1F02D9"}})["id"];
   auto b2 = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom B"}, {"kind", "nutrient"}, {"pump", ""}})["id"];
   c.ok("POST", "/api/v1/recipes/template", {{"id", "athena_blended_bloom"}, {"map", {{"a", a2}, {"b", b2}, {"calmag", "calmag"}}}});
   auto cfg = c.ok("GET", "/api/v1/config");
-  std::string pa, pb, pTeilA;
+  std::string pa, pb, pPartA;
   for (const auto& k : cfg["canisters"]) {
     if (k["id"] == a2) pa = k["pair"];
     if (k["id"] == b2) pb = k["pair"];
-    if (k["id"] == "teil-a") pTeilA = k["pair"];
+    if (k["id"] == "part-a") pPartA = k["pair"];
   }
-  CHECK(pTeilA == "AB");
+  CHECK(pPartA == "AB");
   CHECK_FALSE(pa.empty());
   CHECK(pa == pb);
   CHECK(pa != "AB");
@@ -1487,21 +1531,21 @@ TEST_CASE("Bottles: removing one bottle of a pair leaves its partner unpaired, s
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   deleteRecipes(c);
-  const gc::json partner = canisterById(c, "teil-b");
-  const gc::json stockB = c.state()["stock"]["teil-b"];
+  const gc::json partner = canisterById(c, "part-b");
+  const gc::json stockB = c.state()["stock"]["part-b"];
   REQUIRE(partner["pair"] == "AB");
-  c.ok("DELETE", "/api/v1/canisters/teil-a");
-  CHECK(canisterById(c, "teil-b")["pair"] == "");
+  c.ok("DELETE", "/api/v1/canisters/part-a");
+  CHECK(canisterById(c, "part-b")["pair"] == "");
   // Only the label goes: the partner keeps its pump and stock; the removed bottle's stock is gone
-  CHECK(canisterById(c, "teil-b")["pump"] == partner["pump"]);
-  CHECK(c.state()["stock"]["teil-b"] == stockB);
-  CHECK_FALSE(c.state()["stock"].contains("teil-a"));
+  CHECK(canisterById(c, "part-b")["pump"] == partner["pump"]);
+  CHECK(c.state()["stock"]["part-b"] == stockB);
+  CHECK_FALSE(c.state()["stock"].contains("part-a"));
   // The event names the partner that is no longer paired
   const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
   CHECK(ev["title"]["key"] == "ev.cfg.canister_removed_pair");
-  CHECK(ev["title"]["args"].value("partner", "") == "Teil B");
+  CHECK(ev["title"]["args"].value("partner", "") == "Part B");
   // A save the hub checks as a whole still works
-  c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "teil-b"}, {"mlPerL", 1.0}}}}});
+  c.ok("POST", "/api/v1/recipes", {{"name", "Nur B"}, {"steps", {{{"canister", "part-b"}, {"mlPerL", 1.0}}}}});
 }
 
 TEST_CASE("Bottles: removing one bottle of a pair of three leaves the other two a pair (#147)") {
@@ -1510,8 +1554,8 @@ TEST_CASE("Bottles: removing one bottle of a pair of three leaves the other two 
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   deleteRecipes(c);
   c.ok("POST", "/api/v1/canisters", {{"id", "calmag"}, {"pair", "AB"}});
-  c.ok("DELETE", "/api/v1/canisters/teil-a");
-  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
+  c.ok("DELETE", "/api/v1/canisters/part-a");
+  CHECK(canisterById(c, "part-b")["pair"] == "AB");
   CHECK(canisterById(c, "calmag")["pair"] == "AB");
   CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
 }
@@ -1526,26 +1570,26 @@ TEST_CASE("Bottles: removing a bottle without a pair, or one whose label is alre
   const std::string solo = c.ok("POST", "/api/v1/canisters", {{"name", "Solo"}, {"kind", "nutrient"}, {"pair", "XY"}})["id"];
   c.ok("DELETE", "/api/v1/canisters/" + solo);  // a label with no partner left
   CHECK(c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0)["title"]["key"] == "ev.cfg.canister_removed");
-  CHECK(canisterById(c, "teil-a")["pair"] == "AB");
-  CHECK(canisterById(c, "teil-b")["pair"] == "AB");
+  CHECK(canisterById(c, "part-a")["pair"] == "AB");
+  CHECK(canisterById(c, "part-b")["pair"] == "AB");
 }
 
 TEST_CASE("Bottles: editing one bottle out of a pair leaves its partner unpaired, and recipes still save (#152)") {
-  for (const gc::json& edit : {gc::json{{"id", "teil-a"}, {"pair", ""}}, gc::json{{"id", "teil-a"}, {"pair", "XY"}}, gc::json{{"id", "teil-a"}, {"kind", "ph_down"}, {"pair", ""}}}) {
+  for (const gc::json& edit : {gc::json{{"id", "part-a"}, {"pair", ""}}, gc::json{{"id", "part-a"}, {"pair", "XY"}}, gc::json{{"id", "part-a"}, {"kind", "ph_down"}, {"pair", ""}}}) {
     CAPTURE(edit.dump());
     sim::Simulation s(test::opts("demo"));
     Client c{s};
     c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
     deleteRecipes(c);
     c.ok("POST", "/api/v1/canisters", edit);
-    CHECK(canisterById(c, "teil-b")["pair"] == "");
+    CHECK(canisterById(c, "part-b")["pair"] == "");
     const gc::json ev = c.ok("GET", "/api/v1/events?limit=5&type=config")["events"].at(0);
     CHECK(ev["title"]["key"] == "ev.cfg.canister_unpairs");
-    CHECK(ev["title"]["args"].value("partner", "") == "Teil B");
-    // Moved into a new pair, Teil A is that pair's first bottle and may stand alone until its partner comes;
+    CHECK(ev["title"]["args"].value("partner", "") == "Part B");
+    // Moved into a new pair, Part A is that pair's first bottle and may stand alone until its partner comes;
     // a recipe may hold it already. A pH bottle is in no recipe.
-    gc::json steps = gc::json::array({gc::json{{"canister", "teil-b"}, {"mlPerL", 1.0}}});
-    if (edit.value("kind", "nutrient") == "nutrient") steps.push_back({{"canister", "teil-a"}, {"mlPerL", 1.0}});
+    gc::json steps = gc::json::array({gc::json{{"canister", "part-b"}, {"mlPerL", 1.0}}});
+    if (edit.value("kind", "nutrient") == "nutrient") steps.push_back({{"canister", "part-a"}, {"mlPerL", 1.0}});
     c.ok("POST", "/api/v1/recipes", {{"name", "Weiter"}, {"steps", steps}});
   }
 }
@@ -1554,7 +1598,7 @@ TEST_CASE("Bottles: an edit that would leave a recipe with half a pair is refuse
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
-  // A bottle no recipe uses joins pair AB, while the recipes hold only Teil A and Teil B of it
+  // A bottle no recipe uses joins pair AB, while the recipes hold only Part A and Part B of it
   const std::string extra = c.ok("POST", "/api/v1/canisters", {{"name", "Bloom C"}, {"kind", "nutrient"}})["id"];
   const gc::json before = canisterById(c, extra);
   auto [code, body] = c.call("POST", "/api/v1/canisters", {{"id", extra}, {"pair", "AB"}});
@@ -1602,14 +1646,14 @@ TEST_CASE("Templates: a template pairs its parts while another bottle waits for 
     Client c{s};
     c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
     deleteRecipes(c);
-    c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"pair", ""}});  // Teil B goes out of the pair with it
+    c.ok("POST", "/api/v1/canisters", {{"id", "part-a"}, {"pair", ""}});  // Part B goes out of the pair with it
     const std::string solo = c.ok("POST", "/api/v1/canisters", {{"name", "Solo"}, {"kind", "nutrient"}, {"pair", "XY"}})["id"];
     if (partTaken)
-      for (const char* id : {"teil-a", "calmag"}) c.ok("POST", "/api/v1/canisters", {{"id", id}, {"pair", "CM"}});
-    c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"map", {{"a", "teil-a"}, {"b", "teil-b"}, {"calmag", "calmag"}}}});
+      for (const char* id : {"part-a", "calmag"}) c.ok("POST", "/api/v1/canisters", {{"id", id}, {"pair", "CM"}});
+    c.ok("POST", "/api/v1/recipes/template", {{"id", "two_part_basic"}, {"map", {{"a", "part-a"}, {"b", "part-b"}, {"calmag", "calmag"}}}});
     // A part whose bottle has a pair already keeps it, and its partner gets no label of its own
-    CHECK(canisterById(c, "teil-a")["pair"] == std::string(partTaken ? "CM" : "AB"));
-    CHECK(canisterById(c, "teil-b")["pair"] == std::string(partTaken ? "" : "AB"));
+    CHECK(canisterById(c, "part-a")["pair"] == std::string(partTaken ? "CM" : "AB"));
+    CHECK(canisterById(c, "part-b")["pair"] == std::string(partTaken ? "" : "AB"));
     CHECK(canisterById(c, solo)["pair"] == "XY");
   }
 }
