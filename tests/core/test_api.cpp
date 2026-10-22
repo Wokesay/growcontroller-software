@@ -1060,7 +1060,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
   for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);  // the demo's own mix first
   auto plan = [&](const gc::json& extra) {
-    gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "target"}};
+    gc::json req = {{"recipe", "veg"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "target"}};
     req.update(extra);
     return c.ok("POST", "/api/v1/mix/plan", req);
   };
@@ -1074,7 +1074,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   CHECK(keys(p["errors"]).count("mix.target_ec_control") == 1);
   {
     for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
-    const auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 1.0}, {"waterEc", 0.0}});
+    const auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 1.0}, {"waterEc", 0.0}});
     CHECK(st == 422);
     CHECK(j["error"]["key"] == "mix.target_ec_control");
     CHECK(c.state()["job"].is_null());
@@ -1088,15 +1088,15 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   p = plan({{"targetEc", 1.0}, {"waterEc", 0.0}});
   CHECK_FALSE(p["ok"].get<bool>());
   CHECK(keys(p["errors"]).count("mix.no_reference") == 1);
-  CHECK(c.ok("POST", "/api/v1/mix/plan", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}})["ok"] == true);
-  // The demo's Wachstum: 2 + 2 + 0.6 ml/L; a chart EC of 1.15 is 0.25 per ml/L over all parts
+  CHECK(c.ok("POST", "/api/v1/mix/plan", {{"recipe", "veg"}, {"waterL", 20}, {"confirmRepeat", true}})["ok"] == true);
+  // The demo's Veg: 2 + 2 + 0.6 ml/L; a chart EC of 1.15 is 0.25 per ml/L over all parts
   gc::json cfg = c.ok("GET", "/api/v1/config");
   gc::json steps;
   for (const auto& r : cfg["recipes"])
-    if (r["id"] == "wachstum") steps = r["steps"];
-  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps}, {"refEc", 1.15}});
-  // From the reference's 0.25, or a larger effect EC control learned for Wachstum before it was switched off
-  const gc::json learned = c.state()["effects"]["ecByRecipe"].value("wachstum", gc::json());
+    if (r["id"] == "veg") steps = r["steps"];
+  c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"steps", steps}, {"refEc", 1.15}});
+  // From the reference's 0.25, or a larger effect EC control learned for Veg before it was switched off
+  const gc::json learned = c.state()["effects"]["ecByRecipe"].value("veg", gc::json());
   const double lo = gc::kRefEffectMin * gc::kEcStartEffect, hi = gc::kRefEffectMax * gc::kEcStartEffect;  // the band (RAT-056)
   const double e = learned.is_number() && learned.get<double>() >= lo ? std::max(0.25, std::min(learned.get<double>(), hi)) : 0.25;
   p = plan({{"targetEc", 0.85}, {"waterEc", 0.1}});  // (0.85 − 0.1) / 0.25 = 3 of 4.6 ml/L
@@ -1118,7 +1118,7 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   CHECK(keys(p["warnings"]).count("mix.capped") == 1);
   // Started: the job and its event keep what it aimed at
   for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
-  gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true},
+  gc::json req = {{"recipe", "veg"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true},
                   {"amounts", "target"}, {"targetEc", 0.85}, {"waterEc", 0.1}};
   const gc::json job = c.ok("POST", "/api/v1/mix/start", req)["job"];
   CHECK(job["info"]["amounts"] == "target");

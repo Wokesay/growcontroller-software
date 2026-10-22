@@ -176,7 +176,7 @@ const ecControl = (page: Page, enabled: boolean) =>
 
 test("Mixing to an EC without measuring is offered with EC control off, needs the recipe's chart EC and the water's EC, and doses at most the recipe's amounts (SD-057, SD-098, RAT-087)", async ({ page }) => {
   await login(page);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   await page.goto("/#/mischen");
   await page.reload();
   // EC control on: it takes the tank to its own target after mixing, so only the recipe's amounts (SD-089 S20)
@@ -185,7 +185,7 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await expect(page.getByRole("tablist", { name: "Mengen" })).toHaveCount(0);
   expect(await ecControl(page, false)).toBe(200);
   await page.reload();
-  await page.locator("select[name=recipe]").selectOption({ label: "Wachstum" });
+  await page.locator("select[name=recipe]").selectOption({ label: "Veg" });
   await page.locator("input[name=water]").fill("20");
   await page.getByRole("tablist", { name: "Mengen" }).getByRole("tab", { name: "Auf Ziel-EC" }).click();
   await expect(page.getByText("Möglich: 0,2 bis 4,0 mS/cm")).toBeVisible();
@@ -193,12 +193,12 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   // No chart EC: refused, with what to do; the recipe's amounts stay
   await page.locator("input[name=targetEc]").fill("0,85");
   await page.locator("input[name=waterEc]").fill("0,2");
-  await expect(preview).toContainText("Rezept „Wachstum“ hat keine passende EC laut Plan");
+  await expect(preview).toContainText("Rezept „Veg“ hat keine passende EC laut Plan");
   await expect(page.getByTestId("mix-start")).toBeDisabled();
   // A chart EC of 1.15 over 4.6 ml/L: (0.85 − 0.1) / 0.25 = 3 ml/L, two thirds of each part; a larger
-  // effect EC control learned for Wachstum before it was switched off makes it less (SD-098)
-  expect(await saveChart(page, "Wachstum", { refEc: 1.15, ph: null })).toBe(200);
-  const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.wachstum ?? null);
+  // effect EC control learned for Veg before it was switched off makes it less (SD-098)
+  expect(await saveChart(page, "Veg", { refEc: 1.15, ph: null })).toBe(200);
+  const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.veg ?? null);
   const [lo, hi] = [0.25 * 0.275, 4 * 0.275];  // the band around the start effect (RAT-056, REF_EFFECT_BAND)
   const e = typeof learned === "number" && learned >= lo ? Math.max(0.25, Math.min(learned, hi)) : 0.25;
   const de = (v: number, d: number) => v.toFixed(d).replace(".", ",");
@@ -251,6 +251,6 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await simSpeed(page, 20);
   await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 90_000 });
   await simSpeed(page, 1);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   expect(await ecControl(page, true)).toBe(200);
 });
