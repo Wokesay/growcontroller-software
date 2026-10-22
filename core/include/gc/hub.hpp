@@ -179,6 +179,7 @@ class Hub {
   bool controllerFree(const char* fn, const char* latch) const;  // switched on and not locked
   bool controlOn() const;      // EC or pH control free: something waits for the mixed tank
   const RecipeCfg* ecRecipe() const;  // the recipe EC control doses, as it picks it (activeRecipe in control.cpp)
+  MixRequest mixRequest(const json& req) const;  // a mix as asked, with the EC target's range (SD-098)
   void recipeEdited(const RecipeCfg& before, const RecipeCfg& after);  // its learned EC effect, its round (SD-092)
   void forgetEcEffect(const std::string& id);  // a recipe deleted, left out or new (SD-092)
   // A mix ending early with nutrients in (or a part cut unbooked): EC and pH settle first (SD-057)

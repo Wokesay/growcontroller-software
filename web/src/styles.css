@@ -275,6 +275,8 @@ small, .small { font-size: 0.85rem; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: var(--surface-2); }
 .btn.sm { padding: 6px 11px; font-size: 0.86rem; border-radius: 9px; }
+.btn.wrap { white-space: normal; justify-content: flex-start; text-align: start; }
+@media (max-width: 600px) { .btn.sm.wrap { min-height: 44px; } }  /* a tap target on a phone */
 .btn.lg { padding: 13px 22px; font-size: 1.02rem; border-radius: 13px; }
 .btn.block { width: 100%; }
 .stop-btn { background: var(--bad); color: #fff; border: 0; border-radius: 11px; padding: 8px 14px; font-weight: 700; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; }
