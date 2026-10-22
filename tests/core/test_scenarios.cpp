@@ -1916,6 +1916,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     demoAt(s, c, 28, 25, 30);
     for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
     irrigationPlug(s, c);
+    s.step(10 * 60 * 1000, 5000);  // a round EC or pH began before has mixed in: watering waits for it (SD-093)
     s.world().fill(20, 1.3, 5.9);
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
     s.step(60000, 5000);
