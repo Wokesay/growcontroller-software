@@ -30,8 +30,8 @@ void World::reset() {
   runningCap_.clear();
   // Effects from measurements (sources in docs/SIMULATOR.md), pH effect as an assumption
   liquids = {
-      {"grow_a", {"Teil A", 0.275, -0.12}},
-      {"grow_b", {"Teil B", 0.275, -0.10}},
+      {"grow_a", {"Part A", 0.275, -0.12}},
+      {"grow_b", {"Part B", 0.275, -0.10}},
       {"calmag", {"CalMag", 0.217, -0.02}},
       {"ph_down", {"pH−", 1.04, -4.0}},
   };

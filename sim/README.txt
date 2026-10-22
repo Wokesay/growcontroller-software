@@ -30,7 +30,11 @@ More options: growcontroller-simulator --help
   for example --scenario neu   (empty hub with the setup wizard)
               --speed 60       (time-lapse)
 
-Language: the app offers English and German; choose under Settings.
+Language: the demo starts in English. The app offers English and German;
+choose German under Settings › Display and info › Language. A demo folder
+saved by an older version keeps its language and its German names, also
+when you switch the language; delete "growcontroller-daten" to get the
+English demo.
 
 License: free software under the GNU Affero General Public License,
 version 3 or later (LICENSE.txt). Source code:
@@ -58,7 +62,11 @@ Die Daten liegen im Ordner „growcontroller-daten“ neben dem Programm;
 Ordner löschen = Demo von vorn. Lässt sich der Ordner nicht anlegen oder
 er oder eine Datei darin nicht lesen, läuft die Demo nur im Speicher und
 lässt den Ordner, wie er ist. Beenden: Fenster schließen oder Strg+C.
-Sprache: Deutsch oder Englisch, wählbar in der App unter Einstellungen.
+Sprache: Die Demo startet auf Englisch. Auf Deutsch umstellen in der App
+unter Settings › Display and info › Language, auf Deutsch heißt das
+Einstellungen › Darstellung und Info › Sprache. Ein Demo-Ordner einer
+älteren Version behält seine Sprache und seine deutschen Namen; löschst
+du „growcontroller-daten“, startet die englische Demo.
 Lizenz: freie Software unter der GNU Affero General Public License,
 Version 3 oder später (LICENSE.txt). Quellcode:
 https://github.com/Wokesay/growcontroller-software
