@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { AlertTriangle, Check, CheckCircle2, HelpCircle, Info, Minus, X, XCircle } from "lucide-preact";
 import { lang, t, type TextKey } from "./i18n";
-import { toastError, toasts } from "./store";
+import { testingOnly, toastError, toasts } from "./store";
 
 // ---------- Router (Hash, damit die App aus dem Flash ohne Server-Routing läuft)
 function parseHash() {
@@ -400,6 +400,16 @@ export function Banner(p: { tone?: "info" | "warn" | "bad" | "ok"; children: Com
       {icon}
       <div>{p.children}</div>
     </div>
+  );
+}
+
+/** A prototype or beta says it is for testing only (SD-096); a Stable release shows nothing. */
+export function TestingNotice() {
+  if (!testingOnly.value) return null;
+  return (
+    <Banner tone="info">
+      <span data-testid="testing-notice">{t("common.testingOnly")}</span>
+    </Banner>
   );
 }
 

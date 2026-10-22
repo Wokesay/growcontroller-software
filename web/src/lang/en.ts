@@ -50,6 +50,7 @@ const base: Record<keyof typeof deBase, string> = {
   "common.renderError": "This part can't be shown. The hub isn't affected, and STOP at the top still works. If reloading doesn't help, report it under Settings › Report a problem.",
   "common.reload": "Reload page",
   "common.version": "Version {v}",
+  "common.testingOnly": "For testing only: this version does not meet the requirements of the EU Cyber Resilience Act (CRA).",
   "about.source": "Source code",
   "about.license": "Free software under AGPL-3.0-or-later. The link leads to the source code of exactly this version.",
   "about.sourceUnknown": "Repository (version unknown)",
