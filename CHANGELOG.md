@@ -17,8 +17,9 @@ only reads sensors and switches nothing. No compatibility promises.
   simulator's demo. The menu is grouped by topic, and climate, light and
   watering say they work by hand. A recipe keeps its chart's EC and pH, a
   grow proposes them as targets, a part can be a fixed amount, each
-  recipe learns its own EC effect, and a mix mixes in before it ends. In
-  the Home Assistant app: a sign of life per sensor, the calibration of a
+  recipe learns its own EC effect, and a mix mixes in before it ends. The
+  watering pump stays off on water far off its pH or EC, or before a
+  dose has mixed in. In the Home Assistant app: a sign of life per sensor, the calibration of a
   pH probe that reports its voltage, and the app in Home Assistant's
   sidebar with Home Assistant's login.
 - **Fixed:** on a phone the app opens at normal size; it says so when
