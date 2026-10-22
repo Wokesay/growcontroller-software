@@ -880,7 +880,7 @@ severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
+and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -1009,13 +1009,35 @@ Safety and robustness fixes, no vulnerability:
   planned, which stops pH control until 15 min of calm, the safe direction;
   that dose's effect is then not learned, which a follow-up addresses. A
   jump in the last minutes of another announcement (after a mix or hand
-  dose, the inlet, an EC round or a probe calibration) is still taken as
-  explained; that stays open.
+  dose, the inlet, an EC round or a probe calibration, and in the 10 s
+  after maintenance mode was ended early) is still taken as explained;
+  that stays open.
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far; there, pH control dosed twice on the jumped reading.
   - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
+- **Ending maintenance mode early switches jump checks back on** (#292,
+  RAT-042): while maintenance mode lasted, the hub announced a change of
+  every reading until the end of the window the user had asked for, and
+  ending or shortening it kept those announcements. A user who started
+  it for 240 min and ended it after 5 min left the jump lock off for
+  every sensor for almost four more hours. Maintenance now announces a
+  change only 10 s ahead, renewed on every tick, never past its end:
+  ended early, a jump locks again within 10 s; a window that runs out
+  behaves as before.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: a reading that jumped in that time was not locked: it showed
+    as valid (or as calibrated elsewhere) and went into the history, and
+    no jump alarm was logged. In the simulator, pH and EC control could
+    dose on it within their caps per dose, and a level that jumped could
+    let the circulation pump's dry-run latch release itself and the pumps
+    and the inlet act on it. The Home Assistant app switches nothing.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5. Until then, after ending or
+    shortening maintenance mode, restart the app or the simulator ("Power
+    cut / restart") while no mix or dose runs.
 
 A protective cut-off added:
 

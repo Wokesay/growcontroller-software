@@ -844,6 +844,63 @@ TEST_CASE("Scenario: a calibration of the hub's own pH probe left open stops exp
     if (e["id"].get<std::uint64_t>() > before) CHECK(e["data"]["purpose"] != "ph");
 }
 
+TEST_CASE("Scenario: maintenance explains jumps only while it lasts; ended early, a jump locks again (RAT-042, #292)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  // Nothing else may explain a pH jump: a mix announces pH for 10 min after it ends, the inlet
+  // until 5 min after it closes and an EC round until 1 min after its settle time
+  constexpr gc::Ms kPoll = 5000;
+  auto calm = [&] {
+    auto st = c.state();
+    return st["job"].is_null() && st["outputs"]["tank.inlet"] == false &&
+           st["controllers"]["refill"]["state"] != "working" && st["controllers"]["ec"]["state"] == "idle" &&
+           st["controllers"]["ph"]["state"] == "idle";
+  };
+  gc::Ms quiet = 0;
+  REQUIRE(until(s, [&] {
+    quiet = calm() ? quiet + kPoll : 0;
+    return quiet > 11 * gc::kMinute;
+  }, 8 * 3600 * 1000, kPoll));
+  c.ok("POST", "/api/v1/maintenance", {{"minutes", 240}});
+  s.step(60000);
+  auto jump = [&](bool maintenanceOn) {
+    if (maintenanceOn) {  // control waits in maintenance mode; nothing of its own runs
+      const json st = c.state();
+      REQUIRE((st["job"].is_null() && st["outputs"]["tank.inlet"] == false));
+    } else {
+      REQUIRE(calm());
+    }
+    s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "jump"}});
+    s.step(60000);
+    return c.state();
+  };
+  SUBCASE("ended early: a jump 15 s later locks") {
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 0}});
+    s.step(15000);
+    auto st = jump(false);
+    CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
+    CHECK(st["latches"].contains("jump.tank.ph"));
+  }
+  SUBCASE("shortened to a minute that runs out: a jump right after its end locks, with nothing added") {
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 1}});
+    s.step(62000);
+    const json before = c.state();
+    REQUIRE(before["maintenanceUntil"].get<gc::Epoch>() <= before["now"].get<gc::Epoch>());  // ran out
+    auto st = jump(false);
+    CHECK(st["readings"]["tank.ph"]["quality"] == "jump");
+    CHECK(st["latches"].contains("jump.tank.ph"));
+  }
+  SUBCASE("still on: a jump is explained") {
+    s.step(2 * 60000);
+    const json before = c.state();
+    REQUIRE(before["maintenanceUntil"].get<gc::Epoch>() > before["now"].get<gc::Epoch>() + 60);
+    auto st = jump(true);
+    CHECK(st["readings"]["tank.ph"]["quality"] != "jump");
+    CHECK_FALSE(st["latches"].contains("jump.tank.ph"));
+  }
+}
+
 TEST_CASE("Scenario: a pH jump while the hub's own pH dose settles still locks the reading (RAT-042, RAT-044)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
