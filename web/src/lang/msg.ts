@@ -705,6 +705,7 @@ export const msgDe: Record<string, string> = {
   "cfg.role.channel": "{label}: {device} hat keinen Kanal {n}",
   "cfg.device.life": "{name}: Lebenszeichen ungültig",
   "cfg.canister.id": "Kanister-Kennung fehlt oder doppelt",
+  "cfg.recipe.id": "Rezept „{name}“: Kennung fehlt oder doppelt",
   "cfg.canister.kind": "{name}: unbekannter Typ {kind}",
   "cfg.canister.pump": "Eine Pumpe ist zwei Kanistern zugeordnet",
   "cfg.canister.pumpclass": "{name}: zugeordnetes Gerät ist keine Pumpe des Dosierblocks",

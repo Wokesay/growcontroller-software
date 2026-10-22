@@ -1471,7 +1471,9 @@ simulator numbers per `docs/SIMULATOR.md`.
     raise a dose. A reference far from the start effect (below a quarter
     or above four times) is refused.
   - The learned effect belongs to a recipe; another recipe starts from
-    its reference.
+    its reference. Changed by SD-092: from the larger of the start
+    effect and its reference's, so a reference only ever makes a round
+    smaller.
   - A part marked as a fixed addition (a cleanser, for example) is dosed
     per litre of fresh water, also when the water is already at the
     target, and never scaled by an EC correction; its expected EC counts
@@ -4690,7 +4692,6 @@ SD-088). Three gaps around the refill, each there before SD-088.
     stops makes the level read low; a fill planned then may overfill.
     That is a product question (#294).
 
----
 
 ## SD-091: Product requirement (from PD-317, PD-318): the minimal principle, and control details are decided here
 
@@ -4779,6 +4780,69 @@ entry's pull request ("mergen"):
   `docs/RATIONALE.md` (measured, observed, calculated, found in a review,
   or "—"), and a number without such a source is marked as an
   assumption.
+
+
+## SD-092: Each recipe learns its own EC effect; a reference only ever makes a round smaller
+
+Decided by the project owner on 2026-10-21 and 2026-10-22 in the
+software session, a control detail (SD-091), for step 4 of SD-057 (#143), after `domain` found that two of SD-057's
+points cannot both hold: "another recipe starts from its reference" and
+"a typo in a recipe can never raise a dose". A reference that is too low
+(1.2 typed for 2.1 passes the reference check, RAT-056) would make EC
+control's first round on that recipe larger than today, and an
+overshoot can only be undone by draining and diluting (RAT-055). This
+changes SD-057's point on the learned effect; the rest of SD-057 stands.
+
+- **Each recipe learns its own effect** from EC control's clean rounds
+  on it (RAT-057). A round learns into the recipe it dosed, also when
+  EC control has moved to another recipe while it settled.
+- **Nothing learned, a recipe starts from the larger of the start
+  effect fixed in code and its reference's effect** (within a quarter to
+  four times the start effect). A reference only ever makes a round
+  smaller; a product truly weaker than the start effect needs a round
+  more until it is learned.
+- **What is learned is kept within a quarter to four times the start
+  effect fixed in code**, the band the reference must lie in, whatever
+  the recipe's reference; below it, the recipe's start. So a high
+  reference does not raise the band's lower end, and no reference moves
+  its upper end above 1.1 mS/cm per ml/L.
+- **The cap of a round converts the step limit with the larger of the
+  start and the learned effect**, the start already being the larger of
+  the start effect fixed in code and the reference's (SD-057's first
+  safeguard). Neither a small reference nor a small learned effect widens
+  it; a stored value above the band counts at its top, so the cap never
+  shrinks to where no round fits and nothing could be learned again.
+- **An edit of a recipe** that changes the parts EC control scales or
+  their ratio scales the learned effect up by what is no longer scaled
+  (fixed now or removed), as RAT-085 does for a part made fixed, at most
+  to the band's top, and keeps it only if it is at least the recipe's
+  new start; a round on that recipe that settles across the edit learns
+  nothing. A change of all amounts alike or the name keeps it. A
+  reference raised above it forgets it: the same parts may hold a
+  stronger product (decided by the owner on 2026-10-22, from `domain`'s
+  review). An import treats a recipe the hub had and the file keeps the
+  same way; a recipe it leaves out or brings new starts afresh, as one
+  deleted or newly created does, also while a round on its ID settles.
+  At the update, the one effect learned before goes to every recipe
+  whose start it does not undercut. For these, nothing doses more than
+  with either keeping or forgetting the value; an edit that keeps the
+  parts, their ratio and the start keeps what was measured, which may
+  lie below the start.
+- **A part removed from a recipe while a round on it runs is still
+  dosed** in that round: a pair leaves a recipe only whole, and dropping
+  its second part after the first went in would split it (RAT-054). The
+  round stays within the cap it was planned on and learns nothing.
+- **Not covered:** a ratio moved towards a stronger part among those
+  that stay is not bounded by the edit; the 0.8 aim absorbs a blend up to
+  1.25 times stronger, and the cap bounds the rest. The volume a round
+  learns over is read when it has settled; irrigation meanwhile is not
+  yet counted (#301).
+
+Not chosen: a recipe starting from its reference, as SD-057 had it (a
+low reference raises a round, up to the cap); forgetting the learned
+effect on every edit (a strong product would then overshoot on its next
+round); keeping it when a reference is raised above it (a product
+change in the same bottles would dose with the old, too small value).
 
 ---
 

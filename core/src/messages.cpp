@@ -725,6 +725,7 @@ constexpr Entry kMessages[] = {
     {"cfg.role.channel", "{label}: {device} has no channel {n}"},
     {"cfg.device.life", "{name}: invalid sign of life"},
     {"cfg.canister.id", "A bottle ID is missing or used twice"},
+    {"cfg.recipe.id", "Recipe \"{name}\": its ID is missing or used twice"},
     {"cfg.canister.kind", "{name}: unknown type {kind}"},
     {"cfg.canister.pump", "One pump is assigned to two bottles"},
     {"cfg.canister.pumpclass", "{name}: the assigned device is not a pump of the dosing block"},

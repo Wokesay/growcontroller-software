@@ -80,10 +80,17 @@ class EcController {
     reset();
   }
   bool dosing() const { return phase_ == Phase::Dosing; }
-  // The recipe's fixed parts changed under a running round: it doses no part that is fixed now and
-  // learns nothing, so the effect stays on the parts EC control scales now (RAT-085, RAT-057). A fixed
-  // part is never one of a pair, so no pair is split.
+  // The parts of the recipe a round doses, or their ratio, changed under it (an edit or an import): it
+  // doses no part that is fixed now and learns nothing, so the effect stays on the parts EC control
+  // scales now (RAT-085, RAT-057, SD-092). A fixed part is never one of a pair, so no pair is split. A
+  // removed part is still dosed: a pair leaves a recipe only whole, and dropping its second part after
+  // the first went in would split it (RAT-054); the round stays within the cap it was planned on.
   void recipeChanged(const RecipeCfg& r);
+  // The recipe a round doses is gone (deleted, left out of an import) or a new one took its ID: the
+  // round learns nothing (SD-092, RAT-057)
+  void recipeGone(const std::string& id) {
+    if (id == roundRecipe_) clean_ = false;
+  }
   // The wall clock stepped by `d`: keep the distance of the pauses.
   void shiftClock(Epoch d) {
     if (lastDoseAt_ > 0) lastDoseAt_ += d;
@@ -101,6 +108,7 @@ class EcController {
   Ms cutFloor_ = 0;         // the least the cut settles (settleFirst)
   bool wantsCirc_ = false;  // the cut round waits for the circulation pump
   double ecBefore_ = kNaN, mlRound_ = 0, startEc_ = kNaN, target_ = kNaN;
+  std::string roundRecipe_;  // the recipe the round doses: its effect is learned, whatever the phase is now (RAT-057, SD-092)
   Ms circWaitSince_ = 0;  // seit wann die Runde auf die Umwälzpumpe wartet
   Ms cutWaitSince_ = 0;   // since when the cut round waits for the circulation pump
   Ms settleUntil_ = 0;

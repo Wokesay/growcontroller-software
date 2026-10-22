@@ -281,6 +281,12 @@ void Hub::boot() {
     log_.add(bootEpoch_, "system", "alarm", say("ev.state_missing"),
              say(inletUnknown ? "ev.state_missing.text_inlet" : "ev.state_missing.text", {{"file", kStateFile}}));
   }
+  // A state saved before each recipe learned its own EC effect: the one learned value carries over to
+  // every recipe whose start it does not undercut (where it came from is not known), so nothing doses
+  // more after the update (SD-092)
+  if (stateObj && !stateJson.contains("ecEffects") && isNum(rt_.ecEffect))
+    for (const auto& r : cfg_.recipes)
+      if (rt_.ecEffect >= recipeEffect(r, kNaN).start) rt_.ecEffects[r.id] = rt_.ecEffect;
   const bool stateSaid = kept_.count(kStateFile) > 0 || (!stateRaw && ranBefore);
 
   if (auto s = read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
@@ -512,6 +518,8 @@ void Hub::saveState() {
   const bool newLatch = std::any_of(rt_.latches.begin(), rt_.latches.end(), [](const auto& l) { return !unknownStateLatch(l.second); });
   if (newLatch || !rt_.jumpLocks.empty()) stopKeepingState();
   rt_.clock = clock_.stamp();
+  // A version before the effect per recipe reads the one value: that of EC control's recipe (SD-092)
+  if (const RecipeCfg* r = ecRecipe(); r && rt_.ecEffects.count(r->id)) rt_.ecEffect = rt_.ecEffects.at(r->id);
   writeFile(kStateFile, json(rt_).dump());
   stateDirty_ = false;
 }
@@ -982,7 +990,12 @@ json Hub::state() {
     stock[k.id] = it == rt_.stockMl.end() ? json(nullptr) : numOrNull(it->second);
   }
   j["stock"] = stock;
-  j["effects"] = {{"ph", numOrNull(rt_.phEffect)}, {"ec", numOrNull(rt_.ecEffect)}};
+  // EC: what EC control learned for the recipe it doses now, and for each recipe there is (SD-092)
+  json byRecipe = json::object();
+  for (const auto& r : cfg_.recipes)
+    if (rt_.ecEffects.count(r.id)) byRecipe[r.id] = numOrNull(rt_.ecEffects.at(r.id));
+  const RecipeCfg* ecr = ecRecipe();
+  j["effects"] = {{"ph", numOrNull(rt_.phEffect)}, {"ec", ecr ? numOrNull(learnedEcEffect(rt_, ecr->id)) : json(nullptr)}, {"ecByRecipe", byRecipe}};
   j["lastMixAt"] = rt_.lastMixAt;
   j["manual"] = {{"values", rt_.manual}, {"at", rt_.manualAt}};
   j["grow"] = json(cfg_)["grow"];
@@ -1522,38 +1535,29 @@ Result Hub::putRecipe(const json& j) {
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
-  // EC control learned its effect per ml/L of the parts it scaled. A part of its recipe that is fixed now
-  // leaves that effect on fewer ml/L: scaled up by what left, so the next round doses less, never more
-  // (RAT-085, RAT-056). The effect of each recipe of its own comes with SD-057's later steps.
-  if (const RecipeCfg* before = cfg_.recipe(id)) {
-    // The recipe EC control uses, as it picks it: the set one, or the first (activeRecipe in control.cpp)
-    const std::string set = effectiveParams(cat_, cfg_, "ec_control").str("recipe");
-    const std::string active = cfg_.recipe(set) ? set : cfg_.recipes.empty() ? "" : cfg_.recipes.front().id;
-    auto fixedNow = [&](const std::string& can) {
-      for (const auto& s : r->steps)
-        if (s.canister == can) return s.fixed;
-      return false;
-    };
-    double scaledBefore = 0, moved = 0;  // the old amounts the effect was learned on, and those of the parts fixed now
-    bool changed = false;
-    for (const auto& o : before->steps) {
-      if (o.fixed || !isNum(o.mlPerL)) continue;
-      scaledBefore += o.mlPerL;
-      if (fixedNow(o.canister)) moved += o.mlPerL;
-    }
-    for (const auto& s : r->steps) {
-      const auto o = std::find_if(before->steps.begin(), before->steps.end(), [&](const RecipeStep& x) { return x.canister == s.canister; });
-      changed |= o != before->steps.end() && o->fixed != s.fixed;
-    }
-    if (id == active && changed) ec_.recipeChanged(*r);  // a running round was planned on the old parts
-    if (id == active && isNum(rt_.ecEffect) && moved > 0 && scaledBefore > moved) {
-      rt_.ecEffect *= scaledBefore / (scaledBefore - moved);
-      stateDirty_ = true;
-    }
-  }
+  if (const RecipeCfg* before = cfg_.recipe(id)) recipeEdited(*before, *r);
+  else forgetEcEffect(id);  // a new recipe never takes over what was learned for one of that ID (SD-092, as #161)
   cfg_ = next;
   saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
   return Result::ok({{"id", id}});
+}
+
+// An edit or an import of a recipe: what its learned EC effect keeps (scaled up by parts no longer
+// scaled, kept only at or above its new start), and a round planned on its old parts learns nothing
+// (SD-092, RAT-085, RAT-057)
+void Hub::recipeEdited(const RecipeCfg& before, const RecipeCfg& after) {
+  const EffectEdit e = editEcEffect(before, after, learnedEcEffect(rt_, after.id));
+  if (!e.changed) return;
+  ec_.recipeChanged(after);
+  if (isNum(e.learned)) rt_.ecEffects[after.id] = e.learned;
+  else rt_.ecEffects.erase(after.id);
+  stateDirty_ = true;
+}
+
+// What was learned for a recipe goes with it, and a round on it that still settles learns nothing (SD-092)
+void Hub::forgetEcEffect(const std::string& id) {
+  ec_.recipeGone(id);
+  if (rt_.ecEffects.erase(id)) stateDirty_ = true;
 }
 
 Result Hub::deleteRecipe(const std::string& id) {
@@ -1562,6 +1566,7 @@ Result Hub::deleteRecipe(const std::string& id) {
   if (it == cfg_.recipes.end()) return Result::fail(404, say("recipe.unknown"));
   std::string name = it->name;
   cfg_.recipes.erase(it);
+  forgetEcEffect(id);
   saveConfig(say("ev.cfg.recipe_removed", {{"name", name}}));
   return Result::ok();
 }
@@ -1738,6 +1743,14 @@ Result Hub::importConfig(const json& j) {
   // later, never takes over one left behind (#161)
   for (auto it = rt_.stockMl.begin(); it != rt_.stockMl.end();)
     it = cfg_.canister(it->first) && next.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
+  // So does what EC control learned for a recipe the hub had and the file keeps, as edited by it; one
+  // the file leaves out or brings new starts afresh (SD-092, as #161)
+  for (const auto& r : cfg_.recipes)
+    if (!next.recipe(r.id)) forgetEcEffect(r.id);
+  for (const auto& nr : next.recipes) {
+    if (const RecipeCfg* before = cfg_.recipe(nr.id)) recipeEdited(*before, nr);
+    else forgetEcEffect(nr.id);
+  }
   stateDirty_ = true;
   cfg_ = next;
   if (net_)
@@ -1896,6 +1909,10 @@ bool Hub::controllerFree(const char* fn, const char* latch) const {
   return it != cfg_.functions.end() && it->second.enabled && !rt_.latches.count(latch);
 }
 
+const RecipeCfg* Hub::ecRecipe() const {
+  if (const RecipeCfg* r = cfg_.recipe(effectiveParams(cat_, cfg_, "ec_control").str("recipe"))) return r;
+  return cfg_.recipes.empty() ? nullptr : &cfg_.recipes.front();
+}
 bool Hub::controlOn() const { return controllerFree("ec_control", "ec.no_effect") || controllerFree("ph_control", "ph.no_effect"); }
 
 Ms Hub::mixSettleMs() const {
