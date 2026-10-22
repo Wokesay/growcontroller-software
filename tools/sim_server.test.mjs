@@ -139,7 +139,7 @@ test("--data below a folder it may not enter: memory only, and its data stays as
   if (!lock(dir)) return t.skip("this process enters any folder");
   const out = await startsWith(["--data", data]);
   dataSaysWhy(out);
-  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+  assert.doesNotMatch(out, /^Data: /m, "not named as its data folder");
   chmodSync(dir, 0o700);
   assert.deepEqual(readdirSync(data), ["config.json"]);
   assert.equal(readFileSync(join(data, "config.json"), "utf8"), '{"kept":true}');
@@ -151,7 +151,7 @@ test("--data through a link to itself: memory only, and the link stays (SD-074)"
   symlinkSync("loop", loop);
   const out = await startsWith(["--data", loop]);
   dataSaysWhy(out);
-  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+  assert.doesNotMatch(out, /^Data: /m, "not named as its data folder");
   assert.deepEqual(readdirSync(dir), ["loop"]);
   assert.ok(lstatSync(loop).isSymbolicLink());
 });
@@ -168,7 +168,7 @@ test("--data holding a file it cannot read: memory only, and every file stays as
   const out = await startsWith(["--data", data]);
   dataSaysWhy(out);
   assert.match(out, /state\.json: /, "names the file");
-  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+  assert.doesNotMatch(out, /^Data: /m, "not named as its data folder");
   chmodSync(join(data, "state.json"), 0o600);
   assert.deepEqual(readdirSync(data).sort(), ["config.json", "state.json"]);
   for (const f of ["config.json", "state.json"]) assert.equal(readFileSync(join(data, f), "utf8"), '{"kept":true}', f);
@@ -178,7 +178,7 @@ test("--data it can use is named as its data folder, and nothing is said about i
   // what the cases above rule out
   const data = join(mkdtempSync(join(tmp, "data-")), "data");
   const out = await startsWith(["--data", data]);
-  assert.ok(out.split("\n").includes(`Daten: ${data}`), out);
+  assert.ok(out.split("\n").includes(`Data: ${data}`), out);
   assert.doesNotMatch(out, /Data cannot be/);
 });
 
@@ -195,13 +195,24 @@ test("an option value that is no number, or out of range, ends with a message na
   }
 });
 
+test("--help and an unknown option speak English (SD-095)", { skip }, () => {
+  const help = run(["--help"]);
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /--port N +HTTP port \(8080\)/);
+  assert.match(help.stdout, /--scenario NAME/);
+  assert.doesNotMatch(help.stdout + help.stderr, /[äöüßÄÖÜ]|Daten|Passwort|Szenario|Zeitraffer/);
+  const bogus = run(["--bogus"]);
+  assert.equal(bogus.status, 2);
+  assert.match(bogus.stderr, /Unknown option --bogus/);
+});
+
 test("a data folder it cannot create is not named as its data folder (#213)", { skip, timeout: 120000 }, async () => {
   // below a file: memory only, said once (FileStorage)
   const dir = mkdtempSync(join(tmp, "file-"));
   writeFileSync(join(dir, "file"), "x");
   const out = await startsWith(["--data", join(dir, "file", "data")]);
   assert.equal(out.match(/Data cannot be saved \(.+\)\. Running in memory only\./g)?.length, 1, out);
-  assert.doesNotMatch(out, /^Daten: /m, "not named as its data folder");
+  assert.doesNotMatch(out, /^Data: /m, "not named as its data folder");
 });
 
 test("the session comes from the one cookie named exactly gc_session", { skip, timeout: 120000 }, async () => {

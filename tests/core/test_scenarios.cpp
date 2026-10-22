@@ -313,7 +313,7 @@ void demoCalm(sim::Simulation& s, Client& c) {
   }, 60 * 60 * 1000, 30000));
 }
 json startMix(Client& c, double waterL = 20) {
-  return c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", waterL}, {"guided", false}, {"confirmRepeat", true}})["job"];
+  return c.ok("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", waterL}, {"guided", false}, {"confirmRepeat", true}})["job"];
 }
 }  // namespace
 
@@ -750,9 +750,9 @@ TEST_CASE("Scenario: while a job or EC control doses, a manual dose, a pump cali
   std::string pump;
   const gc::json cfg = c.ok("GET", "/api/v1/config");
   for (const auto& k : cfg["canisters"])
-    if (k["id"] == "teil-a") pump = k["pump"];
+    if (k["id"] == "part-a") pump = k["pump"];
   REQUIRE_FALSE(pump.empty());
-  const std::vector<std::pair<std::string, gc::json>> calls = {{"/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}}},
+  const std::vector<std::pair<std::string, gc::json>> calls = {{"/api/v1/dose", {{"canister", "part-a"}, {"ml", 2}}},
                                                                {"/api/v1/pumps/" + pump + "/calibrate", {{"seconds", 30}}},
                                                                {"/api/v1/pumps/" + pump + "/prime", {{"seconds", 3}}}};
   // A job of the user: the demo starts with a mix
@@ -789,9 +789,9 @@ TEST_CASE("Scenario: an EC round doses the recipe's parts but never a fixed addi
   s.step(60000);
   // CalMag in the demo's recipe becomes a fixed addition
   c.ok("POST", "/api/v1/recipes",
-       {{"id", "wachstum"},
+       {{"id", "veg"},
         {"steps",
-         {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}});
+         {{{"canister", "part-a"}, {"mlPerL", 2.0}}, {{"canister", "part-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}});
   REQUIRE(until(s, [&] {
     auto st = c.state();
     return st["job"].is_null() && st["dosing"].is_null();
@@ -804,7 +804,7 @@ TEST_CASE("Scenario: an EC round doses the recipe's parts but never a fixed addi
   REQUIRE(until(s, [&] {
     for (const auto& e : findEvents(c, "dose"))
       if (e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec") dosed.insert(e["data"]["canister"].get<std::string>());
-    return dosed.count("teil-a") && dosed.count("teil-b") && c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling";
+    return dosed.count("part-a") && dosed.count("part-b") && c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling";
   }, 2 * 3600 * 1000, 10000));
   CHECK(dosed.count("calmag") == 0);
   CHECK(c.state()["stock"]["calmag"].get<double>() == doctest::Approx(calmagBefore));
@@ -2748,12 +2748,12 @@ TEST_CASE("Scenario: a Stop switches everything off and holds automation until R
   CHECK(st["stopped"] == true);
   CHECK(st["outputs"]["tank.circulation"] == false);
   CHECK(st["job"].is_null());
-  auto [code, refused] = c.call("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 2}});
+  auto [code, refused] = c.call("POST", "/api/v1/dose", {{"canister", "part-a"}, {"ml", 2}});
   CHECK(code != 200);
   CHECK(refused["error"]["key"] == "job.start_failed");
   CHECK(refused["error"]["args"]["reason"]["key"] == "act.stopped");
   // a mix is refused too, with a message in the page's language (SD-045: "Stop", never "emergency stop")
-  auto [mixCode, mix] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
+  auto [mixCode, mix] = c.call("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", 20}});
   CHECK(mixCode == 409);
   CHECK(mix["error"]["key"] == "act.stopped");
   CHECK(mix["error"]["text"] == "Stop active – tap Resume first");
@@ -2770,7 +2770,7 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
       const json now = c.state();
       return now["job"].is_null() && now["dosing"].is_null();
     }, 30 * 60 * 1000));
-    c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 5}});
+    c.ok("POST", "/api/v1/dose", {{"canister", "part-a"}, {"ml", 5}});
     REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1 && s.world().cap(kA)->elapsed > 2000; }, 20000, 200));
     REQUIRE(s.world().circulating());
   };
@@ -2803,7 +2803,7 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
 
   // booking fails: the Stop still holds and is saved, the dose is dropped unbooked, and that is said
   handDose();
-  const double stockBefore = c.state()["stock"]["teil-a"];  // a single run, booked only when it ends
+  const double stockBefore = c.state()["stock"]["part-a"];  // a single run, booked only when it ends
   const size_t stops = count("system", "ev.stop");
   const size_t incomplete = count("dose", "ev.dose_incomplete");
   const json dropped = c.state()["dosing"]["order"];
@@ -2823,9 +2823,9 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
     if (e["title"]["key"] == "ev.stop.unbooked") {
       said = true;
       CHECK(e["severity"] == "warn");
-      CHECK(e["text"]["args"]["name"] == "Teil A");
+      CHECK(e["text"]["args"]["name"] == "Part A");
       CHECK(e["text"]["args"]["reason"] == "bus read failed");
-      CHECK(e["data"]["canister"] == "teil-a");
+      CHECK(e["data"]["canister"] == "part-a");
     }
   CHECK(said);
   // the read keeps failing: the dropped dose is not read again, so no internal error follows,
@@ -2835,7 +2835,7 @@ TEST_CASE("Scenario: a Stop switches everything off before it books the running 
   s.world().onRunStatus = nullptr;
   s.step(5000);
   CHECK_FALSE(s.world().circulating());
-  CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(stockBefore));
+  CHECK(c.state()["stock"]["part-a"].get<double>() == doctest::Approx(stockBefore));
   CHECK(count("dose", "ev.dose_incomplete") == incomplete);
   // pressing Stop again logs no second stop
   CHECK(c.call("POST", "/api/v1/stop").first == 200);
@@ -2868,9 +2868,9 @@ TEST_CASE("Scenario: a control round a Stop cut settles with the circulation pum
     REQUIRE(until(s, [&] {
       return s.world().cap(kA)->state == 1 && s.world().cap(kA)->jobId.rfind("ec-", 0) == 0 && s.world().cap(kA)->elapsed > 1000;
     }, 60 * 60 * 1000, 200));
-    const double stockBefore = c.state()["stock"]["teil-a"];
+    const double stockBefore = c.state()["stock"]["part-a"];
     c.ok("POST", "/api/v1/stop");
-    CHECK(c.state()["stock"]["teil-a"].get<double>() < stockBefore);  // the cut part is booked (RAT-070)
+    CHECK(c.state()["stock"]["part-a"].get<double>() < stockBefore);  // the cut part is booked (RAT-070)
     s.step(20 * 60 * 1000);  // a long Stop
     c.ok("POST", "/api/v1/resume");
     REQUIRE(until(s, [&] { return s.world().circulating(); }, 30000));  // asked for by the cut round

@@ -173,6 +173,21 @@ listed in every release under "Security".
 
 ### Changed
 
+- **The simulator's demo speaks English** (SD-095): a new demo starts
+  with the hub's language English, so the sign-in page and the app are
+  English in a browser that has not chosen a language, and the demo's
+  devices, bottles, recipes, area and grow have English names ("Dosing
+  block 1", "Part A", "Part B", "Veg", "Bloom", "Room 1", "Grow 1" …;
+  the bottle and recipe IDs follow, for example `part-a` and `veg`).
+  German is chosen under Settings › Display and info › Language, as
+  `sim/README.txt` and `docs/SIMULATOR.md` say. The simulator's own
+  messages on the console and its `--help` are English too, and so is
+  its stand-in for updates under Settings › Updates: the sample of what
+  is new, and the messages when you install or roll back, now by key in
+  the page's language. A demo folder saved by an older version keeps its
+  German and its German names, as a hub keeps its stored language
+  (SD-083); delete it for the English demo. The demo password stays
+  `demo-passwort`.
 - **The mix plan's, a dose split's and a pH dose's messages in both
   languages** (#143, SD-057, step 5): the hub sends them in English with a
   key, the web app shows them in German by that key. For API clients: a
