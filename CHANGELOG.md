@@ -8,6 +8,14 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **A prototype says it is for testing only** (SD-096, from #250): the
+  sign-in page (also when the first password is set), the Home Assistant
+  app's introduction and Settings › Display and info say "For testing
+  only: this version does not meet the requirements of the EU Cyber
+  Resilience Act (CRA)" whenever the version is a pre-release
+  (`-proto`, `-beta`) or cannot be read; a Stable release shows nothing.
+  The README says so too, and the release notes of a pre-release start
+  with it.
 - **No watering on water not fit for it** (#298, SD-093, RAT-086): the
   watering pump no longer switches on, by hand, over the API or for a
   test, and a running one goes off, when the tank's pH is below 4.0 or

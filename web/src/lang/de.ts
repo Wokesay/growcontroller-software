@@ -51,6 +51,7 @@ export const deBase = {
   "common.renderError": "Dieser Teil lässt sich nicht anzeigen. Der Hub ist davon nicht betroffen, STOPP oben funktioniert. Hilft Neuladen nicht, melde es unter Einstellungen › Problem melden.",
   "common.reload": "Seite neu laden",
   "common.version": "Version {v}",
+  "common.testingOnly": "Nur zum Testen: Diese Version erfüllt nicht die Anforderungen der EU-Cyberresilienz-Verordnung (CRA).",
   "about.source": "Quellcode",
   "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",
   "about.sourceUnknown": "Repository (Version unbekannt)",
