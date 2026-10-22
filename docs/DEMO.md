@@ -11,9 +11,11 @@ to tell us what you think. You need a computer: Windows, macOS or Linux.
 > see the safety note in the [README](../README.md).
 
 This guide describes the newest code. Until release 0.1.0-proto.5 is
-out, the download (0.1.0-proto.4) is older and differs in places: its
-menu is not grouped yet, and a mix cancelled halfway does not yet say
-what is missing.
+out, the download (0.1.0-proto.4) is older and differs in places: it
+opens in German (switch under **Einstellungen › Darstellung und Info ›
+Sprache**, that is Settings › Display and info › Language), its menu is
+not grouped yet, and a mix cancelled halfway does not yet say what is
+missing.
 
 ![The overview of the demo: tank with pH, EC and water temperature, the control rows, room climate and switched outputs](images/overview.png)
 
@@ -89,15 +91,11 @@ A console window opens. At the first start the demo first calculates
 console window open: closing it ends the demo. Start it only once at a
 time: a second copy would use the same data folder.
 
-**The demo opens in German for now**
-([issue #302](https://github.com/Wokesay/growcontroller-software/issues/302)),
-and so does the console window. On the sign-in page, type the password
-**`demo-passwort`** (German for "demo password") under **Passwort** and
-click **Anmelden** (Sign in). Then switch to English: **Einstellungen**
-(Settings, the last item in the menu) › card **Darstellung und Info**
-(Display and info) › **Sprache** (Language) › **English**. Your browser
-remembers the choice. Names the demo came with, such as the bottle
-"Teil A" (part A), stay German until the issue is fixed.
+Sign in with the password **`demo-passwort`** (German for "demo
+password"). The demo starts in English; German is under **Settings ›
+Display and info › Language**. A demo folder saved by an older version
+keeps its German: delete the folder `growcontroller-daten` next to the
+program for the English demo.
 
 The demo password exists only in the simulator; a real device never has
 a default password. The demo listens only on `127.0.0.1`, so other
@@ -232,7 +230,7 @@ leave out passwords, Wi-Fi details and where you live.
 - **Options:** start the program from a terminal in its folder, for
   example `.\growcontroller-simulator.exe --scenario neu --open` on
   Windows or `./growcontroller-simulator --scenario neu --open` on macOS
-  and Linux. `--help` lists every option (in German for now, #302).
+  and Linux. `--help` lists every option.
 
   | Option | Effect |
   |---|---|

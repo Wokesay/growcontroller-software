@@ -172,8 +172,8 @@ listed in every release under "Security".
   sensor" takes test reports for the list.
 - **Docs for newcomers** (`docs/DEMO.md`, `docs/FAQ.md`): a guide to the
   demo (which download for which system, checking it, starting it on
-  Windows, macOS and Linux, switching the demo to English until #302 is
-  done, what to do when it does not start, a short tour with a pH jump,
+  Windows, macOS and Linux, how the older download differs, what to do
+  when it does not start, a short tour with a pH jump,
   time-lapse, a mix cancelled halfway, a power cut and the first-time
   setup, the command-line options, building it yourself on Linux, macOS,
   Windows or a Raspberry Pi, and what feedback helps); a FAQ on status,

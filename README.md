@@ -38,9 +38,7 @@ computer.
    (**More info › Run anyway**); macOS needs one Terminal command first
    ([start on macOS](docs/DEMO.md#2-start)).
 3. Your browser opens the demo. Sign in with the password
-   `demo-passwort`. The demo opens in German for now: switch to English
-   under **Einstellungen › Darstellung und Info › Sprache** (Settings ›
-   Display and info › Language).
+   `demo-passwort`.
 
 A tank that has been running for two days, with pumps, probes, history
 and a panel to speed up time and cause faults. Step by step, with a short
