@@ -50,6 +50,7 @@ const base: Record<keyof typeof deBase, string> = {
   "common.renderError": "This part can't be shown. The hub isn't affected, and STOP at the top still works. If reloading doesn't help, report it under Settings › Report a problem.",
   "common.reload": "Reload page",
   "common.version": "Version {v}",
+  "common.testingOnly": "For testing only: this version does not meet the requirements of the EU Cyber Resilience Act (CRA).",
   "about.source": "Source code",
   "about.license": "Free software under AGPL-3.0-or-later. The link leads to the source code of exactly this version.",
   "about.sourceUnknown": "Repository (version unknown)",
@@ -270,7 +271,7 @@ const base: Record<keyof typeof deBase, string> = {
   "net.elsewhere": "already assigned",
   "net.assigned": "Assigned; safety setting saved in the plug",
   "net.countHint": "Outlets are numbered from 1 here, from 0 in the Shelly web interface.",
-  "net.safety": "After a power cut the outlets stay off. Humidifier, watering pump and inlet also switch off in the device itself if the hub fails. Keep the Shelly and strip outside the grow area, behind an RCD (30 mA).",
+  "net.safety": "After a power cut the outlets stay off; only the exhaust and circulation fans come back on by themselves, unless a Stop is active. Humidifier, watering pump and inlet also switch off in the device itself if the hub fails. Keep the Shelly and strip outside the grow area, behind an RCD (30 mA).",
 
   "area.climate": "Room climate",
   "area.climateDevices": "Climate devices",

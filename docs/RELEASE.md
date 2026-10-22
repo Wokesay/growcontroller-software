@@ -57,7 +57,9 @@ entry under `[Unreleased]`.
 ## Release process
 
 1. **Prepare:** `[Unreleased]` → `[X.Y.Z] – date`, bump `VERSION`,
-   `web/package.json` and `ha/app/config.yaml`, PR, review (`reviewer`,
+   `web/package.json` and `ha/app/config.yaml` (a Stable release also
+   drops the README's testing notice, SD-096; `tools/version.test.mjs`
+   checks it), PR, review (`reviewer`,
    `release`, and `security` for security topics), CI green. The app's
    documentation (`ha/app/DOCS.md`) and the release notes ask users to
    make a backup of the app before updating. With the

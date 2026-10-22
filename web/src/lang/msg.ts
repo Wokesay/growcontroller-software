@@ -282,7 +282,7 @@ export const msgDe: Record<string, string> = {
   "ev.resumed": "Automatik fortgesetzt",
   "ev.resumed.text": "Stopp aufgehoben",
   "ev.maintenance": "Pflegemodus",
-  "ev.maintenance.text": "Automatik ruht {min:0}\u00a0min. Sperren und Sensorprüfungen bleiben aktiv.",
+  "ev.maintenance.text": "Automatik ruht {min:0}\u00a0min. Messwerte dürfen springen, ohne zu sperren, und die Überwachung bewertet pH, EC und Wassertemperatur nicht. Fehlende, stillstehende oder unmögliche Werte werden weiter gemeldet, alle Sperren bleiben aktiv.",
   "ev.maintenance_end": "Pflegemodus beendet",
   "auth.code": "Einrichtungscode fehlt oder stimmt nicht. Nimm den neuesten – jeder Neustart macht einen neuen.",
   "auth.kept": "Anmelden geht erst wieder, wenn der Hub {file} lesen kann. Dein Passwort bleibt darin erhalten – setz den Hub nicht auf Werkseinstellung zurück. Starte ihn neu, um es noch mal zu versuchen.",
