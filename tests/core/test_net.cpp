@@ -69,6 +69,14 @@ bool sameEvent(const json& e, const std::string& title, const std::string& role 
   return t["args"]["label"].value("key", std::string()) == "cat.role." + role;
 }
 
+// The demo's mix holds watering until it has mixed in (SD-093); with EC and pH control off no round
+// starts while a test waters
+void quietDemo(sim::Simulation& s, Client& c) {
+  for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 10000));
+  s.step(10 * 60 * 1000, 5000);
+}
+
 bool hasEvent(Client& c, const std::string& title, const std::string& label = "") {
   const json events = c.ok("GET", "/api/v1/events?limit=2000")["events"];
   for (const auto& e : events)
@@ -515,6 +523,7 @@ TEST_CASE("Gießpumpe: fällt der Füllstand im Lauf unter den Mindestfüllstand
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
   auto id = addPlug(s, c, "shelly_plug", json::array());
   c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});  // Demo: 31 L, Mindestfüllstand 3 L
@@ -530,6 +539,7 @@ TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemelde
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
   auto id = addPlug(s, c, "shelly_plug", json::array());
   c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
@@ -540,6 +550,236 @@ TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemelde
   int n = 0;
   for (const auto& e : ev["events"]) n += sameEvent(e, "ev.irrigation.off");
   CHECK(n == 1);
+}
+
+namespace {
+
+// The tank's water changed by hand in two minutes of maintenance mode, which explains the jump and then
+// runs out (RAT-042)
+void setWater(sim::Simulation& s, Client& c, double ec, double ph, double litres = gc::kNaN) {
+  c.ok("POST", "/api/v1/maintenance", {{"minutes", 2}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.world().fill(gc::isNum(litres) ? litres : s.world().tank.volumeL, ec, ph);
+  }
+  s.step(2 * 60 * 1000 + 30000, 5000);
+}
+
+std::pair<int, json> water(Client& c, bool on) { return c.call("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", on}}); }
+json refusal(Client& c) { return water(c, true).second["error"]; }
+
+int cuts(Client& c, const std::string& title) {
+  int n = 0;
+  const json events = c.ok("GET", "/api/v1/events?limit=2000")["events"];
+  for (const auto& e : events) n += sameEvent(e, title);
+  return n;
+}
+
+// The demo with EC and pH control off, a watering pump on a socket, and the start's wait over (SD-093)
+std::string wateringDemo(sim::Simulation& s, Client& c) {
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
+  auto id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
+  return id;
+}
+
+}  // namespace
+
+TEST_CASE("Watering: the watering pump runs only on water fit for watering: pH 4.0–8.5, EC at most 1.0 above the target (SD-093, RAT-086)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string id = wateringDemo(s, c);
+  const auto refused = [&](const char* key) {
+    auto [st, e] = water(c, true);
+    CHECK(st == 409);
+    CHECK(e["error"]["key"] == key);
+    CHECK_FALSE(outlet(s, id, 0).on);
+    auto [st2, e2] = c.call("POST", "/api/v1/roles/zone.irrigation_pump/test");  // the test run too
+    CHECK(st2 == 409);
+    CHECK(e2["error"]["key"] == key);
+    CHECK_FALSE(outlet(s, id, 0).on);
+    return e["error"];
+  };
+  const auto runs = [&] {
+    auto [st, e] = water(c, true);
+    CHECK(st == 200);
+    CHECK(outlet(s, id, 0).on);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+  };
+  // The demo's EC target is 1.4: up to 2.4 is fit
+  SUBCASE("pH below and above the band") {
+    setWater(s, c, 1.4, 3.8);
+    json e = refused("act.irrigation.ph_unfit");
+    CHECK(e["args"]["ph"].get<double>() == doctest::Approx(3.8).epsilon(0.01));
+    CHECK(e["args"]["min"] == 4.0);
+    CHECK(e["args"]["max"] == 8.5);
+    setWater(s, c, 1.4, 4.2);
+    runs();
+    setWater(s, c, 1.4, 8.7);
+    refused("act.irrigation.ph_unfit");
+    setWater(s, c, 1.4, 8.3);
+    runs();
+  }
+  SUBCASE("EC above the target by more than 1.0; no lower bound, and uncorrected tap or RO water is fit (RAT-084)") {
+    setWater(s, c, 2.6, 5.8);
+    json e = refused("act.irrigation.ec_unfit");
+    CHECK(e["args"]["max"].get<double>() == doctest::Approx(2.4));
+    setWater(s, c, 2.3, 5.8);
+    runs();
+    setWater(s, c, 0.6, 7.8);  // hard tap water, pH not corrected
+    runs();
+    setWater(s, c, 0.04, 7.3);  // RO water
+    runs();
+  }
+  SUBCASE("with EC control off and no phase naming a target, only the limit of 5.0 counts") {
+    c.ok("POST", "/api/v1/grow/complete", json::object());  // EC control's own target of 1.4 stays in its settings
+    setWater(s, c, 4.0, 5.8);  // mixed by hand for a heavy feeder
+    runs();
+    setWater(s, c, 5.2, 5.8);
+    CHECK(refused("act.irrigation.ec_unfit")["args"]["max"] == 5.0);
+  }
+  SUBCASE("a running pump goes off once the water is not fit, without a latch; a low level comes first") {
+    CHECK(water(c, true).first == 200);
+    setWater(s, c, 1.4, 3.8);  // explained, so no jump lock: the band itself cuts
+    CHECK_FALSE(outlet(s, id, 0).on);
+    CHECK(cuts(c, "ev.irrigation.water") == 1);
+    setWater(s, c, 1.4, 5.8);
+    CHECK(water(c, true).first == 200);  // fit again: it runs, nothing to release
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().fill(2.0, s.world().tank.ec, 3.5);  // the tank drained and the pH fell at once
+    }
+    REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 60000));
+    s.step(30000);
+    CHECK(hasEvent(c, "ev.irrigation.off"));  // the dry run, not the water
+    CHECK(cuts(c, "ev.irrigation.water") == 1);
+  }
+}
+
+TEST_CASE("Watering: a probe without a usable reading or in a calibration blocks, one not assigned is not checked (SD-093, R5)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string id = wateringDemo(s, c);
+  SUBCASE("a jump locks the reading: blocked, and a running pump goes off once") {
+    CHECK(water(c, true).first == 200);
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().fill(s.world().tank.volumeL, s.world().tank.ec, 3.5);  // unexplained: the reading locks (RAT-042)
+    }
+    REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 5 * 60 * 1000));
+    json e = refusal(c);
+    CHECK(e["key"] == "act.irrigation.ph_unusable");
+    CHECK(e["args"]["state"]["key"] == "reading.jump");  // a few words, not the reading's whole reason
+    s.step(30000);
+    CHECK(cuts(c, "ev.irrigation.water") == 1);
+    CHECK_FALSE(hasEvent(c, "ev.irrigation.off"));
+  }
+  SUBCASE("the probe offline blocks; with pH and EC not assigned the water is not checked") {
+    fault(s, "PHEC-3F2A91", "offline");
+    REQUIRE(until(s, [&] { return refusal(c)["key"] == "act.irrigation.ph_unusable"; }, 5 * 60 * 1000));
+    CHECK(refusal(c)["args"]["state"]["key"] == "reading.offline");
+    CHECK_FALSE(outlet(s, id, 0).on);
+    c.ok("DELETE", "/api/v1/roles/tank.ph");
+    CHECK(refusal(c)["key"] == "act.irrigation.ec_unusable");
+    c.ok("DELETE", "/api/v1/roles/tank.ec");
+    CHECK(water(c, true).first == 200);
+    CHECK(outlet(s, id, 0).on);
+  }
+  SUBCASE("a probe in a calibration measures a buffer: blocked until it is cancelled") {
+    c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "start"}});
+    CHECK(refusal(c)["key"] == "act.irrigation.calibrating");
+    c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ph"}, {"action", "cancel"}});
+    CHECK(water(c, true).first == 200);
+  }
+}
+
+TEST_CASE("Watering: a dose holds watering while it runs and until it has mixed in, and stops a running pump (SD-093, RAT-052)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string id = wateringDemo(s, c);
+  SUBCASE("31 L: at least 240 s") {
+    CHECK(water(c, true).first == 200);
+    c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 2}});
+    REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 10000, 500));  // the dose stops watering
+    CHECK(cuts(c, "ev.irrigation.dose") == 1);
+    json e = refusal(c);
+    CHECK(e["key"] == "act.irrigation.dosing");
+    CHECK(e["args"]["min"] == 5);  // the run and 4 min after it: nothing switches the pump on again by itself
+    REQUIRE(until(s, [&] { return refusal(c)["key"] == "act.irrigation.mixing"; }, 60000, 500));
+    CHECK(refusal(c)["args"]["min"] == 4);  // 31 L mix in within 155 s, but never less than 240 s
+    s.step(230000, 1000);
+    CHECK(refusal(c)["key"] == "act.irrigation.mixing");
+    CHECK(refusal(c)["args"]["min"] == 1);
+    s.step(11000, 1000);
+    CHECK(water(c, true).first == 200);
+  }
+  SUBCASE("58 L: 100 s per 20 L") {
+    setWater(s, c, 1.4, 5.8, 58);
+    c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 2}});
+    REQUIRE(until(s, [&] { return refusal(c)["key"] == "act.irrigation.mixing"; }, 60000, 500));
+    CHECK(refusal(c)["args"]["min"] == 5);  // 290 s
+    s.step(280000, 1000);
+    CHECK(refusal(c)["key"] == "act.irrigation.mixing");
+    s.step(11000, 1000);
+    CHECK(water(c, true).first == 200);
+  }
+}
+
+TEST_CASE("Watering: after a start, watering waits as after a dose the restart may have cut (SD-093, R6)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  const std::string id = wateringDemo(s, c);
+  SUBCASE("with a probe checked") {
+    reboot(s, json::object());
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    REQUIRE(until(s, [&] { return refusal(c)["key"] == "act.irrigation.started"; }, 60000));
+    CHECK(refusal(c)["args"]["min"] == 4);  // 31 L: 240 s from the start
+    s.step(220000, 1000);
+    CHECK(refusal(c)["key"] == "act.irrigation.started");
+    REQUIRE(until(s, [&] { return water(c, true).first == 200; }, 30000));
+    CHECK(outlet(s, id, 0).on);
+  }
+  SUBCASE("without a probe checked nothing waits, neither after a start nor after a dose") {
+    c.ok("DELETE", "/api/v1/roles/tank.ph");
+    c.ok("DELETE", "/api/v1/roles/tank.ec");
+    reboot(s, json::object());
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    REQUIRE(until(s, [&] { return water(c, true).first == 200; }, 60000));  // as soon as the level reads
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 2}});
+    s.step(1000);
+    CHECK(water(c, true).first == 200);
+  }
+}
+
+TEST_CASE("Watering: after a phase steps the EC target down, the last phase's target still counts (SD-093, RAT-012)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  wateringDemo(s, c);
+  c.ok("POST", "/api/v1/grow/complete", json::object());
+  SUBCASE("the last phase set its own target") {
+    c.ok("POST", "/api/v1/grow/start", {{"name", "Step down"},
+                                        {"phases", {{{"name", "One"}, {"days", 7}, {"params", {{"ec_target", 3.0}}}},
+                                                    {{"name", "Two"}, {"days", 7}, {"params", {{"ec_target", 1.0}}}}}}});
+  }
+  SUBCASE("the last phase followed EC control's target, with EC control on") {
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}, {"params", {{"ec_target", 3.0}}}});
+    c.ok("POST", "/api/v1/grow/start", {{"name", "Step down"},
+                                        {"phases", {{{"name", "One"}, {"days", 7}, {"params", json::object()}},
+                                                    {{"name", "Two"}, {"days", 7}, {"params", {{"ec_target", 1.0}}}}}}});
+  }
+  setWater(s, c, 3.3, 5.8);
+  CHECK(water(c, true).first == 200);
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+  c.ok("POST", "/api/v1/grow/next", json::object());
+  CHECK(water(c, true).first == 200);  // the tank was mixed for 3.0: up to 4.0 stays fit
+  c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+  setWater(s, c, 4.2, 5.8);
+  auto [st, e] = water(c, true);
+  CHECK(st == 409);
+  CHECK(e["error"]["key"] == "act.irrigation.ec_unfit");
+  CHECK(e["error"]["args"]["max"].get<double>() == doctest::Approx(4.0));
 }
 
 namespace {
@@ -573,6 +813,7 @@ TEST_CASE("Gießpumpe: Ausschalten scheitert → einmal „Aus nicht bestätigt�
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
   auto id = addPlug(s, c, "shelly_plug", json::array());
   c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
@@ -654,6 +895,7 @@ TEST_CASE("Zwei Schutzgründe an einer klemmenden Dose: je Grund eine Meldung, k
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
   auto id = addPlug(s, c, "shelly_plug", json::array());
   c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
   c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});

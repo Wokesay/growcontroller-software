@@ -56,6 +56,33 @@ void holdLatch(json& l, const char* why) {
   if (l.is_object() && !l.contains("hold")) l["hold"] = why;
 }
 
+// A reading without a usable value in a few words, for a text with no room for its full reason
+Msg readingState(const Reading& r) {
+  switch (r.quality) {
+    case Quality::Offline: return say("reading.offline");
+    case Quality::Stale: return say("reading.stale");
+    case Quality::Frozen: return say("reading.frozen");
+    case Quality::Implausible: return say("reading.implausible");
+    case Quality::Jump: return say("reading.jump");
+    case Quality::Uncalibrated: return say("reading.uncalibrated");
+    default: return say("reading.no_data");
+  }
+}
+
+// The EC target of a phase (phase < 0: none) if it counts: EC control is on, or the phase names a
+// target. A target in EC control's settings while it is off may be a default nobody chose: the card
+// saves every field (SD-093).
+double setEcTarget(const Ctx& c, int phase) {
+  auto f = c.cfg.functions.find("ec_control");
+  bool set = f != c.cfg.functions.end() && f->second.enabled;
+  const auto& g = c.cfg.grow;
+  if (g.state == "running" && phase >= 0 && phase < static_cast<int>(g.phases.size())) {
+    const json& ph = g.phases[static_cast<size_t>(phase)].params;
+    set = set || (ph.contains("ec_target") && ph["ec_target"].is_number());
+  }
+  return set ? effectiveParams(c.cat, c.cfg, "ec_control", phase).num("ec_target") : kNaN;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------- Actuators
@@ -84,6 +111,8 @@ bool Actuators::startRun(const Ctx& c, const std::string& pump, Ms ms, const std
   if (!bus_.startRun(pump, ms, jobId, e)) return fail(say("act.bus", {{"error", e}}));
   runningPump_ = pump;
   runningPurpose_ = purpose;
+  doseUntil_ = std::max(doseUntil_.value_or(c.now + ms), c.now + ms);
+  holdFromStart_ = false;
   return true;
 }
 
@@ -179,6 +208,8 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     if (!levelBound || !level.usable()) return say("act.irrigation.level");
     if (!isNum(tank.minL)) return say("act.irrigation.min_missing");
     if (*level.value < tank.minL + kInletHysteresisL) return say("act.irrigation.low", {{"level", *level.value}});
+    // No watering when pH and EC say the water is not fit (SD-091, SD-093): on every path, no override
+    if (auto w = waterUnfit(c)) return w;
   }
   // Kompressor: Mindestpause für den Druckausgleich (Quelle: RAT-034).
   // Den Mindestlauf hält die Funktion ein; Ausschalten geht immer.
@@ -186,6 +217,57 @@ std::optional<Msg> Actuators::inhibit(const Ctx& c, const std::string& role) con
     auto off = offSince_.find(role);
     if (off != offSince_.end() && c.now - off->second < kCompressorPause)
       return say("act.compressor.pause", {{"label", nameOf(*rd)}, {"min", static_cast<double>(kCompressorPause / kMinute)}});
+  }
+  return std::nullopt;
+}
+
+std::optional<Msg> Actuators::waterUnfit(const Ctx& c) const {
+  // The probes the hub judges. Not assigned, or of a class calibrated outside the hub, is not checked
+  // (RAT-025); assigned without a usable reading blocks, a missing value is never fit (R5)
+  auto judged = [&](const char* role) -> const Reading* {
+    const Binding* b = c.cfg.binding(role);
+    if (!b) return nullptr;
+    const DeviceCfg* dev = c.cfg.device(b->device);
+    const DeviceClassDef* dc = dev ? c.cat.deviceClass(dev->cls) : nullptr;
+    if (dc && dc->externalCalibration) return nullptr;
+    return &c.truth.get(role);
+  };
+  const Reading* ph = judged("tank.ph");
+  const Reading* ec = judged("tank.ec");
+  if (!ph && !ec) return std::nullopt;  // nothing to check, so nothing to wait for either
+  // A probe in a calibration measures a buffer, not the tank
+  if (c.probeCalibrating) return say("act.irrigation.calibrating");
+  // A dose shows on the probes only once it has mixed in (RAT-052): every run of a dosing pump, and a
+  // start that may have cut one, holds watering for the mixing time. Nothing switches the pump on
+  // again by itself: the texts say when to try again, in whole minutes.
+  if (doseUntil_) {
+    const auto& level = c.truth.get("tank.level");
+    Ms mix = kWaterMixMaxMs;  // without a level the longest wait
+    if (level.usable())
+      mix = std::min(kWaterMixMaxMs, std::max(kWaterMixMinMs, static_cast<Ms>(std::max(0.0, *level.value) / 20.0 * kWaterMixPer20LMs)));
+    const Ms mixedAt = *doseUntil_ + mix;
+    const double min = std::max(1.0, std::ceil(static_cast<double>(mixedAt - c.now) / kMinute));
+    if (pumpRunning()) return say("act.irrigation.dosing", {{"min", min}});
+    if (c.now < mixedAt) return say(holdFromStart_ ? "act.irrigation.started" : "act.irrigation.mixing", {{"min", min}});
+  }
+  if (ph) {
+    if (!ph->usable()) return say("act.irrigation.ph_unusable", {{"state", readingState(*ph)}});
+    if (!(*ph->value >= kWaterPhMin && *ph->value <= kWaterPhMax))
+      return say("act.irrigation.ph_unfit", {{"ph", *ph->value}, {"min", kWaterPhMin}, {"max", kWaterPhMax}});
+  }
+  if (ec) {
+    if (!ec->usable()) return say("act.irrigation.ec_unusable", {{"state", readingState(*ec)}});
+    // The higher of this phase's EC target and the last one's, each as it was in effect: a tank mixed
+    // for the last phase stays fit after a step down (RAT-012). Parameters only, never names (R4).
+    const auto& g = c.cfg.grow;
+    const int phase = g.state == "running" ? g.phase : -1;
+    double target = setEcTarget(c, phase);
+    if (phase > 0) {
+      const double last = setEcTarget(c, phase - 1);
+      if (isNum(last)) target = isNum(target) ? std::max(target, last) : last;
+    }
+    const double limit = isNum(target) ? std::min(kWaterEcMax, target + kWaterEcAboveTarget) : kWaterEcMax;
+    if (!(*ec->value <= limit)) return say("act.irrigation.ec_unfit", {{"ec", *ec->value}, {"max", limit}});
   }
   return std::nullopt;
 }
@@ -449,6 +531,9 @@ void Actuators::enforce(const Ctx& c) {
     }
   }
 
+  // A run longer than planned holds watering longer (SD-093)
+  if (pumpRunning()) doseUntil_ = std::max(doseUntil_.value_or(c.now), c.now);
+
   // Gießpumpe im Lauf: Füllstand ungültig oder unter dem Mindestfüllstand →
   // aus (Trockenlauf), mit Meldung.
   auto irr = roleState(c.cfg, "zone.irrigation_pump");
@@ -457,6 +542,16 @@ void Actuators::enforce(const Ctx& c) {
     if (!levelBound || !level.usable()) why = say("why.level_invalid");
     else if (isNum(tank.minL) && *level.value < tank.minL) why = say("why.irrigation_low", {{"level", *level.value}});
     if (why && cut(c, "zone.irrigation_pump", "irrigation.level", "block", "warn", say("ev.irrigation.off"), say("ev.irrigation.off.text", {{"why", *why}}))) {
+      onSince_.erase("zone.irrigation_pump");
+      offSince_["zone.irrigation_pump"] = c.now;
+    }
+    // Water no longer fit, or a dose started: watering stops, without a latch (SD-093). A dose is
+    // routine and says so; water not fit is a warning.
+    std::optional<Msg> unfit;
+    if (!why) unfit = waterUnfit(c);
+    const bool dose = unfit && (unfit->key == "act.irrigation.dosing" || unfit->key == "act.irrigation.mixing" || unfit->key == "act.irrigation.started");
+    if (unfit && cut(c, "zone.irrigation_pump", "irrigation.water", "block", dose ? "info" : "warn", say(dose ? "ev.irrigation.dose" : "ev.irrigation.water"),
+                     say("ev.irrigation.off.text", {{"why", *unfit}}))) {
       onSince_.erase("zone.irrigation_pump");
       offSince_["zone.irrigation_pump"] = c.now;
     }
