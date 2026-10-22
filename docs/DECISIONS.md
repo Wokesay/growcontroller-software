@@ -4846,6 +4846,32 @@ change in the same bottles would dose with the old, too small value).
 
 ---
 
+## SD-093: The demo goes to a wider public only after 0.1.0-proto.5, which starts in English
+
+Decided by the project owner on 2026-10-22 in the software session, after
+the reviews of the docs for newcomers (#304) by `reviewer`, `qa`, `ux`
+and `security`.
+
+- **#302 is a precondition of 0.1.0-proto.5** (SD-055, #143): the demo,
+  its sign-in page, its console window and `--help` start in English for
+  an English visitor. On `main`, "English first" (SD-083) shows the hub's
+  language from the sign-in page on, and the demo hub is German, so
+  without #302 proto.5 would show every visitor a German demo.
+- **The demo is announced to a wider public** (hobby, grow and Home
+  Assistant communities) **only once proto.5 is released.** Until then
+  the download is 0.1.0-proto.4: it lacks most of the polish block, and
+  its Home Assistant app still has the first-password weakness fixed
+  under `[Unreleased]`.
+- The docs for newcomers may merge before that: they describe `main` and
+  say how the download differs.
+- How the announcement and the FAQ speak about the hardware is product
+  question #303; signing the downloads is product question #306.
+
+Not chosen: pulling proto.5 forward without steps 4 to 6 of SD-057
+(it would change SD-055's order); announcing now with proto.4 (an older
+demo in German, and a known weakness in its Home Assistant app).
+
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |

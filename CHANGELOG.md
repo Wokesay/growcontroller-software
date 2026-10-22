@@ -148,7 +148,9 @@ listed in every release under "Security".
   app does.
 
 ### Changed
-
+- **Plan: the demo goes public after 0.1.0-proto.5** (SD-093): the demo
+  starting in English (#302) is a precondition of proto.5, and the demo
+  is announced to a wider public only once proto.5 is released.
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,
