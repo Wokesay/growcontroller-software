@@ -109,6 +109,24 @@ listed in every release under "Security".
   pH− in a small tank). The README says which way fits you: the ESP32-S3
   on its own, or with Home Assistant on top. The issue form "Device or
   sensor" takes test reports for the list.
+- **Docs for newcomers** (`docs/DEMO.md`, `docs/FAQ.md`): a guide to the
+  demo (which download for which system, checking it, starting it on
+  Windows, macOS and Linux, switching the demo to English until #302 is
+  done, what to do when it does not start, a short tour with a pH jump,
+  time-lapse, a mix cancelled halfway, a power cut and the first-time
+  setup, the command-line options, building it yourself on Linux, macOS,
+  Windows or a Raspberry Pi, and what feedback helps); a FAQ on status,
+  hardware, safety and its limits, how the project is built and what
+  SD-, PD- and RAT- numbers mean; `SUPPORT.md` (where to ask what) and
+  `CODE_OF_CONDUCT.md`. The README starts with what the software does, a
+  screenshot, the demo in three steps and a status table, and says how
+  the project is made (one maintainer with an AI coding assistant, AI
+  review agents, the maintainer's approval for releases and gateway
+  logic); `CONTRIBUTING.md` names the ways to help without code and what
+  an outside contributor needs. A feedback form for Discussions (category
+  "Feedback"); the bug report form asks for system and browser, offers
+  "Home Assistant app" as the hardware and says "report number" as the
+  app does.
 
 ### Changed
 

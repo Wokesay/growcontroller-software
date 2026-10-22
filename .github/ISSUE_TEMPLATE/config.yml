@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 blank_issues_enabled: false
 contact_links:
+  - name: Feedback on the demo
+    url: https://github.com/Wokesay/growcontroller-software/discussions/new?category=feedback
+    about: Tried the simulator or read the docs? Tell us what worked, where you got stuck and what your setup would need.
   - name: Question or idea
     url: https://github.com/Wokesay/growcontroller-software/discussions
     about: Please ask questions, share growing tips and feature wishes in Discussions. An issue is created once an idea is accepted.

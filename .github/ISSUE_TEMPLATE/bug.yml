@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you! Please do not post passwords, Wi-Fi details or locations – issues are public.
-        Did you use "Report a problem" in the app? Then the **report ID** (GC-…) is enough; please share the diagnostic package only when asked.
+        Thank you! Please do not post passwords, access tokens or keys, Wi-Fi details, the address of your Home Assistant from outside, or locations – issues are public.
+        Did you use "Report a problem" in the app? Then the **report number** (GC-…) is enough; please share the diagnostic package only when asked.
   - type: textarea
     id: what
     attributes:
@@ -28,9 +28,15 @@ body:
     validations:
       required: true
   - type: input
+    id: system
+    attributes:
+      label: System and browser
+      description: Operating system, how you ran it, and the browser; no addresses.
+      placeholder: e.g. Windows 11, simulator download, Firefox
+  - type: input
     id: report
     attributes:
-      label: Report ID from "Report a problem"
+      label: Report number from "Report a problem"
       placeholder: GC-1a2b3c4d
   - type: dropdown
     id: hardware
@@ -39,6 +45,7 @@ body:
       options:
         - hub (prototype)
         - self-built (breadboard or own board)
+        - Home Assistant app
         - simulator only
     validations:
       required: true
