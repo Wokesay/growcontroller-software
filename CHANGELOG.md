@@ -23,7 +23,7 @@ listed in every release under "Security".
   longer in a large tank), and a run that starts stops the pump. There is no override. A refused
   switch-on says why and when to try again, and an event says why the
   pump went off.
-- **Mixing to an EC without measuring** (#143, SD-057, step 5, SD-094):
+- **Mixing to an EC without measuring** (#143, SD-057, step 5, SD-098):
   without a probe, or without circulation, the mix page can now scale a
   recipe to a target EC from the water's EC, taken from a meter or
   entered as 0 for reverse-osmosis water. The hub works from the larger

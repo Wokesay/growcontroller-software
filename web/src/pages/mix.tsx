@@ -10,7 +10,7 @@ import { msg, t } from "../i18n";
 import { Banner, Button, Card, Empty, Field, Modal, NumberInput, Seg, Toggle } from "../ui";
 import { JobView } from "../widgets";
 
-// Refusals shown at their field instead of as a banner (SD-094)
+// Refusals shown at their field instead of as a banner (SD-098)
 const FIELD_ERRORS = { targetEc: ["mix.target_range"], waterEc: ["mix.water_ec_missing", "mix.water_ec_unit"] } as const;
 const atField = (m: Msg) => Object.values(FIELD_ERRORS).some((keys) => (keys as readonly string[]).includes(m.key ?? ""));
 const fieldError = (plan: MixPlan | null, field: keyof typeof FIELD_ERRORS) => {
@@ -129,7 +129,7 @@ export function MixPage() {
   const [water, setWater] = useState<number | null>(null);
   const [mode, setMode] = useState<"new" | "topup">("new");
   // The recipe's amounts, or scaled to a target EC from the water's EC, without measuring (SD-057 way 2,
-  // SD-094); not while EC control is on and free: it takes the tank to its own target afterwards (SD-089 S20)
+  // SD-098); not while EC control is on and free: it takes the tank to its own target afterwards (SD-089 S20)
   const ecFree = !!st.functions.find((f) => f.id === "ec_control")?.enabled && !st.latches["ec.no_effect"];
   const [chosen, setAmounts] = useState<"recipe" | "target">("recipe");
   const amounts = ecFree ? "recipe" : chosen;

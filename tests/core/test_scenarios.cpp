@@ -122,7 +122,7 @@ TEST_CASE("Szenario Stufe 0: Einmessen und geführtes Mischen treffen die Mengen
   CHECK(c.state()["stock"]["teil-a"].get<double>() == doctest::Approx(1000.0 - a).epsilon(0.001));
 }
 
-TEST_CASE("Scenario stage 0: a fixed pattern to a target EC without a probe lands where the plan says, the pair together (SD-057, SD-094, RAT-087, RAT-054)") {
+TEST_CASE("Scenario stage 0: a fixed pattern to a target EC without a probe lands where the plan says, the pair together (SD-057, SD-098, RAT-087, RAT-054)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   setupStage0(s, c);

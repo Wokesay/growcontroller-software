@@ -341,7 +341,7 @@ TEST_CASE("Mix: a fixed addition goes in per litre of fresh water, like every pa
 }
 
 namespace {
-// A fixed pattern to a target EC (SD-057 way 2, SD-094): water EC entered, no probe
+// A fixed pattern to a target EC (SD-057 way 2, SD-098): water EC entered, no probe
 MixPlan pattern(Fix& f, double target, double waterEc, double water = 10, const std::string& mode = "new", bool phAuto = false) {
   MixRequest req{"r", water, mode, false};
   req.amounts = "target";
@@ -361,7 +361,7 @@ double mlOf(const MixPlan& p, const std::string& canister) {
 }
 }  // namespace
 
-TEST_CASE("Fixed pattern to a target EC: from the reference, the pair in its ratio, the water's EC subtracted, fixed parts per fresh litre (SD-057, SD-094, RAT-087, RAT-054, RAT-011)") {
+TEST_CASE("Fixed pattern to a target EC: from the reference, the pair in its ratio, the water's EC subtracted, fixed parts per fresh litre (SD-057, SD-098, RAT-087, RAT-054, RAT-011)") {
   Fix f;
   f.cfg.recipes[0].refEc = 0.9;  // 0.3 per ml/L over A 2 + B 1
   SUBCASE("at the reference with water at 0: exactly the recipe's amounts") {
@@ -425,7 +425,7 @@ TEST_CASE("Fixed pattern to a target EC: from the reference, the pair in its rat
   }
 }
 
-TEST_CASE("Fixed pattern to a target EC: never more than the recipe's amounts, whatever the reference or the learned effect (SD-094, RAT-087, RAT-056, RAT-066)") {
+TEST_CASE("Fixed pattern to a target EC: never more than the recipe's amounts, whatever the reference or the learned effect (SD-098, RAT-087, RAT-056, RAT-066)") {
   Fix f;
   SUBCASE("a target above the chart: the recipe's amounts, and the plan says what to expect") {
     f.cfg.recipes[0].refEc = 0.9;
@@ -467,7 +467,7 @@ TEST_CASE("Fixed pattern to a target EC: never more than the recipe's amounts, w
   }
 }
 
-TEST_CASE("Fixed pattern to a target EC: refused without a reference, a target in range, the water's EC or with EC control on; water at the target gets only fixed parts; the notes on pH (SD-057, SD-094, RAT-087, R5, RAT-006, RAT-046)") {
+TEST_CASE("Fixed pattern to a target EC: refused without a reference, a target in range, the water's EC or with EC control on; water at the target gets only fixed parts; the notes on pH (SD-057, SD-098, RAT-087, R5, RAT-006, RAT-046)") {
   Fix f;
   SUBCASE("no reference, or one outside the band: refused, also with a learned effect; the recipe's amounts stay") {
     f.rt.ecEffects["r"] = 0.3;

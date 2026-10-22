@@ -43,7 +43,7 @@ struct MixRequest {
   double waterL = kNaN;        // frisches Wasser für diesen Lauf
   std::string mode = "new";    // new = neu ansetzen | topup = auffüllen
   bool confirmRepeat = false;  // Rückfrage "vor kurzem gemischt" bestätigt
-  // A fixed pattern to a target EC (SD-057 way 2, SD-094): "recipe" = the recipe's amounts, "target" = scaled
+  // A fixed pattern to a target EC (SD-057 way 2, SD-098): "recipe" = the recipe's amounts, "target" = scaled
   // to targetEc from the water's EC; missing values stay NaN, never 0 (R5)
   std::string amounts = "recipe";
   double targetEc = kNaN, waterEc = kNaN;
@@ -63,7 +63,7 @@ struct MixPlan {
   Msg after;  // Hinweis nach dem Lauf (pH zuletzt)
   double totalMl = 0;
   Ms totalMs = 0;
-  // A fixed pattern to a target EC (SD-094): the common factor on the scaled parts (at most 1, missing while
+  // A fixed pattern to a target EC (SD-098): the common factor on the scaled parts (at most 1, missing while
   // refused) and the EC to expect; infos are notes, not warnings
   std::string amounts = "recipe";
   double targetEc = kNaN, waterEc = kNaN, factor = 1.0, expectedEc = kNaN;
@@ -113,7 +113,7 @@ struct RecipeEffect {
   double largest = kEcStartEffect;
 };
 RecipeEffect recipeEffect(const RecipeCfg& recipe, double learned);
-// The effect a fixed pattern to a target EC works from (SD-094): the reference's over all the recipe's
+// The effect a fixed pattern to a target EC works from (SD-098): the reference's over all the recipe's
 // parts (fixed ones taken as strong as the rest, an assumption), NaN without a reference inside the
 // band; a learned effect from the band's bottom counts only where it is larger (one above the band at
 // its top, RAT-056), so it only makes amounts smaller. No floor at the start effect: without feedback,

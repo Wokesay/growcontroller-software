@@ -1012,7 +1012,7 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
   }
 }
 
-TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's chart EC, within the EC target's range, only with EC control off, and started with what it aims at (SD-057, SD-094, RAT-087)") {
+TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's chart EC, within the EC target's range, only with EC control off, and started with what it aims at (SD-057, SD-098, RAT-087)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});

@@ -76,7 +76,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     p.errors.push_back(say("mix.no_volume"));  // never on with 0 or a stand-in (RAT-006)
     return p;
   }
-  // A fixed pattern to a target EC (SD-057 way 2, SD-094): every scaled part by one factor, at most 1, so
+  // A fixed pattern to a target EC (SD-057 way 2, SD-098): every scaled part by one factor, at most 1, so
   // never more than the recipe's own amounts; fixed parts per litre of fresh water; no feedback
   p.amounts = req.amounts;
   double factor = 1.0;
@@ -156,7 +156,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
       continue;
     }
     d.ml = s.mlPerL * (s.fixed ? 1.0 : factor) * req.waterL;  // amounts count on the fresh water (RAT-011)
-    if (!s.fixed && factor == 0) continue;  // a scaled part with nothing to add: the water is at the target (SD-094)
+    if (!s.fixed && factor == 0) continue;  // a scaled part with nothing to add: the water is at the target (SD-098)
     if (k->pump.empty()) {
       p.errors.push_back(say("mix.no_pump", {{"name", k->name}, {"canister", k->id}}));
       p.steps.push_back(d);

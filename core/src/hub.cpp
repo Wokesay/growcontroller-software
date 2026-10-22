@@ -1783,7 +1783,7 @@ Result Hub::importConfig(const json& j) {
 // ------------------------------------------------------------------ Aufträge
 
 // A mix as asked: the recipe's amounts, or a fixed pattern to a target EC from the water's EC, whose
-// target lies in the EC target's range (SD-057 way 2, SD-094); a missing value stays missing (R5)
+// target lies in the EC target's range (SD-057 way 2, SD-098); a missing value stays missing (R5)
 MixRequest Hub::mixRequest(const json& req) const {
   MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
   // A target or water EC asked without "target", or amounts of another type, never mix the full recipe
@@ -1839,7 +1839,7 @@ Result Hub::mixStart(const json& req) {
   j.circulation = cfg_.binding("tank.circulation") != nullptr;
   j.info = {{"recipe", plan.recipe}, {"recipeName", plan.recipeName}, {"waterL", plan.waterL}, {"mode", plan.mode},
             {"after", plan.after}, {"amounts", plan.amounts}};
-  if (plan.amounts == "target")  // the pattern runs without feedback: what it aimed at stays with it (SD-094)
+  if (plan.amounts == "target")  // the pattern runs without feedback: what it aimed at stays with it (SD-098)
     j.info.update({{"targetEc", plan.targetEc}, {"waterEc", plan.waterEc}, {"expectedEc", numOrNull(plan.expectedEc)}});
   for (const auto& s : plan.steps) j.steps.push_back({s, "pending", 0});
   rt_.tankVolumeL = plan.mode == "topup" && isNum(rt_.tankVolumeL) ? rt_.tankVolumeL + plan.waterL : plan.waterL;

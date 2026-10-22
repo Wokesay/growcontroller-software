@@ -174,7 +174,7 @@ test("A mix with the circulation pump mixes in before it ends; the card says for
 const ecControl = (page: Page, enabled: boolean) =>
   page.evaluate(async (on) => (await fetch("/api/v1/functions/ec_control", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on }) })).status, enabled);
 
-test("Mixing to an EC without measuring is offered with EC control off, needs the recipe's chart EC and the water's EC, and doses at most the recipe's amounts (SD-057, SD-094, RAT-087)", async ({ page }) => {
+test("Mixing to an EC without measuring is offered with EC control off, needs the recipe's chart EC and the water's EC, and doses at most the recipe's amounts (SD-057, SD-098, RAT-087)", async ({ page }) => {
   await login(page);
   expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
   await page.goto("/#/mischen");
@@ -196,7 +196,7 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await expect(preview).toContainText("Rezept „Wachstum“ hat keine passende EC laut Plan");
   await expect(page.getByTestId("mix-start")).toBeDisabled();
   // A chart EC of 1.15 over 4.6 ml/L: (0.85 − 0.1) / 0.25 = 3 ml/L, two thirds of each part; a larger
-  // effect EC control learned for Wachstum before it was switched off makes it less (SD-094)
+  // effect EC control learned for Wachstum before it was switched off makes it less (SD-098)
   expect(await saveChart(page, "Wachstum", { refEc: 1.15, ph: null })).toBe(200);
   const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.wachstum ?? null);
   const [lo, hi] = [0.25 * 0.275, 4 * 0.275];  // the band around the start effect (RAT-056, REF_EFFECT_BAND)
