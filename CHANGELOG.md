@@ -23,6 +23,25 @@ listed in every release under "Security".
   longer in a large tank), and a run that starts stops the pump. There is no override. A refused
   switch-on says why and when to try again, and an event says why the
   pump went off.
+- **Mixing to an EC without measuring** (#143, SD-057, step 5, SD-098):
+  without a probe, or without circulation, the mix page can now scale a
+  recipe to a target EC from the water's EC, taken from a meter or
+  entered as 0 for reverse-osmosis water. The hub works from the larger
+  of the effect the recipe's chart EC implies and what EC control learned
+  for it, scales every part (but a fixed one) by one factor, and never
+  doses more than the recipe's own amounts: a target above that is not
+  met, and the plan says what EC to expect and how to get more. Without a
+  chart EC that fits the amounts, a target in the EC target's range or
+  the water's EC (never taken as 0), it is refused with the reason; the
+  recipe's amounts can always be mixed. It is offered while EC control
+  is off or locked: switched on, EC control takes the tank to its own
+  target after the mix, and the page says so. The plan says it runs
+  without measuring, warns of water above 0.4 mS/cm on a new fill and,
+  with pH control on, of the EC the pH correction adds, or that the pH
+  is corrected by hand when the EC to expect is below pH control's EC
+  lock; a water EC above the EC target's range is refused as a likely
+  µS/cm. On a new fill the probe's reading can be taken over as the
+  water's EC. The mix card names the target and the EC to expect.
 - **Each recipe learns its own EC effect** (#143, SD-057, step 4,
   SD-092): EC control learned one effect for whatever recipe it dosed;
   a phase moving to another recipe started from it. Now each recipe
@@ -146,6 +165,13 @@ listed in every release under "Security".
 
 ### Changed
 
+- **The mix plan's, a dose split's and a pH dose's messages in both
+  languages** (#143, SD-057, step 5): the hub sends them in English with a
+  key, the web app shows them in German by that key. For API clients: a
+  dose split's reason inside a mix plan's error or an EC round's reason is
+  now wrapped as `mix.part` with the split's own message in `args.reason`,
+  and a recipe step without an amount is `mix.amount_missing` instead of
+  `mix.amount` (`docs/API.md`).
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,

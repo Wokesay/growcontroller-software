@@ -1455,7 +1455,9 @@ simulator numbers per `docs/SIMULATOR.md`.
      0 for reverse-osmosis water. Without the water's EC only the recipe's
      amounts are offered; it is never taken as 0 (R5, RAT-006, review).
      The hub works out the amounts from the recipe's ratio and reference,
-     runs the pattern without feedback and says so.
+     runs the pattern without feedback and says so. Changed by SD-098:
+     from the larger of the reference's and the learned effect, and never
+     more than the recipe's own amounts.
   3. **Stirring by hand:** after each part the hub stops and asks to stir,
      and goes on only when the user confirms, in the recipe's order. The
      wait has a time limit; cancelling or a timeout after one part of a
@@ -4639,8 +4641,8 @@ The rest of SD-057 stands.
   probe's EC as the water's EC, only from a valid reading (SD-054),
   never a missing one (R5). There stays one correction path, with its
   latches and its learning. Not covered yet: EC control switched on but
-  latched. Not built yet; comes with ways 1 and 2 (later steps of
-  SD-057).
+  latched; covered by SD-098: a fixed pattern is offered then. Way 2 is
+  built with SD-098; way 1 comes with a later step of SD-057.
 - **Not chosen:** ending the mix at the stir limit, or a limit of 60 min
   (S9); the first step without the step cap, faster on a fresh fill
   but overshooting with a product stronger than 1.25 times the largest
@@ -4847,7 +4849,6 @@ effect on every edit (a strong product would then overshoot on its next
 round); keeping it when a reference is raised above it (a product
 change in the same bottles would dose with the old, too small value).
 
----
 
 ## SD-093: No watering on water not fit for it: a wide band, the probes the hub judges, a dose mixed in first
 
@@ -5065,6 +5066,73 @@ Settles SD-079's point 1 and its open point #200.
 - **Not chosen:** keeping "no vulnerability" (narrower than the CRA's
   term); a short "no attacker path" with the reasoning only in
   `SECURITY.md` (the release notes would not name the CRA's terms).
+
+
+## SD-098: A fixed pattern doses at most the recipe's amounts, from the larger of the reference's and the learned effect
+
+Decided by the project owner on 2026-10-22 in the software session, a
+control detail (SD-091), for step 5 of SD-057 (#143), after `domain`
+weighed the choices. A fixed pattern to a target EC (SD-057's way 2) runs
+without any feedback, often with reverse-osmosis water entered as 0 and no
+meter; a reference typed too low (1.2 for 2.1 passes the band, RAT-056)
+would make it dose up to four times the chart amounts, which only
+draining and diluting undo (RAT-055). The grow proposes each phase's
+target from the same reference (RAT-066), so such a slip usually sets the
+target too and no warning on the amounts would catch it. This changes
+SD-057's point on way 2; the rest of SD-057 stands.
+
+- **The effect:** the reference's over all the recipe's parts (a fixed
+  part taken as strong as the rest, an assumption), and the recipe's
+  learned effect where it is larger (SD-092). The reference counts only
+  inside the band of a quarter to four times the start effect; a learned
+  value counts from the band's bottom, one stored above it at its top,
+  as for a round (RAT-056). No floor at the start effect: without
+  feedback, a product weaker than it would never reach its target. With
+  a learned effect, the EC to expect takes the fixed parts as strong as
+  it; a fixed part weaker than that (a cleanser, for example) leaves the
+  tank lower than said, on the safe side.
+- **The amounts:** every scaled part by one factor, (target − water's EC
+  − what the fixed parts add) over the effect, at most 1, so never more
+  than the recipe's own ml/L; a fixed part per litre of fresh water, also
+  on a top-up (RAT-011, RAT-085). A target above what the recipe's
+  amounts reach is not met: the plan names the EC to expect and how to
+  get more (higher amounts and the matching chart EC in the recipe).
+- **Only with EC control off or locked (SD-089, S20):** EC control
+  switched on and free raises the tank to its own target after the mix,
+  over the one asked for. Until mixing to the target with the probe is
+  built (way 1, step 6), the hub refuses a fixed pattern to a target EC
+  then, and the mix page offers only the recipe's amounts, says why and
+  how to switch EC control off. A locked EC control that a person
+  releases after a fixed pattern takes the tank to its own target then;
+  a person acts there.
+- **The water's EC** comes from a meter, is entered as 0 for
+  reverse-osmosis water, or on a new fill is the probe's valid reading,
+  taken over with one tap (SD-089, S20); the page asks that the fresh water is
+  already in the tank, and rounds it to 0.01.
+- **Refused, with the reason:** without a reference inside the band
+  (also when a learned effect exists: it may stem from another recipe or
+  from the start's fallback), a target outside the EC target's range,
+  without the water's EC, which is never taken as 0 (R5, RAT-006), or
+  with a water EC above the EC target's range (most likely entered in
+  µS/cm). A request that gives a target or water EC without asking for
+  the target way, or a choice of amounts the hub does not know, is
+  refused too, so an API client never gets the full recipe by mistake.
+  The recipe's amounts can always be mixed.
+- **Said in the plan:** that it runs without measuring, the EC to expect,
+  water above the 0.4 the charts are made for on a new fill, and with pH
+  control on that the pH correction afterwards adds up to about 0.3
+  mS/cm, or, when the EC to expect lies below pH control's EC lock
+  (RAT-046), that the pH is corrected by hand. Its note for after the
+  mix asks to check the EC with a meter. Water at or above the target,
+  alone or with the fixed parts, gets only the fixed parts.
+- The step limit (`max_ec_step`) does not bound a fixed pattern; the
+  recipe's amounts do (RAT-087).
+- It sets how much may be dosed without feedback, so its step waits for
+  the project owner's "mergen" (SD-033).
+
+Not chosen: the reference alone with a warning above 25 % of the chart
+(misses a slip the grow carried into the target); a floor at the start
+effect as in SD-092 (a weak product would never reach its target).
 
 ---
 
