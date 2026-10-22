@@ -125,14 +125,14 @@ mains-powered devices or chemicals. The design is built around that
 risk:
 
 - only one part of the code, the actuator gateway, can switch a pump or
-  an output, and it enforces calibration, run-time limits and one run at
-  a time;
+  an output, and it enforces calibration, time limits for doses and the
+  inlet, and one run at a time;
 - the monitoring (watchdog) only evaluates and has no way to switch
   anything;
 - a value that jumps, freezes, goes stale or is implausible blocks the
   control that depends on it, and a missing value is never treated as 0;
 - after a restart pumps and valves stay off (the fans come back on), and
-  interrupted runs are reported, not resumed;
+  an interrupted mix or manual dose is reported, not resumed;
 - STOP in the app switches every pump and output off at once. It is not
   an emergency stop: it needs the app to reach the hub.
 

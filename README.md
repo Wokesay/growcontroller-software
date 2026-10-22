@@ -50,7 +50,8 @@ an app that reads your sensors and switches nothing:
 
 ## What it does
 
-These work today in the simulator, and will on the hub from its first
+These work in the simulator (as of the code on `main`; the newest
+download lags behind in places), and will on the hub from its first
 firmware release:
 
 - **Guided mixing:** recipes from your bottles, including A and B pairs,
@@ -62,8 +63,8 @@ firmware release:
 - **Refill and circulation:** refills by a calculated amount, with the
   level sensor as the emergency cut-off; circulates on a schedule or when
   needed.
-- **Safety rules on the device:** every pump and output has a run-time
-  limit; a reading that jumps, freezes or stops updating blocks the
+- **Safety rules on the device:** every dose and every opening of the
+  inlet has a time limit; a reading that jumps, freezes or stops updating blocks the
   control that depends on it; a missing reading is never treated as 0;
   after a power cut, pumps, valves and the light stay off; STOP in the
   app switches everything off at once.

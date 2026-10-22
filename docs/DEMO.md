@@ -11,8 +11,9 @@ to tell us what you think. You need a computer: Windows, macOS or Linux.
 > see the safety note in the [README](../README.md).
 
 This guide describes the newest code. Until release 0.1.0-proto.5 is
-out, the download (0.1.0-proto.4) differs in places: its menu is not
-grouped yet, and a browser set to English shows it in English.
+out, the download (0.1.0-proto.4) is older and differs in places: its
+menu is not grouped yet, and a mix cancelled halfway does not yet say
+what is missing.
 
 ![The overview of the demo: tank with pH, EC and water temperature, the control rows, room climate and switched outputs](images/overview.png)
 
@@ -85,7 +86,8 @@ this repository's Releases page.
 A console window opens. At the first start the demo first calculates
 48 hours of history, which takes a few seconds, then your browser opens
 `http://127.0.0.1:8080` (8081 and up if that port is taken). Keep the
-console window open: closing it ends the demo.
+console window open: closing it ends the demo. Start it only once at a
+time: a second copy would use the same data folder.
 
 **The demo opens in German for now**
 ([issue #302](https://github.com/Wokesay/growcontroller-software/issues/302)),
@@ -111,7 +113,8 @@ Stuck? See [If it does not start](#3-if-it-does-not-start).
 | "Windows protected your PC" | **More info → Run anyway**, for the zip from this repository's Releases page only. |
 | macOS says the program is damaged or cannot be checked | First check the zip against `SHA256SUMS` ([step 1](#1-download)). A different value means a broken download: download it again. If it matches, run the `xattr` command from step 2. |
 | Linux: "Permission denied" | `chmod +x growcontroller-simulator`, then start it again. |
-| Linux: "GLIBC_2.35 not found" or similar | Your distribution is older than the build; [build it yourself](#8-build-it-yourself-instead). |
+| Linux: "GLIBC_2.34 not found" or similar | Your distribution is older than the build; [build it yourself](#8-build-it-yourself-instead). |
+| Windows: Smart App Control blocked it, with no **Run anyway** | Smart App Control blocks every program that is not signed, so the demo cannot start there yet. Use WSL instead ([section 8](#8-build-it-yourself-instead)). |
 | Your antivirus blocks it | Do not switch your antivirus off. Check the zip against `SHA256SUMS` ([step 1](#1-download)). If it matches, tell us in an issue which scanner flagged it and what it called it. If it does not match, do not run it, and report it privately ([`SECURITY.md`](../SECURITY.md)). |
 | `demo-passwort` does not work, or the demo asks you to set a password | You loaded another scenario or changed the password earlier. Close the console window, delete the folder `growcontroller-daten` next to the program, and start again. |
 | A blank page or an error in the page | Please report it ([section 6](#6-tell-us-what-you-think)) with your system and browser. |
@@ -169,20 +172,20 @@ Each step names what to look for.
    pick a recipe, choose **New batch** and enter `40` L. The plan lists
    each bottle with its millilitres and pumping time; **Start mixing**
    runs them one after the other.
-6. **Cancel halfway.** Wait until part B runs (about a minute and a half),
-   then click **Cancel**: the card says what is in the tank, what is
-   missing, and that the ratio of the pair is wrong until the rest goes
-   in. Afterwards, end maintenance mode in **Tank & control** with **End
-   now**.
+6. **Cancel halfway.** While the mix runs, click **Cancel**: the card
+   says what is in the tank, what is missing, and that the ratio of the
+   pair is wrong until the rest goes in. Afterwards, end maintenance mode
+   in **Tank & control** with **End now**.
 7. **Power cut.** **Simulator › Power cut / restart**, then sign in
    again. The hub restarts with pumps, valves and the light off; the fans
-   come back on, control starts afresh (so circulation runs again), locks
-   are kept, and a mix or dose that was interrupted is reported, not
-   resumed.
+   come back on (unless STOP was active), control starts afresh (so
+   circulation runs again), locks are kept, and a mix or manual dose that
+   was interrupted is reported, not resumed.
 8. **Start from scratch.** **Simulator › Scenario › Empty (stage 0)**
    erases the demo and starts the first-time setup: set a password of
-   your own, detect devices, set up bottles and recipes. **Demo (ready to
-   use)** brings the demo and `demo-passwort` back.
+   your own (the **Simulator** button comes back after that), detect
+   devices, set up bottles and recipes. **Demo (ready to use)** brings the
+   demo and `demo-passwort` back; that takes a few seconds.
 9. **Report a problem.** **Settings › Report a problem**: describe what
    happened in a sentence and click **Create diagnostic package**. The hub
    builds it (version, settings, states, the events of the last 72 hours;
@@ -244,6 +247,8 @@ leave out passwords, Wi-Fi details and where you live.
   Started with any option, the demo keeps nothing after it ends and does
   not open the browser, unless you add `--data` and `--open`: for
   example `--data growcontroller-daten --open` keeps the usual folder.
+  `--scenario` applies only to an empty data folder: with a folder that
+  already holds a demo, the demo there carries on.
 
 ## 8. Build it yourself instead
 
@@ -263,8 +268,11 @@ tools/dev.sh
   ninja-build g++`, plus Node.js 22 from [nodejs.org](https://nodejs.org/)
   or your version manager. Debian 11 ships a CMake that is too old.
 - **macOS:** the Xcode command line tools (`xcode-select --install`), then
-  `brew install cmake ninja node`. CI builds the macOS package on
-  macOS 14.
+  `brew install cmake ninja node`. Until
+  [issue #309](https://github.com/Wokesay/growcontroller-software/issues/309)
+  is fixed, a compiler warning stops the build with Apple's compiler:
+  run `cmake -S . -B build -G Ninja -DGC_WERROR=OFF` once before
+  `tools/dev.sh`. CI builds the macOS package on macOS 14.
 - **Windows:** the simplest way is WSL 2 with Ubuntu and the steps above;
   the browser on Windows reaches `http://127.0.0.1:8080`. A native build
   with Visual Studio 2022 is what CI does for the Windows package
