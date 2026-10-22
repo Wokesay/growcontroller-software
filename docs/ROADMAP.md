@@ -3,7 +3,7 @@
 Status 2026-10-22, order decided by the project owner on 2026-10-12: the
 freshness fix, then a polish block and the prototype 0.1.0-proto.5
 (SD-055), then the ESP32-S3 before new Home Assistant features. proto.5
-is the first release for testers and starts in English (SD-093 of #304).
+is the first release for testers and starts in English (#304, #302).
 The ESP32-S3 on the carrier board runs control and safety on
 its own; Home Assistant and the Home Assistant app are options (PD-145
 to PD-174, #91, #94, SD-045).
