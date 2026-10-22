@@ -1690,3 +1690,186 @@ TEST_CASE("Bottles: saving a bottle whose stock is unknown leaves it unknown, al
   const std::string full = c.ok("POST", "/api/v1/canisters", {{"name", "Silizium"}, {"kind", "nutrient"}, {"capacityMl", 1000}})["id"];
   CHECK(c.state()["stock"][full].get<double>() == doctest::Approx(1000));
 }
+
+// ---- Behind a platform's own sign-in: Home Assistant's Ingress (SD-077)
+
+namespace {
+const gc::PlatformUser kAlex{"0123456789abcdef0123456789abcdef", "Alex"};
+
+std::string evKey(const gc::json& e, const char* field) {
+  return e[field].is_object() ? e[field].value("key", std::string()) : std::string();
+}
+// The newest event with this title, or null
+gc::json lastEvent(Client& c, const std::string& title) {
+  gc::json found;
+  const gc::json events = c.ok("GET", "/api/v1/events?limit=2000&type=auth")["events"];
+  for (const auto& e : events)
+    if (evKey(e, "title") == title) found = e;
+  return found;
+}
+}  // namespace
+
+TEST_CASE("API: behind a platform's sign-in its user needs no password of the hub's own; the direct way gets no first password (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  auto session = ha.ok("GET", "/api/v1/auth/session");
+  CHECK(session["authenticated"] == true);
+  CHECK(session["platform"] == true);
+  CHECK(session["user"] == "Alex");
+  CHECK(session["hasPassword"] == false);
+  CHECK(ha.call("GET", "/api/v1/state").first == 200);
+  CHECK(ha.token.empty());  // no session of the hub's own
+  // The hub's own sign-in is not the way in there
+  for (auto [method, path] : {std::pair{"POST", "/api/v1/auth/setup"}, {"POST", "/api/v1/auth/login"}, {"POST", "/api/v1/auth/logout"}, {"PUT", "/api/v1/auth/password"}}) {
+    auto r = ha.call(method, path, {{"password", "mein-passwort"}, {"old", "x"}, {"new", "mein-passwort"}});
+    CHECK_MESSAGE(r.first == 403, path);
+    CHECK_MESSAGE(r.second["error"]["key"] == "auth.platform", path);
+  }
+  // Directly, without a password: nothing, and no first password over the network
+  Client direct{s, {}, "192.168.1.66"};
+  CHECK(direct.call("GET", "/api/v1/state").first == 401);
+  auto setup = direct.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}});
+  CHECK(setup.first == 403);
+  CHECK(setup.second["error"]["key"] == "auth.platform");
+  CHECK(direct.call("GET", "/api/v1/info").second["hasPassword"] == false);
+  CHECK(direct.call("GET", "/api/v1/info").second["setupCode"] == false);
+  CHECK(direct.call("GET", "/api/v1/auth/session").second["authenticated"] == false);
+  CHECK(direct.call("PUT", "/api/v1/auth/direct", {{"password", "uebernahme-123"}}).first == 401);
+}
+
+TEST_CASE("API: the password for direct access is set, changed and removed only through the platform's sign-in (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  CHECK(ha.call("PUT", "/api/v1/auth/direct", {{"password", "kurz"}}).first == 422);
+  CHECK(ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}})["ok"] == true);
+  CHECK(ha.ok("GET", "/api/v1/auth/session")["hasPassword"] == true);
+  gc::json set = lastEvent(ha, "ev.auth.direct_set");
+  REQUIRE(set.is_object());
+  CHECK(set["data"]["by"] == "Alex (01234567)");
+  // Directly: the password as today
+  Client direct{s, {}, "192.168.1.20"};
+  CHECK(direct.call("GET", "/api/v1/info").second["hasPassword"] == true);
+  CHECK(direct.call("POST", "/api/v1/auth/login", {{"password", "falsch-falsch"}}).first == 401);
+  direct.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+  CHECK(direct.call("GET", "/api/v1/state").first == 200);
+  // ... but never changed there, not even with the old password, nor through the platform's way
+  auto change = direct.call("PUT", "/api/v1/auth/password", {{"old", "direkt-passwort"}, {"new", "anderes-passwort"}});
+  CHECK(change.first == 403);
+  CHECK(change.second["error"]["key"] == "auth.platform");
+  auto own = direct.call("PUT", "/api/v1/auth/direct", {{"password", "anderes-passwort"}});
+  CHECK(own.first == 403);
+  CHECK(own.second["error"]["key"] == "auth.platform");
+  CHECK(direct.call("DELETE", "/api/v1/auth/direct").first == 403);
+  // Changed through the platform's way: every direct session ends, the old password is refused
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "neues-passwort"}});
+  CHECK(lastEvent(ha, "ev.auth.direct_changed")["data"]["by"] == "Alex (01234567)");
+  CHECK(direct.call("GET", "/api/v1/state").first == 401);
+  CHECK(direct.call("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}}).first == 401);
+  direct.ok("POST", "/api/v1/auth/login", {{"password", "neues-passwort"}});
+  // Removed: the session ends at once, and no first password over the network follows
+  ha.ok("DELETE", "/api/v1/auth/direct");
+  CHECK(lastEvent(ha, "ev.auth.direct_removed")["data"]["by"] == "Alex (01234567)");
+  CHECK(direct.call("GET", "/api/v1/state").first == 401);
+  CHECK(direct.call("GET", "/api/v1/info").second["hasPassword"] == false);
+  CHECK(direct.call("POST", "/api/v1/auth/login", {{"password", "neues-passwort"}}).first == 401);
+  CHECK(direct.call("POST", "/api/v1/auth/setup", {{"password", "uebernahme-123"}}).first == 403);
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    CHECK_FALSE(s.hub().credentialsLost());  // removed on purpose is not lost
+  }
+  CHECK(ha.call("DELETE", "/api/v1/auth/direct").first == 200);  // already none: nothing to do
+}
+
+TEST_CASE("API: with lost credentials, the platform's user sets a new password for direct access (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.hub().auth().load(gc::json::object());  // the password file lost, its marker kept
+    REQUIRE(s.hub().credentialsLost());
+  }
+  CHECK(ha.call("GET", "/api/v1/state").first == 200);  // the platform's way still works
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "neues-passwort"}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    CHECK_FALSE(s.hub().credentialsLost());
+  }
+}
+
+TEST_CASE("API: with lost credentials, the platform's user removes the password for direct access, and the log says who (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.hub().auth().load(gc::json::object());  // the password file lost, its marker kept
+    REQUIRE(s.hub().credentialsLost());
+  }
+  ha.ok("DELETE", "/api/v1/auth/direct");
+  CHECK(lastEvent(ha, "ev.auth.direct_removed")["data"]["by"] == "Alex (01234567)");
+  std::lock_guard<std::recursive_mutex> l(s.mutex());
+  CHECK_FALSE(s.hub().credentialsLost());
+}
+
+TEST_CASE("API: a new password for direct access forgets the known devices: they share the count again until they sign in (SD-077, SD-051)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  Client phone{s, {}, "192.168.1.20"};
+  phone.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "neues-passwort"}});
+  Client guesser{s, {}, "192.168.1.66"};
+  for (int i = 0; i < 5; ++i) CHECK(guesser.call("POST", "/api/v1/auth/login", {{"password", "falsch-geraten"}}).first == 401);
+  CHECK(phone.call("POST", "/api/v1/auth/login", {{"password", "neues-passwort"}}).first == 429);  // no longer known: the shared count
+}
+
+TEST_CASE("API: without the platform's sign-in switched on, a platform user counts for nothing (SD-077)") {
+  sim::Simulation s(test::opts("neu"));  // the simulator, as the ESP: its own password only
+  Client someone{s};
+  someone.user = kAlex;
+  CHECK(someone.call("GET", "/api/v1/state").first == 401);
+  CHECK(someone.call("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}}).first == 401);
+  CHECK(someone.ok("GET", "/api/v1/auth/session")["authenticated"] == false);
+  CHECK(someone.call("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}}).first == 200);  // the hub's own first password as before
+}
+
+TEST_CASE("API: every event of a request through the platform's sign-in names its user, and only those (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  ha.ok("PUT", "/api/v1/system", {{"name", "Zelt Alex"}});
+  const gc::json events = ha.ok("GET", "/api/v1/events?limit=1&type=config")["events"];  // the newest first
+  REQUIRE(events.size() == 1);
+  CHECK(events[0]["data"]["by"] == "Alex (01234567)");  // a configuration change, logged by the hub itself
+  Client direct{s, {}, "192.168.1.20"};
+  direct.ok("POST", "/api/v1/auth/login", {{"password", "direkt-passwort"}});
+  direct.ok("PUT", "/api/v1/system", {{"name", "Zelt direkt"}});
+  const gc::json after = direct.ok("GET", "/api/v1/events?limit=1&type=config")["events"];
+  REQUIRE(after.size() == 1);
+  CHECK_FALSE(after[0]["data"].contains("by"));  // the direct way names nobody
+}
+
+TEST_CASE("API: the diagnostic package leaves out the platform's user names and IDs (SD-077)") {
+  sim::Simulation s(test::opts("neu"));
+  s.api().platformSignIn(true);
+  Client ha{s};
+  ha.user = kAlex;
+  ha.ok("PUT", "/api/v1/auth/direct", {{"password", "direkt-passwort"}});
+  const std::string out = ha.ok("GET", "/api/v1/diagnostics").dump();
+  CHECK(out.find("Alex") == std::string::npos);
+  CHECK(out.find(kAlex.id) == std::string::npos);
+  CHECK(out.find("ev.auth.direct_set") != std::string::npos);  // the event itself stays
+}

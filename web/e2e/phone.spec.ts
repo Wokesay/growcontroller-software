@@ -190,7 +190,7 @@ test("The setup fits the phone's screen in every step; its footer leaves the sim
 
 for (const pageLang of ["de", "en"] as const) test.describe(`First password (${pageLang})`, () => {
   test.use({ pageLang });
-  test(`The Home Assistant app's first-password page with its setup code and language choice fits the phone's screen (#79, ${pageLang})`, async ({ page, request }) => {
+  test(`The Home Assistant server's first-password page with its setup code and language choice fits the phone's screen (#79, ${pageLang})`, async ({ page, request }) => {
     await scenario(request, "neu");
     // gc_ha_server asks for a code; here the simulator's answer is changed to look like that
     await page.route(/\/api\/v1\/info(\?|$)/, async (route) => {

@@ -28,6 +28,9 @@ const target = process.env.GC_SIM ?? "http://127.0.0.1:8080";
 export default defineConfig({
   plugins: [preact(), toolCodeGuard()],
   define: { __GC_SOURCE_REV__: JSON.stringify(sourceRev()) },
+  // Relative paths: behind Home Assistant's Ingress the app lives below
+  // /api/hassio_ingress/<token>/ (SD-077); directly and in the simulator at /
+  base: "./",
   build: {
     target: "es2020",
     outDir: "dist",

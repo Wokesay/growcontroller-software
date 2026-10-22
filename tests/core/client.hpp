@@ -3,6 +3,7 @@
 // im Server), merkt sich das Sitzungs-Token aus Set-Cookie.
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -14,6 +15,7 @@ struct Client {
   sim::Simulation& sim;
   std::string token = {};
   std::string addr = {};  // the peer's address as the transport reports it
+  std::optional<gc::PlatformUser> user = {};  // signed in by the platform in front of the hub (SD-077)
 
   std::pair<int, gc::json> call(const std::string& method, const std::string& pathQ, const gc::json& body = nullptr) {
     gc::ApiRequest r;
@@ -35,6 +37,7 @@ struct Client {
     r.body = body.is_null() ? "" : body.dump();
     r.token = token;
     r.client = gc::clientKey(addr);
+    r.user = user;
     gc::ApiResponse res;
     {
       std::lock_guard<std::recursive_mutex> l(sim.mutex());

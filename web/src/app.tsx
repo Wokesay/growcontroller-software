@@ -7,7 +7,7 @@ import {
 } from "lucide-preact";
 import { ApiError, post } from "./api";
 import { msg, t, type TextKey } from "./i18n";
-import { authed, config, hasPlugs, info, lastUpdate, readOnly, refreshState, simulated, stale, state, toast, toastError } from "./store";
+import { authed, config, hasPlugs, info, lastUpdate, platformLost, readOnly, refreshState, simulated, stale, state, toast, toastError } from "./store";
 import { Banner, ErrorBoundary, Modal, Pill, Toasts, navigate, route } from "./ui";
 import { Login } from "./pages/login";
 import { Overview } from "./pages/overview";
@@ -260,6 +260,16 @@ function StopButton() {
   );
 }
 
+// Home Assistant's page makes a new Ingress session when it loads; the app
+// runs in its frame, on its origin
+function reloadAll() {
+  try {
+    (window.top ?? window).location.reload();
+  } catch {
+    location.reload();
+  }
+}
+
 function LiveBadge() {
   // By the age of the values, as the phone's bar: polls standing in for the stream are
   // current, an open stream that brings nothing is not
@@ -372,8 +382,19 @@ export function App() {
             <StopButton />
           </header>
           {/* Phones hide the live badge; the live region is always there, so a reader announces the text */}
+          {/* Behind Home Assistant, its lapsed session is the one cause: said at every width, instead of the offline bar */}
+          <div role="alert">
+            {platformLost.value && (
+              <div class="lost-bar row-between" data-testid="platform-lost">
+                <span>{t("shell.platformLost")}</span>
+                <button class="btn sm" onClick={reloadAll} data-testid="platform-reload">
+                  {t("common.reload")}
+                </button>
+              </div>
+            )}
+          </div>
           <div class="only-sm" role="status">
-            {stale.value && (
+            {stale.value && !platformLost.value && (
               <div class="offline-bar" data-testid="offline-bar">
                 {t("shell.offlineBar")}
               </div>

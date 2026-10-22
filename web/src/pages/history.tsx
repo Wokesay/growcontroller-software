@@ -80,7 +80,7 @@ export function HistoryPage() {
   const markers = (purposes: string[]): Marker[] =>
     doses.filter((e) => purposes.includes(e.data?.purpose)).map((e) => ({ t: e.ts, label: msg(e.title), color: e.data?.purpose === "ph" ? "--ph" : "--ec" }));
   const now = st.now;
-  const csv = `/api/v1/export.csv?series=${series.join(",")}&from=${now - span}&to=${now}&lang=${lang.value}`;  // the page's format (RAT-016)
+  const csv = `api/v1/export.csv?series=${series.join(",")}&from=${now - span}&to=${now}&lang=${lang.value}`;  // the page's format (RAT-016)
 
   return (
     <div class="stack">

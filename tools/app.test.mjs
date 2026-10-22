@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The Home Assistant app (SD-034): its config.yaml installs the image that
 // release.yml publishes for this version, asks for nothing but Home
-// Assistant's API through the Supervisor and one port, and matches the
+// Assistant's API through the Supervisor, opens through Ingress and keeps
+// its one port closed until a user opens it (SD-077), and matches the
 // server's --app mode and the Dockerfile.
 //   node --test tools/app.test.mjs
 import assert from "node:assert/strict";
@@ -42,6 +43,7 @@ const isMap = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 function scalar(s) {
   if (/^"[^"\\]*"$/.test(s)) return s.slice(1, -1);
   if (s === "true" || s === "false") return s === "true";
+  if (s === "null") return null;  // a quoted "null" stays text, which the Supervisor takes for no port
   if (/^\d+$/.test(s)) return Number(s);
   assert.doesNotMatch(s, /^["'[{&*!|>]|\s#/, `quote or simplify: ${s}`);
   return s;
@@ -79,17 +81,27 @@ test("the app installs the image of this release", () => {
   }
 });
 
-test("the app asks for Home Assistant's API through the Supervisor and one port, nothing more", () => {
+test("the app asks for Home Assistant's API through the Supervisor, Ingress and one closed port, nothing more", () => {
   const allowed = [
     "name", "version", "slug", "description", "url", "stage", "arch", "image", "startup", "boot",
-    "homeassistant_api", "ports", "ports_description", "webui", "watchdog",
+    "homeassistant_api", "ingress", "ingress_port", "panel_icon", "panel_title", "ports", "ports_description", "watchdog",
   ];
   assert.deepEqual(Object.keys(config).filter((k) => !allowed.includes(k)), [], "a new key needs a review (SD-034)");
   assert.equal(config.homeassistant_api, true);
   assert.equal(config.stage, "experimental");
-  assert.deepEqual(config.ports, { "8099/tcp": 8099 });
-  assert.equal(config.webui, "http://[HOST]:[PORT:8099]/");
-  assert.equal(config.watchdog, "http://[HOST]:[PORT:8099]/api/v1/info");
+  // Opened through Ingress with Home Assistant's login, by its administrators
+  // only (panel_admin left at its default); its port never mapped (SD-077)
+  assert.equal(config.ingress, true);
+  assert.equal(config.ingress_port, 8100);
+  assert.ok(!("panel_admin" in config), "only administrators open it");
+  assert.ok(!("ingress_stream" in config));
+  // The direct port, closed unless a user opens it; no link to it
+  assert.deepEqual(config.ports, { "8099/tcp": null });
+  assert.match(read("ha/app/config.yaml"), /^ {2}8099\/tcp: null$/m, "null, not a quoted text");
+  assert.ok(!("webui" in config), "no link to a port that is closed");
+  // The Supervisor's watchdog reads /info through the Ingress port, which
+  // answers it without a user; the direct port has no API without a password
+  assert.equal(config.watchdog, "http://[HOST]:[PORT:8100]/api/v1/info");
 });
 
 test("the server's --app mode and the image match the app", () => {
@@ -98,10 +110,12 @@ test("the server's --app mode and the image match the app", () => {
   const main = read("ha/main.cpp");
   assert.match(main, /if \(data\.empty\(\)\) data = app \? "\/data\/hub"/);
   assert.match(main, /if \(port == 0\) port = app \? 8099 :/);
+  assert.match(main, /if \(ingressPort == 0\) ingressPort = 8100;/, "the Ingress port of config.yaml");
+  assert.match(main, /constexpr const char\* kSupervisor = "172\.30\.32\.2";/);
   assert.match(main, /app \? gc::json\{\{"url", "http:\/\/supervisor\/core"\}\}/);
   assert.match(main, /"SUPERVISOR_TOKEN"/);
   const docker = read("ha/app/Dockerfile");
-  assert.match(docker, /^EXPOSE 8099$/m);
+  assert.match(docker, /^EXPOSE 8099 8100$/m);
   assert.match(docker, /^ENTRYPOINT \["\/gc_ha_server", "--app"\]$/m);
   assert.doesNotMatch(docker, /^CMD\b/m, "no further arguments to --app");
   for (const label of ['io.hass.version="\\$BUILD_VERSION"', 'io.hass.type="app"', 'io.hass.arch="\\$BUILD_ARCH"']) {

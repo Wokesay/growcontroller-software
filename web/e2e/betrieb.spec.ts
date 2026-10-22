@@ -413,7 +413,7 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   await page.goto("/#/einstellungen");
   await page.getByRole("button", { name: "Diagnosepaket erstellen" }).click();
   await expect(page.getByText(/Vorgang GC-/)).toBeVisible();
-  await expect(page.getByText("Nicht enthalten: Passwort-Hash, Sitzungen, WLAN-Zugang, IP-Adressen")).toBeVisible();
+  await expect(page.getByText("Nicht enthalten: Passwort-Hash, Sitzungen, WLAN-Zugang, IP-Adressen, Namen von Home-Assistant-Nutzern")).toBeVisible();
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
@@ -446,7 +446,7 @@ test("English page: sign-in, recipes and settings speak English (#18)", async ({
   await page.getByRole("button", { name: "Create diagnostic package" }).click();
   await expect(page.getByText(/Report no\. GC-/)).toBeVisible();
   // what the package leaves out, in English too (#73)
-  await expect(page.getByText("Not included: password hash, sessions, Wi-Fi credentials, IP addresses")).toBeVisible();
+  await expect(page.getByText("Not included: password hash, sessions, Wi-Fi credentials, IP addresses, names of Home Assistant users")).toBeVisible();
 });
 
 test("English page: overview, mixing, tank, functions and history speak English (#18)", async ({ page }) => {

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The architecture check finds what it guards against: here the options
 // that burn eFuses, in sdkconfig.defaults and in a board profile (PD-022,
-// SD-024), and std::random_device where random numbers must come from the
-// operating system (#79, #234). It runs on a copy of itself in an
-// otherwise empty tree.
+// SD-024), std::random_device where random numbers must come from the
+// operating system (#79, #234), and the rules of the Home Assistant app
+// behind Ingress (SD-077). It runs on a copy of itself in an otherwise
+// empty tree.
 //   node --test tools/arch_check.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -20,6 +21,7 @@ function check(files) {
   try {
     mkdirSync(join(dir, "tools"));
     copyFileSync(script, join(dir, "tools", "arch_check.sh"));
+    for (const folder of ["core", "sim", "ha", "firmware", "web/src"]) mkdirSync(join(dir, folder), { recursive: true });  // as in the repository
     for (const [path, text] of Object.entries(files)) {
       mkdirSync(join(dir, path, ".."), { recursive: true });
       writeFileSync(join(dir, path), text);
@@ -87,4 +89,27 @@ test("std::random_device right after #ifdef _WIN32 in sim/scenario.cpp, in a com
   });
   assert.equal(r.status, 0, r.stdout);
   assert.match(r.stdout, /Architekturregeln: ok/);
+});
+
+test("Home Assistant's user header outside ha/main.cpp, a forwarded header read, or HTML written into the web app fails the check (SD-077)", () => {
+  for (const [file, text, message] of [
+    ["sim/main.cpp", 'auto user = req.get_header_value("X-Remote-User-Id");\n', /user header outside ha\/main\.cpp/],
+    ["core/src/api.cpp", 'const auto from = headers.find("X-Forwarded-For");\n', /a forwarded header read/],
+    ["ha/main.cpp", 'const auto path = req.get_header_value("X-Ingress-Path");\n', /a forwarded header read/],
+    ["web/src/pages/notes.tsx", "box.innerHTML = text;\n", /HTML written into the page/],
+    ["web/src/widgets.tsx", "<div dangerouslySetInnerHTML={{ __html: text }} />\n", /HTML written into the page/],
+    ["web/src/ui.tsx", "node.outerHTML = text;\n", /HTML written into the page/],
+    ["web/src/chart.tsx", 'el.insertAdjacentHTML("beforeend", text);\n', /HTML written into the page/],
+    ["web/src/main.tsx", "document.write(text);\n", /HTML written into the page/],
+  ]) {
+    const r = check({ [file]: text });
+    assert.equal(r.status, 1, file);
+    assert.match(r.stdout, message, file);
+  }
+  const r = check({
+    "ha/main.cpp": 'const auto id = soleHeader(req, "X-Remote-User-Id");\n',
+    "ha/app/DOCS.md": "The Supervisor names the user in X-Remote-User-Id.\n",  // the docs may name it
+    "web/src/ui.tsx": "<p>{text}</p>\n",
+  });
+  assert.equal(r.status, 0, r.stdout);
 });

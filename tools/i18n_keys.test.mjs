@@ -154,7 +154,7 @@ test("a hand-written refusal has its key's English text", () => {
         assert.equal(m[2], core.get(m[1]), `${dir}/${f}: ${m[1]}`);
       }
     }
-  assert.ok(n >= 4, "hand-written refusals found");
+  assert.ok(n >= 3, "hand-written refusals found");  // the firmware's; the servers take theirs from the table
 });
 
 // The hub sends English and the web app translates by key (SD-083): no file

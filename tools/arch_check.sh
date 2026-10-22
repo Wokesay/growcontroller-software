@@ -59,6 +59,23 @@ if [ -n "$rd" ]; then
   err "std::random_device, RDSEED or RDRAND outside the Windows branch of sim::randomBytes (#79, #234)"
 fi
 
+# SD-077: only ha/main.cpp reads Home Assistant's user headers (there on the
+# Ingress listener, after the peer check); the path Home Assistant forwards
+# and forwarded addresses are read nowhere. Code only: the docs may name them.
+if grep -rnE 'X-Remote-User' sim/ core/ firmware/ web/src/ ha/ --include='*.c' --include='*.cpp' --include='*.h' --include='*.hpp' --include='*.ts' --include='*.tsx' | grep -vE '^ha/main\.cpp:[0-9]+:'; then
+  err "Home Assistant's user header outside ha/main.cpp (SD-077)"
+fi
+if grep -rniE '"(X-Ingress-Path|X-Forwarded-(For|Host|Proto))"' sim/ core/ firmware/ web/src/ ha/ --include='*.cpp' --include='*.hpp' --include='*.ts' --include='*.tsx'; then
+  err "a forwarded header read (SD-077, SD-051)"
+fi
+
+# SD-077: in the Home Assistant app the page runs on Home Assistant's origin,
+# where a script slipped into it would act as a Home Assistant administrator.
+# The web app writes text only, never HTML.
+if grep -rnE 'innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|document\.write' web/src/; then
+  err "HTML written into the page (SD-077)"
+fi
+
 # SD-039: a value calibrated elsewhere goes into the history, never into
 # control: Reading::forHistory() is read only where the history is sampled.
 if grep -rnE 'forHistory\(' core/ | grep -vE '^core/include/gc/readmodel\.hpp:|^core/src/hub\.cpp:[0-9]+: +samples\.emplace_back'; then

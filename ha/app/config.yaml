@@ -3,7 +3,10 @@
 # docs/HOME_ASSISTANT.md). version is the release in VERSION: Home
 # Assistant pulls the image with that tag, which release.yml publishes for
 # the tag vVERSION. The app asks for no more than it needs: Home
-# Assistant's API through the Supervisor and one port, nothing of the host.
+# Assistant's API through the Supervisor, Ingress and one port it may be
+# opened on, nothing of the host. It opens in Home Assistant's sidebar with
+# Home Assistant's login; port 8099 is closed unless a user opens it, and
+# then asks for a password for direct access set in the app (SD-077).
 # tools/app.test.mjs refuses any other key.
 name: growcontroller
 version: "0.1.0-proto.4"
@@ -18,9 +21,12 @@ image: ghcr.io/wokesay/growcontroller-ha
 startup: application
 boot: auto
 homeassistant_api: true
+ingress: true
+ingress_port: 8100
+panel_icon: mdi:sprout
+panel_title: growcontroller
 ports:
-  8099/tcp: 8099
+  8099/tcp: null
 ports_description:
-  8099/tcp: growcontroller web app (plain HTTP, for your own network)
-webui: http://[HOST]:[PORT:8099]/
-watchdog: http://[HOST]:[PORT:8099]/api/v1/info
+  8099/tcp: Direct access to growcontroller (bookmark). Set its password in growcontroller first. Plain HTTP, home network only.
+watchdog: http://[HOST]:[PORT:8100]/api/v1/info

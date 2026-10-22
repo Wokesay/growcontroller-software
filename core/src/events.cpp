@@ -47,7 +47,15 @@ Msg msgFromJson(const json& e, const char* field) {
   return m;
 }
 
+// See EventActor. Per thread, so a hub thread that logs while a request
+// waits is never named for it; on the ESP the web server's task lives as
+// long as the device runs.
+thread_local std::string tActor;
+
 }  // namespace
+
+EventActor::EventActor(std::string name) : before_(std::move(tActor)) { tActor = std::move(name); }
+EventActor::~EventActor() { tActor = std::move(before_); }
 
 void to_json(json& j, const Event& e) {
   j = {{"id", e.id}, {"ts", e.ts}, {"type", e.type}, {"severity", e.severity},
@@ -68,7 +76,8 @@ const Event& EventLog::add(Epoch ts, std::string type, std::string severity, Msg
   e.severity = std::move(severity);
   e.title = std::move(title);
   e.text = std::move(text);
-  e.data = std::move(data);
+  e.data = data.is_object() ? std::move(data) : json::object();
+  if (!tActor.empty()) e.data["by"] = tActor;  // who made it, signed in by the platform (SD-077)
   events_.push_back(std::move(e));
   while (events_.size() > cap_) events_.pop_front();
   return events_.back();
