@@ -112,6 +112,22 @@ listed in every release under "Security".
 
 ### Changed
 
+- **Control details are decided in the software session; the product
+  offers a safety frame, not complete protection** (#298, SD-091, from
+  PD-317 and PD-318): the product side keeps the guideline, costs,
+  hardware and three baseline rules: a crash or restart stops whatever
+  could cause harm, a hardware time limit for the pumps, and no watering
+  when pH and EC say the water is not fit. Locks, releases, thresholds,
+  sequences and which devices and pumps are allowed are decided here as
+  SDs; earlier product decisions on them are proposals, to be simplified
+  along the guideline, and what was recorded from them stays until a
+  later decision changes it. The guideline wants any pump and device to
+  be usable; the software follows in later changes. Product questions
+  are about what the product is and offers (`CLAUDE.md`,
+  `docs/WORKFLOW.md`). Two baseline rules are not met yet: board v0.1
+  has no hardware time limit for the pumps, and watering on water that
+  is not fit is not blocked yet (that follows in a later change for
+  #298).
 - **Core tests on every core** (#260): `tools/ci.sh`, and with it CI's
   `checks` job, runs the C++ tests with `tools/core_tests.sh`: each test
   case in a process and a temporary folder of its own, as many at once
