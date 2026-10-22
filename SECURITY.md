@@ -44,15 +44,17 @@ repository
 with a CVE that we request from GitHub, or the CVE of the component it
 comes from. A vulnerability here is a flaw that someone without the needed
 rights can trigger: a device in the network, a crafted file or another
-input. The advisory is published with the release that contains the
+input (PD-320, SD-097). The advisory is published with the release that contains the
 fix, once that release has passed its acceptance. If that release takes
 longer than 30 days after the fix is on `main`, the advisory is
 published anyway, with a workaround.
 
 The release notes list every security item under "Security", with what
-it is, the affected versions, the impact, the severity and the remedy;
-safety and robustness fixes that are not a vulnerability are listed
-there too, without an advisory (SD-079).
+it is, the affected versions, the impact, the severity and the remedy.
+Safety and robustness fixes that no attacker can trigger are listed
+there too, without an advisory, under "Safety and
+robustness fixes, not exploitable by an attacker (CRA Art. 3(41));
+disclosed under Annex I, Part II (4)" (SD-079, SD-097).
 
 ## Supported versions
 

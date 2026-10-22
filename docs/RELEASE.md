@@ -38,8 +38,9 @@ As of 2026-10-15. Basis: `produkt`, `regulatorik`, `software`, `kunde`
 sections **Added, Changed, Fixed, Removed, Security**. Every PR adds an
 entry under `[Unreleased]`.
 
-- **"Security"** comes in blocks (SD-079): vulnerabilities, each with an
-  advisory; safety and robustness fixes, no vulnerability; a protective
+- **"Security"** comes in blocks (SD-079, SD-097): vulnerabilities, each
+  with an advisory; safety and robustness fixes, not exploitable by an
+  attacker (CRA Art. 3(41)), disclosed under Annex I, Part II (4); a protective
   cut-off relaxed on purpose, where there is one; hardening, without a
   vulnerability behind it. In the first two, each item names what it is,
   the affected versions, the impact, the severity, the remedy (CRA
@@ -289,8 +290,8 @@ stand only in the changelog.
   confirmed range and the GHSA and CVE IDs, and the advisory's
   publication date where it came out before the release. An item no
   published version has leaves the vulnerability block without an
-  advisory. Check product question #200: if it says safety and
-  robustness fixes are vulnerabilities, they get advisories too.
+  advisory. A safety or robustness fix that no attacker can trigger gets
+  none (PD-320, SD-097: product question #200 is answered).
 - **After part two of the acceptance (step 2):** set "patched versions"
   to the release and publish the advisories.
 - **At the latest:** 30 days after the fix is on `main` (for the items
