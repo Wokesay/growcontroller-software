@@ -45,13 +45,6 @@ only reads sensors and switches nothing. No compatibility promises.
 - The Home Assistant app is read-only: it switches nothing and has no
   Stop, and "Automatic" is only recorded. Of the raw values, only a pH
   probe's voltage can be calibrated in the app; level and EC follow.
-- A mix still doses the recipe's amounts per litre; EC control, when it
-  is switched on and not latched, then closes the gap to the phase's
-  target EC. Mixing straight to the target (with an EC probe, or as a
-  fixed pattern from the water's EC) comes with a later prototype
-  (SD-093). In the simulator the nutrients are about 14 to 24 % weaker
-  than the templates' charts, so a mix lands below the chart EC and EC
-  control adds the rest.
 - In the Home Assistant app, only Home Assistant's administrators can
   open growcontroller with Supervisor 2026.10.2 or newer; an older one
   only hides it from the others' sidebar. Home Assistant locks out no
@@ -140,7 +133,7 @@ only reads sensors and switches nothing. No compatibility promises.
   apply. Mixing does not change yet, but a grow started with the
   proposals controls EC to the recipe's chart EC (2.1 for the Athena
   template, where the dialog proposed 1.4 before); mixing to the target
-  comes with a later prototype (SD-093).
+  follows in the next steps.
 - **Firmware for two boards** (SD-043, M1): the firmware is built for
   the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
   N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
