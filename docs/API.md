@@ -120,8 +120,9 @@ reason inside a mix plan's error or an EC round's reason is wrapped as
 `mix.part` `{name, reason, canister}`, the split's own message in
 `args.reason` (before, `dose.no_flow` and the others stood at the top);
 a recipe step without an amount is `mix.amount_missing` (before,
-`mix.amount`). Every message of a mix plan or an EC round that names a
-bottle carries its ID as `canister` (#73). A
+`mix.amount`). Every message of a mix plan that names a bottle, and an
+EC round's `mix.part`, `mix.no_pump` and `mix.pump_offline`, carry its
+ID as `canister` (#73). A
 device's own error text inside `act.bus`,
 `act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
 `dose.failed` is English and has no key. A message an event saved

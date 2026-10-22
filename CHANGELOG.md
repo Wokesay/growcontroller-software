@@ -575,14 +575,16 @@ listed in every release under "Security".
 - **The mix plan says what to do next; the diagnostic package's "Not
   included" follows the page's language** (#73, SD-055): a pump not
   calibrated says to calibrate it under Devices, a bottle without a pump
-  where to choose one, a bottle running short to refill it and tap
-  "Bottle changed (full)", a bottle the recipe no longer finds to edit
-  the recipe, and a dose too large for its runs to check the amount.
+  where to choose one, a bottle running short to refill it and mark it
+  full under Recipes & bottles, and a recipe whose bottle is gone says to
+  edit the recipe. EC control names a bottle without a pump, or with a
+  pump the hub does not know, as such instead of as a pump to calibrate.
   What the diagnostic package leaves out ("Not included: password hash,
   …") came in German on an English page; it is named in the page's
   language now. For API clients: every message of a mix plan that names
-  a bottle carries its ID as `canister`, and the package's `redacted`
-  lists keys.
+  a bottle, and an EC round's `mix.part`, `mix.no_pump` and
+  `mix.pump_offline`, carry its ID as `canister`, and the package's
+  `redacted` lists keys.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder

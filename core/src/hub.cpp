@@ -1079,8 +1079,8 @@ std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, E
 
 json Hub::diagnostics() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Diagnosepaket für "Problem melden": ohne Geheimnisse (kein Passwort-Hash,
-  // keine Sitzungen, kein WLAN), Inhalt wird vor dem Herunterladen gezeigt.
+  // The diagnostic package of "Report a problem": no secrets (no password hash,
+  // no sessions, no Wi-Fi); the page shows its content before it is downloaded.
   std::uint8_t b[4];
   rng_(b, sizeof b);
   json cfg = cfg_;

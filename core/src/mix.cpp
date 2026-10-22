@@ -237,6 +237,13 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
   // Teilläufe: ist ein Bestandteil zu klein oder zu groß, gilt das für alle
   // gemeinsam (nie einzeln kappen, RAT-054).
   for (auto& ds : d.steps) {
+    // a bottle without a pump, or with one the hub does not know, as the mix plan names it (#73)
+    if (ds.pump.empty() || pumps.find(ds.pump) == pumps.end()) {
+      d.reason = ds.pump.empty() ? say("mix.no_pump", {{"name", ds.name}, {"canister", ds.canister}})
+                                 : say("mix.pump_offline", {{"name", ds.name}, {"canister", ds.canister}});
+      d.steps.clear();
+      return d;
+    }
     Msg err;
     ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.bounded().maxPartialRuns, err);
     if (!err.key.empty()) {
