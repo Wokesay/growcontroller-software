@@ -154,6 +154,11 @@ class World {
   std::optional<double> probeBuffer;  // Sonde steckt in Pufferlösung (Kalibrierung)
   std::string probeKind;              // "ph" | "ec"
   double inletLpm = 2.0;
+  // The level reading's lag as a first-order time constant in seconds; 0: it follows at once. RAT-038
+  // measured 1.5–2 min on the reference installation; the twin's own head has none (docs/SIMULATOR.md).
+  double levelLagS = 0;
+  double levelSeenL = gc::kNaN;       // what the lagging reading follows
+  Ms levelSampleMs = 0;               // the level head's report interval; 0: every 5 s as the other heads
   double inletTempC = gc::kNaN;       // inlet water; NaN: as warm as the tank (assumption, docs/SIMULATOR.md)
   double phOffset = 0.18;             // Sondenfehler vor der Kalibrierung (Annahme)
   double phSlope = 0.97;

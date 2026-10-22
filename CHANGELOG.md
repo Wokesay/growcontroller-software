@@ -595,6 +595,15 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A fill after watering waits until the water has run back** (#294,
+  SD-099): in ebb and flow, water runs back from the table into the tank
+  for a while after the watering pump stops. A fill planned 3 min after
+  the pump stopped started from a level that was low only for that, and
+  could fill the tank past its target once the water was back. Now a fill
+  after watering also waits until the level has stopped rising: at least
+  6 min after the pump stops, as the level reading lags, and at most
+  30 min as before. A falling level, as in a run-to-waste drip system,
+  counts as calm, so the fill starts after those 6 min.
 - **The mix plan says what to do next; the diagnostic package's "Not
   included" follows the page's language** (#73, SD-055): a pump not
   calibrated says to calibrate it under Devices, a bottle without a pump
