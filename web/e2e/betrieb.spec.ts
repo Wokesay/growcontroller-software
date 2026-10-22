@@ -524,7 +524,7 @@ test("Climate, light and watering say they work by hand and what to keep running
   const keep = {
     climate: ["Klimaregler", "Befeuchter und Entfeuchter am Hub gehen bei jedem Neustart aus"],
     light: ["Zeitschaltuhr", "nicht in eine WLAN-Steckdose des Hubs"],  // a hub plug is off after every restart (R6)
-    irrigation: ["Bewässerungssteuerung", "nicht vor Trockenlauf"],  // the dry-run lock covers only a pump the hub switches (RAT-068)
+    irrigation: ["Bewässerungssteuerung", "weder auf Trockenlauf noch auf pH und EC"],  // the dry-run lock and the pH/EC check cover only a pump the hub switches (RAT-068, SD-093)
   };
   for (const [path, area] of [["klima", "climate"], ["licht", "light"], ["bewaesserung", "irrigation"]] as const) {
     await page.goto(`/#/${path}`);
