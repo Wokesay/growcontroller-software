@@ -4916,7 +4916,9 @@ want.
   look at what it holds; what happens next.
 - **Pointers instead of repeats:** a box at the top of the README, a row
   for users first in `docs/README.md`, one line each in `sim/README.txt`
-  and `ha/app/DOCS.md`, and "Testers: start here" in the release notes.
+  and `ha/app/DOCS.md`, and a line "Testers: start here" that
+  `release.yml` adds to every release's notes, as it adds "Try it without
+  hardware".
 - **Feedback in Discussions:** a category "Tester feedback" in the
   open-ended discussion format, with a form
   (`.github/DISCUSSION_TEMPLATE/tester-feedback.yml`, named after the
@@ -4957,8 +4959,11 @@ simulator's demo scenarios stay German").
   still named by its class in the page's language (SD-083, point 3).
 - The simulator's own messages on the console and `--help` are in
   English too; `sim/README.txt` and `docs/SIMULATOR.md` say where to
-  switch the language. The demo password stays `demo-passwort`, as the
-  docs, the release notes and the tests name it.
+  switch the language. Unchanged: the demo password `demo-passwort`, as
+  the docs, the release notes and the tests name it; the data folder
+  `growcontroller-daten`, so a demo saved before keeps its data and its
+  language; the scenario names `demo`, `neu` and `stufe1` of the
+  command line and the API.
 - A hub's stored language is kept (SD-083): a demo folder from an older
   version stays German.
 - **Not chosen:** a German demo with a hint where to switch (the first
@@ -4979,12 +4984,18 @@ decided by the project owner on 2026-10-22 in the software session.
   Assistant app's `ha/app/CHANGELOG.md`, the README's status, and in the
   web app on the sign-in page (also when the first password is set;
   behind Home Assistant's Ingress, where there is none, in the app's
-  introduction) and under Settings › Display and info.
+  introduction, which can be skipped) and always under Settings › Display
+  and info. In `ha/app/CHANGELOG.md` each pre-release's section starts
+  with it.
 - **When the web app shows it:** when its version has a SemVer
   pre-release part (a hyphen after `X.Y.Z`, before any `+`), which
-  covers `-proto`, `-beta` and the builds of the Development channel, and
-  when the version is missing or cannot be read. A Stable release drops
-  it without a change of text.
+  covers `-proto` and `-beta`, and when the version is missing or cannot
+  be read. A Stable release drops it without a change of text. Builds of
+  the Development channel show it while `VERSION` on `main` is a
+  pre-release, as it is until the first Stable release; how a Development
+  build after a Stable release is named is decided with that release.
+  `VERSION` has no build part (`tools/version.test.mjs`), so a hyphen in
+  it always marks a pre-release.
 - **Text,** in both languages with a key: "For testing only: this
   version does not meet the requirements of the EU Cyber Resilience Act
   (CRA)." It names no channel, as a Beta is meant for real devices
@@ -5021,7 +5032,9 @@ Settles SD-079's point 1 and its open point #200.
   "no CVSS, as it is not exploitable by an attacker" instead of "…, as it
   is not a vulnerability". The rule goes into `SECURITY.md` and
   `docs/RELEASE.md`.
-- **To check before the CVE requests for proto.5:** the Security item
+- **To check before the CVE requests for proto.5** (requested by
+  2026-11-10, three working days before the advisories' date): the
+  Security item
   "An abandoned probe calibration no longer keeps jump checks off" can be
   reached in the Home Assistant app through a crafted import, the case of
   point 1, and so can the fix "Settings files: whole numbers only" (#270,
