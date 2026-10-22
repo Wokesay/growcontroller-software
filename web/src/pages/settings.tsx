@@ -13,6 +13,8 @@ import { currentTheme, setTheme, type Theme } from "../theme";
 
 // Target for public bug reports.
 const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
+/** What the diagnostic package leaves out, by the hub's keys. */
+const REDACTED = ["password_hash", "sessions", "wifi_credentials", "ip_addresses"] as const;
 
 // Sections of the update summary (field names of the API) and their labels.
 const SUMMARY: Record<"neu" | "behoben" | "beachten" | "sicherheit", TextKey> = {
@@ -161,7 +163,7 @@ function Report() {
         <div class="stack-sm">
           <div class="row">
             <Pill tone="accent">{t("settings.reportId", { id: diag.reportId })}</Pill>
-            <span class="faint small">{t("settings.notIncluded", { list: diag.redacted.join(", ") })}</span>
+            <span class="faint small">{t("settings.notIncluded", { list: diag.redacted.map((k: string) => ((REDACTED as readonly string[]).includes(k) ? t(`settings.redacted.${k as (typeof REDACTED)[number]}`) : k)).join(", ") })}</span>
           </div>
           <details>
             <summary>{t("settings.viewContents")}</summary>

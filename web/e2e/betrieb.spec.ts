@@ -247,6 +247,39 @@ test("The German mix page shows the hub's notes in German", async ({ page }) => 
   await expect(preview).not.toContainText("pH comes last");
 });
 
+test("The mix plan's refusals come in the page's language: English and German (#73)", async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.goto("/#/mischen");
+  await page.reload();
+  await page.locator("input[name=water]").fill("500");
+  const preview = page.getByTestId("mix-preview");
+  await expect(preview).toContainText("More than the tank's usable volume (60 L). Check the amount (litres or gallons?)");
+  await expect(preview).not.toContainText("Nutzvolumen");
+  await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
+  await page.reload();
+  await page.locator("input[name=water]").fill("500");
+  await expect(preview).toContainText("Mehr als das Nutzvolumen des Tanks (60 L). Menge prüfen (L oder Gallonen?)");
+  await expect(preview).not.toContainText("usable volume");
+  // a bottle's own refusal nests the pump's reason, which comes in the page's language too
+  await page.route(/\/api\/v1\/mix\/plan(\?|$)/, async (route) => {
+    const res = await route.fetch();
+    const plan = await res.json();
+    const reason = { key: "dose.no_flow", text: "pump not calibrated – calibrate it under Devices first" };
+    plan.errors = [{ key: "mix.part", text: `Teil A: ${reason.text}`, args: { name: "Teil A", reason, canister: "teil-a" } }];
+    plan.ok = false;
+    await route.fulfill({ response: res, json: plan });
+  });
+  await page.locator("input[name=water]").fill("20");
+  await expect(preview).toContainText("Teil A: Pumpe nicht eingemessen – miss sie erst unter Geräte ein");
+  await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
+  await page.reload();
+  await page.locator("input[name=water]").fill("20");
+  await expect(preview).toContainText("Teil A: pump not calibrated – calibrate it under Devices first");
+  await page.unroute(/\/api\/v1\/mix\/plan(\?|$)/);
+  await page.evaluate(() => localStorage.removeItem("gc.lang"));
+});
+
 test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
   await login(page);
   const st = await (await page.request.get("/api/v1/sim")).json();
@@ -355,6 +388,7 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   await page.goto("/#/einstellungen");
   await page.getByRole("button", { name: "Diagnosepaket erstellen" }).click();
   await expect(page.getByText(/Vorgang GC-/)).toBeVisible();
+  await expect(page.getByText("Nicht enthalten: Passwort-Hash, Sitzungen, WLAN-Zugang, IP-Adressen")).toBeVisible();
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
@@ -386,6 +420,8 @@ test("English page: sign-in, recipes and settings speak English (#18)", async ({
   await page.goto("/#/einstellungen");
   await page.getByRole("button", { name: "Create diagnostic package" }).click();
   await expect(page.getByText(/Report no\. GC-/)).toBeVisible();
+  // what the package leaves out, in English too (#73)
+  await expect(page.getByText("Not included: password hash, sessions, Wi-Fi credentials, IP addresses")).toBeVisible();
 });
 
 test("English page: overview, mixing, tank, functions and history speak English (#18)", async ({ page }) => {

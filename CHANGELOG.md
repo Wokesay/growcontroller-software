@@ -131,6 +131,12 @@ listed in every release under "Security".
 
 ### Changed
 
+- **API: the mix plan's and a dose split's reasons by key** (#73): a
+  bottle's reason in a mix plan and in EC control's plan is `mix.part`,
+  with the bottle's `name`, its `canister` and the split's own message in
+  `reason` (before, the split's key with the name glued to its text).
+  `mix.amount` is now `mix.amount_missing`; `dose.too_small` also names the
+  shortest run (`s`) and `dose.too_large` the most runs (`runs`).
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,
@@ -523,6 +529,17 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The mix plan speaks English** (#73, SD-055): its refusals and
+  warnings (more than the tank holds, mixed less than 30 min ago, not
+  enough left in a bottle, a pump not calibrated or not detected, less
+  than 1 ml, and the like) came in German on an English page. They now
+  come by key in the page's language, like the hub's other texts, and so
+  do the reasons a dose cannot be split into pump runs (also in EC and pH
+  control's line and for a hand dose) and two reasons of pH control.
+  Several now say what to do next, for example where to calibrate a pump
+  or assign one. What the diagnostic package leaves out ("Not included:
+  password hash, …") is named in the page's language too; the package
+  lists it as keys.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder

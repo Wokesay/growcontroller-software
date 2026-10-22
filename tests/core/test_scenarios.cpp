@@ -74,7 +74,9 @@ TEST_CASE("Szenario Stufe 0: ohne Einmesswert wird nichts dosiert") {
   s.world().fill(20, 0.02, 7.0);
   auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}});
   CHECK(st == 422);
-  CHECK(j["error"]["text"].get<std::string>().find("eingemessen") != std::string::npos);
+  CHECK(j["error"]["key"] == "mix.part");  // the bottle's own refusal, with the pump's reason (#73)
+  CHECK(j["error"]["args"]["reason"]["key"] == "dose.no_flow");
+  CHECK(j["error"]["text"].get<std::string>().find("pump not calibrated") != std::string::npos);
   s.step(5000);
   for (const char* id : {kA, kB, kC}) CHECK(s.world().cap(id)->state == 0);  // keine Pumpe lief
   CHECK(s.world().tank.ec + s.world().tank.pendingEc == doctest::Approx(0.02));

@@ -25,17 +25,16 @@ void to_json(json& j, const MixPlan& p) {
 std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, int maxRuns, Msg& err) {
   const Limits lim = limits.bounded();
   if (!isNum(flowMlPerMin) || flowMlPerMin <= 0) {
-    err = {"dose.no_flow", "Pumpe nicht eingemessen – ohne Einmesswert wird nicht dosiert", json::object()};
+    err = say("dose.no_flow");
     return {};
   }
   if (!isNum(ml) || ml <= 0) {
-    err = {"dose.no_amount", "Menge fehlt", json::object()};
+    err = say("dose.no_amount");
     return {};
   }
   double totalMs = ml / flowMlPerMin * 60000.0;
   if (totalMs < lim.minRunS * 1000.0) {
-    err = {"dose.too_small", fmt(ml, 1) + " ml sind unter " + fmt(lim.minRunS, 1) + " s Pumpenlauf – zu ungenau",
-           {{"ml", ml}}};
+    err = say("dose.too_small", {{"ml", ml}, {"s", lim.minRunS}});
     return {};
   }
   constexpr int kMaxRunsPerStep = 200;  // Schutz gegen unsinnige Mengen, auch beim Mischen
@@ -43,7 +42,7 @@ std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, 
   const double needed = std::ceil(totalMs / (lim.maxRunS * 1000.0));
   const int n = needed > cap ? cap + 1 : static_cast<int>(needed);
   if (n > cap) {
-    err = {"dose.too_large", fmt(ml, 1) + " ml brauchen mehr als " + std::to_string(cap) + " Läufe", {{"ml", ml}}};
+    err = say("dose.too_large", {{"ml", ml}, {"runs", cap}});
     return {};
   }
   std::vector<Ms> runs;
@@ -58,35 +57,24 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
   p.recipe = req.recipe;
   p.mode = req.mode;
   p.waterL = req.waterL;
-  auto error = [&](const std::string& key, const std::string& text, json args = json::object()) {
-    p.errors.push_back({key, text, std::move(args)});
-  };
-  auto warn = [&](const std::string& key, const std::string& text, json args = json::object()) {
-    p.warnings.push_back({key, text, std::move(args)});
-  };
-
+  // Each text comes from the table by its key: English here, German in the web app (#73, SD-083)
   const RecipeCfg* r = cfg.recipe(req.recipe);
   if (!r) {
-    error("mix.no_recipe", "Rezept nicht gefunden");
+    p.errors.push_back(say("mix.no_recipe"));
     return p;
   }
   p.recipeName = r->name;
-  if (req.mode != "new" && req.mode != "topup") error("mix.mode", "Unbekannter Modus");
+  if (req.mode != "new" && req.mode != "topup") p.errors.push_back(say("mix.mode"));
   if (!isNum(req.waterL) || req.waterL <= 0) {
-    error("mix.no_volume", "Wassermenge fehlt");  // nie mit 0 oder Ersatzwert weiter (RAT-006)
+    p.errors.push_back(say("mix.no_volume"));  // never on with 0 or a stand-in value (RAT-006)
     return p;
   }
   const auto& tank = cfg.tank();
   double after = req.mode == "topup" && isNum(rt.tankVolumeL) ? rt.tankVolumeL + req.waterL : req.waterL;
   if (isNum(tank.capacityL) && after > tank.capacityL)
-    error("mix.over_capacity",
-          "Mehr als das Nutzvolumen des Tanks (" + fmt(tank.capacityL, 0) + " L). Menge prüfen (L oder Gallonen?)",
-          {{"capacityL", tank.capacityL}});
+    p.errors.push_back(say("mix.over_capacity", {{"capacityL", tank.capacityL}}));
   if (rt.lastMixAt > 0 && now - rt.lastMixAt < 30 * 60 && !req.confirmRepeat)
-    error("mix.recent",
-          "Dieser Tank wurde vor " + std::to_string((now - rt.lastMixAt) / 60) +
-              " min gemischt. Noch einmal dosieren verdoppelt die Nährstoffe.",
-          {{"minutesAgo", (now - rt.lastMixAt) / 60}});
+    p.errors.push_back(say("mix.recent", {{"minutesAgo", (now - rt.lastMixAt) / 60}}));
 
   for (const auto& s : r->steps) {
     DoseStep d;
@@ -95,7 +83,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     d.fixed = s.fixed;
     const CanisterCfg* k = cfg.canister(s.canister);
     if (!k) {
-      error("mix.canister", "Kanister im Rezept fehlt");
+      p.errors.push_back(say("mix.canister"));
       continue;
     }
     d.name = k->name;
@@ -103,40 +91,35 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     d.pair = k->pair;
     d.color = k->color;
     if (k->kind != "nutrient") {
-      error("mix.ph_in_recipe", k->name + " ist pH-Korrektur – die kommt immer zuletzt, nicht im Rezept");
+      p.errors.push_back(say("mix.ph_in_recipe", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
     if (!isNum(s.mlPerL) || s.mlPerL <= 0) {
-      error("mix.amount", k->name + ": Menge je Liter fehlt");
+      p.errors.push_back(say("mix.amount_missing", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
     d.ml = s.mlPerL * req.waterL;  // Mengen rechnen auf das frische Wasser (RAT-011)
     if (k->pump.empty()) {
-      error("mix.no_pump", k->name + ": keine Pumpe zugeordnet", {{"canister", k->id}});
+      p.errors.push_back(say("mix.no_pump", {{"name", k->name}, {"canister", k->id}}));
       p.steps.push_back(d);
       continue;
     }
     auto pit = pumps.find(k->pump);
     if (pit == pumps.end() || !pit->second.online) {
-      error("mix.pump_offline", k->name + ": Pumpe nicht erkannt – auf den Dosierblock gesteckt?", {{"canister", k->id}});
+      p.errors.push_back(say("mix.pump_offline", {{"name", k->name}, {"canister", k->id}}));
       p.steps.push_back(d);
       continue;
     }
     d.flowMlPerMin = pit->second.flowMlPerMin;
     Msg err;
     d.runs = splitRuns(d.ml, d.flowMlPerMin, cfg.limits, 0, err);
-    if (!err.key.empty()) {
-      err.text = k->name + ": " + err.text;
-      err.args["canister"] = k->id;
-      p.errors.push_back(err);
-    }
-    if (d.ml < 1.0) warn("mix.small", k->name + ": " + fmt(d.ml, 1) + " ml – unter 1 ml ungenau. Mehr Wasser oder von Hand dosieren.");
+    if (!err.key.empty()) p.errors.push_back(say("mix.part", {{"name", k->name}, {"reason", err}, {"canister", k->id}}));
+    if (d.ml < 1.0) p.warnings.push_back(say("mix.small", {{"name", k->name}, {"ml", d.ml}, {"canister", k->id}}));
     auto st = rt.stockMl.find(k->id);
     if (st != rt.stockMl.end() && isNum(st->second) && st->second < 0.0)  // used up by the count (SD-066)
       p.errors.push_back(say("mix.stock_negative", {{"name", k->name}, {"canister", k->id}}));
     else if (st != rt.stockMl.end() && isNum(st->second) && st->second < d.ml)
-      error("mix.stock", k->name + ": Vorrat reicht nicht (" + fmt(d.ml, 0) + " ml nötig, " + fmt(st->second, 0) +
-                             " ml im Kanister)", {{"canister", k->id}});
+      p.errors.push_back(say("mix.stock", {{"name", k->name}, {"need", d.ml}, {"have", st->second}, {"canister", k->id}}));
     p.totalMl += d.ml;
     for (Ms m : d.runs) p.totalMs += m + 3 * kSecond;
     p.steps.push_back(d);
@@ -200,7 +183,7 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
     Msg err;
     ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.bounded().maxPartialRuns, err);
     if (!err.key.empty()) {
-      d.reason = {err.key, ds.name + ": " + err.text, err.args};
+      d.reason = say("mix.part", {{"name", ds.name}, {"reason", err}, {"canister", ds.canister}});
       d.steps.clear();
       return d;
     }
@@ -284,17 +267,17 @@ EffectEdit editEcEffect(const RecipeCfg& before, const RecipeCfg& after, double 
 PhDose planPhDose(double ph, double target, double effectPerMlL, double volumeL, double maxMl) {
   PhDose d;
   if (!isNum(ph) || !isNum(target)) {
-    d.reason = {"ph.no_value", "pH-Wert fehlt", json::object()};
+    d.reason = say("ph.no_value");
     return d;
   }
   if (!isNum(volumeL) || volumeL <= 0) {
-    d.reason = {"ph.no_volume", "Tankvolumen unbekannt", json::object()};
+    d.reason = say("ph.no_volume");
     return d;
   }
   if (!isNum(effectPerMlL) || effectPerMlL <= 0) effectPerMlL = 5.0;  // kleinste Dosis (RAT-050)
   double gap = ph - target;
   if (gap <= 0) {
-    d.reason = {"mix.ph_reached", "pH liegt nicht über dem Ziel", json::object()};
+    d.reason = say("mix.ph_reached");
     return d;
   }
   d.rawMl = 0.8 * gap / effectPerMlL * volumeL;

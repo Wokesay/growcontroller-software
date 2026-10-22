@@ -1091,7 +1091,8 @@ json Hub::diagnostics() {
           {"watchdog", st["watchdog"]},
           {"latches", st["latches"]},
           {"events", evs},
-          {"redacted", {"Passwort-Hash", "Sitzungen", "WLAN-Zugang", "IP-Adressen"}}};
+          // what the package leaves out, as keys; the web app names them in the page's language (#73)
+          {"redacted", {"password_hash", "sessions", "wifi_credentials", "ip_addresses"}}};
 }
 
 // ------------------------------------------------------------------ Einrichtung
