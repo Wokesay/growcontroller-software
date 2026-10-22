@@ -4239,7 +4239,8 @@ behaviour; this entry says what applies to the software. Built after
   - Mixes are scheduled to avoid irrigation times where possible; a
     delay is reported.
   - **Open:**
-    - irrigation from a tank whose mix was aborted;
+    - irrigation from a tank whose mix was aborted (decided by SD-093:
+      as from any tank, once mixed in and inside the band);
     - how long irrigation waits for a mix that waits for the user, and
       how the wait meets the "too dry" emergency dose (PD-049) (#284);
     - whether a bucket mix holds irrigation at all (#284).
@@ -4722,10 +4723,9 @@ aligned with the guideline before the first offer.
     watchdog (on a hang, #94) stand in; the safety component's limits are
     planned (SD-045, SD-066, not built yet). The software's limits stay on
     top of the hardware limit afterwards;
-  - no watering when pH and EC say the water is not fit. Not built yet:
-    no pH or EC check guards the irrigation pump today. Of the water,
-    only the tank level blocks it (RAT-068); its maximum run time and the
-    Stop hold as for every output.
+  - no watering when pH and EC say the water is not fit. When this was
+    recorded, no pH or EC check guarded the irrigation pump; of the
+    water, only the tank level blocked it (RAT-068). SD-093 builds it.
 - **Freedom:** any pump must work on a pump output, wherever the pump
   sits (in the container or outside it); the output switches 12 V and
   the user chooses the pump. Other devices, connections and sensors must
@@ -4846,7 +4846,84 @@ change in the same bottles would dose with the old, too small value).
 
 ---
 
-## SD-093: The demo goes to a wider public only after 0.1.0-proto.5, which starts in English
+## SD-093: No watering on water not fit for it: a wide band, the probes the hub judges, a dose mixed in first
+
+Decided by the project owner on 2026-10-21 and 2026-10-22 in the software
+session, for the third baseline rule of SD-091 (#298), after the `domain`,
+`security`, `qa`, `reviewer` and `ux` reviews, each question as
+recommended: the band, no override, how probes count, the mixing time,
+the case of a cut mix, an EC target nobody set and when EC control's own
+target counts, the wait after a start, a hand dose with the circulation
+pump off, and no wait without a probe checked. The proposals PD-253 to
+PD-258 and PD-300 to PD-303 on watering after a cut mix are decided by
+it (SD-091).
+
+- **The band (RAT-086):** water is not fit for watering when its pH is
+  below 4.0 or above 8.5, or its EC is more than 1.0 mS/cm above the EC
+  target, and never above 5.0 mS/cm. The target is the higher of this
+  phase's and the last phase's, each as it was in effect (the phase's,
+  else EC control's setting, else the catalog's default), so a tank mixed
+  for the last phase stays fit after a step down (RAT-012). A target
+  counts only when EC control is on or the phase names one: the settings
+  card saves every field, so a target in EC control's settings while it
+  is off may be a default nobody chose. Otherwise only the limit of 5.0
+  counts, so a tank mixed by hand is not refused against it. There is
+  no lower EC bound: plain water flushes. The band catches a pump that
+  ran too long or dosed too much, not a recipe missed: uncorrected tap or
+  RO water typically stays fit (RAT-084). The values are fixed in code
+  (R7) and are assumptions; no setting changes them.
+- **Readings:** only a usable reading counts. A pH or EC probe that is
+  assigned but has no usable reading (offline, no data, stale, frozen,
+  implausible, locked after a jump, not calibrated) blocks: a missing
+  value is never fit (R5). So does a probe in a calibration: it measures
+  a buffer, not the tank. A probe not assigned, or of a device class
+  calibrated outside the hub, is not checked, whatever its reading
+  (RAT-025): a setup may do without probes. With neither probe checked,
+  nothing is checked and nothing waits.
+- **A dose mixes in first:** with a probe checked, every run of a dosing
+  pump holds watering while it runs and for the mixing time after it: at least 240 s and
+  100 s per 20 L in the tank (RAT-052; the scaling is an assumption),
+  never more than 60 min. A run that starts while the pump waters stops
+  it. After every start the hub waits the same time, as a dose the
+  restart cut is not known after it.
+- **Where:** in the gateway (R1), on every path that switches the
+  watering pump on: by hand, over the API and the test run. A running
+  pump goes off as soon as the water is not fit or a dose starts, with an
+  event and without a latch: it can water again once the water is fit.
+  There is no override, by hand neither. Nothing switches the pump on
+  again by itself, so a refusal says why and when to try again.
+- **After a cut mix** the same holds as always: watering once the last
+  run has mixed in and the water is inside the band. The earlier
+  proposals for that case are dropped: waiting times per phase, an
+  emergency dose without probes, excess counted per product, catalogue
+  roles, soft water, and a mix counted as cut after the watering delay.
+  SD-084's rule stays for the irrigation function, not built yet: a
+  planned watering time waits until a running mix is finished.
+- **Residual risks:**
+  - a small overdose in a large tank stays inside the band and is
+    watered (one 60 s run of A and B in 100 L adds about 0.25 mS/cm), and
+    so is a half-finished mix inside the band;
+  - without probes nothing is checked; a probe reading too low (dry, or
+    arbitrary in RO water, RAT-046) can hide an overdose or refuse plain
+    water; tap water above pH 8.5 is refused;
+  - after a hand dose with the circulation pump off (in interval mode),
+    the mixing time can be too short; the check goes on while the pump
+    waters and stops it once the probe sees the dose;
+  - a dosing pump stuck on at the board shows no running dose to the hub
+    (board v0.1 has no hardware time limit), so only the band catches
+    it: part A alone after about 1.4 min in 20 L;
+  - every run of a dosing pump holds watering, also a calibration or
+    priming run into a cup, and correction rounds after a refill hold it
+    for about 20–40 min in 30–60 L;
+  - the lock shows only when someone taps, and a refusal over the API
+    leaves no event (#307);
+  - deep water culture, RDWC and NFT have no watering role yet, so the
+    rule protects pulsed watering only.
+
+---
+
+
+## SD-094: The demo goes to a wider public only after 0.1.0-proto.5, which starts in English
 
 Decided by the project owner on 2026-10-22 in the software session, after
 the reviews of the docs for newcomers (#304) by `reviewer`, `qa`, `ux`
