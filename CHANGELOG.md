@@ -1173,6 +1173,19 @@ A protective cut-off relaxed on purpose:
 
 Hardening, without a vulnerability behind it:
 
+- **CI and the app image build with Node 22.23.4** (SD-070, SD-071): the
+  Node that builds the web app and checks its packages' registry
+  signatures moves from 22.23.3 to Node's security release of
+  2026-10-20: OpenSSL 3.5.9, new root certificates and, for Node 22,
+  CVE-2026-105481, CVE-2026-105482, CVE-2026-106069, CVE-2026-106072,
+  CVE-2026-106073, CVE-2026-106074 and CVE-2026-111497
+  (https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+  No Node code ships, and npm stays 10.9.9; every package it fetches is
+  checked against its sha512 in the lockfile and its registry signature,
+  so none of these could have changed a published artifact. On amd64,
+  the app image's `node` image now unpacks the build from `nodejs.org`,
+  checked against the Node release keys, instead of an unofficial build.
+  No published version affected.
 - **The session comes only from a cookie named exactly `gc_session`**
   (Home Assistant app, simulator and firmware): the servers now split the
   browser's `Cookie` header into its name=value pairs and take the session
