@@ -173,6 +173,9 @@ class Hub {
   Ms mixSettleMs() const;      // how long a mix mixes in at its end
   bool controllerFree(const char* fn, const char* latch) const;  // switched on and not locked
   bool controlOn() const;      // EC or pH control free: something waits for the mixed tank
+  const RecipeCfg* ecRecipe() const;  // the recipe EC control doses, as it picks it (activeRecipe in control.cpp)
+  void recipeEdited(const RecipeCfg& before, const RecipeCfg& after);  // its learned EC effect, its round (SD-092)
+  void forgetEcEffect(const std::string& id);  // a recipe deleted, left out or new (SD-092)
   // A mix ending early with nutrients in (or a part cut unbooked): EC and pH settle first (SD-057)
   void mixCut(bool byStop, bool doseCut = false);
   void settleControllersFirst(bool byStop);

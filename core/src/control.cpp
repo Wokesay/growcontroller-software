@@ -190,9 +190,10 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
     double rise = *ec.value - ecBefore_;
-    if (clean_ && mlRound_ > 0 && isNum(env.volumeL)) {
-      double observed = rise / (mlRound_ / env.volumeL);
-      c.rt.ecEffect = clampEffect(observed, kEcStartEffect);
+    // Learned for the recipe the round dosed, within the band, below it that recipe's start (SD-092, RAT-057)
+    if (const RecipeCfg* dosed = c.cfg.recipe(roundRecipe_); dosed && clean_ && mlRound_ > 0 && isNum(env.volumeL)) {
+      const double observed = rise / (mlRound_ / env.volumeL);
+      c.rt.ecEffects[roundRecipe_] = c.rt.ecEffect = clampEcEffect(observed, recipeEffect(*dosed, kNaN).start);
     }
     if (clean_) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
     if (noEffect_ >= 2) {
@@ -311,8 +312,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ec.no_circ");
     return;
   }
-  auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value,
-                         clampEffect(c.rt.ecEffect, kEcStartEffect), kEcStartEffect, p.num("max_ec_step"));
+  const RecipeEffect eff = recipeEffect(*recipe, learnedEcEffect(c.rt, recipe->id));
+  auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value, eff.dose, eff.largest, p.num("max_ec_step"));
   if (!plan.ok) {
     st_.state = "blocked";
     st_.line = say("ec.plan", {{"reason", plan.reason}});
@@ -320,6 +321,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   }
   if (round_ == 0) startEc_ = *ec.value;
   round_++;
+  roundRecipe_ = recipe->id;
   ecBefore_ = *ec.value;
   mlRound_ = 0;
   clean_ = true;
@@ -348,6 +350,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
 }
 
 void EcController::recipeChanged(const RecipeCfg& r) {
+  if (r.id != roundRecipe_) return;  // the recipe the round doses, whatever the phase's is now
   clean_ = false;
   queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
                               [&](const DoseStep& d) {

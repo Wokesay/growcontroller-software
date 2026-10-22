@@ -216,6 +216,24 @@ TEST_CASE("Recipes: a reference far from the start effect is refused, naming the
   CHECK(found);
 }
 
+TEST_CASE("Recipes: an ID is there and used once, as what a recipe learned is kept by it (SD-092)") {
+  Catalog cat = Catalog::builtin();
+  Config c = sample();
+  auto keys = [&] {
+    std::set<std::string> out;
+    for (const auto& m : validateConfig(c, cat)) out.insert(m.key);
+    return out;
+  };
+  CHECK(keys().count("cfg.recipe.id") == 0);
+  c.recipes.push_back(c.recipes[0]);
+  c.recipes.back().name = "Copy";
+  CHECK(keys().count("cfg.recipe.id") == 1);
+  c.recipes.back().id = "";
+  CHECK(keys().count("cfg.recipe.id") == 1);
+  c.recipes.back().id = "copy";
+  CHECK(keys().count("cfg.recipe.id") == 0);
+}
+
 TEST_CASE("Recipes: a pH range is two values, low to high, within the pH target's range (SD-057, RAT-066)") {
   Catalog cat = Catalog::builtin();
   Config c = sample();

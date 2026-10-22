@@ -8,6 +8,25 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Each recipe learns its own EC effect** (#143, SD-057, step 4,
+  SD-092): EC control learned one effect for whatever recipe it dosed;
+  a phase moving to another recipe started from it. Now each recipe
+  learns its own from EC control's clean rounds on it, and a round
+  learns into the recipe it dosed. A recipe that has learned nothing
+  starts from the start effect, or from the larger effect its chart EC
+  implies, so a chart EC only ever makes a round smaller; the cap of a
+  round converts with the larger of that start and the learned effect,
+  so neither a low chart EC nor a small learned effect widens it. An
+  edit that changes a recipe's parts or their ratio keeps its learned
+  effect only at or above the recipe's new start, scaled up first by
+  parts that are fixed or removed now, and a chart EC raised above it
+  forgets it; a round on that recipe that settles across the edit learns
+  nothing. An import does the same for a recipe the hub had; a recipe it
+  leaves out or brings new, or one deleted or created, starts afresh.
+  After the update, every recipe whose start it does not undercut starts
+  from the effect learned before. A recipe's ID must be there and used
+  once. `/state` names the effect of EC control's recipe and of each
+  recipe (`effects.ecByRecipe`).
 - **A mix mixes in before it ends** (#143, SD-057, step 3): with a
   circulation pump, a mix now ends only once its nutrients have mixed in
   (as long as EC or pH control waits after a dose, whichever is longer,
