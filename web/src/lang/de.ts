@@ -280,7 +280,7 @@ export const deBase = {
   "net.elsewhere": "schon zugeordnet",
   "net.assigned": "Zugeordnet; Schutz im Gerät gesetzt",
   "net.countHint": "Die Dosen sind hier ab 1 gezählt, in der Weboberfläche des Shelly ab 0.",
-  "net.safety": "Nach Stromausfall bleiben die Dosen aus. Befeuchter, Gießpumpe und Zulauf schalten zusätzlich im Gerät selbst ab, falls der Hub ausfällt. Shelly und Leiste gehören außerhalb des Pflanzraums, hinter einen FI-Schutzschalter (30 mA).",
+  "net.safety": "Nach Stromausfall bleiben die Dosen aus; nur Abluft und Umluft gehen von selbst wieder an, außer bei aktivem Stopp. Befeuchter, Gießpumpe und Zulauf schalten zusätzlich im Gerät selbst ab, falls der Hub ausfällt. Shelly und Leiste gehören außerhalb des Pflanzraums, hinter einen FI-Schutzschalter (30 mA).",
 
   // Bereiche
   "area.climate": "Raumklima",

@@ -56,8 +56,9 @@ export const de = {
   "tank.unassigned": "nicht zugeordnet",
   "tank.outputsNote": "Der Hub schaltet Ausgänge nur mit Trockenlaufschutz und Notabschaltung. 230-V-Geräte kommen nie direkt an den Hub, sondern an eine schaltbare Steckdose.",
   "tank.maintenanceUntil": "Automatik ruht bis {at}.",
+  "tank.maintenanceEndHint": "Beende den Pflegemodus, wenn deine Arbeit am Tank fertig ist und die Werte ruhig sind. Danach sperrt ein Sprung den Wert, bis er 15\u00a0min ruhig ist.",
   "tank.end": "Beenden",
-  "tank.maintenanceText": "Für Tankwechsel und Reinigung: Die Automatik dosiert nicht, Sprünge der Messwerte gelten als angekündigt. Sperren bleiben aktiv.",
+  "tank.maintenanceText": "Für Tankwechsel und Reinigung: Die Automatik dosiert nicht, Messwerte dürfen springen, ohne zu sperren. Sperren bleiben aktiv.",
   "tank.startMaintenance": "Pflegemodus starten",
   "tank.headHint": "Mit einem pH/EC-Sensorkopf misst der Hub pH und EC dauerhaft und regelt nach. Siehe Geräte › Erweitern.",
 } as const;
@@ -117,8 +118,9 @@ export const en: Record<keyof typeof de, string> = {
   "tank.unassigned": "Not assigned",
   "tank.outputsNote": "The hub switches outputs only with dry-run protection and an emergency cut-off. 230 V devices never connect to the hub directly – they go on a smart plug.",
   "tank.maintenanceUntil": "Automation paused until {at}.",
+  "tank.maintenanceEndHint": "End maintenance mode once your work at the tank is done and the readings are steady. After that, a jump locks the reading until it stays steady for 15\u00a0min.",
   "tank.end": "End now",
-  "tank.maintenanceText": "For tank changes and cleaning: automation does not dose, jumps in readings are expected. Locks stay active.",
+  "tank.maintenanceText": "For tank changes and cleaning: automation does not dose, readings may jump without locking. Locks stay active.",
   "tank.startMaintenance": "Start maintenance mode",
   "tank.headHint": "With a pH/EC sensor head the hub measures pH and EC all the time and corrects them. See Devices › Expand.",
 };

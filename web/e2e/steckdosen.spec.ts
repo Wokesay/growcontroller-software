@@ -22,6 +22,8 @@ test("Einrichtung: Steckdose im WLAN übernehmen und der Umwälzpumpe zuordnen",
   await expect(select).toBeVisible();
   await select.selectOption({ label: "Umwälzpumpe" });
   await expect(page.getByText("Zugeordnet; Schutz im Gerät gesetzt")).toBeVisible();
+  // the safety note names the fans that come back on after a power cut (PD-050, #266)
+  await expect(page.getByText(/^Nach Stromausfall bleiben die Dosen aus; nur Abluft und Umluft gehen von selbst wieder an, außer bei aktivem Stopp\./)).toBeVisible();
   const outlet = async () => {
     const world = await (await page.request.get("/api/v1/sim")).json();
     return world.world.netPlugs.find((p: { id: string }) => p.id === id).outlets[0];
