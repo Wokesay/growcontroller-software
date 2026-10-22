@@ -370,15 +370,14 @@ listed in every release under "Security".
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.
-- **Plan: 0.1.0-proto.5 is a release for testers** (SD-093 to SD-097):
-  it does not wait for the last two ways of mixing to the target EC, which
-  come with a later prototype. Testers get a getting-started page and a
-  feedback page, feedback goes to a Discussions category, the demo speaks
-  English, and a prototype says on the sign-in page and under Settings
-  that it is for testing only and does not meet the EU Cyber Resilience
-  Act. A fixed defect gets a security advisory only if someone without
-  the needed rights can trigger it (PD-320); the other fixes in Security
-  are labelled "not exploitable by an attacker".
+- **Plan: 0.1.0-proto.5 for testers** (SD-094 to SD-097): testers start
+  from the docs for newcomers, "Report a problem" opens GitHub's bug
+  form for everyone, the demo speaks English, and a prototype says on the
+  sign-in page and under Settings that it is for testing only and does
+  not meet the EU Cyber Resilience Act. A fixed defect gets a security
+  advisory only if someone without the needed rights can trigger it
+  (PD-320); the other fixes in Security are labelled "not exploitable by
+  an attacker".
 - **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
   prototype release comes after a block of fixes from a review: the phone
   layout, a message when Stop or a switch fails, plain words instead of

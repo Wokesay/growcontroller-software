@@ -1390,8 +1390,6 @@ customer and a grower.
 - Changed by SD-065: the project owner's test comes in two parts, before
   "mergen" with the release branch's server and after the tag with the
   published app.
-- Changed by SD-093: 0.1.0-proto.5 ships without SD-057's ways 1 and 2;
-  they come with a later prototype.
 
 
 ## SD-056: Menu grouped by topic; pages without automation say "manual"
@@ -1425,8 +1423,7 @@ a check by `domain` of the manufacturer's guidance; the safeguards marked
 It replaces the fixed targets of the grow dialog; the EC correction
 (RAT-054, RAT-055, RAT-080) already keeps the recipe's ratio. Not built
 yet; built in the polish block (SD-055), with a RAT entry, tests and
-simulator numbers per `docs/SIMULATOR.md`. Changed by SD-093: ways 1 and 2
-come with a later prototype; steps 1 to 4 ship with 0.1.0-proto.5.
+simulator numbers per `docs/SIMULATOR.md`.
 
 - **The target is the phase's target EC** (`ec_target`), as the total EC
   of the solution, the water's own EC included, as the manufacturers'
@@ -4851,106 +4848,49 @@ round); keeping it when a reference is raised above it (a product
 change in the same bottles would dose with the old, too small value).
 
 
-## SD-093: 0.1.0-proto.5 without the rest of SD-057; a release for testers
-
-Decided by the project owner on 2026-10-22 in the software session,
-after `release`, `qa`, `domain` and `ux` checked `main` at 4027e1f for
-the release; step 4 of SD-057 (#308, SD-092) merged after that, at
-34276ae, where `reviewer` checked the claims below. Changes SD-055's "the
-target EC (SD-057)" and the order in `docs/ROADMAP.md`; the rest of
-SD-055 stands.
-
-- **proto.5 does not wait for SD-057's last steps:** way 2 (a fixed
-  pattern from a target EC and the water's EC) and way 1 (mixing to the
-  target with the capped first step, SD-089 S4), with what belongs to
-  both (S20, the note for water above 0.4 mS/cm on a new fill, the mix
-  plan's note when EC runs without temperature compensation), come with
-  a later prototype. What is on `main` when the release pull request
-  merges ships, steps 1 to 4 included.
-- **The Home Assistant app behind Ingress comes with proto.5** (SD-077,
-  PD-225): its pull request #267 carries the release (the version, the
-  release notes' heading, `ha/app/CHANGELOG.md`) and merges last, right
-  before the tag, as the project owner decided on 2026-10-16 (recorded
-  with #267).
-- **Why it is safe as a simulator release** (`domain`, from the code): a
-  mix still doses the recipe's amounts per litre, and EC control, when it
-  is switched on and not latched, closes the gap to the phase's target
-  in rounds capped by the step limit (RAT-056); a recipe's chart EC only
-  ever makes a round smaller (SD-092). The simulator's nutrients are
-  about 14 to 24 % weaker than the templates' charts (calculated from
-  the templates and `docs/SIMULATOR.md`'s numbers), so a mix lands below
-  the chart EC and EC control adds the rest. "Known limitations" says so.
-- **Still before the release:** as SD-055 asks, English complete,
-  including the mix plan's texts (#73), and the release notes with a
-  summary and "Known limitations"; the two wrong safety texts that `qa`
-  found (#297, #266); the newest Node 22 security release (SD-070); the
-  owner's acceptance test (SD-065). Added for testers: SD-094 to SD-096.
-- **proto.5 is meant to be handed out** for feedback. A software release
-  is not the trigger for reporting under CRA Art. 14; the first offer or
-  the first device lent is (#200, F1, the product side's assumption).
-  Handing testers a device would change that.
-- **Not chosen:** waiting for all of SD-057, by `release`'s estimate 1.5
-  to 3 more weeks, with the tag after 2026-11-14, when the advisories of
-  proto.5 are published anyway (SD-079).
-
-
-## SD-094: Testers get a getting-started page and a feedback page; feedback goes to Discussions
+## SD-094: Testers start from the docs for newcomers (#304); "Report a problem" opens the bug form
 
 Decided by the project owner on 2026-10-22 in the software session, after
-a review by `ux` of what a first-time tester finds: the README and
-`docs/` are written for developers, and nothing says what feedback we
-want.
+a review by `ux` of what a first-time tester finds, and after two sessions
+had written docs for testers in parallel (#304 and #316): #304 is the
+base, and #316 keeps only what #304 does not bring.
 
-- **`docs/GETTING_STARTED.md`:** what growcontroller is and what it
-  cannot do yet, with two lines on safety; the simulator in five steps
-  (which file, unpack, start, the demo password, starting over); the Home
-  Assistant app (what it needs, install, open, pick sensors); a tour of
-  about 15 minutes, each step with "you should see"; a link to the
-  release's known limitations.
-- **`docs/FEEDBACK.md`:** the questions we ask testers; where each kind
-  of report goes (feedback to Discussions, a bug that can be repeated to
-  the bug form, a device to the device form, a vulnerability to the
-  private report, `SECURITY.md`); what to include; what never to post
-  (passwords, tokens, the address of your Home Assistant, your
-  location); the diagnostic package only when we ask for it, after a
-  look at what it holds; what happens next.
-- **Pointers instead of repeats:** a box at the top of the README, a row
-  for users first in `docs/README.md`, one line each in `sim/README.txt`
-  and `ha/app/DOCS.md`, and a line "Testers: start here" that
-  `release.yml` adds to every release's notes, as it adds "Try it without
-  hardware".
-- **Feedback in Discussions:** a category "Tester feedback" in the
-  open-ended discussion format, with a form
-  (`.github/DISCUSSION_TEMPLATE/tester-feedback.yml`, named after the
-  category's slug), and a pinned post in "Announcements" for each
-  release for testers. The project owner creates the category on the
-  Discussions page and pins the post. Ideas that are accepted become
-  issues, as `CONTRIBUTING.md` says.
-- **Bugs that can be repeated** go to the bug form. It gets the Home
-  Assistant app as a choice, the steps, and the browser and system.
-  "Report a problem" in the web app opens that form
+- **The pages for testers are #304's:** `docs/DEMO.md` (download, start,
+  a short tour, what feedback helps), `docs/FAQ.md`, `SUPPORT.md` and
+  `CODE_OF_CONDUCT.md`, with the README pointing to them. Feedback goes
+  to the Discussions category "Feedback" (slug `feedback`, open-ended
+  format) with #304's form; the project owner creates the category.
+  Ideas that are accepted become issues, as `CONTRIBUTING.md` says.
+- **Every release's notes** get a line "Testers: start here" that
+  `release.yml` adds, as it adds "Try it without hardware", pointing to
+  `docs/DEMO.md` and `SUPPORT.md`.
+- **Bugs that can be repeated** go to the bug form, which asks for the
+  steps. "Report a problem" in the web app opens it
   (`template=bug.yml`) with its text fields filled in from the query:
   the title with the report ID, `what` with the user's description,
-  `version`, and `report` with the report ID; the user picks the
-  hardware, as a form fills only text fields from the query. The link
+  `version`, and `report` with the report ID; the user picks where it
+  happened, as a form fills only text fields from the query. The link
   carries no `labels`: GitHub answers a query parameter the visitor has
   no right to with "404 Not Found", so for anyone outside the project
-  today's link fails; the form sets its labels itself. It attaches
+  the link failed (#305); the form sets its labels itself. It attaches
   nothing. The diagnostic package stays on the user's device; when we
   ask for it in the issue, the user looks at it and attaches it there,
-  as there is no private way to send it yet.
-- **Not chosen:** only a section in the README (no guided tour, feedback
-  without structure); a full manual of every page (weeks of work that
-  changes with each version, and the product's manual is a product
-  question); an issue form for feedback (opinions fill the issue list);
-  an outside survey form (a third party handles the data, a privacy
-  notice is needed, a second channel next to "no cloud").
+  as there is no private way to send it yet, and the app says so.
+- **Not chosen:** the pages of #316 (`docs/GETTING_STARTED.md`,
+  `docs/FEEDBACK.md` and a category "Tester feedback") next to #304's,
+  as they repeat them; merging both into one pull request (more work and
+  new reviews for little gain); a full manual of every page (weeks of
+  work that changes with each version, and the product's manual is a
+  product question); an outside survey form (a third party handles the
+  data, a privacy notice is needed, a second channel next to "no
+  cloud").
 
 
 ## SD-095: The simulator's demo speaks English
 
 Decided by the project owner on 2026-10-22 in the software session, for
-testers who do not read German. Changes SD-083, point 1 ("the
+testers who do not read German (#302; #304's SD-093 makes it a
+precondition of 0.1.0-proto.5). Changes SD-083, point 1 ("the
 simulator's demo scenarios stay German").
 
 - The demo scenarios start in English, with English names for devices,
