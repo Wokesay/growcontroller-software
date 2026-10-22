@@ -39,3 +39,43 @@ test("the changelog has the release's section, or it is still unreleased", () =>
   if (names.includes(version)) assert.equal(names[0], version, "VERSION is the newest release");
   for (const l of released) assert.match(l, /^## \[[^\]]+\] – \d{4}-\d{2}-\d{2}$/, l);
 });
+
+// The Security section of the release in work (SD-079, SD-097): every block
+// has one of the known headings; a vulnerability has a CVSS and an advisory;
+// no other block has an advisory; a safety or robustness fix that no
+// attacker can trigger has no CVSS. It checks VERSION's section once that
+// has one while [Unreleased] has none (the release pull request), else
+// [Unreleased].
+test("the Security section's blocks follow SD-079 and SD-097", () => {
+  const log = read("CHANGELOG.md");
+  assert.doesNotMatch(log, /Safety and robustness fixes, no vulnerability/, "the old label (SD-097)");
+  const sectionOf = (heading) => {
+    const start = log.indexOf(heading);
+    if (start < 0) return "";
+    const next = log.indexOf("\n## [", start + 1);
+    return log.slice(start, next < 0 ? undefined : next);
+  };
+  // [Unreleased] while it has a Security section, else the release named in VERSION
+  let section = sectionOf("\n## [Unreleased]");
+  if (!section.includes("\n### Security\n")) section = sectionOf(`\n## [${version}] – `);
+  if (!section.includes("\n### Security\n")) return;  // a release with no security item
+  const sec = section.slice(section.indexOf("\n### Security\n"));
+  const vuln = "Vulnerabilities, each with an advisory:";
+  const safety = "Safety and robustness fixes, not exploitable by an attacker (CRA Art. 3(41)); disclosed under Annex I, Part II (4):";
+  const known = [vuln, safety, "A protective cut-off added:", "A protective cut-off relaxed on purpose:", "Hardening, without a vulnerability behind it:"];
+  const blocks = sec.split(/\n(?=[A-Z][^\n]*:\n\n- )/).slice(1);
+  assert.ok(blocks.length >= 2, "the Security section has its blocks");
+  const items = (b) => b.split(/\n(?=- \*\*)/).slice(1);
+  for (const b of blocks) {
+    const head = b.split("\n")[0];
+    assert.ok(known.includes(head), `a known block heading: ${head}`);
+    for (const i of items(b)) {
+      const name = i.split("\n")[0];
+      if (head === vuln) {
+        assert.match(i, /\n  - Advisory: a GHSA/, `an advisory for ${name}`);
+        assert.match(i, /\n  - Severity: \w+, CVSS 3\.1 /, `a CVSS for ${name}`);
+      } else assert.doesNotMatch(i, /\n  - Advisory:/, `no advisory outside the vulnerabilities: ${name}`);
+      if (head === safety) assert.match(i, /\n  - Severity: \w+; no CVSS, as it is not exploitable by an attacker\./, name);
+    }
+  }
+});

@@ -7,6 +7,73 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+Fifth prototype, the first one for testers: the app speaks English and
+German, the menu is grouped by topic, a grow proposes its targets from
+the recipe's chart, and the Home Assistant app opens in Home Assistant's
+sidebar. Control still runs only in the simulator; the Home Assistant app
+only reads sensors and switches nothing. No compatibility promises.
+
+- **New:** English throughout, the default for a new hub and for the
+  simulator's demo. The menu is grouped by topic, and climate, light and
+  watering say they work by hand. A recipe keeps its chart's EC and pH, a
+  grow proposes them as targets, a part can be a fixed amount, each
+  recipe learns its own EC effect, and a mix mixes in before it ends. In
+  the Home Assistant app: a sign of life per sensor, the calibration of a
+  pH probe that reports its voltage, and the app in Home Assistant's
+  sidebar with Home Assistant's login.
+- **Fixed:** on a phone the app opens at normal size; it says so when
+  values stop arriving or an action fails; someone guessing your
+  password no longer locks out your phone; maintenance mode and the
+  smart-plug note say what they really do; "Report a problem" opens
+  GitHub's bug form for everyone.
+- **Please note:** back up the Home Assistant app before updating (Home
+  Assistant offers it in the update dialog). It still only reads sensors
+  and switches nothing, so keep your automations. It now opens in Home
+  Assistant's sidebar. A bookmark to port 8099 stops working unless you
+  saved the app's network settings before; open the port again to keep
+  it, and your password is kept (see Changed). A hub that ran in German
+  stays German.
+- **Security:** five vulnerabilities are fixed, the most severe rated
+  medium: any device in your home network could set the Home Assistant
+  app's first password. Update soon; the details are under Security.
+
+### Known limitations
+
+- Control (mixing, dosing, pH and EC control, refill) runs only in the
+  simulator. Do not use it for real pumps, valves, mains-powered devices
+  or chemicals. There is no firmware in this release.
+- The Home Assistant app is read-only: it switches nothing and has no
+  Stop, and "Automatic" is only recorded. Of the raw values, only a pH
+  probe's voltage can be calibrated in the app; level and EC follow.
+- A mix still doses the recipe's amounts per litre; EC control, when it
+  is switched on and not latched, then closes the gap to the phase's
+  target EC. Mixing straight to the target (with an EC probe, or as a
+  fixed pattern from the water's EC) comes with a later prototype
+  (SD-093). In the simulator the nutrients are about 14 to 24 % weaker
+  than the templates' charts, so a mix lands below the chart EC and EC
+  control adds the rest.
+- In the Home Assistant app, only Home Assistant's administrators can
+  open growcontroller with Supervisor 2026.10.2 or newer; an older one
+  only hides it from the others' sidebar. Home Assistant locks out no
+  address after failed sign-ins unless you set it to, and its remote
+  access reaches the app as it reaches Home Assistant. Direct access on
+  port 8099, once you open it, is plain HTTP: for your own network and
+  for a prototype only.
+- Reading stops when the Supervisor refuses the app's token (#78). The
+  app image has no SBOM of its own (#81).
+- Metric units only. The demo of an earlier version, started from the
+  same folder, stays German with its German names; delete
+  `growcontroller-daten` for the English demo. The password
+  `demo-passwort` and the scenario names `neu` and `stufe1` stay as they
+  were.
+- Right after this version reaches Home Assistant's store, its image can
+  take a few minutes to follow; if the update fails, try again later.
+- Home Assistant gives the app a token with administrator rights;
+  growcontroller only reads with it.
+- Two of the product's baseline rules are not met yet, as no hardware is
+  controlled: board v0.1 has no hardware time limit for the pumps, and
+  watering is not blocked on water that pH and EC say is unfit (SD-091).
+
 ### Added
 - **Each recipe learns its own EC effect** (#143, SD-057, step 4,
   SD-092): EC control learned one effect for whatever recipe it dosed;
@@ -73,7 +140,7 @@ listed in every release under "Security".
   apply. Mixing does not change yet, but a grow started with the
   proposals controls EC to the recipe's chart EC (2.1 for the Athena
   template, where the dialog proposed 1.4 before); mixing to the target
-  follows in the next steps.
+  comes with a later prototype (SD-093).
 - **Firmware for two boards** (SD-043, M1): the firmware is built for
   the ESP32-S3-DevKitC-1-N32R16V (32 MB flash, 16 MB PSRAM), and for the
   N8R8 (8 MB flash) as the fallback with smaller apps and a shorter
@@ -131,6 +198,14 @@ listed in every release under "Security".
 
 ### Changed
 
+- **A security advisory only for what an attacker can trigger** (SD-097,
+  from PD-320): the release notes' block of the other fixes is now
+  "Safety and robustness fixes, not exploitable by an attacker (CRA
+  Art. 3(41)); disclosed under Annex I, Part II (4)", and `SECURITY.md`
+  says so. Two items were checked again: a crafted backup that could make
+  "Next phase" end the app is a vulnerability with an advisory of its own
+  (see Security), and the abandoned calibration is covered by the
+  advisory of the crafted import it needs in the Home Assistant app.
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,
@@ -593,7 +668,8 @@ listed in every release under "Security".
   how to go on: finish the cycle and start a new one. A hub whose saved
   settings already hold such a phase or such days keeps running; while
   that cycle runs, a change says the same, and once it is finished
-  nothing is blocked.
+  nothing is blocked. A crafted file could end the app this way: more
+  under Security.
 - **A refused change says why in the page's language** (#18): when the
   configuration check refused a recipe, for example because the chart EC
   does not fit the amounts, a German page showed the reason in English.
@@ -895,13 +971,13 @@ listed in every release under "Security".
 ### Security
 Affected: every published version (0.1.0-proto.2 to 0.1.0-proto.4),
 fixed in this release. Each item names its affected versions, impact,
-severity and remedy (SD-079). Four are vulnerabilities: someone without
-the needed rights, a device in the network or a crafted file, could
-trigger them. Each gets a GitHub Security Advisory (GHSA), published
-with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
-fixes: normal use, a faulty probe or someone with the password triggers
-them, so they get no advisory.
+severity and remedy (SD-079, SD-097). Five can be exploited by an
+attacker: someone without the needed rights, a device in the network or
+a crafted file, could trigger them. Each gets a GitHub Security Advisory (GHSA),
+published once this release has passed its acceptance, and by 2026-11-14
+at the latest; we request a CVE from GitHub for the four of our own, and
+the fifth refers to AMD's CVE-2025-62626. Four are safety and robustness
+fixes that no attacker can trigger, so they get no advisory.
 
 Vulnerabilities, each with an advisory:
 
@@ -925,7 +1001,7 @@ Vulnerabilities, each with an advisory:
     restore a backup made before that password was set, then set the
     password or update at once. On an older version, set the password
     right after installing.
-  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+  - Advisory: a GHSA, published by 2026-11-14 at the latest; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so
   a device in the network that, after about ten wrong passwords, sent one
@@ -951,7 +1027,7 @@ Vulnerabilities, each with an advisory:
     need signed in; "Sign-in failed" in the event log shows when someone
     guesses, not from which device, so look for an unknown device in your
     router's list of connected devices.
-  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+  - Advisory: a GHSA, published by 2026-11-14 at the latest; a CVE requested from GitHub.
 - **Random numbers no longer come through RDSEED** (AMD-SB-7055,
   CVE-2025-62626): the Home Assistant app and the simulator took the
   random numbers for session tokens and password salts from
@@ -972,14 +1048,17 @@ Vulnerabilities, each with an advisory:
     (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`), CWE-331.
   - Remedy: update to 0.1.0-proto.5. Until then, install AMD's microcode
     or BIOS fix.
-  - Advisory: a GHSA, published with this release; no CVE of its own, it
-    refers to CVE-2025-62626.
+  - Advisory: a GHSA, published by 2026-11-14 at the latest; no CVE of its
+    own, it refers to CVE-2025-62626.
 - **An import could show a pH calibrated in Home Assistant as checked**
   (SD-041): a crafted backup could give a Home Assistant pH sensor the
   class of the hub's own pH probe, with a calibration; its values then
   showed as checked by the hub ("Valid", without "Calibrated elsewhere")
-  and counted as usable until the app restarted. Now a device whose
-  reported class differs from the configured one has no value, and an
+  and counted as usable until the app restarted. If the owner then
+  started a calibration of that sensor and left it unsaved, its jumps
+  were taken as part of the calibration and raised no jump lock until
+  the app restarted. Now a device whose reported class differs from the
+  configured one has no value and is offered no calibration, and an
   import gives a calibration only to a class that offers it.
   - Affected: the Home Assistant app, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: a crafted backup; the owner must import it, which needs the
@@ -988,9 +1067,27 @@ Vulnerabilities, each with an advisory:
     (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`), CWE-807.
   - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
     made yourself.
-  - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
+  - Advisory: a GHSA, published by 2026-11-14 at the latest; a CVE requested from GitHub.
+- **A crafted backup could make "Next phase" end the app** (#270): the
+  import did not check a running grow cycle's current phase, so a file
+  could set one outside its phases, for example -2 or 2147483647. "Next
+  phase" then read outside the list of phases: undefined behaviour that
+  in practice ends the server, each time it is pressed. Now an import
+  refuses a count or index that is not a whole number in its range, and
+  "Next phase" checks the saved phase first.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: a crafted backup; the owner must import it, which needs the
+    password, and then press "Next phase"; the app or the simulator stops
+    until it is started again.
+  - Severity: low, CVSS 3.1 3.3
+    (`CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L`), CWE-129.
+  - Remedy: update to 0.1.0-proto.5. Until then, import only backups you
+    made yourself; if "Next phase" ends the app, finish the grow cycle and
+    start a new one.
+  - Advisory: a GHSA, published by 2026-11-14 at the latest; a CVE requested from GitHub.
 
-Safety and robustness fixes, no vulnerability:
+Safety and robustness fixes, not exploitable by an attacker (CRA Art. 3(41)); disclosed under Annex I, Part II (4):
 
 - **An abandoned probe calibration no longer keeps jump checks off:** a
   calibration window closed without saving left the calibration open on
@@ -1000,10 +1097,12 @@ Safety and robustness fixes, no vulnerability:
   jumps, while pH and EC control keep waiting until it is saved or
   cancelled, since the probe may still be in a buffer.
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4; in the Home
-    Assistant app only through a crafted import.
+    Assistant app only after the crafted import of "An import could show
+    a pH calibrated in Home Assistant as checked", covered by its
+    advisory.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far.
-  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Severity: low; no CVSS, as it is not exploitable by an attacker.
   - Remedy: update to 0.1.0-proto.5. Until then, restart the simulator
     after a calibration you did not finish.
 - **A new sign-in ends the session used longest ago:** with 16 sessions
@@ -1016,7 +1115,7 @@ Safety and robustness fixes, no vulnerability:
   - Impact: needs 16 other sign-ins within 12 hours, each with the
     password, and whoever has the password can already stop, switch or
     change it.
-  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Severity: low; no CVSS, as it is not exploitable by an attacker.
   - Remedy: update to 0.1.0-proto.5.
 - **A disturbed pH probe is no longer taken as the hub's own pH dose**
   (RAT-042, RAT-044): the hub announced its own pH dose to the jump check
@@ -1026,15 +1125,15 @@ Safety and robustness fixes, no vulnerability:
   and pH control dosed on it. The jump lock now holds then as at any other
   time. It can now also trip when an own dose moves pH far more than
   planned, which stops pH control until 15 min of calm, the safe direction;
-  that dose's effect is then not learned, which a follow-up addresses. A
+  that dose's effect is then not learned yet. A
   jump in the last minutes of another announcement (after a mix or hand
   dose, the inlet, an EC round or a probe calibration, and in the 10 s
-  after maintenance mode was ended early) is still taken as explained;
-  that stays open.
+  after maintenance mode was ended early) is still taken as explained
+  (`docs/INVARIANTS.md`, RAT-042).
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far; there, pH control dosed twice on the jumped reading.
-  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Severity: low; no CVSS, as it is not exploitable by an attacker.
   - Remedy: update to 0.1.0-proto.5.
 - **Ending maintenance mode early switches jump checks back on** (#292,
   RAT-042): while maintenance mode lasted, the hub announced a change of
@@ -1053,7 +1152,7 @@ Safety and robustness fixes, no vulnerability:
     dose on it within their caps per dose, and a level that jumped could
     let the circulation pump's dry-run latch release itself and the pumps
     and the inlet act on it. The Home Assistant app switches nothing.
-  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Severity: low; no CVSS, as it is not exploitable by an attacker.
   - Remedy: update to 0.1.0-proto.5. Until then, after ending or
     shortening maintenance mode, restart the app or the simulator ("Power
     cut / restart") while no mix or dose runs.
@@ -1203,9 +1302,6 @@ Hardening, without a vulnerability behind it:
   server with the profile's capabilities (chown, dac_override, kill,
   setgid, setuid); it runs nothing but the server, which can no longer
   signal it. A host without AppArmor runs the app without the profile.
-  From the merge until the release, a new install gets the previous image
-  in the new profile, since Home Assistant takes the profile from the
-  repository.
 - **Registry signatures of the web app's packages** (#100, SD-058):
   wherever the web app's packages are installed (CI, the simulator
   packages, the release build, the Home Assistant app image),
