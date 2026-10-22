@@ -333,11 +333,14 @@ export function TankPage() {
           </Card>
           <Card title={tr("term.maintenance")} icon={<Wrench size={18} />}>
             {st.maintenanceUntil > st.now ? (
-              <div class="row-between">
-                <span>{tr("tank.maintenanceUntil", { at: dateTime(st.maintenanceUntil) })}</span>
-                <Button size="sm" onClick={() => post("/maintenance", { minutes: 0 }).then(refreshState)}>
-                  {tr("tank.end")}
-                </Button>
+              <div class="stack-sm">
+                <div class="row-between">
+                  <span>{tr("tank.maintenanceUntil", { at: dateTime(st.maintenanceUntil) })}</span>
+                  <Button size="sm" aria-describedby="maintenance-end-hint" onClick={() => post("/maintenance", { minutes: 0 }).then(refreshState)}>
+                    {tr("tank.end")}
+                  </Button>
+                </div>
+                <p class="muted small" id="maintenance-end-hint" data-testid="maintenance-end-hint">{tr("tank.maintenanceEndHint")}</p>
               </div>
             ) : (
               <div class="stack-sm">

@@ -51,6 +51,7 @@ export const deBase = {
   "common.renderError": "Dieser Teil lässt sich nicht anzeigen. Der Hub ist davon nicht betroffen, STOPP oben funktioniert. Hilft Neuladen nicht, melde es unter Einstellungen › Problem melden.",
   "common.reload": "Seite neu laden",
   "common.version": "Version {v}",
+  "common.testingOnly": "Nur zum Testen: Diese Version erfüllt nicht die Anforderungen der EU-Cyberresilienz-Verordnung (CRA).",
   "about.source": "Quellcode",
   "about.license": "Freie Software unter AGPL-3.0-or-later. Der Link führt zum Quellcode genau dieser Version.",
   "about.sourceUnknown": "Repository (Version unbekannt)",
@@ -280,7 +281,7 @@ export const deBase = {
   "net.elsewhere": "schon zugeordnet",
   "net.assigned": "Zugeordnet; Schutz im Gerät gesetzt",
   "net.countHint": "Die Dosen sind hier ab 1 gezählt, in der Weboberfläche des Shelly ab 0.",
-  "net.safety": "Nach Stromausfall bleiben die Dosen aus. Befeuchter, Gießpumpe und Zulauf schalten zusätzlich im Gerät selbst ab, falls der Hub ausfällt. Shelly und Leiste gehören außerhalb des Pflanzraums, hinter einen FI-Schutzschalter (30 mA).",
+  "net.safety": "Nach Stromausfall bleiben die Dosen aus; nur Abluft und Umluft gehen von selbst wieder an, außer bei aktivem Stopp. Befeuchter, Gießpumpe und Zulauf schalten zusätzlich im Gerät selbst ab, falls der Hub ausfällt. Shelly und Leiste gehören außerhalb des Pflanzraums, hinter einen FI-Schutzschalter (30 mA).",
 
   // Bereiche
   "area.climate": "Raumklima",

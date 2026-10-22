@@ -234,7 +234,7 @@ test("Fields are at least 16 px, so iOS Safari does not zoom in when typing", as
   await expect(page.getByRole("alertdialog", { name: "Kanister entfernen?" })).toBeVisible();
   expect(await offScreen(page), "remove dialog").toEqual([]);
   await page.keyboard.press("Escape");
-  await page.locator(".rtable tbody tr").filter({ hasText: "Teil A" }).getByRole("button", { name: "„Teil A“ entfernen" }).click();
+  await page.locator(".rtable tbody tr").filter({ hasText: "Part A" }).getByRole("button", { name: "„Part A“ entfernen" }).click();
   await expect(page.getByRole("alertdialog", { name: "Kanister wird noch gebraucht" })).toBeVisible();
   expect(await offScreen(page), "bottle in use dialog").toEqual([]);
 });
@@ -370,7 +370,7 @@ for (const lang of ["de", "en"]) {
     await page.reload();
     await fits(page, "recipes with a long bottle and recipe name");
     const de = lang === "de";
-    await page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) }).getByRole("button", { name: de ? "Bearbeiten" : "Edit" }).click();
+    await page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Veg", exact: true }) }).getByRole("button", { name: de ? "Bearbeiten" : "Edit" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.locator(".step")).toHaveCount(10);
     await fits(page, "recipe editor");
@@ -387,7 +387,7 @@ for (const lang of ["de", "en"]) {
       if (label === "Wurzelstimulator") expect(name.height, label).toBeLessThan(30);
     }
     // The reason Save is off sits right above it
-    await dialog.getByRole("textbox", { name: de ? "Menge für Teil B in ml pro Liter" : "Amount of Teil B in ml per litre" }).fill("");
+    await dialog.getByRole("textbox", { name: de ? "Menge für Part B in ml pro Liter" : "Amount of Part B in ml per litre" }).fill("");
     const save = dialog.getByRole("button", { name: de ? "Speichern" : "Save" });
     await save.scrollIntoViewIfNeeded();
     await expect(dialog.locator("#recipe-problems")).toBeInViewport();

@@ -27,7 +27,7 @@ test("API ohne Sitzung: 401 für Zustand und Aktoren", async ({ request }) => {
   expect(fresh.cookies.length).toBe(0);
   expect((await request.get("/api/v1/state")).status()).toBe(401);
   expect((await request.post("/api/v1/stop")).status()).toBe(401);
-  expect((await request.post("/api/v1/dose", { data: { canister: "teil-a", ml: 2 } })).status()).toBe(401);
+  expect((await request.post("/api/v1/dose", { data: { canister: "part-a", ml: 2 } })).status()).toBe(401);
   expect((await request.get("/api/v1/info")).status()).toBe(200);
 });
 

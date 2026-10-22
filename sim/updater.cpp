@@ -2,6 +2,7 @@
 #include "updater.hpp"
 
 #include "gc/embedded.hpp"
+#include "gc/messages.hpp"
 
 namespace sim {
 
@@ -11,21 +12,22 @@ gc::json SimUpdater::status() {
           {"lastCheck", lastCheck_},
           {"canRollback", false},
           {"simulated", true},
-          {"note", "Im Simulator wird nichts installiert."}};
+          {"note", gc::say("sim.update.note")}};
 }
 
 gc::json SimUpdater::check() {
   lastCheck_ = clock_.epoch();
-  // Beispiel-Manifest, wie es aus einem Release käme (Kurzfassung für die App).
+  // A sample manifest as a release would bring it (the short summary for the app),
+  // in English like the release notes (PD-034)
   available_ = {{"version", "0.1.1-proto.1"},
                 {"channel", "beta"},
                 {"date", "2026-10-20"},
                 {"size", 1843200},
                 {"signed", true},
                 {"summary",
-                 {{"neu", {"Verlauf: Vergleich zweier Durchgänge"}},
-                  {"behoben", {"Regelzeile zeigte nach Neustart kurz „Aus“"}},
-                  {"beachten", {"Rezepte, Einmesswerte und Einstellungen bleiben erhalten."}},
+                 {{"neu", {"History: compare two grow cycles"}},
+                  {"behoben", {"A control line showed \"Off\" for a moment after a restart"}},
+                  {"beachten", {"Recipes, calibrations and settings are kept."}},
                   {"sicherheit", gc::json::array()}}},
                 {"changelogUrl", "CHANGELOG.md"}};
   return status();
@@ -35,13 +37,11 @@ gc::json SimUpdater::install(const std::string& version) {
   return {{"ok", false},
           {"simulated", true},
           {"version", version},
-          {"message",
-           "Simulator: keine Installation. Auf dem Hub: Download, Signaturprüfung, Schreiben in die freie "
-           "A/B-Partition, Neustart, Selbsttest – schlägt er fehl, startet die alte Version wieder."}};
+          {"message", gc::say("sim.update.install")}};
 }
 
 gc::json SimUpdater::rollback() {
-  return {{"ok", false}, {"simulated", true}, {"message", "Simulator: keine Vorversion vorhanden."}};
+  return {{"ok", false}, {"simulated", true}, {"message", gc::say("sim.update.rollback")}};
 }
 
 }  // namespace sim

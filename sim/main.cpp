@@ -62,17 +62,17 @@ gc::ApiRequest toApi(const httplib::Request& req) {
 
 void usage() {
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << "\n"
-            << "  --port N            HTTP-Port (8080)\n"
-            << "  --host ADR          Adresse (127.0.0.1)\n"
+            << "  --port N            HTTP port (8080)\n"
+            << "  --host ADDR         address (127.0.0.1)\n"
             << "  --scenario NAME     demo | neu | stufe1 (demo)\n"
-            << "  --data DIR          Daten dauerhaft ablegen (sonst nur im Speicher)\n"
-            << "  --web DIR           gebaute Web-App (web/dist)\n"
-            << "  --speed X           Zeitraffer (1)\n"
-            << "  --password PW       Passwort für das Demo-Szenario\n"
-            << "  --prefill H         Stunden Verlauf vorrechnen (48)\n"
-            << "  --allow-reset       Szenario ohne Anmeldung wechseln (nur für automatische Tests)\n"
-            << "  --open              Browser öffnen\n"
-            << "Ohne Argumente: Demo, Daten neben dem Programm, Browser öffnet sich.\n";
+            << "  --data DIR          keep the data in this folder (else in memory only)\n"
+            << "  --web DIR           built web app (web/dist)\n"
+            << "  --speed X           time-lapse factor (1)\n"
+            << "  --password PW       password for the demo scenario\n"
+            << "  --prefill H         hours of history to compute ahead (48)\n"
+            << "  --allow-reset       change the scenario without signing in (automated tests only)\n"
+            << "  --open              open the browser\n"
+            << "Without arguments: the demo, data next to the program, the browser opens.\n";
 }
 
 // Browser mit der Adresse öffnen (nur Simulator, nie auf dem Gerät). Die
@@ -167,16 +167,16 @@ int main(int argc, char** argv) {
       usage();
       return 0;
     } else {
-      std::cerr << "Unbekannte Option " << a << "\n";
+      std::cerr << "Unknown option " << a << "\n";
       usage();
       return 2;
     }
   }
 
-  std::cout << "Starte Simulator (Szenario " << opts.scenario << ") …" << std::flush;
+  std::cout << "Starting simulator (scenario " << opts.scenario << ") …" << std::flush;
   sim::Simulation simulation(opts);
   simulation.speed = speed;
-  std::cout << " fertig.\n";
+  std::cout << " done.\n";
 
   // Ist der Port belegt, die nächsten neun versuchen. Ein fehlgeschlagener
   // Bind legt einen httplib-Server still, darum je Versuch ein neuer. Ohne
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
     }
   }
   if (bound < 0) {
-    std::cerr << "Port " << port << "–" << port + 9 << " nicht verfügbar\n";
+    std::cerr << "Ports " << port << "–" << port + 9 << " not available\n";
     return 1;
   }
   httplib::Server& svr = *server;
@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
     (void)req;
 #endif
     if (!haveDir) {
-      res.set_content("Web-App nicht gebaut: cd web && npm ci && npm run build", "text/plain; charset=utf-8");
+      res.set_content("Web app not built: cd web && npm ci && npm run build", "text/plain; charset=utf-8");
       return;
     }
     std::ifstream f(std::filesystem::path(web) / "index.html");
@@ -364,12 +364,12 @@ int main(int argc, char** argv) {
   });
 
   const std::string url = "http://" + (host == "0.0.0.0" ? std::string("127.0.0.1") : host) + ":" + std::to_string(bound);
-  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " läuft: " << url << "\n";
+  std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " running: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
-    std::cout << "Demo-Passwort: " << simulation.demoPassword() << " (nur Simulator)\n";
-  if (simulation.storage().persistent()) std::cout << "Daten: " << simulation.dataDir() << "\n";
-  if (!haveWeb) std::cout << "Hinweis: Web-App nicht gefunden unter " << web << "\n";
-  std::cout << "Beenden: Strg+C oder dieses Fenster schließen.\n" << std::flush;
+    std::cout << "Demo password: " << simulation.demoPassword() << " (simulator only)\n";
+  if (simulation.storage().persistent()) std::cout << "Data: " << simulation.dataDir() << "\n";
+  if (!haveWeb) std::cout << "Note: no web app found at " << web << "\n";
+  std::cout << "To stop: press Ctrl+C or close this window.\n" << std::flush;
   if (open) openBrowser(url);
   svr.listen_after_bind();
   g_running = false;
