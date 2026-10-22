@@ -391,31 +391,32 @@ void Simulation::configureDemo() {
   if (opts_.password.empty()) opts_.password = "demo-passwort";
   h.auth().setInitialPassword(opts_.password);
   if (h.saveAuth()) h.markPasswordSet();  // on disk before the long prefill: a start cut short must not leave setup open
-  h.setSystem({{"language", "de"}});  // its names and recipes are German; a new hub speaks English (SD-014)
-  h.acceptDevice("DB-7A31C0", "Dosierblock 1");
-  h.acceptDevice("CAP-1F02A4", "Pumpe grün");
-  h.acceptDevice("CAP-1F02B7", "Pumpe orange");
-  h.acceptDevice("CAP-1F02C1", "Pumpe blau");
-  h.acceptDevice("CAP-1F02D9", "Pumpe rot");
-  h.acceptDevice("PHEC-3F2A91", "pH/EC Tank");
-  h.acceptDevice("LVL-77B210", "Füllstand Tank");
-  h.acceptDevice(SimBus::kHubOut, "Hub-Ausgänge");
+  h.setSystem({{"language", "en"}});  // the demo speaks English, its names too (SD-095)
+  h.acceptDevice("DB-7A31C0", "Dosing block 1");
+  h.acceptDevice("CAP-1F02A4", "Pump green");
+  h.acceptDevice("CAP-1F02B7", "Pump orange");
+  h.acceptDevice("CAP-1F02C1", "Pump blue");
+  h.acceptDevice("CAP-1F02D9", "Pump red");
+  h.acceptDevice("PHEC-3F2A91", "pH/EC tank");
+  h.acceptDevice("LVL-77B210", "Tank level");
+  h.acceptDevice(SimBus::kHubOut, "Hub outputs");
   h.bindRole("tank.circulation", SimBus::kHubOut, 0);
   h.bindRole("tank.inlet", SimBus::kHubOut, 1);
-  // Raumklima und Steckdosenleiste: Licht, Abluft, Umluft, Befeuchter
-  h.acceptDevice("CLIM-5D20C4", "Klima Raum");
+  // Room climate and power strip: light, exhaust fan, circulating fan, humidifier
+  h.acceptDevice("CLIM-5D20C4", "Room climate");
   if (!world_.netPlugs.empty()) {
     const std::string strip = world_.netPlugs.front().id;
-    h.acceptDevice(strip, "Leiste");
+    h.acceptDevice(strip, "Power strip");
     h.bindRole("zone.light", strip, 0);
     h.bindRole("zone.exhaust", strip, 1);
     h.bindRole("zone.circulation_fan", strip, 2);
     h.bindRole("zone.humidifier", strip, 3);
     for (const char* r : {"zone.light", "zone.exhaust", "zone.circulation_fan"}) h.switchRole(r, true);
   }
+  h.putZone({{"name", "Room 1"}});  // the area too: a hub's own default is "Raum 1"
   h.putTank({{"name", "Tank 1"}, {"capacityL", 60}, {"minL", 3}, {"water", "ro"}});
-  h.putCanister({{"name", "Teil A"}, {"kind", "nutrient"}, {"pump", "CAP-1F02A4"}, {"pair", "AB"}, {"color", "#3f8f4a"}, {"capacityMl", 1000}, {"stockMl", 820}});
-  h.putCanister({{"name", "Teil B"}, {"kind", "nutrient"}, {"pump", "CAP-1F02B7"}, {"pair", "AB"}, {"color", "#c47a2c"}, {"capacityMl", 1000}, {"stockMl", 790}});
+  h.putCanister({{"name", "Part A"}, {"kind", "nutrient"}, {"pump", "CAP-1F02A4"}, {"pair", "AB"}, {"color", "#3f8f4a"}, {"capacityMl", 1000}, {"stockMl", 820}});
+  h.putCanister({{"name", "Part B"}, {"kind", "nutrient"}, {"pump", "CAP-1F02B7"}, {"pair", "AB"}, {"color", "#c47a2c"}, {"capacityMl", 1000}, {"stockMl", 790}});
   h.putCanister({{"name", "CalMag"}, {"kind", "nutrient"}, {"pump", "CAP-1F02C1"}, {"color", "#5b7fb8"}, {"capacityMl", 1000}, {"stockMl", 640}});
   h.putCanister({{"name", "pH−"}, {"kind", "ph_down"}, {"pump", "CAP-1F02D9"}, {"color", "#b8455b"}, {"capacityMl", 500}, {"stockMl", 310}});
   // Einmessen wie mit Messbecher: kleiner Messfehler von ±2 %
@@ -426,8 +427,8 @@ void Simulation::configureDemo() {
     std::string e;
     bus_->writePumpCalibration(id, c->trueFlow * err(rng), e);
   }
-  const std::string veg = h.putRecipe({{"name", "Wachstum"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.0}}, {{"canister", "teil-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}}}}}).body.value("id", "");
-  const std::string bloom = h.putRecipe({{"name", "Blüte"}, {"steps", {{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}}}}}).body.value("id", "");
+  const std::string veg = h.putRecipe({{"name", "Veg"}, {"steps", {{{"canister", "part-a"}, {"mlPerL", 2.0}}, {{"canister", "part-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}}}}}).body.value("id", "");
+  const std::string bloom = h.putRecipe({{"name", "Bloom"}, {"steps", {{{"canister", "part-a"}, {"mlPerL", 2.6}}, {{"canister", "part-b"}, {"mlPerL", 2.6}}, {{"canister", "calmag"}, {"mlPerL", 0.4}}}}}).body.value("id", "");
   // Sonden kalibrieren über den echten Ablauf (Puffer im Zwilling)
   auto probe = [&](const std::string& kind, const std::vector<std::pair<double, double>>& points) {
     h.probeCalibration({{"device", "PHEC-3F2A91"}, {"kind", kind}, {"action", "start"}});
@@ -457,10 +458,10 @@ void Simulation::configureDemo() {
   h.mixStart({{"recipe", veg}, {"waterL", 31}, {"mode", "new"}, {"guided", false}});
   h.putFunction("ec_control", {{"enabled", true}, {"params", {{"ec_target", 1.4}, {"recipe", veg}}}});
   h.putFunction("ph_control", {{"enabled", true}, {"params", {{"ph_target", 5.8}}}});
-  h.growStart({{"name", "Durchgang 1"},
+  h.growStart({{"name", "Grow 1"},
                {"phases",
-                {{{"name", "Wachstum"}, {"days", 21}, {"params", {{"ec_target", 1.4}, {"ph_target", 5.8}, {"recipe", veg}}}},
-                 {{"name", "Blüte"}, {"days", 56}, {"params", {{"ec_target", 1.7}, {"ph_target", 5.9}, {"recipe", bloom}}}}}}});
+                {{{"name", "Veg"}, {"days", 21}, {"params", {{"ec_target", 1.4}, {"ph_target", 5.8}, {"recipe", veg}}}},
+                 {{"name", "Bloom"}, {"days", 56}, {"params", {{"ec_target", 1.7}, {"ph_target", 5.9}, {"recipe", bloom}}}}}}});
   h.manualMeasure({{"ph", 6.1}});
   h.completeSetup();
 }

@@ -308,3 +308,18 @@ test("the triage template starts only for people with a role, never for a pull r
   }
   assert.ok(n >= 1, "the checkout is there");
 });
+
+test("a pre-release's notes start with the notice that it is for testing only (SD-096)", () => {
+  const release = readFileSync(join(dir, "release.yml"), "utf8");
+  const en = readFileSync(join(dir, "..", "..", "web", "src", "lang", "en.ts"), "utf8");
+  const text = en.match(/"common\.testingOnly": "([^"]+)"/)?.[1];
+  assert.ok(text, "the web app's text of the notice");
+  const [lead, rest] = text.split(": ");
+  // the same words as the web app, before the notes, only for a version with a pre-release part
+  assert.ok(release.includes(`*-*) { printf '> **${lead}:** ${rest}\\n\\n'; cat out/NOTES.md; } > out/NOTES.new && mv out/NOTES.new out/NOTES.md ;;`), "release.yml prepends the notice");
+  const taken = release.indexOf("CHANGELOG.md > out/NOTES.md");
+  const notice = release.indexOf("SD-096");
+  const sum = release.indexOf('echo "notes=');
+  assert.ok(taken > 0 && sum > 0, "the notes are taken from the changelog, then their checksum");
+  assert.ok(taken < notice && notice < sum, "the notice goes in after the notes are taken and before their checksum");
+});

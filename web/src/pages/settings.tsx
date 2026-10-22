@@ -3,16 +3,18 @@
 // Daten (Export/Import), Problem melden mit Diagnosepaket, Über.
 import { useEffect, useState } from "preact/hooks";
 import { Bug, Compass, Download, FileJson, Info, KeyRound, Languages, Moon, RefreshCcw, Server, Upload } from "lucide-preact";
-import { lang, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
-import { get, post, put } from "../api";
+import { lang, msg as msgText, setLang, t, tIn, type Lang, type TextKey } from "../i18n";
+import { get, post, put, type Msg } from "../api";
 import { dateTime, num, timeZone } from "../format";
 import { config, errorText, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
-import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
+import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, TestingNotice, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
 
 // Target for public bug reports.
 const ISSUE_URL = "https://github.com/Wokesay/growcontroller-software/issues/new";
+/** What the diagnostic package leaves out, by the hub's keys. */
+const REDACTED = ["password_hash", "sessions", "wifi_credentials", "ip_addresses"] as const;
 
 // Sections of the update summary (field names of the API) and their labels.
 const SUMMARY: Record<"neu" | "behoben" | "beachten" | "sicherheit", TextKey> = {
@@ -115,7 +117,7 @@ function Updates() {
           )}
           <p class="muted small">{t("settings.installNote")}</p>
           <div class="row">
-            <Button variant="primary" onClick={async () => setMsg((await post("/update/install", { version: av.version })).message)}>
+            <Button variant="primary" onClick={async () => setMsg(msgText((await post<{ message: Msg }>("/update/install", { version: av.version })).message))}>
               {t("settings.install")}
             </Button>
           </div>
@@ -161,7 +163,7 @@ function Report() {
         <div class="stack-sm">
           <div class="row">
             <Pill tone="accent">{t("settings.reportId", { id: diag.reportId })}</Pill>
-            <span class="faint small">{t("settings.notIncluded", { list: diag.redacted.join(", ") })}</span>
+            <span class="faint small">{t("settings.notIncluded", { list: diag.redacted.map((k: string) => ((REDACTED as readonly string[]).includes(k) ? t(`settings.redacted.${k as (typeof REDACTED)[number]}`) : k)).join(", ") })}</span>
           </div>
           <details>
             <summary>{t("settings.viewContents")}</summary>
@@ -340,6 +342,7 @@ export function SettingsPage() {
               />
             </div>
             <div class="divider" />
+            <TestingNotice />
             <table class="table">
               <tbody>
                 <tr><td class="muted">{t("settings.software")}</td><td>{info.value?.version}</td></tr>

@@ -148,11 +148,11 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     d.pair = k->pair;
     d.color = k->color;
     if (k->kind != "nutrient") {
-      p.errors.push_back(say("mix.ph_in_recipe", {{"name", k->name}}));
+      p.errors.push_back(say("mix.ph_in_recipe", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
     if (!isNum(s.mlPerL) || s.mlPerL <= 0) {
-      p.errors.push_back(say("mix.amount_missing", {{"name", k->name}}));
+      p.errors.push_back(say("mix.amount_missing", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
     d.ml = s.mlPerL * (s.fixed ? 1.0 : factor) * req.waterL;  // amounts count on the fresh water (RAT-011)
@@ -172,7 +172,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     Msg err;
     d.runs = splitRuns(d.ml, d.flowMlPerMin, cfg.limits, 0, err);
     if (!err.key.empty()) p.errors.push_back(say("mix.part", {{"name", k->name}, {"reason", err}, {"canister", k->id}}));
-    if (d.ml < 1.0) p.warnings.push_back(say("mix.small", {{"name", k->name}, {"ml", d.ml}}));
+    if (d.ml < 1.0) p.warnings.push_back(say("mix.small", {{"name", k->name}, {"ml", d.ml}, {"canister", k->id}}));
     auto st = rt.stockMl.find(k->id);
     if (st != rt.stockMl.end() && isNum(st->second) && st->second < 0.0)  // used up by the count (SD-066)
       p.errors.push_back(say("mix.stock_negative", {{"name", k->name}, {"canister", k->id}}));
@@ -237,10 +237,17 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
   // Teilläufe: ist ein Bestandteil zu klein oder zu groß, gilt das für alle
   // gemeinsam (nie einzeln kappen, RAT-054).
   for (auto& ds : d.steps) {
+    // a bottle without a pump, or with one the hub does not know, as the mix plan names it (#73)
+    if (ds.pump.empty() || pumps.find(ds.pump) == pumps.end()) {
+      d.reason = ds.pump.empty() ? say("mix.no_pump", {{"name", ds.name}, {"canister", ds.canister}})
+                                 : say("mix.pump_offline", {{"name", ds.name}, {"canister", ds.canister}});
+      d.steps.clear();
+      return d;
+    }
     Msg err;
     ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.bounded().maxPartialRuns, err);
     if (!err.key.empty()) {
-      d.reason = say("mix.part", {{"name", ds.name}, {"reason", err}});
+      d.reason = say("mix.part", {{"name", ds.name}, {"reason", err}, {"canister", ds.canister}});
       d.steps.clear();
       return d;
     }
