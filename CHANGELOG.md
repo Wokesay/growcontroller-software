@@ -604,6 +604,19 @@ listed in every release under "Security".
   6 min after the pump stops, as the level reading lags, and at most
   30 min as before. A falling level, as in a run-to-waste drip system,
   counts as calm, so the fill starts after those 6 min.
+- **The mix plan says what to do next; the diagnostic package's "Not
+  included" follows the page's language** (#73, SD-055): a pump not
+  calibrated says to calibrate it under Devices, a bottle without a pump
+  where to choose one, a bottle running short to refill it and mark it
+  full under Recipes & bottles, and a recipe whose bottle is gone says to
+  edit the recipe. EC control names a bottle without a pump, or with a
+  pump the hub does not know, as such instead of as a pump to calibrate.
+  What the diagnostic package leaves out ("Not included: password hash,
+  …") came in German on an English page; it is named in the page's
+  language now. For API clients: every message of a mix plan that names
+  a bottle, and an EC round's `mix.part`, `mix.no_pump` and
+  `mix.pump_offline`, carry its ID as `canister`, and the package's
+  `redacted` lists keys.
 - **Maintenance mode says what it does** (#297, RAT-042): its entry in
   the event log and the overview no longer say that locks and sensor
   checks all stay active. While it lasts, readings may jump without
