@@ -12,7 +12,7 @@ import { HaRoles, ROLES, roleLabel } from "../ha";
 import { hasOwnLang, lang, setLang, t, type Lang, type TextKey } from "../i18n";
 import { binding, config, refreshConfig, refreshState, state, toast } from "../store";
 import { currentTheme, setTheme, type Theme } from "../theme";
-import { Banner, Button, Field, LANGS, Pill, Seg, navigate, route } from "../ui";
+import { Banner, Button, Field, LANGS, Pill, Seg, TestingNotice, navigate, route } from "../ui";
 import { ControlChoice } from "./areas";
 import { Page, StepNav } from "./setup";
 
@@ -55,6 +55,7 @@ function StepBasics(p: { step: number; next: () => void }) {
     >
       <h2 tabIndex={-1}>{t("welcome.basics.h")}</h2>
       <p class="muted">{t("welcome.basics.intro")}</p>
+      <TestingNotice />
       <div class="form-grid">
         <div class="field">
           <span>{t("common.language")}</span>

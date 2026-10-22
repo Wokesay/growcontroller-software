@@ -179,6 +179,10 @@ jobs:
           if ! grep -q '[^[:space:]]' out/NOTES.md; then
             echo "::error::CHANGELOG.md has no section [$section]"; exit 1
           fi
+          # A pre-release says first that it is for testing only (SD-096)
+          case "$v" in
+            *-*) { printf '> **For testing only:** this version does not meet the requirements of the EU Cyber Resilience Act (CRA).\n\n'; cat out/NOTES.md; } > out/NOTES.new && mv out/NOTES.new out/NOTES.md ;;
+          esac
           printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> out/NOTES.md
           printf '\n**Home Assistant:** add this repository in the app store of Home Assistant (with advanced mode on in your profile) and install growcontroller (docs/HOME_ASSISTANT.md).\n' >> out/NOTES.md
           cat out/dist/SHA256SUMS

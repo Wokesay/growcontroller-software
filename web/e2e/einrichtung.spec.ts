@@ -208,6 +208,8 @@ test("Read-only trial (Home Assistant): after the password a short introduction 
   await page.getByRole("button", { name: "Passwort festlegen" }).click();
   await expect(page).toHaveURL(/#\/willkommen/);
   await expect(page.getByRole("heading", { name: "Willkommen bei growcontroller" })).toBeVisible();
+  // a prototype says it is for testing only, also where Ingress shows no sign-in page (SD-096)
+  await expect(page.getByTestId("testing-notice")).toContainText("Nur zum Testen");
   // Basics: the name, the colour scheme
   await page.locator("input[name=hubname]").fill("Zelt 1");
   await page.getByRole("tab", { name: "Dunkel" }).click();

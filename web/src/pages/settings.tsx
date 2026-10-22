@@ -7,7 +7,7 @@ import { lang, msg as msgText, setLang, t, tIn, type Lang, type TextKey } from "
 import { get, post, put, type Msg } from "../api";
 import { dateTime, num, timeZone } from "../format";
 import { config, errorText, info, logoutLocal, readOnly, refreshConfig, simulated, toast } from "../store";
-import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, Toggle } from "../ui";
+import { Banner, Button, Card, Field, LANGS, Modal, NumberInput, Pill, Seg, TestingNotice, Toggle } from "../ui";
 import { sourceKnown, sourceLabel, sourceUrl } from "../source";
 import { currentTheme, setTheme, type Theme } from "../theme";
 
@@ -340,6 +340,7 @@ export function SettingsPage() {
               />
             </div>
             <div class="divider" />
+            <TestingNotice />
             <table class="table">
               <tbody>
                 <tr><td class="muted">{t("settings.software")}</td><td>{info.value?.version}</td></tr>
