@@ -157,14 +157,33 @@ test("a hand-written refusal has its key's English text", () => {
   assert.ok(n >= 3, "hand-written refusals found");  // the firmware's; the servers take theirs from the table
 });
 
-// The hub sends English and the web app translates by key (SD-083): the
-// refusals of the API, the sign-in and the configuration check, a reading's
-// reasons, the checklists and the simulator's port lines hold no German text
-// of their own.
-test("the API, the sign-in, the configuration check, a reading's reasons and the checklists send no German text", () => {
+// The hub sends English and the web app translates by key (SD-083): no file
+// of the core holds German text of its own (the mix plan too, #73), nor do
+// the simulator's port lines. messages.cpp holds the English table, and
+// catalog.cpp the German class names of before SD-083, which a stored name
+// is compared with, and its own build-time errors.
+test("the core and the simulator's port lines send no German text", () => {
   const german = /"(?:[^"\\\n]|\\.)*[äöüßÄÖÜ„“](?:[^"\\\n]|\\.)*"/;
-  const files = ["api.cpp", "auth.cpp", "config.cpp", "hub.cpp", "truth.cpp", "resolver.cpp"].map((f) => join(coreSrc, f));
-  for (const f of [...files, join(coreSrc, "../../sim/simbus.cpp")]) {
+  const files = readdirSync(coreSrc)
+    .filter((f) => f.endsWith(".cpp") && f !== "messages.cpp")
+    .map((f) => join(coreSrc, f));
+  assert.ok(files.some((f) => f.endsWith("mix.cpp")) && files.length >= 12, "the core's files");
+  // A message's text comes from the table by say(), never written next to its key,
+  // which is how German without an umlaut ("Menge fehlt") slipped through
+  // a key with its own text, also another message's key with a text glued to it
+  const literal = /\{"[a-z_]+\.[a-z0-9_.]+",\s*(?:"(?![a-z_]+\.[a-z0-9_.]+")|[\w>\-]+ \+|fmt\()|\b(?:error|warn)\("[a-z_]+\.[a-z0-9_.]+",\s*(?:"|[\w>\-]+ \+|fmt\()|\{\s*\w+\.key,\s*[^}]*\+/;
+  for (const f of files) {
+    for (const [i, line] of readFileSync(f, "utf8").split("\n").entries()) {
+      const code = line.replace(/\/\/.*$/, "");
+      assert.doesNotMatch(code, literal, `${f}:${i + 1}: ${line.trim()}`);
+    }
+  }
+  assert.match('err = {"dose.no_amount", "Menge fehlt", json::object()};', literal);
+  assert.doesNotMatch('for (const char* r : {"tank.ec", "tank.ph"})', literal);
+  assert.match('error("mix.amount", k->name + ": Menge je Liter fehlt");', literal);
+  assert.doesNotMatch('error("mix.no_amount", {{"name", k->name}});', literal);
+  assert.match('d.reason = {err.key, ds.name + ": " + err.text, err.args};', literal);
+  for (const f of [...files.filter((f) => !f.endsWith("catalog.cpp")), join(coreSrc, "../../sim/simbus.cpp")]) {
     const lines = readFileSync(f, "utf8").split("\n");
     for (const [i, line] of lines.entries()) {
       const code = line.replace(/\/\/.*$/, "");

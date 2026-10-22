@@ -8,7 +8,7 @@ test.beforeAll(async ({ request }) => {
   await scenario(request, "demo");
 });
 
-// The demo recipe "Wachstum" is 2 + 2 + 0.6 ml/L. Sets its chart values, with no part fixed, so each case
+// The demo recipe "Veg" is 2 + 2 + 0.6 ml/L. Sets its chart values, with no part fixed, so each case
 // starts from the same recipe whatever ran before
 const saveChart = (page: Page, name: string, chart: { refEc: number | null; ph: [number, number] | null }) =>
   page.evaluate(
@@ -24,10 +24,10 @@ const saveChart = (page: Page, name: string, chart: { refEc: number | null; ph: 
 
 test("A recipe keeps its chart EC and pH range; an EC that does not fit the amounts is named before saving, with the EC that would (SD-057)", async ({ page }) => {
   await login(page);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   await page.reload();
   await page.goto("/#/rezepte");
-  const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) });
+  const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Veg", exact: true }) });
   await expect(card.getByTestId("recipe-chart")).toHaveCount(0);
   await card.getByTitle("Bearbeiten").click();
   const dialog = page.getByRole("dialog");
@@ -62,13 +62,13 @@ test("A recipe keeps its chart EC and pH range; an EC that does not fit the amou
 
 test("A bottle that is not one of a pair can have a fixed amount; card, mix plan and the bottle editor say so (SD-057, RAT-085)", async ({ page }) => {
   await login(page);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   await page.reload();
   await page.goto("/#/rezepte");
-  const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Wachstum", exact: true }) });
+  const card = page.locator(".card.flat").filter({ has: page.getByRole("heading", { name: "Veg", exact: true }) });
   await card.getByTitle("Bearbeiten").click();
   const dialog = page.getByRole("dialog");
-  // Only CalMag offers it, named per bottle: Teil A and Teil B are a pair, which goes in together
+  // Only CalMag offers it, named per bottle: Part A and Part B are a pair, which goes in together
   await expect(dialog.getByRole("checkbox")).toHaveCount(1);
   const fixed = dialog.getByRole("checkbox", { name: "Feste Menge für CalMag" });
   await fixed.check();
@@ -81,24 +81,24 @@ test("A bottle that is not one of a pair can have a fixed amount; card, mix plan
   await dialog.getByLabel("EC laut Plan").fill("");
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(card.getByText("CalMag · feste Menge")).toBeVisible();
-  const steps = await page.evaluate(async () => (await (await fetch("/api/v1/config")).json()).recipes.find((r: { name: string }) => r.name === "Wachstum").steps);
-  expect(steps.map((s: { canister: string; fixed: boolean }) => [s.canister, s.fixed])).toEqual([["teil-a", false], ["teil-b", false], ["calmag", true]]);
+  const steps = await page.evaluate(async () => (await (await fetch("/api/v1/config")).json()).recipes.find((r: { name: string }) => r.name === "Veg").steps);
+  expect(steps.map((s: { canister: string; fixed: boolean }) => [s.canister, s.fixed])).toEqual([["part-a", false], ["part-b", false], ["calmag", true]]);
   // Pairing CalMag now is named before saving: a fixed amount cannot join a pair
   await page.locator(".rtable tbody tr").filter({ hasText: "CalMag" }).getByTitle("Bearbeiten").click();
   const bottle = page.getByRole("dialog");
   await bottle.getByRole("textbox", { name: /^Paar/ }).fill("AB");
-  await expect(bottle.locator("#bottle-problems")).toContainText("„CalMag“ ist in „Wachstum“ eine feste Menge.");
+  await expect(bottle.locator("#bottle-problems")).toContainText("„CalMag“ ist in „Veg“ eine feste Menge.");
   await bottle.getByRole("button", { name: "Abbrechen" }).click();
   await page.goto("/#/mischen");
-  await page.getByLabel("Rezept").selectOption({ label: "Wachstum" });
+  await page.getByLabel("Rezept").selectOption({ label: "Veg" });
   await page.locator("input[name=water]").fill("20");
   await expect(page.getByTestId("mix-preview").getByText("feste Menge")).toBeVisible();
 });
 
 test("Without a grow the overview names the target ranges that apply, and the grow dialog proposes each phase's targets from its recipe (SD-057)", async ({ page }) => {
   await login(page);
-  expect(await saveChart(page, "Wachstum", { refEc: 1.25, ph: [5.8, 6.2] })).toBe(200);
-  expect(await saveChart(page, "Blüte", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: 1.25, ph: [5.8, 6.2] })).toBe(200);
+  expect(await saveChart(page, "Bloom", { refEc: null, ph: null })).toBe(200);
   expect(await page.evaluate(async () => (await fetch("/api/v1/grow/complete", { method: "POST" })).status)).toBe(200);
   await page.reload();
   await page.goto("/#/");
@@ -110,7 +110,7 @@ test("Without a grow the overview names the target ranges that apply, and the gr
   const ec = (i: number) => dialog.getByLabel("Ziel-EC").nth(i);
   const ph = (i: number) => dialog.getByLabel("Ziel-pH").nth(i);
   const recipe = (i: number) => dialog.getByLabel("Rezept").nth(i);
-  // "Wachstum" proposes its chart values; "Blüte" has none, so its fields stay empty and say what applies
+  // "Veg" proposes its chart values; "Bloom" has none, so its fields stay empty and say what applies
   await expect(ec(0)).toHaveValue("1,25");
   await expect(ph(0)).toHaveValue("6");
   await expect(ec(1)).toHaveValue("");
@@ -119,10 +119,10 @@ test("Without a grow the overview names the target ranges that apply, and the gr
   await expect(dialog.getByText("Leer: es gilt 1,4 mS/cm aus Funktionen")).toBeVisible();
   await expect(dialog.getByText("Leer: es gilt 5,8 aus Funktionen")).toBeVisible();
   // Another recipe proposes again, unless the user typed a value
-  await recipe(1).selectOption({ label: "Wachstum" });
+  await recipe(1).selectOption({ label: "Veg" });
   await expect(ec(1)).toHaveValue("1,25");
   await ec(0).fill("1,5");
-  await recipe(0).selectOption({ label: "Blüte" });
+  await recipe(0).selectOption({ label: "Bloom" });
   await expect(ec(0)).toHaveValue("1,5");
   await expect(ph(0)).toHaveValue("");
   // An added phase proposes from the first recipe
@@ -154,7 +154,7 @@ test("A mix with the circulation pump mixes in before it ends; the card says for
       const res = await fetch("/api/v1/mix/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipe: "wachstum", waterL: 20, guided: false, confirmRepeat: true }),
+        body: JSON.stringify({ recipe: "veg", waterL: 20, guided: false, confirmRepeat: true }),
       });
       return res.status;
     });
@@ -176,7 +176,7 @@ const ecControl = (page: Page, enabled: boolean) =>
 
 test("Mixing to an EC without measuring is offered with EC control off, needs the recipe's chart EC and the water's EC, and doses at most the recipe's amounts (SD-057, SD-098, RAT-087)", async ({ page }) => {
   await login(page);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   await page.goto("/#/mischen");
   await page.reload();
   // EC control on: it takes the tank to its own target after mixing, so only the recipe's amounts (SD-089 S20)
@@ -185,7 +185,7 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await expect(page.getByRole("tablist", { name: "Mengen" })).toHaveCount(0);
   expect(await ecControl(page, false)).toBe(200);
   await page.reload();
-  await page.locator("select[name=recipe]").selectOption({ label: "Wachstum" });
+  await page.locator("select[name=recipe]").selectOption({ label: "Veg" });
   await page.locator("input[name=water]").fill("20");
   await page.getByRole("tablist", { name: "Mengen" }).getByRole("tab", { name: "Auf Ziel-EC" }).click();
   await expect(page.getByText("Möglich: 0,2 bis 4,0 mS/cm")).toBeVisible();
@@ -193,12 +193,12 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   // No chart EC: refused, with what to do; the recipe's amounts stay
   await page.locator("input[name=targetEc]").fill("0,85");
   await page.locator("input[name=waterEc]").fill("0,2");
-  await expect(preview).toContainText("Rezept „Wachstum“ hat keine passende EC laut Plan");
+  await expect(preview).toContainText("Rezept „Veg“ hat keine passende EC laut Plan");
   await expect(page.getByTestId("mix-start")).toBeDisabled();
   // A chart EC of 1.15 over 4.6 ml/L: (0.85 − 0.1) / 0.25 = 3 ml/L, two thirds of each part; a larger
-  // effect EC control learned for Wachstum before it was switched off makes it less (SD-098)
-  expect(await saveChart(page, "Wachstum", { refEc: 1.15, ph: null })).toBe(200);
-  const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.wachstum ?? null);
+  // effect EC control learned for Veg before it was switched off makes it less (SD-098)
+  expect(await saveChart(page, "Veg", { refEc: 1.15, ph: null })).toBe(200);
+  const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.veg ?? null);
   const [lo, hi] = [0.25 * 0.275, 4 * 0.275];  // the band around the start effect (RAT-056, REF_EFFECT_BAND)
   const e = typeof learned === "number" && learned >= lo ? Math.max(0.25, Math.min(learned, hi)) : 0.25;
   const de = (v: number, d: number) => v.toFixed(d).replace(".", ",");
@@ -251,6 +251,6 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await simSpeed(page, 20);
   await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 90_000 });
   await simSpeed(page, 1);
-  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   expect(await ecControl(page, true)).toBe(200);
 });

@@ -635,7 +635,7 @@ TEST_CASE("Storage: an import refused while a dose runs drops no stock (#161)") 
   for (int i = 0; i < 600 && !(c.state()["job"].is_null() && c.state()["dosing"].is_null()); ++i) s.step(5000);
   const json file = withoutBottle(c.ok("GET", "/api/v1/config/export"), "ph");
   const double ph = c.state()["stock"]["ph"].get<double>();
-  c.ok("POST", "/api/v1/dose", {{"canister", "teil-a"}, {"ml", 3}});
+  c.ok("POST", "/api/v1/dose", {{"canister", "part-a"}, {"ml", 3}});
   auto [busy, busyBody] = c.call("POST", "/api/v1/config/import", file);
   CHECK(busy == 409);
   CHECK(busyBody["error"]["key"] == "config.busy");
@@ -680,33 +680,65 @@ TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and 
   c.ok("POST", "/api/v1/auth/setup", {{"password", "mein-passwort"}});
   c.ok("POST", "/api/v1/config/import", file);
   const json stock = c.state()["stock"];
-  REQUIRE(stock.contains("teil-a"));
+  REQUIRE(stock.contains("part-a"));
   for (const auto& [id, ml] : stock.items()) {
     CAPTURE(id);
     CHECK(ml.is_null());
   }
-  c.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"name", "Teil A neu"}});
-  CHECK(c.state()["stock"]["teil-a"].is_null());
+  c.ok("POST", "/api/v1/canisters", {{"id", "part-a"}, {"name", "Part A new"}});
+  CHECK(c.state()["stock"]["part-a"].is_null());
   s.step(2000);
-  CHECK_FALSE(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("teil-a"));
+  CHECK_FALSE(json::parse(onDisk(dir.path / "state.json"), nullptr, false)["stockMl"].contains("part-a"));
   // Through a restart; then a bottle change gives it a number that stays
   sim::Simulation again(onFreshCard(dir, s.hub().now() + 1));
   test::Client c2{again};
   c2.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
-  CHECK(c2.state()["stock"]["teil-a"].is_null());
-  c2.ok("POST", "/api/v1/canisters", {{"id", "teil-a"}, {"color", "#336699"}});
-  CHECK(c2.state()["stock"]["teil-a"].is_null());
+  CHECK(c2.state()["stock"]["part-a"].is_null());
+  c2.ok("POST", "/api/v1/canisters", {{"id", "part-a"}, {"color", "#336699"}});
+  CHECK(c2.state()["stock"]["part-a"].is_null());
   double full = 0;
   const json cfg = c2.ok("GET", "/api/v1/config");
   for (const auto& k : cfg["canisters"])
-    if (k["id"] == "teil-a") full = k["capacityMl"].get<double>();
+    if (k["id"] == "part-a") full = k["capacityMl"].get<double>();
   REQUIRE(full > 0);
-  c2.ok("POST", "/api/v1/canisters/teil-a/stock", {{"ml", full}});
+  c2.ok("POST", "/api/v1/canisters/part-a/stock", {{"ml", full}});
   again.step(2000);
   sim::Simulation third(onFreshCard(dir, again.hub().now() + 1));
   test::Client c3{third};
   c3.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
-  CHECK(c3.state()["stock"]["teil-a"].get<double>() == doctest::Approx(full));
+  CHECK(c3.state()["stock"]["part-a"].get<double>() == doctest::Approx(full));
+}
+
+TEST_CASE("Storage: the demo starts in English; a demo folder an older version saved in German stays German (SD-095, SD-083)") {
+  TempDir dir;
+  gc::Epoch end = 0;
+  {
+    sim::Simulation s(onCard(dir));
+    test::Client c{s};
+    CHECK(c.ok("GET", "/api/v1/info")["language"] == "en");
+    end = s.hub().now();
+  }
+  // As an older version saved it: the hub German, with names in German
+  json cfg = json::parse(onDisk(dir.path / "config.json"), nullptr, false);
+  REQUIRE(cfg.is_object());
+  cfg["system"]["language"] = "de";
+  for (auto& k : cfg["canisters"])
+    if (k["id"] == "part-a") k["name"] = "Teil A";
+  {
+    std::ofstream out(dir.path / "config.json", std::ios::trunc);
+    out << cfg.dump();
+  }
+  // Started again from that folder, it sets nothing up: the stored language and names stay
+  sim::Simulation again(onCard(dir, end + 1));
+  test::Client c{again};
+  CHECK(c.ok("GET", "/api/v1/info")["language"] == "de");  // the sign-in page of a browser without a choice
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  const json kept = c.ok("GET", "/api/v1/config");
+  CHECK(kept["system"]["language"] == "de");
+  std::string name;
+  for (const auto& k : kept["canisters"])
+    if (k["id"] == "part-a") name = k["name"];
+  CHECK(name == "Teil A");
 }
 
 TEST_CASE("Storage: the password for direct access survives a restart; removed, it stays removed (SD-077)") {

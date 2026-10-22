@@ -54,7 +54,7 @@ answers() {
 # Memory only, said so, and the folder not named as its data folder.
 memory_only() {
   grep -q "Running in memory only" "$1"
-  if grep -q "^Daten:" "$1"; then
+  if grep -q "^Data:" "$1"; then
     echo "::error::$1 names a data folder"
     return 1
   fi
@@ -77,7 +77,7 @@ cp "dist/$d/$bin" "$e/"
 "./$e/$bin" > build-pkg/einfach.log 2>&1 &
 pid=$!
 answers build-pkg/einfach.log
-grep -q "Demo-Passwort" build-pkg/einfach.log
+grep -q "Demo password" build-pkg/einfach.log
 for _ in $(seq 1 30); do [ -f "$e/growcontroller-daten/config.json" ] && break; sleep 1; done
 test -f "$e/growcontroller-daten/config.json"
 stop "$pid"

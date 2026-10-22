@@ -115,7 +115,7 @@ The app has two ways in; the listener decides which, never the request.
 | GET | `/history?series=a,b&from&to&points` | series (`t`, `avg`, `min`, `max`, `stepS`); at most 16 series, none twice (else 422 `history.series_many`, `history.series_twice`), each id as for `/export.csv` |
 | GET | `/events?type&from&to&limit` | events, newest first |
 | GET | `/export.csv?series&from&to&lang` | CSV of the history; each series id holds only `a`–`z`, `0`–`9`, `.` and `_`, at most 64 characters (else 422 `history.series_id`, also for an empty id between or after commas; an empty list gives only the time column), at most 16 series and none twice as for `/history`: `lang=en` gives `time_utc` and the series ids separated by commas, with a decimal point (`growcontroller-history.csv`); `lang=de` gives `zeit_utc`, semicolons and a decimal comma (`growcontroller-verlauf.csv`); without `lang`, or with another value, the hub's language decides. A gap stays an empty field, never 0 (RAT-016) |
-| GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP) |
+| GET | `/diagnostics` | diagnostic bundle (without hash, sessions, Wi-Fi, IP); `redacted` lists what it leaves out as keys (`password_hash`, `sessions`, `wifi_credentials`, `ip_addresses`, `ha_user_names`) |
 | GET | `/changelog` | embedded CHANGELOG (Markdown) |
 | GET | `/update` | version, available version with a summary |
 
@@ -151,7 +151,9 @@ reason inside a mix plan's error or an EC round's reason is wrapped as
 `mix.part` `{name, reason, canister}`, the split's own message in
 `args.reason` (before, `dose.no_flow` and the others stood at the top);
 a recipe step without an amount is `mix.amount_missing` (before,
-`mix.amount`). A
+`mix.amount`). Every message of a mix plan that names a bottle, and an
+EC round's `mix.part`, `mix.no_pump` and `mix.pump_offline`, carry its
+ID as `canister` (#73). A
 device's own error text inside `act.bus`,
 `act.output_refused`, `role.net.write`, `cal.write`, `dose.lost` or
 `dose.failed` is English and has no key. A message an event saved

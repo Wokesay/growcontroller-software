@@ -7,7 +7,7 @@ import { post } from "../api";
 import { afterLogin, errorText, hasPlugs, info, sessionExpired } from "../store";
 import { lang, setLang, t, tIn, type Lang } from "../i18n";
 import { sourceUrl } from "../source";
-import { Banner, Field, LANGS, Seg } from "../ui";
+import { Banner, Field, LANGS, Seg, TestingNotice } from "../ui";
 
 export function Login() {
   const first = !info.value?.hasPassword;
@@ -53,6 +53,7 @@ export function Login() {
             </span>
           </Banner>
         )}
+        {!first && <TestingNotice />}
         {first ? (
           <>
             {/* The language comes first, English chosen until the user picks another (SD-014) */}
@@ -64,6 +65,7 @@ export function Login() {
               </span>
               <Seg<Lang> value={lang.value} onChange={(l) => setLang(l)} options={LANGS} labelledBy="first-lang-label" large />
             </div>
+            <TestingNotice />
             <div>
               <h2>{t("setup.start.h")}</h2>
               <p class="muted">{t("login.firstText")}</p>

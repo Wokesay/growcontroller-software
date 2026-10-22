@@ -28,6 +28,12 @@ test("the web app, its lock file, the app, the README and the bug form name VERS
   assert.match(read(".github/ISSUE_TEMPLATE/bug.yml"), new RegExp(`placeholder: ${version.replace(/[.]/g, "\\.")}\\n`), "bug form");
 });
 
+test("the README says a pre-release is for testing only, and a Stable release does not (SD-096)", () => {
+  const notice = "> **For testing only:** this version does not meet the requirements of\n> the EU Cyber Resilience Act (CRA).";
+  if (version.includes("-")) assert.ok(read("README.md").includes(notice), "README: the testing notice");
+  else assert.ok(!read("README.md").includes("For testing only"), "README: no testing notice at a Stable release");
+});
+
 test("the changelog has the release's section, or it is still unreleased", () => {
   const log = read("CHANGELOG.md");
   assert.match(log, /^## \[Unreleased\]$/m, "an [Unreleased] section stays on top");

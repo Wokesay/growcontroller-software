@@ -1103,8 +1103,8 @@ std::string Hub::exportCsv(const std::vector<std::string>& series, Epoch from, E
 
 json Hub::diagnostics() {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  // Diagnosepaket für "Problem melden": ohne Geheimnisse (kein Passwort-Hash,
-  // keine Sitzungen, kein WLAN), Inhalt wird vor dem Herunterladen gezeigt.
+  // The diagnostic package of "Report a problem": no secrets (no password hash,
+  // no sessions, no Wi-Fi); the page shows its content before it is downloaded.
   std::uint8_t b[4];
   rng_(b, sizeof b);
   json cfg = cfg_;
@@ -1125,7 +1125,8 @@ json Hub::diagnostics() {
           {"watchdog", st["watchdog"]},
           {"latches", st["latches"]},
           {"events", evs},
-          {"redacted", {"Passwort-Hash", "Sitzungen", "WLAN-Zugang", "IP-Adressen", "Namen von Home-Assistant-Nutzern"}}};
+          // what the package leaves out, as keys; the web app names them in the page's language (#73)
+          {"redacted", {"password_hash", "sessions", "wifi_credentials", "ip_addresses", "ha_user_names"}}};
 }
 
 // ------------------------------------------------------------------ Einrichtung

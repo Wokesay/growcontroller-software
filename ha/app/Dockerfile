@@ -12,7 +12,7 @@
 # Node and npm are the ones CI checks with (.nvmrc), from the official node
 # image on the same Alpine, pinned by digest (SD-071). The digest, not the
 # tag, decides what is pulled, so the stage checks its Node against .nvmrc.
-FROM node:22.23.3-alpine3.24@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS web
+FROM node:22.23.4-alpine3.24@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web
 WORKDIR /src
 COPY .nvmrc ./
 RUN v="$(tr -d '\r\n' < .nvmrc)"; test "$(node -v)" = "v$v" || { echo "The node image runs $(node -v), .nvmrc names $v: its digest is not of that tag (SD-071)"; exit 1; }
