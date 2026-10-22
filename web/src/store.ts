@@ -26,6 +26,12 @@ export const simulated = computed(() => !!info.value?.platform?.simulated);
  *  Only for what the page offers; never a safety guarantee (STOP and
  *  confirmations stay): that nothing switches is enforced by the server. */
 export const readOnly = computed(() => !!info.value?.platform?.readOnly);
+/** A SemVer pre-release (a hyphen after X.Y.Z, before any "+") or a version that cannot be read is for testing only (SD-096). */
+export function forTestingOnly(version: string | null | undefined): boolean {
+  const m = /^\d+\.\d+\.\d+(-[^+]+)?(\+.*)?$/.exec(version ?? "");
+  return !m || m[1] !== undefined;
+}
+export const testingOnly = computed(() => forTestingOnly(info.value?.version));
 /** Devices on smart plugs: unplugging the hub leaves them as they are. */
 export const hasPlugs = computed(() => !!state.value?.devices.some((d) => d.class.startsWith("shelly_")));
 
