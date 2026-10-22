@@ -268,6 +268,8 @@ test("Maintenance mode says that readings may jump without locking, and when to 
   await expect(end).toHaveAccessibleDescription(/Beende den Pflegemodus/);
   await end.click();
   await expect(page.getByTestId("maintenance-end-hint")).toHaveCount(0);
+  // ended, the hub still explains a change for 10 s (RAT-042, #292): let them pass, so a jump locks again
+  await page.request.post("/api/v1/sim/advance", { data: { hours: 15 / 3600 } });
 });
 
 test("Sprungsperre der pH-Sonde wird sichtbar mit Grund", async ({ page }) => {
