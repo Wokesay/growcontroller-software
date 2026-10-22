@@ -32,10 +32,6 @@ More options: growcontroller-simulator --help
 
 Language: the app offers English and German; choose under Settings.
 
-First time? A short tour, and how to tell us what you think:
-  https://github.com/Wokesay/growcontroller-software/blob/main/docs/GETTING_STARTED.md
-  https://github.com/Wokesay/growcontroller-software/blob/main/docs/FEEDBACK.md
-
 License: free software under the GNU Affero General Public License,
 version 3 or later (LICENSE.txt). Source code:
 https://github.com/Wokesay/growcontroller-software
@@ -67,5 +63,3 @@ Lizenz: freie Software unter der GNU Affero General Public License,
 Version 3 oder später (LICENSE.txt). Quellcode:
 https://github.com/Wokesay/growcontroller-software
 Die App verlinkt die genaue Version unter Einstellungen.
-Erste Schritte und Feedback (auf Englisch): die beiden Links oben unter
-„First time?“.

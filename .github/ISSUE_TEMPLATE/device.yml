@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thank you! Is it listed already? See [docs/COMPATIBILITY.md](https://github.com/Wokesay/growcontroller-software/blob/main/docs/COMPATIBILITY.md).
-        Please do not post passwords, access tokens or keys (also not from ESPHome YAML: the `api` key, the `ota` password, Wi-Fi details), the address of your Home Assistant or locations – issues are public.
+        Please do not post passwords, access tokens or keys (also not in ESPHome YAML: the `api` encryption key, the `ota` password, Wi-Fi details), the address of your Home Assistant from outside, or locations – issues are public.
   - type: input
     id: device
     attributes:

@@ -182,7 +182,7 @@ jobs:
           printf '\n---\n**Try it without hardware:** download the simulator for your system, unpack, start (see README.txt in the package). Demo password: `demo-passwort`.\n' >> out/NOTES.md
           printf '\n**Home Assistant:** add this repository in the app store of Home Assistant (with advanced mode on in your profile) and install growcontroller (docs/HOME_ASSISTANT.md).\n' >> out/NOTES.md
           # Testers: start here (SD-094)
-          printf '\n**Testers: start here:** [Getting started](https://github.com/Wokesay/growcontroller-software/blob/main/docs/GETTING_STARTED.md), then tell us what you found: [Feedback](https://github.com/Wokesay/growcontroller-software/blob/main/docs/FEEDBACK.md).\n' >> out/NOTES.md
+          printf '\n**Testers: start here:** [the demo guide](https://github.com/Wokesay/growcontroller-software/blob/main/docs/DEMO.md), then tell us what you found ([where to get help and give feedback](https://github.com/Wokesay/growcontroller-software/blob/main/SUPPORT.md)).\n' >> out/NOTES.md
           cat out/dist/SHA256SUMS
           # Later jobs accept only this checksum list.
           echo "sums=$(sha256sum out/dist/SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"

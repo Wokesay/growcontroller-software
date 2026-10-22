@@ -26,7 +26,6 @@ test("the web app, its lock file, the app, the README and the bug form name VERS
   assert.ok(read("ha/app/config.yaml").split("\n").includes(`version: "${version}"`), "ha/app/config.yaml");
   assert.ok(read("README.md").includes(`**Status: prototype \`${version}\`.**`), "README status line");
   assert.match(read(".github/ISSUE_TEMPLATE/bug.yml"), new RegExp(`placeholder: ${version.replace(/[.]/g, "\\.")}\\n`), "bug form");
-  assert.match(read(".github/DISCUSSION_TEMPLATE/tester-feedback.yml"), new RegExp(`placeholder: ${version.replace(/[.]/g, "\\.")}\\n`), "feedback form");
 });
 
 test("the changelog has the release's section, or it is still unreleased", () => {
