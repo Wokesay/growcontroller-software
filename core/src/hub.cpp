@@ -1783,9 +1783,31 @@ Result Hub::importConfig(const json& j) {
 
 // ------------------------------------------------------------------ Aufträge
 
+// A mix as asked: the recipe's amounts, or a fixed pattern to a target EC from the water's EC, whose
+// target lies in the EC target's range (SD-057 way 2, SD-098); a missing value stays missing (R5)
+MixRequest Hub::mixRequest(const json& req) const {
+  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
+  // A target or water EC asked without "target", or amounts of another type, never mix the full recipe
+  const auto given = [&](const char* k) { return req.is_object() && req.contains(k) && !req[k].is_null(); };
+  r.amounts = given("amounts") ? jstr(req, "amounts") : "recipe";
+  if (r.amounts == "recipe" && (given("targetEc") || given("waterEc"))) r.amounts.clear();
+  r.targetEc = jnum(req, "targetEc");
+  r.waterEc = jnum(req, "waterEc");
+  if (const FunctionDef* fn = cat_.function("ec_control"))
+    if (const ParamDef* pd = fn->param("ec_target")) {
+      r.targetMin = pd->min;
+      r.targetMax = pd->max;
+    }
+  r.ecControlOn = controllerFree("ec_control", "ec.no_effect");
+  if (r.ecControlOn) r.ecControlTarget = effectiveParams(cat_, cfg_, "ec_control").num("ec_target");
+  auto ph = cfg_.functions.find("ph_control");
+  if (ph != cfg_.functions.end() && ph->second.enabled) r.phEcFloor = effectiveParams(cat_, cfg_, "ph_control").num("ec_floor");
+  return r;
+}
+
 Result Hub::mixPlan(const json& req) {
   std::lock_guard<std::recursive_mutex> l(mtx_);
-  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
+  const MixRequest r = mixRequest(req);
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
@@ -1799,7 +1821,7 @@ Result Hub::mixStart(const json& req) {
   if (job_ && job_->type == "mix" && job_->state == "failed") return Result::fail(409, say("mix.failed_open"));
   if (doser_.busy()) return Result::fail(409, say("job.dosing"));
   if (stopped_) return Result::fail(409, say("act.stopped"));
-  MixRequest r{jstr(req, "recipe"), jnum(req, "waterL"), jstr(req, "mode", "new"), jbool(req, "confirmRepeat", false)};
+  const MixRequest r = mixRequest(req);
   auto it = cfg_.functions.find("ph_control");
   bool phAuto = it != cfg_.functions.end() && it->second.enabled;
   auto plan = planMix(cfg_, rt_, pumps_, r, clock_.epoch(), phAuto);
@@ -1817,15 +1839,19 @@ Result Hub::mixStart(const json& req) {
   j.startedAt = clock_.epoch();
   j.circulation = cfg_.binding("tank.circulation") != nullptr;
   j.info = {{"recipe", plan.recipe}, {"recipeName", plan.recipeName}, {"waterL", plan.waterL}, {"mode", plan.mode},
-            {"after", plan.after}};
+            {"after", plan.after}, {"amounts", plan.amounts}};
+  if (plan.amounts == "target")  // the pattern runs without feedback: what it aimed at stays with it (SD-098)
+    j.info.update({{"targetEc", plan.targetEc}, {"waterEc", plan.waterEc}, {"expectedEc", numOrNull(plan.expectedEc)}});
   for (const auto& s : plan.steps) j.steps.push_back({s, "pending", 0});
   rt_.tankVolumeL = plan.mode == "topup" && isNum(rt_.tankVolumeL) ? rt_.tankVolumeL + plan.waterL : plan.waterL;
   rt_.lastMixAt = clock_.epoch();
   stateDirty_ = true;
   const bool topup = plan.mode == "topup";
-  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.started"),
-           say(topup ? "ev.mix.started.topup" : "ev.mix.started.new", {{"recipe", plan.recipeName}, {"water", plan.waterL}}),
-           {{"job", j.id}, {"recipe", plan.recipe}, {"waterL", plan.waterL}});
+  json args = {{"recipe", plan.recipeName}, {"water", plan.waterL}};
+  if (plan.amounts == "target") args.update({{"target", plan.targetEc}, {"waterEc", plan.waterEc}, {"expected", numOrNull(plan.expectedEc)}});
+  const Msg text = plan.amounts == "target" ? say(topup ? "ev.mix.started.target_topup" : "ev.mix.started.target_new", args)
+                                            : say(topup ? "ev.mix.started.topup" : "ev.mix.started.new", args);
+  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.started"), text, {{"job", j.id}, {"recipe", plan.recipe}, {"waterL", plan.waterL}});
   job_ = j;
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});

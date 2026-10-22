@@ -48,7 +48,7 @@ The menu is grouped by topic, with a small heading above each group
 |---|---|---|
 | – | Overview | Monitoring, tank with readings and 6-h trend, control lines, running job, stock, cultivation run, latest events |
 | – | History | pH, EC, water temperature, level with target band and dosing markers; air temperature, humidity, VPD, CO2; events with filters; CSV |
-| Nutrient solution | Mixing | Recipe, water, "New batch"/"Top up", preview in ml, guided sequence; manual dose |
+| Nutrient solution | Mixing | Recipe, water, "New batch"/"Top up", amounts as in the recipe or to a target EC without measuring (only with EC control off, SD-098), preview in ml, guided sequence; manual dose |
 | Nutrient solution | Tank & control | Control lines with checklist, monitoring in detail, acknowledging latches, tank, outputs, maintenance mode, cultivation run and phases |
 | Nutrient solution | Recipes & bottles | Bottle ↔ pump, pairs, stock, "Bottle changed"; recipes, templates |
 | Nutrient solution | Watering | Watering pump in manual mode with dry-run protection and a pH/EC check (watering schedule follows); in the same group as the tank, as it draws from it |
@@ -152,6 +152,8 @@ nutrient solution". This comes straight from the resolver.
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
 | Walked away during a guided mix without a circulation pump | after 30 min without "Continue" the mix stops, names a part of a pair still missing with its amount, offers "Resume mix" / "End mix"; the minutes left show while it waits (SD-057, SD-089) |
+| Water's EC not entered for a mix to a target EC | never taken as 0: said at its field, Start off; 0 is entered for RO water, a value above the EC target's range is refused as a likely µS/cm (SD-098) |
+| A target EC the recipe's amounts cannot reach, or a chart EC typed too low | at most the recipe's amounts without measuring; the plan says it cannot reach the target and names the EC to expect, worked out, not measured (SD-098) |
 | Skipping the mixing-in at the end | not offered, nor "Cancel": nothing is left to dose, and control decides only on a mixed tank; the Stop stays for an emergency (SD-057) |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | while the hub runs: event "Pump A not responding", then "Pump A is back" with "Pump 2 on the dosing block. Is it still on the bottle 'Part A'?". A start logs neither, also for devices that answer later, so a pump that first answers after a start asks nothing; Devices shows it offline until it answers (#115) |

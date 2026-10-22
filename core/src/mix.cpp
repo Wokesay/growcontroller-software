@@ -19,7 +19,9 @@ void to_json(json& j, const MixPlan& p) {
   j = {{"ok", p.ok},         {"recipe", p.recipe},   {"recipeName", p.recipeName},
        {"mode", p.mode},     {"waterL", numOrNull(p.waterL)}, {"steps", p.steps},
        {"errors", p.errors}, {"warnings", p.warnings},         {"after", p.after},
-       {"totalMl", p.totalMl}, {"totalMs", p.totalMs}};
+       {"totalMl", p.totalMl}, {"totalMs", p.totalMs},
+       {"amounts", p.amounts}, {"targetEc", numOrNull(p.targetEc)}, {"waterEc", numOrNull(p.waterEc)},
+       {"factor", numOrNull(p.factor)}, {"expectedEc", numOrNull(p.expectedEc)}, {"infos", p.infos}};
 }
 
 std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, int maxRuns, Msg& err) {
@@ -51,13 +53,18 @@ std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, 
   return runs;
 }
 
+// The charts' amounts are made for water up to about this EC (SD-057, sources [1][2] there); above it, a new
+// fill gets a note that part of the target comes from the water
+constexpr double kChartWaterEcMax = 0.4;
+
 MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps, const MixRequest& req, Epoch now,
                 bool phControlActive) {
   MixPlan p;
   p.recipe = req.recipe;
   p.mode = req.mode;
   p.waterL = req.waterL;
-  // Each text comes from the table by its key: English here, German in the web app (#73, SD-083)
+
+  // Each message in both languages by its key (SD-032); the hub's text is English
   const RecipeCfg* r = cfg.recipe(req.recipe);
   if (!r) {
     p.errors.push_back(say("mix.no_recipe"));
@@ -66,8 +73,58 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
   p.recipeName = r->name;
   if (req.mode != "new" && req.mode != "topup") p.errors.push_back(say("mix.mode"));
   if (!isNum(req.waterL) || req.waterL <= 0) {
-    p.errors.push_back(say("mix.no_volume"));  // never on with 0 or a stand-in value (RAT-006)
+    p.errors.push_back(say("mix.no_volume"));  // never on with 0 or a stand-in (RAT-006)
     return p;
+  }
+  // A fixed pattern to a target EC (SD-057 way 2, SD-098): every scaled part by one factor, at most 1, so
+  // never more than the recipe's own amounts; fixed parts per litre of fresh water; no feedback
+  p.amounts = req.amounts;
+  double factor = 1.0;
+  if (req.amounts == "target") {
+    p.targetEc = req.targetEc;
+    p.waterEc = req.waterEc;
+    p.factor = kNaN;  // worked out below; a refused plan has none (R5)
+    double scaled = 0, fixedMl = 0;
+    for (const auto& s : r->steps)
+      if (isNum(s.mlPerL) && s.mlPerL > 0) (s.fixed ? fixedMl : scaled) += s.mlPerL;
+    const double e = patternEffect(*r, learnedEcEffect(rt, r->id));
+    const bool inRange = isNum(req.targetEc) && (!isNum(req.targetMin) || req.targetEc >= req.targetMin) &&
+                         (!isNum(req.targetMax) || req.targetEc <= req.targetMax);
+    // EC control would take the tank to its own target afterwards, over the one asked for (SD-089 S20)
+    if (req.ecControlOn) p.errors.push_back(say("mix.target_ec_control", {{"target", numOrNull(req.ecControlTarget)}}));
+    if (!isNum(e)) p.errors.push_back(say("mix.no_reference", {{"name", r->name}}));
+    if (!inRange) p.errors.push_back(say("mix.target_range", {{"min", numOrNull(req.targetMin)}, {"max", numOrNull(req.targetMax)}}));
+    if (!isNum(req.waterEc) || req.waterEc < 0)
+      p.errors.push_back(say("mix.water_ec_missing"));  // never taken as 0 (R5)
+    else if (isNum(req.targetMax) && req.waterEc > req.targetMax)  // a value in µS/cm, most likely
+      p.errors.push_back(say("mix.water_ec_unit", {{"ec", req.waterEc}, {"max", req.targetMax}}));
+    if (!p.errors.empty()) return p;
+    const double gap = req.targetEc - req.waterEc - fixedMl * e;
+    if (gap <= 0) {
+      factor = 0;
+      if (fixedMl <= 0) {
+        p.errors.push_back(say("mix.at_target", {{"water", req.waterEc}, {"target", req.targetEc}}));
+        return p;
+      }
+      p.warnings.push_back(say("mix.at_target_fixed", {{"water", req.waterEc}, {"target", req.targetEc}}));
+    } else {
+      factor = std::min(1.0, gap / e / scaled);
+    }
+    p.factor = factor;
+    p.expectedEc = req.waterEc + e * (scaled * factor + fixedMl);
+    if (gap / e / scaled > 1.0 + 1e-9) p.warnings.push_back(say("mix.capped", {{"target", req.targetEc}}));
+    if (req.mode == "new" && req.waterEc > kChartWaterEcMax) p.warnings.push_back(say("mix.water_ec_high", {{"ec", req.waterEc}}));
+    p.infos.push_back(say("mix.no_feedback"));
+    // Below the pH lock's EC pH control never doses (RAT-046): then the pH is corrected by hand
+    const bool phGate = phControlActive && isNum(req.phEcFloor) && p.expectedEc < req.phEcFloor;
+    if (phGate)
+      p.warnings.push_back(say("mix.ph_gate", {{"ec", p.expectedEc}, {"floor", req.phEcFloor}}));
+    else if (phControlActive)
+      p.infos.push_back(say("mix.ph_adds_ec"));
+    p.after = say(phControlActive && !phGate ? "mix.after_auto_target" : "mix.after_manual_target");
+  } else {
+    if (req.amounts != "recipe") p.errors.push_back(say("mix.amounts"));
+    p.after = say(phControlActive ? "mix.after_auto" : "mix.after_manual");
   }
   const auto& tank = cfg.tank();
   double after = req.mode == "topup" && isNum(rt.tankVolumeL) ? rt.tankVolumeL + req.waterL : req.waterL;
@@ -98,7 +155,8 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
       p.errors.push_back(say("mix.amount_missing", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
-    d.ml = s.mlPerL * req.waterL;  // Mengen rechnen auf das frische Wasser (RAT-011)
+    d.ml = s.mlPerL * (s.fixed ? 1.0 : factor) * req.waterL;  // amounts count on the fresh water (RAT-011)
+    if (!s.fixed && factor == 0) continue;  // a scaled part with nothing to add: the water is at the target (SD-098)
     if (k->pump.empty()) {
       p.errors.push_back(say("mix.no_pump", {{"name", k->name}, {"canister", k->id}}));
       p.steps.push_back(d);
@@ -124,7 +182,6 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     for (Ms m : d.runs) p.totalMs += m + 3 * kSecond;
     p.steps.push_back(d);
   }
-  p.after = say(phControlActive ? "mix.after_auto" : "mix.after_manual");
   p.ok = p.errors.empty() && !p.steps.empty();
   return p;
 }
@@ -226,6 +283,23 @@ RecipeEffect recipeEffect(const RecipeCfg& recipe, double learned) {
   // that no round fits and nothing could be learned again (RAT-056)
   e.largest = std::max(e.start, e.dose);
   return e;
+}
+
+double patternEffect(const RecipeCfg& recipe, double learned) {
+  double scaled = 0, all = 0;
+  for (const auto& s : recipe.steps)
+    if (isNum(s.mlPerL) && s.mlPerL > 0) {
+      all += s.mlPerL;
+      if (!s.fixed) scaled += s.mlPerL;
+    }
+  // The reference must lie in the band over the scaled parts, as validateConfig checks it (RAT-056)
+  if (!isNum(recipe.refEc) || recipe.refEc <= 0 || !isNum(all) || scaled <= 0) return kNaN;
+  const double band = recipe.refEc / scaled;
+  if (band < kRefEffectMin * kEcStartEffect || band > kRefEffectMax * kEcStartEffect) return kNaN;
+  double e = recipe.refEc / all;
+  // A learned value counts from the band's bottom; one stored above it counts at its top, as for a round (RAT-056)
+  if (isNum(learned) && learned >= kRefEffectMin * kEcStartEffect) e = std::max(e, std::min(learned, kRefEffectMax * kEcStartEffect));
+  return isNum(e) && e > 0 ? e : kNaN;
 }
 
 double clampEcEffect(double observed, double start) {

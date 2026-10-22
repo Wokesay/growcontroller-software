@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <limits>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include "gc/mix.hpp"
 
@@ -67,39 +71,39 @@ TEST_CASE("Mix plan: every error and warning comes in English by its key, with t
       if (e.key == key) return e.text;
     return std::string("(no " + key + ")");
   };
-  CHECK(text(f.plan(80), "mix.over_capacity") == "More than the tank's usable volume (60 L). Check the amount (litres or gallons?)");
+  CHECK(text(f.plan(80), "mix.over_capacity") == "More than the tank holds (60 L). Check the amount (litres or gallons?)");
   f.rt.lastMixAt = 1790000000 - 600;
   CHECK(text(f.plan(10), "mix.recent") == "This tank was mixed 10\u00a0min ago. Dosing again doubles the nutrients.");
   f.rt.lastMixAt = 0;
   f.rt.stockMl["a"] = 5;
-  CHECK(text(f.plan(10), "mix.stock") == "Teil A: not enough left (20 ml needed, 5 ml in the bottle) – refill it, then tap \"Bottle changed (full)\"");
+  CHECK(text(f.plan(10), "mix.stock") == "Teil A: not enough in the bottle (20 ml needed, 5 ml left) – refill it, then tap \"Bottle changed (full)\"");
   f.rt.stockMl.erase("a");
-  CHECK(text(f.plan(0.4), "mix.small") == "Teil A: 0.8 ml – below 1 ml it is inaccurate. Use more water or dose by hand.");
+  CHECK(text(f.plan(0.4), "mix.small") == "Teil A: 0.8 ml – under 1 ml is not exact. Use more water or dose by hand.");
   f.pumps["C2"].online = false;
-  CHECK(text(f.plan(10), "mix.pump_offline") == "Teil B: pump not responding – check that it's plugged into the dosing block");
+  CHECK(text(f.plan(10), "mix.pump_offline") == "Teil B: pump not found – plugged into the dosing block?");
   f.pumps["C2"].online = true;
   f.pumps["C1"].flowMlPerMin = kNaN;
-  CHECK(text(f.plan(10), "mix.part") == "Teil A: pump not calibrated – calibrate it under Devices first");
+  CHECK(text(f.plan(10), "mix.part") == "Teil A: Pump not calibrated – calibrate it under Devices first");
   f.pumps["C1"].flowMlPerMin = 50.0;
   f.cfg.recipes[0].steps.push_back({"down", 0.1});
-  CHECK(text(f.plan(10), "mix.ph_in_recipe") == "pH− is a pH bottle – pH always comes last, so take it out of the recipe");
+  CHECK(text(f.plan(10), "mix.ph_in_recipe") == "pH− is a pH correction – it always comes last, not in the recipe");
   f.cfg.recipes[0].steps = {{"a", kNaN}, {"missing", 1.0}};
-  CHECK(text(f.plan(10), "mix.amount_missing") == "Teil A: no ml per litre in the recipe");
-  CHECK(text(f.plan(10), "mix.canister") == "The recipe uses a bottle that no longer exists – edit the recipe");
-  CHECK(text(f.plan(kNaN), "mix.no_volume") == "Enter the amount of water");
+  CHECK(text(f.plan(10), "mix.amount_missing") == "Teil A: amount per litre missing");
+  CHECK(text(f.plan(10), "mix.canister") == "A bottle of the recipe is missing – edit the recipe");
+  CHECK(text(f.plan(kNaN), "mix.no_volume") == "Amount of water missing");
   CHECK(planMix(f.cfg, f.rt, f.pumps, {"none", 10.0, "new", false}, 1790000000, false).errors.at(0).text == "Recipe not found");
   // the reasons a dose cannot be split into runs, with the numbers they name
   Limits lim;
   Msg err;
   splitRuns(0.5, 50, lim, 0, err);
-  CHECK(err.text == "0.5 ml would run the pump under 1.0\u00a0s – too short to be accurate");
+  CHECK(err.text == "0.5 ml is under 1.0\u00a0s of pumping – not exact enough");
   CHECK(err.args["s"] == doctest::Approx(1.0));
   splitRuns(500, 50, lim, 6, err);
-  CHECK(err.text == "500.0 ml would take more than 6 pump runs – check the amount");
+  CHECK(err.text == "500.0 ml would need more than 6 runs – check the amount");
   splitRuns(10, kNaN, lim, 0, err);
-  CHECK(err.text == "pump not calibrated – calibrate it under Devices first");
-  CHECK(planPhDose(kNaN, 5.8, 5.0, 20, 1.0).reason.text == "pH reading missing");
-  CHECK(planPhDose(6.5, 5.8, 5.0, kNaN, 1.0).reason.text == "tank volume unknown");
+  CHECK(err.text == "Pump not calibrated – calibrate it under Devices first");
+  CHECK(planPhDose(kNaN, 5.8, 5.0, 20, 1.0).reason.text == "pH value missing");
+  CHECK(planPhDose(6.5, 5.8, 5.0, kNaN, 1.0).reason.text == "Tank volume unknown");
   CHECK(planPhDose(5.5, 5.8, 5.0, 20, 1.0).reason.text == "pH is not above the target");
   // a key the table has, never German text written next to it
   f.cfg.recipes[0].steps = {{"a", 2.0}, {"b", 1.0}};
@@ -124,7 +128,7 @@ TEST_CASE("EC dose: a part that cannot be split names its bottle, in both langua
   CHECK(d.reason.args["name"] == "Teil B");
   CHECK(d.reason.args["canister"] == "b");
   CHECK(d.reason.args["reason"]["key"] == "dose.no_flow");
-  CHECK(d.reason.text == "Teil B: pump not calibrated – calibrate it under Devices first");
+  CHECK(d.reason.text == "Teil B: Pump not calibrated – calibrate it under Devices first");
 }
 
 TEST_CASE("Mischen: pH im Rezept wird abgelehnt (M1-3, RAT-004)") {
@@ -406,6 +410,234 @@ TEST_CASE("Mix: a fixed addition goes in per litre of fresh water, like every pa
   REQUIRE(t.ok);
   CHECK(t.steps[0].ml == doctest::Approx(20.0));
   CHECK(t.steps[2].ml == doctest::Approx(5.0));
+}
+
+namespace {
+// A fixed pattern to a target EC (SD-057 way 2, SD-098): water EC entered, no probe
+MixPlan pattern(Fix& f, double target, double waterEc, double water = 10, const std::string& mode = "new", bool phAuto = false) {
+  MixRequest req{"r", water, mode, false};
+  req.amounts = "target";
+  req.targetEc = target;
+  req.waterEc = waterEc;
+  req.targetMin = 0.2;
+  req.targetMax = 4.0;
+  return planMix(f.cfg, f.rt, f.pumps, req, 1790000000, phAuto);
+}
+bool hasKey(const std::vector<Msg>& ms, const std::string& key) {
+  return std::any_of(ms.begin(), ms.end(), [&](const Msg& m) { return m.key == key; });
+}
+double mlOf(const MixPlan& p, const std::string& canister) {
+  for (const auto& s : p.steps)
+    if (s.canister == canister) return s.ml;
+  return kNaN;
+}
+}  // namespace
+
+TEST_CASE("Fixed pattern to a target EC: from the reference, the pair in its ratio, the water's EC subtracted, fixed parts per fresh litre (SD-057, SD-098, RAT-087, RAT-054, RAT-011)") {
+  Fix f;
+  f.cfg.recipes[0].refEc = 0.9;  // 0.3 per ml/L over A 2 + B 1
+  SUBCASE("at the reference with water at 0: exactly the recipe's amounts") {
+    const auto p = pattern(f, 0.9, 0.0);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") == doctest::Approx(20.0));
+    CHECK(mlOf(p, "b") == doctest::Approx(10.0));
+    CHECK(p.factor == doctest::Approx(1.0));
+    CHECK(p.expectedEc == doctest::Approx(0.9));
+    CHECK(hasKey(p.infos, "mix.no_feedback"));  // it runs without feedback and says so
+    CHECK_FALSE(hasKey(p.warnings, "mix.capped"));
+    CHECK(json(p)["factor"] == doctest::Approx(1.0));
+  }
+  SUBCASE("a lower target, or the water's own EC, scales every part alike") {
+    for (const auto& [target, water] : std::vector<std::pair<double, double>>{{0.6, 0.0}, {0.9, 0.3}}) {
+      const auto p = pattern(f, target, water);
+      REQUIRE(p.ok);
+      CHECK(p.factor == doctest::Approx(2.0 / 3.0));
+      CHECK(mlOf(p, "a") == doctest::Approx(2.0 * mlOf(p, "b")));  // the pair stays 2:1
+      CHECK(mlOf(p, "a") + mlOf(p, "b") == doctest::Approx(20.0));
+      CHECK(p.expectedEc == doctest::Approx(target));
+      CHECK_FALSE(hasKey(p.warnings, "mix.capped"));
+    }
+  }
+  SUBCASE("a fixed part goes in per litre of fresh water; at the reference the scaled parts are the recipe's") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    f.cfg.recipes[0].refEc = 1.05;  // 0.3 per ml/L over all 3.5 ml/L (an assumption: the fixed part as strong as the rest)
+    auto p = pattern(f, 1.05, 0.0);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") == doctest::Approx(20.0));
+    CHECK(mlOf(p, "b") == doctest::Approx(10.0));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK(p.expectedEc == doctest::Approx(1.05));  // the fixed part counted once
+    p = pattern(f, 0.75, 0.0);  // (0.75 − 0.5 × 0.3) / 0.3 = 2 ml/L of 3: two thirds
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(2.0 / 3.0));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK(p.expectedEc == doctest::Approx(0.75));
+  }
+  SUBCASE("a learned effect with a fixed part: the fixed part counted with it, once") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    f.cfg.recipes[0].refEc = 1.05;
+    f.rt.ecEffects["r"] = 0.45;
+    const auto p = pattern(f, 0.9, 0.0);  // (0.9 − 0.5 × 0.45) / 0.45 = 1.5 ml/L of 3: half
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(0.5));
+    CHECK(mlOf(p, "a") == doctest::Approx(10.0));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK(p.expectedEc == doctest::Approx(0.9));
+  }
+  SUBCASE("on a top-up, per litre of the fresh water, a fixed part too (RAT-011)") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    f.cfg.recipes[0].refEc = 1.05;
+    f.rt.tankVolumeL = 20;
+    const auto p = pattern(f, 0.75, 0.5, 10, "topup");  // (0.75 − 0.5 − 0.15) / 0.3 = 1/3 ml/L of 3
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(1.0 / 9.0));
+    CHECK(mlOf(p, "a") + mlOf(p, "b") == doctest::Approx(10.0 / 3.0));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK_FALSE(hasKey(p.warnings, "mix.water_ec_high"));  // the note is for a new fill only
+  }
+}
+
+TEST_CASE("Fixed pattern to a target EC: never more than the recipe's amounts, whatever the reference or the learned effect (SD-098, RAT-087, RAT-056, RAT-066)") {
+  Fix f;
+  SUBCASE("a target above the chart: the recipe's amounts, and the plan says what to expect") {
+    f.cfg.recipes[0].refEc = 0.9;
+    const auto p = pattern(f, 2.0, 0.0);
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(1.0));
+    CHECK(mlOf(p, "a") == doctest::Approx(20.0));
+    CHECK(p.expectedEc == doctest::Approx(0.9));
+    CHECK(hasKey(p.warnings, "mix.capped"));
+  }
+  SUBCASE("a reference typed far too low (it passes the band) doses no more than the recipe") {
+    f.cfg.recipes[0].refEc = 0.4;  // 0.13 per ml/L, about a third of the real one
+    const auto p = pattern(f, 2.1, 0.0);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") + mlOf(p, "b") <= doctest::Approx(30.0));
+  }
+  SUBCASE("no floor at the start effect: a weak product reaches its target") {
+    f.cfg.recipes[0].refEc = 0.42;  // 0.14 per ml/L
+    const auto p = pattern(f, 0.28, 0.0);
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(2.0 / 3.0));
+  }
+  SUBCASE("a learned effect only makes the amounts smaller") {
+    f.cfg.recipes[0].refEc = 0.9;
+    f.rt.ecEffects["r"] = 0.45;  // stronger than the reference says
+    auto p = pattern(f, 0.6, 0.0);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") + mlOf(p, "b") == doctest::Approx(0.6 / 0.45 * 10));
+    for (double learned : {0.2, 0.05}) {  // weaker, or below the band: changes nothing
+      f.rt.ecEffects["r"] = learned;
+      p = pattern(f, 0.6, 0.0);
+      REQUIRE(p.ok);
+      CHECK(mlOf(p, "a") + mlOf(p, "b") == doctest::Approx(20.0));
+    }
+    f.rt.ecEffects["r"] = 2.0;  // stored above the band: counts at its top, as for a round (RAT-056)
+    p = pattern(f, 0.6, 0.0);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") + mlOf(p, "b") == doctest::Approx(0.6 / 1.1 * 10));
+  }
+}
+
+TEST_CASE("Fixed pattern to a target EC: refused without a reference, a target in range, the water's EC or with EC control on; water at the target gets only fixed parts; the notes on pH (SD-057, SD-098, RAT-087, R5, RAT-006, RAT-046)") {
+  Fix f;
+  SUBCASE("no reference, or one outside the band: refused, also with a learned effect; the recipe's amounts stay") {
+    f.rt.ecEffects["r"] = 0.3;
+    for (double ref : {kNaN, 0.1, 9.0}) {
+      f.cfg.recipes[0].refEc = ref;
+      const auto p = pattern(f, 0.9, 0.0);
+      CHECK_FALSE(p.ok);
+      CHECK(hasKey(p.errors, "mix.no_reference"));
+      CHECK(f.plan(10).ok);
+    }
+  }
+  f.cfg.recipes[0].refEc = 0.9;
+  SUBCASE("a missing water EC is never taken as 0; an entered 0 is a value") {
+    const auto p = pattern(f, 0.9, kNaN);
+    CHECK_FALSE(p.ok);
+    CHECK(hasKey(p.errors, "mix.water_ec_missing"));
+    CHECK(pattern(f, 0.9, 0.0).ok);
+    CHECK(hasKey(pattern(f, 0.9, -0.1).errors, "mix.water_ec_missing"));
+    CHECK(json(p)["factor"].is_null());  // a refused plan works out no factor
+  }
+  SUBCASE("a water EC above the EC target's range is refused as a likely µS/cm") {
+    CHECK(hasKey(pattern(f, 1.2, 300).errors, "mix.water_ec_unit"));
+    CHECK_FALSE(hasKey(pattern(f, 1.2, 4.0).errors, "mix.water_ec_unit"));
+  }
+  SUBCASE("with EC control on and free, refused: it would take the tank to its own target (SD-089 S20)") {
+    MixRequest req{"r", 10, "new", false};
+    req.amounts = "target";
+    req.targetEc = 0.6;
+    req.waterEc = 0.0;
+    req.ecControlOn = true;
+    req.ecControlTarget = 1.4;
+    const auto p = planMix(f.cfg, f.rt, f.pumps, req, 1790000000, false);
+    CHECK_FALSE(p.ok);
+    REQUIRE(hasKey(p.errors, "mix.target_ec_control"));
+    CHECK(p.errors.front().args["target"] == doctest::Approx(1.4));
+    CHECK(f.plan(10).ok);  // the recipe's amounts stay
+  }
+  SUBCASE("an unknown choice of amounts is refused") {
+    MixRequest req{"r", 10, "new", false};
+    req.amounts = "foo";
+    CHECK(hasKey(planMix(f.cfg, f.rt, f.pumps, req, 1790000000, false).errors, "mix.amounts"));
+  }
+  SUBCASE("a target missing or outside the EC target's range is refused; its ends are in it") {
+    for (double target : {kNaN, 0.1, 4.5}) CHECK(hasKey(pattern(f, target, 0.0).errors, "mix.target_range"));
+    for (double target : {0.2, 4.0}) CHECK_FALSE(hasKey(pattern(f, target, 0.0).errors, "mix.target_range"));
+  }
+  SUBCASE("a target just above the water: parts below an accurate run refuse the plan, for both parts of the pair (RAT-054)") {
+    const auto p = pattern(f, 0.205, 0.2);
+    CHECK_FALSE(p.ok);
+    std::set<std::string> parts;
+    for (const auto& e : p.errors)
+      if (e.key == "mix.part" && e.args["reason"]["key"] == "dose.too_small") parts.insert(e.args["canister"].get<std::string>());
+    CHECK(parts == std::set<std::string>{"a", "b"});
+  }
+  SUBCASE("water at or above the target: nothing scaled; a fixed part still goes in") {
+    auto p = pattern(f, 0.5, 0.6);
+    CHECK_FALSE(p.ok);
+    CHECK(hasKey(p.errors, "mix.at_target"));
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    f.cfg.recipes[0].refEc = 1.05;
+    p = pattern(f, 0.5, 0.6);
+    REQUIRE(p.ok);
+    CHECK(std::isnan(mlOf(p, "a")));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK(hasKey(p.warnings, "mix.at_target_fixed"));
+    p = pattern(f, 0.2, 0.1);  // below the target, but the fixed part's 0.15 reaches it
+    REQUIRE(p.ok);
+    CHECK(std::isnan(mlOf(p, "a")));
+    CHECK(hasKey(p.warnings, "mix.at_target_fixed"));
+  }
+  SUBCASE("a new fill above 0.4 says so; with pH control on, the plan names the EC its pH− dose adds") {
+    CHECK(hasKey(pattern(f, 1.2, 0.5).warnings, "mix.water_ec_high"));
+    CHECK_FALSE(hasKey(pattern(f, 1.2, 0.3).warnings, "mix.water_ec_high"));
+    auto p = pattern(f, 0.9, 0.0, 10, "new", true);
+    CHECK(hasKey(p.infos, "mix.ph_adds_ec"));
+    CHECK(p.after.key == "mix.after_auto_target");
+    p = pattern(f, 0.9, 0.0);
+    CHECK_FALSE(hasKey(p.infos, "mix.ph_adds_ec"));
+    CHECK(p.after.key == "mix.after_manual_target");
+  }
+  SUBCASE("an EC to expect below pH control's EC lock: the pH by hand (RAT-046)") {
+    MixRequest req{"r", 10, "new", false};
+    req.amounts = "target";
+    req.targetEc = 0.4;
+    req.waterEc = 0.0;
+    req.targetMin = 0.2;
+    req.targetMax = 4.0;
+    req.phEcFloor = 0.5;
+    auto p = planMix(f.cfg, f.rt, f.pumps, req, 1790000000, true);
+    REQUIRE(p.ok);
+    CHECK(hasKey(p.warnings, "mix.ph_gate"));
+    CHECK_FALSE(hasKey(p.infos, "mix.ph_adds_ec"));
+    CHECK(p.after.key == "mix.after_manual_target");
+    req.targetEc = 0.6;
+    p = planMix(f.cfg, f.rt, f.pumps, req, 1790000000, true);
+    CHECK_FALSE(hasKey(p.warnings, "mix.ph_gate"));
+    CHECK(hasKey(p.infos, "mix.ph_adds_ec"));
+  }
 }
 
 TEST_CASE("pH-Gabe: Deckel und Startwirkung (M4-1, M4-5, RAT-050)") {

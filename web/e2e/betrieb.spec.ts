@@ -254,18 +254,18 @@ test("The mix plan's refusals come in the page's language: English and German (#
   await page.reload();
   await page.locator("input[name=water]").fill("500");
   const preview = page.getByTestId("mix-preview");
-  await expect(preview).toContainText("More than the tank's usable volume (60 L). Check the amount (litres or gallons?)");
+  await expect(preview).toContainText("More than the tank holds (60 L). Check the amount (litres or gallons?)");
   await expect(preview).not.toContainText("Nutzvolumen");
   await page.evaluate(() => localStorage.setItem("gc.lang", "de"));
   await page.reload();
   await page.locator("input[name=water]").fill("500");
   await expect(preview).toContainText("Mehr als das Nutzvolumen des Tanks (60 L). Menge prüfen (L oder Gallonen?)");
-  await expect(preview).not.toContainText("usable volume");
+  await expect(preview).not.toContainText("tank holds");
   // a bottle's own refusal nests the pump's reason, which comes in the page's language too
   await page.route(/\/api\/v1\/mix\/plan(\?|$)/, async (route) => {
     const res = await route.fetch();
     const plan = await res.json();
-    const reason = { key: "dose.no_flow", text: "pump not calibrated – calibrate it under Devices first" };
+    const reason = { key: "dose.no_flow", text: "Pump not calibrated – calibrate it under Devices first" };
     plan.errors = [{ key: "mix.part", text: `Teil A: ${reason.text}`, args: { name: "Teil A", reason, canister: "teil-a" } }];
     plan.ok = false;
     await route.fulfill({ response: res, json: plan });
@@ -275,7 +275,7 @@ test("The mix plan's refusals come in the page's language: English and German (#
   await page.evaluate(() => localStorage.setItem("gc.lang", "en"));
   await page.reload();
   await page.locator("input[name=water]").fill("20");
-  await expect(preview).toContainText("Teil A: pump not calibrated – calibrate it under Devices first");
+  await expect(preview).toContainText("Teil A: Pump not calibrated – calibrate it under Devices first");
   await page.unroute(/\/api\/v1\/mix\/plan(\?|$)/);
   await page.evaluate(() => localStorage.removeItem("gc.lang"));
 });
