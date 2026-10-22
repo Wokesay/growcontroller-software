@@ -130,6 +130,8 @@ export type MixPlan = {
   ok: boolean; recipe: string; recipeName: string; mode: string; waterL: number | null;
   steps: { canister: string; name: string; color: string; pair: string; ml: number | null; mlPerL: number | null; flowMlPerMin: number | null; runs: number[]; fixed?: boolean }[];
   errors: Msg[]; warnings: Msg[]; after: Msg; totalMl: number; totalMs: number;
+  // A fixed pattern to a target EC (SD-094): the factor on the scaled parts (null while refused), the EC to expect, notes
+  amounts: "recipe" | "target" | ""; targetEc: number | null; waterEc: number | null; factor: number | null; expectedEc: number | null; infos: Msg[];
 };
 
 export type SeriesData = { series: string; stepS: number; t: number[]; avg: (number | null)[]; min: (number | null)[]; max: (number | null)[] };

@@ -169,3 +169,88 @@ test("A mix with the circulation pump mixes in before it ends; the card says for
   await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 60_000 });
   await simSpeed(page, 1);
 });
+
+// EC control on or off, as a person switches it under Functions
+const ecControl = (page: Page, enabled: boolean) =>
+  page.evaluate(async (on) => (await fetch("/api/v1/functions/ec_control", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on }) })).status, enabled);
+
+test("Mixing to an EC without measuring is offered with EC control off, needs the recipe's chart EC and the water's EC, and doses at most the recipe's amounts (SD-057, SD-094, RAT-087)", async ({ page }) => {
+  await login(page);
+  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  await page.goto("/#/mischen");
+  await page.reload();
+  // EC control on: it takes the tank to its own target after mixing, so only the recipe's amounts (SD-089 S20)
+  await expect(page.getByTestId("mix-ec-control")).toContainText("Die EC-Nachdosierung ist an");
+  await expect(page.getByTestId("mix-ec-control")).toContainText("Schalte „EC nachdosieren“ unter Funktionen aus, dann geht „Auf Ziel-EC“.");
+  await expect(page.getByRole("tablist", { name: "Mengen" })).toHaveCount(0);
+  expect(await ecControl(page, false)).toBe(200);
+  await page.reload();
+  await page.locator("select[name=recipe]").selectOption({ label: "Wachstum" });
+  await page.locator("input[name=water]").fill("20");
+  await page.getByRole("tablist", { name: "Mengen" }).getByRole("tab", { name: "Auf Ziel-EC" }).click();
+  await expect(page.getByText("Möglich: 0,2 bis 4,0 mS/cm")).toBeVisible();
+  const preview = page.getByTestId("mix-preview");
+  // No chart EC: refused, with what to do; the recipe's amounts stay
+  await page.locator("input[name=targetEc]").fill("0,85");
+  await page.locator("input[name=waterEc]").fill("0,2");
+  await expect(preview).toContainText("Rezept „Wachstum“ hat keine passende EC laut Plan");
+  await expect(page.getByTestId("mix-start")).toBeDisabled();
+  // A chart EC of 1.15 over 4.6 ml/L: (0.85 − 0.1) / 0.25 = 3 ml/L, two thirds of each part; a larger
+  // effect EC control learned for Wachstum before it was switched off makes it less (SD-094)
+  expect(await saveChart(page, "Wachstum", { refEc: 1.15, ph: null })).toBe(200);
+  const learned = await page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).effects.ecByRecipe?.wachstum ?? null);
+  const [lo, hi] = [0.25 * 0.275, 4 * 0.275];  // the band around the start effect (RAT-056, REF_EFFECT_BAND)
+  const e = typeof learned === "number" && learned >= lo ? Math.max(0.25, Math.min(learned, hi)) : 0.25;
+  const de = (v: number, d: number) => v.toFixed(d).replace(".", ",");
+  await page.locator("input[name=waterEc]").fill("0,1");
+  await expect(page.getByTestId("mix-expected")).toHaveText("Zu erwarten: etwa 0,85 mS/cm (gerechnet, nicht gemessen)");
+  await expect(preview).toContainText("Ohne Messen: Der Hub gibt die berechneten Mengen");
+  await expect(preview).toContainText(`Gesamt ${de(15 / e, 1)} ml`);
+  // Above the chart: the recipe's amounts, and what to expect instead
+  await page.locator("input[name=targetEc]").fill("2,5");
+  await expect(preview).toContainText("Ohne Messen gibt der Hub höchstens die Mengen des Rezepts – das reicht nicht für 2,50 mS/cm");
+  await expect(page.getByTestId("mix-expected")).toContainText(`etwa ${de(0.1 + e * 4.6, 2)} mS/cm`);
+  await expect(preview).toContainText("Gesamt 92,0 ml");
+  // The water's EC is never taken as 0: said at its field
+  const waterEc = page.locator("input[name=waterEc]");
+  await waterEc.fill("");
+  await expect(page.getByText("Trag die EC des Wassers ein (0 bei Osmosewasser)")).toBeVisible();
+  await expect(page.getByTestId("mix-start")).toBeDisabled();
+  // On a new fill the probe's reading is taken over with one tap, the focus on the field; not on a top-up
+  const useProbe = page.getByRole("button", { name: /^Frisches Wasser schon im Tank\? Sonde übernehmen: \d+,\d{2}\smS\/cm$/ });
+  const mode = page.getByRole("tablist", { name: "Neu oder auffüllen" });
+  await mode.getByRole("tab", { name: "Auffüllen" }).click();
+  await expect(page.getByText("EC des frischen Wassers")).toBeVisible();
+  await expect(useProbe).toHaveCount(0);
+  await mode.getByRole("tab", { name: "Neu ansetzen" }).click();
+  await useProbe.click();
+  await expect(waterEc).toBeFocused();
+  await expect(waterEc).toHaveValue(/^\d+(,\d{1,2})?$/);
+  // Started: the job doses the scaled amounts, keeps what it aimed at, and its card names it
+  await waterEc.fill("0,1");
+  await page.locator("input[name=targetEc]").fill("0,85");
+  await expect(page.getByTestId("mix-expected")).toHaveText("Zu erwarten: etwa 0,85 mS/cm (gerechnet, nicht gemessen)");
+  await expect(page.getByTestId("mix-start")).toBeEnabled();
+  await simSpeed(page, 20);
+  await expect.poll(async () => page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).dosing), { timeout: 60_000 }).toBeNull();
+  await simSpeed(page, 0);  // held: no dose starts and no time passes between this check and the start
+  const recent = await page.evaluate(async () => {
+    const st = await (await fetch("/api/v1/state")).json();
+    return st.lastMixAt > 0 && st.now - st.lastMixAt < 30 * 60;
+  });
+  await page.getByTestId("mix-start").click();
+  if (recent) await page.getByRole("button", { name: "Trotzdem mischen" }).click();  // the mix before was minutes ago (RAT-003)
+  const job = page.getByTestId("job");
+  await expect(job).toContainText("Auf 0,85 mS/cm, ohne Messen – etwa 0,85 mS/cm zu erwarten");
+  const info = await page.evaluate(async () => {
+    const j = (await (await fetch("/api/v1/state")).json()).job;
+    return { amounts: j.info.amounts, ml: j.steps.reduce((a: number, x: { ml: number }) => a + x.ml, 0) };
+  });
+  expect(info.amounts).toBe("target");
+  expect(info.ml).toBeCloseTo(15 / e, 1);
+  await simSpeed(page, 20);
+  await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 90_000 });
+  await simSpeed(page, 1);
+  expect(await saveChart(page, "Wachstum", { refEc: null, ph: null })).toBe(200);
+  expect(await ecControl(page, true)).toBe(200);
+});

@@ -707,6 +707,7 @@ TEST_CASE("API: Import prüft Grenzen und Kalibrierungen, nicht während eines A
   CHECK(c.call("POST", "/api/v1/config/import", bad).first == 422);
   // Falsche Typen bringen den Server nicht zum Absturz
   CHECK(c.call("POST", "/api/v1/mix/plan", {{"recipe", 5}, {"waterL", "zehn"}, {"confirmRepeat", "ja"}}).first < 500);
+  CHECK(c.call("POST", "/api/v1/mix/plan", {{"recipe", "wachstum"}, {"waterL", 10}, {"amounts", 3}, {"targetEc", "viel"}, {"waterEc", true}}).first < 500);
   CHECK(c.call("PUT", "/api/v1/roles/tank.ph", {{"device", "PHEC-3F2A91"}, {"channel", 99}}).first == 422);
   CHECK(c.call("POST", "/api/v1/grow/start", {{"phases", "viele"}}).first >= 400);
   CHECK(c.call("GET", "/api/v1/state").first == 200);
@@ -1009,6 +1010,86 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
     settle();
     CHECK_FALSE(learned(bloom));
   }
+}
+
+TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's chart EC, within the EC target's range, only with EC control off, and started with what it aims at (SD-057, SD-094, RAT-087)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);  // the demo's own mix first
+  auto plan = [&](const gc::json& extra) {
+    gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "target"}};
+    req.update(extra);
+    return c.ok("POST", "/api/v1/mix/plan", req);
+  };
+  auto keys = [](const gc::json& list) {
+    std::set<std::string> out;
+    for (const auto& m : list) out.insert(m["key"].get<std::string>());
+    return out;
+  };
+  // With EC control on, refused: it would take the tank to its own target afterwards (SD-089 S20)
+  gc::json p = plan({{"targetEc", 1.0}, {"waterEc", 0.0}});
+  CHECK(keys(p["errors"]).count("mix.target_ec_control") == 1);
+  {
+    for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
+    const auto [st, j] = c.call("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "target"}, {"targetEc", 1.0}, {"waterEc", 0.0}});
+    CHECK(st == 422);
+    CHECK(j["error"]["key"] == "mix.target_ec_control");
+    CHECK(c.state()["job"].is_null());
+  }
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+  // A target or water EC without "target", or amounts of another type, never mix the full recipe
+  for (const gc::json& odd : {gc::json{{"amounts", 3}}, gc::json{{"amounts", nullptr}, {"targetEc", 1.0}, {"waterEc", 0.0}},
+                              gc::json{{"amounts", "recipe"}, {"targetEc", 1.0}}})
+    CHECK(keys(plan(odd)["errors"]).count("mix.amounts") == 1);
+  // Without a chart EC the target way is refused; the recipe's amounts stay
+  p = plan({{"targetEc", 1.0}, {"waterEc", 0.0}});
+  CHECK_FALSE(p["ok"].get<bool>());
+  CHECK(keys(p["errors"]).count("mix.no_reference") == 1);
+  CHECK(c.ok("POST", "/api/v1/mix/plan", {{"recipe", "wachstum"}, {"waterL", 20}, {"confirmRepeat", true}})["ok"] == true);
+  // The demo's Wachstum: 2 + 2 + 0.6 ml/L; a chart EC of 1.15 is 0.25 per ml/L over all parts
+  gc::json cfg = c.ok("GET", "/api/v1/config");
+  gc::json steps;
+  for (const auto& r : cfg["recipes"])
+    if (r["id"] == "wachstum") steps = r["steps"];
+  c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps}, {"refEc", 1.15}});
+  // From the reference's 0.25, or a larger effect EC control learned for Wachstum before it was switched off
+  const gc::json learned = c.state()["effects"]["ecByRecipe"].value("wachstum", gc::json());
+  const double lo = gc::kRefEffectMin * gc::kEcStartEffect, hi = gc::kRefEffectMax * gc::kEcStartEffect;  // the band (RAT-056)
+  const double e = learned.is_number() && learned.get<double>() >= lo ? std::max(0.25, std::min(learned.get<double>(), hi)) : 0.25;
+  p = plan({{"targetEc", 0.85}, {"waterEc", 0.1}});  // (0.85 − 0.1) / 0.25 = 3 of 4.6 ml/L
+  REQUIRE(p["ok"].get<bool>());
+  CHECK(p["amounts"] == "target");
+  const double factor = 0.75 / e / 4.6;
+  CHECK(p["factor"].get<double>() == doctest::Approx(factor));
+  CHECK(p["expectedEc"].get<double>() == doctest::Approx(0.85));
+  CHECK(keys(p["infos"]).count("mix.no_feedback") == 1);
+  CHECK(p["totalMl"].get<double>() == doctest::Approx(factor * 4.6 * 20));
+  // The range is the EC target's in the catalog; missing values are never 0 (R5)
+  CHECK(keys(plan({{"targetEc", 4.5}, {"waterEc", 0.0}})["errors"]).count("mix.target_range") == 1);
+  CHECK(keys(plan({{"targetEc", 0.85}})["errors"]).count("mix.water_ec_missing") == 1);
+  CHECK(keys(plan({{"targetEc", 0.85}, {"waterEc", nullptr}})["errors"]).count("mix.water_ec_missing") == 1);
+  // Above the chart: the recipe's amounts, and what to expect
+  p = plan({{"targetEc", 2.5}, {"waterEc", 0.0}});
+  REQUIRE(p["ok"].get<bool>());
+  CHECK(p["factor"].get<double>() == doctest::Approx(1.0));
+  CHECK(keys(p["warnings"]).count("mix.capped") == 1);
+  // Started: the job and its event keep what it aimed at
+  for (int i = 0; i < 720 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // not over an EC round's dose
+  gc::json req = {{"recipe", "wachstum"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true},
+                  {"amounts", "target"}, {"targetEc", 0.85}, {"waterEc", 0.1}};
+  const gc::json job = c.ok("POST", "/api/v1/mix/start", req)["job"];
+  CHECK(job["info"]["amounts"] == "target");
+  CHECK(job["info"]["targetEc"].get<double>() == doctest::Approx(0.85));
+  CHECK(job["info"]["waterEc"].get<double>() == doctest::Approx(0.1));
+  CHECK(job["info"]["expectedEc"].get<double>() == doctest::Approx(0.85));
+  double jobMl = 0;  // the job doses the scaled amounts it planned
+  for (const auto& st : job["steps"]) jobMl += st["ml"].get<double>();
+  CHECK(jobMl == doctest::Approx(factor * 4.6 * 20));
+  bool logged = false;
+  const gc::json events = c.ok("GET", "/api/v1/events?limit=5&type=mix")["events"];
+  for (const auto& ev : events) logged = logged || ev["text"]["key"] == "ev.mix.started.target_new";
+  CHECK(logged);
 }
 
 TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {
