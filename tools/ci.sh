@@ -16,7 +16,7 @@ tools/arch_check.sh
 end
 
 group "CI and release scripts, workflow pins"
-node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/tool_code_guard.test.mjs tools/sbom_web.test.mjs tools/core_tests.test.mjs
+node --test tools/ci_changes.test.mjs tools/workflows.test.mjs tools/signatures_report.test.mjs tools/sbom_cpp.test.mjs tools/app.test.mjs tools/version.test.mjs tools/flash_manifest.test.mjs tools/arch_check.test.mjs tools/tool_code_guard.test.mjs tools/sbom_web.test.mjs tools/core_tests.test.mjs tools/old_name.test.mjs
 end
 
 group "Text keys of the web app"

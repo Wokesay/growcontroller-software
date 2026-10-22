@@ -162,11 +162,11 @@ bool looksLikeToken(const std::string& s) {
 }
 
 void usage() {
-  std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
+  std::cout << "Doseph on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
             << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local; as an app use --app);\n"
             << "                      sensors are picked in the web app\n"
             << "  --token-file FILE   long-lived access token (without it: the environment variable GC_HA_TOKEN)\n"
-            << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
+            << "  --data DIR          where the hub keeps its files (doseph-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"
             << "  --host ADDR         address (127.0.0.1)\n"
             << "  --web DIR           built web app (web/dist)\n"
@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
   }
   // Defaults. As a Home Assistant app (SD-034) the address and the token are
   // fixed below, so the Supervisor's token never goes anywhere but the Supervisor.
-  if (data.empty()) data = app ? "/data/hub" : "growcontroller-ha-data";
+  if (data.empty()) data = app ? "/data/hub" : "doseph-ha-data";
   if (host.empty()) host = app ? "0.0.0.0" : "127.0.0.1";
   if (web.empty()) web = app ? "/web" : "web/dist";
   if (port == 0) port = app ? 8099 : 8090;
@@ -287,12 +287,12 @@ int main(int argc, char** argv) {
   // What to do when the app cannot start: never reinstall, that deletes its data
   const char* const startAgain =
       "Your data is kept. Start the app again. If this comes back, restore the backup from before the update "
-      "and report this: https://github.com/Wokesay/growcontroller-software/issues\n";
+      "and report this: https://github.com/Wokesay/doseph/issues\n";
 #ifdef __linux__
   if (app && geteuid() == 0) {
     const std::string why = dropRoot(data);
     if (!why.empty()) {
-      std::cerr << "growcontroller did not start: it could not give up its administrator rights (root). Detail: " << why << ".\n"
+      std::cerr << "Doseph did not start: it could not give up its administrator rights (root). Detail: " << why << ".\n"
                 << startAgain;
       return 2;
     }
@@ -303,7 +303,7 @@ int main(int argc, char** argv) {
   sim::FileStorage store(data);
   if (!store.ready()) {  // a password set here must survive a restart (#68)
     if (app)
-      std::cerr << "growcontroller did not start: its data folder " << data << " cannot be written.\n" << startAgain;
+      std::cerr << "Doseph did not start: its data folder " << data << " cannot be written.\n" << startAgain;
     else
       std::cerr << "The data folder " << data << " cannot be written. Choose a writable one with --data.\n";
     return 2;
@@ -421,6 +421,14 @@ int main(int argc, char** argv) {
     if (r.status == 200) r.body = {{"ok", true}};
     reply(res, r);
   });
+  // Restored settings: their sensors are read at once, not after a restart (#312)
+  svr.Post("/api/v1/config/import", [&](const httplib::Request& req, httplib::Response& res) {
+    const gc::ApiResponse r = ha::importRoute(api, hub, bus, toApi(req));
+    res.status = r.status;
+    for (const auto& [k, v] : r.headers) res.set_header(k, v);
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(r.body, r.contentType);
+  });
   svr.Get(R"(/api/v1/.*)", apiHandler);
   svr.Post(R"(/api/v1/.*)", apiHandler);
   svr.Put(R"(/api/v1/.*)", apiHandler);
@@ -428,12 +436,12 @@ int main(int argc, char** argv) {
   svr.Delete(R"(/api/v1/.*)", apiHandler);
   std::error_code webErr;  // a folder it may not read is no web app, not a crash at the start (#80)
   const bool haveWeb = std::filesystem::exists(std::filesystem::path(web) / "index.html", webErr);
-  if (webErr) std::cerr << "The web app in " << web << " cannot be read; growcontroller runs without it. Detail: " << webErr.message() << ".\n";
+  if (webErr) std::cerr << "The web app in " << web << " cannot be read; Doseph runs without it. Detail: " << webErr.message() << ".\n";
   if (haveWeb) svr.set_mount_point("/", web);
   svr.Get(R"(/(?!api/).*)", [&](const httplib::Request&, httplib::Response& res) {
     if (!haveWeb) {
-      res.set_content(app ? "growcontroller's web app cannot be read. Start the app again; if this stays, report it: "
-                            "https://github.com/Wokesay/growcontroller-software/issues"
+      res.set_content(app ? "Doseph's web app cannot be read. Start the app again; if this stays, report it: "
+                            "https://github.com/Wokesay/doseph/issues"
                           : "Web app not built: cd web && npm ci && npm run build",
                       "text/plain; charset=utf-8");
       return;
@@ -456,11 +464,11 @@ int main(int argc, char** argv) {
     svr.stop();
   });
 
-  std::cout << "growcontroller on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
+  std::cout << "Doseph on Home Assistant (read-only) " << gc::embedded::kVersion << ": http://" << host << ":" << port
             << "\nReading " << bus.entities().size() << " picked sensors from " << mapping.url << " every " << everyS << " s\n";
   if (!setupCode.empty())
     std::cout << "Setup code for the first password: " << setupCode << "\n"
-              << "  Type it on growcontroller's page with your new password. Do not share it.\n"
+              << "  Type it on Doseph's page with your new password. Do not share it.\n"
               << "  It works once; every restart makes a new one.\n";
   std::cout << std::flush;
   svr.listen_after_bind();

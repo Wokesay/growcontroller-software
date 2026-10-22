@@ -22,7 +22,7 @@ const built = (size = "32MB", chip = "esp32s3", mode = size === "32MB" ? "dout" 
   write_flash_args: ["--flash_mode", mode, "--flash_size", size, "--flash_freq", "80m"],
   flash_settings: { flash_mode: mode, flash_size: size, flash_freq: "80m" },
   flash_files: {
-    "0x20000": "growcontroller_hub.bin",
+    "0x20000": "doseph_hub.bin",
     "0x0": "bootloader/bootloader.bin",
     "0x19000": "ota_data_initial.bin",
     "0x8000": "partition_table/partition-table.bin",
@@ -34,7 +34,7 @@ const temp = (prefix) => mkdtempSync(join(tmpdir(), prefix));
 test("the manifest names one ESP32-S3 build, each image at its own offset", () => {
   const files = flashFiles("n32r16v", built());
   const m = manifest("n32r16v", "0.1.0-proto.4", files);
-  assert.equal(m.name, "growcontroller hub for ESP32-S3-DevKitC-1-N32R16V");
+  assert.equal(m.name, "Doseph firmware for ESP32-S3-DevKitC-1-N32R16V");
   assert.equal(m.version, "0.1.0-proto.4");
   assert.equal(m.new_install_prompt_erase, true);
   assert.equal(m.new_install_improv_wait_time, 0);
@@ -45,10 +45,10 @@ test("the manifest names one ESP32-S3 build, each image at its own offset", () =
       { path: "bootloader.bin", offset: 0 },
       { path: "partition-table.bin", offset: 0x8000 },
       { path: "ota_data_initial.bin", offset: 0x19000 },
-      { path: "growcontroller_hub.bin", offset: 0x20000 },
+      { path: "doseph_hub.bin", offset: 0x20000 },
     ],
   }]);
-  assert.equal(flashArgs(built(), files), "--flash_mode dout --flash_size 32MB --flash_freq 80m\n0x0 bootloader.bin\n0x8000 partition-table.bin\n0x19000 ota_data_initial.bin\n0x20000 growcontroller_hub.bin\n");
+  assert.equal(flashArgs(built(), files), "--flash_mode dout --flash_size 32MB --flash_freq 80m\n0x0 bootloader.bin\n0x8000 partition-table.bin\n0x19000 ota_data_initial.bin\n0x20000 doseph_hub.bin\n");
 });
 
 test("a build for another board or chip, or with odd files, gives no manifest", () => {
@@ -84,8 +84,8 @@ test("command line: copies the images and writes manifest and flash_args; a miss
     const out = join(outRoot, "n8r8");
     const missing = spawnSync(process.execPath, [script, "n8r8", build, out], { encoding: "utf8" });
     assert.notEqual(missing.status, 0);
-    assert.match(missing.stderr, /missing in the build: growcontroller_hub.bin/);
-    writeFileSync(join(build, "growcontroller_hub.bin"), "app");
+    assert.match(missing.stderr, /missing in the build: doseph_hub.bin/);
+    writeFileSync(join(build, "doseph_hub.bin"), "app");
     // Settings Kconfig dropped stop it too
     writeFileSync(join(build, "sdkconfig"), boards.n8r8.sdkconfig.filter((l) => !l.includes("QIO")).join("\n"));
     assert.match(spawnSync(process.execPath, [script, "n8r8", build, out], { encoding: "utf8" }).stderr, /lacks .*FLASHMODE_QIO=y/);
@@ -94,7 +94,7 @@ test("command line: copies the images and writes manifest and flash_args; a miss
     const m = JSON.parse(readFileSync(join(out, "manifest.json"), "utf8"));
     assert.equal(m.version, read("VERSION").trim());
     for (const p of m.builds[0].parts) assert.ok(existsSync(join(out, p.path)), p.path);
-    assert.equal(readFileSync(join(out, "growcontroller_hub.bin"), "utf8"), "app");
+    assert.equal(readFileSync(join(out, "doseph_hub.bin"), "utf8"), "app");
     assert.match(readFileSync(join(out, "flash_args"), "utf8"), /^--flash_mode dio --flash_size 8MB/);
     assert.notEqual(spawnSync(process.execPath, [script, "n32r16v", build, out], { encoding: "utf8" }).status, 0, "the other board");
   } finally {

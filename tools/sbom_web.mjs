@@ -63,7 +63,7 @@ export function webSbom(full, lock) {
   }
   // The file is npm's SBOM, filtered here: say so
   const metadata = Array.isArray(full.metadata?.tools)
-    ? { ...full.metadata, tools: [...full.metadata.tools, { vendor: "growcontroller-software", name: "tools/sbom_web.mjs" }] }
+    ? { ...full.metadata, tools: [...full.metadata.tools, { vendor: "Doseph", name: "tools/sbom_web.mjs" }] }
     : full.metadata;
   return { ...full, metadata, components, dependencies };
 }

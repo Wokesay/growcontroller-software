@@ -69,7 +69,7 @@ if (!webOnly) {
   parts.push(`Apache License 2.0 (für die Abseil-Teile in nlohmann/json)\n\n${readFileSync(join(root, "tools", "licenses", "Apache-2.0.txt"), "utf8").trim()}`);
 }
 
-const head = "growcontroller – Lizenzhinweise der enthaltenen Fremdbibliotheken\n" + "Third-party licenses of included libraries\n";
+const head = "Doseph – Lizenzhinweise der enthaltenen Fremdbibliotheken\n" + "Third-party licenses of included libraries\n";
 const sep = "\n\n" + "=".repeat(72) + "\n\n";
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, head + sep + parts.join(sep) + "\n");

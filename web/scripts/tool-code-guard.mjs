@@ -91,7 +91,7 @@ export function toolCodeGuard({ root, lock, entry } = {}) {
   const web = root ?? realpathSync(nodePath.resolve(fileURLToPath(new URL("..", import.meta.url))));
   const main = entry ?? nodePath.join(web, "src", "main.tsx");
   return {
-    name: "growcontroller:tool-code-guard",
+    name: "doseph:tool-code-guard",
     apply: "build",
     generateBundle(_options, bundle) {
       const pkgs = lock ?? JSON.parse(readFileSync(nodePath.join(web, "package-lock.json"), "utf8"));

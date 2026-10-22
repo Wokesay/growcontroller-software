@@ -42,5 +42,9 @@ gc::Result candidatesRoute(gc::Api& api, const HaBus& bus, const gc::ApiRequest&
 gc::Result assignRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req,
                        const std::function<void()>& letHubSee);
 gc::Result lifeRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req);
+// POST /api/v1/config/import: the hub's own route, and the sensors the
+// restored settings pick are read at once, also in an app that had none
+// before (#312).
+gc::ApiResponse importRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req);
 
 }  // namespace ha

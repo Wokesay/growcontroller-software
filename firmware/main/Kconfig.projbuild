@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-menu "growcontroller"
+menu "Doseph"
     config GC_WIFI_SSID
         string "WLAN-Name (Entwicklung; später Einrichtung über den Assistenten)"
         default ""

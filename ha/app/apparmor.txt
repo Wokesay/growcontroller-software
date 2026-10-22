@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # The app's AppArmor profile (#80, docs/HOME_ASSISTANT.md). The Supervisor
 # loads it at install and update and renames the profile to the app's full
-# slug (<repository hash>_growcontroller); it takes the one line that starts
+# slug (<repository hash>_doseph); it takes the one line that starts
 # with "profile", so no other line may. Besides the basic system files of
 # abstractions/base, the app may read only its web app and /etc/hosts
 # (where the Supervisor puts its own address), write only its data folder,
@@ -16,7 +16,7 @@
 # .github/workflows/app.yml runs the image with them.
 #include <tunables/global>
 
-profile growcontroller flags=(attach_disconnected,mediate_deleted) {
+profile doseph flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   capability chown,
@@ -31,7 +31,7 @@ profile growcontroller flags=(attach_disconnected,mediate_deleted) {
   signal (receive) peer=runc,
   signal (receive) peer=crun,
   signal (receive) peer=dockerd,
-  signal (send,receive) peer=*_growcontroller,
+  signal (send,receive) peer=*_doseph,
 
   /sbin/docker-init ix,
   /gc_ha_server ix,

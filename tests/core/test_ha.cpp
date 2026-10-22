@@ -582,6 +582,59 @@ TEST_CASE("Home Assistant: a sensor is picked for a role in one step, and taken 
   CHECK(forgetful.selectedMeasure("sensor.room_temp") == "air_temp");
 }
 
+TEST_CASE("Home Assistant: restored settings read their sensors at once, in an app that had none (#312)") {
+  const gc::Catalog cat = ha::catalog();
+  test::Clock clk;
+  const json states = json::array({described(state("sensor.tank_ph", "6.1", "", iso(kNoonMs)), "ph", "Tank pH")});
+  // The backup of an app that reads its pH from Home Assistant
+  json backup;
+  {
+    ha::HaBus bus;
+    gc::MemoryStorage store;
+    gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+    hub.boot();
+    auto tick = [&] {
+      clk.ms += 1000;
+      bus.updateAll(states, kNoonMs + clk.ms, clk.ms);
+      hub.tick();
+    };
+    tick();
+    REQUIRE(ha::assign(hub, bus, "tank.ph", "sensor.tank_ph", tick).status == 200);
+    backup = hub.configJson();
+  }
+  // A new app, as Doseph installed next to the growcontroller app: nothing picked yet
+  ha::HaBus bus;
+  gc::MemoryStorage store;
+  gc::Hub hub(cat, bus, store, clk, pseudoRandom);
+  hub.boot();
+  gc::Api api(hub, clk);
+  gc::ApiRequest setup;
+  setup.method = "POST";
+  setup.path = "/api/v1/auth/setup";
+  setup.body = json{{"password", "ein-gutes-passwort"}}.dump();
+  const gc::ApiResponse res = api.handle(setup);
+  REQUIRE(res.status == 200);
+  gc::ApiRequest restore;
+  for (const auto& [k, v] : res.headers)
+    if (k == "Set-Cookie" && v.rfind("gc_session=", 0) == 0) restore.token = v.substr(11, v.find(';') - 11);
+  restore.method = "POST";
+  restore.path = "/api/v1/config/import";
+  restore.body = backup.dump();
+  REQUIRE(ha::importRoute(api, hub, bus, restore).status == 200);
+  REQUIRE(hub.config().binding("tank.ph"));
+  // Read with the next poll, without a restart
+  CHECK(bus.selected("sensor.tank_ph"));
+  clk.ms += 1000;
+  bus.updateAll(states, kNoonMs + clk.ms, clk.ms);
+  hub.tick();
+  REQUIRE(hub.state()["readings"]["tank.ph"]["value"].is_number());
+  CHECK(hub.state()["readings"]["tank.ph"]["value"].get<double>() == doctest::Approx(6.1));
+  // Refused: nothing changes, nothing more is read
+  restore.body = "[1,2";
+  CHECK(ha::importRoute(api, hub, bus, restore).status == 400);
+  CHECK(bus.entities().size() == 1);
+}
+
 TEST_CASE("Home Assistant: the server's routes need a signed-in session") {
   const gc::Catalog cat = ha::catalog();
   ha::HaBus bus;

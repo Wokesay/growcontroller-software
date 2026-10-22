@@ -16,7 +16,7 @@ const root = join(import.meta.dirname, "..");
 const lock = {
   lockfileVersion: 3,
   packages: {
-    "": { name: "growcontroller-web", version: "0.1.0" },
+    "": { name: "doseph-web", version: "0.1.0" },
     "node_modules/preact": { version: "11.0.0" },
     "node_modules/@preact/signals": { version: "2.11.3" },
     "node_modules/vite": { version: "8.3.2", dev: true },
@@ -43,7 +43,7 @@ const component = (name, version, path, { dev = false, optional = false } = {}) 
 });
 const full = {
   bomFormat: "CycloneDX",
-  metadata: { component: { "bom-ref": "growcontroller-web@0.1.0", name: "web" } },
+  metadata: { component: { "bom-ref": "doseph-web@0.1.0", name: "web" } },
   components: [
     component("preact", "11.0.0", "node_modules/preact"),
     component("@preact/signals", "2.11.3", "node_modules/@preact/signals"),
@@ -53,7 +53,7 @@ const full = {
     component("preact", "10.0.0", "node_modules/@preact/signals/node_modules/preact"),
   ],
   dependencies: [
-    { ref: "growcontroller-web@0.1.0", dependsOn: ["@preact/signals@2.11.3", "preact@11.0.0", "vite@8.3.2"] },
+    { ref: "doseph-web@0.1.0", dependsOn: ["@preact/signals@2.11.3", "preact@11.0.0", "vite@8.3.2"] },
     { ref: "@preact/signals@2.11.3", dependsOn: ["preact@10.0.0"] },
     { ref: "preact@11.0.0", dependsOn: ["y@2.0.0"] },
     { ref: "vite@8.3.2", dependsOn: ["x@1.0.0", "preact@11.0.0"] },
@@ -78,7 +78,7 @@ test("the SBOM keeps the runtime packages as npm wrote them, preact included, an
   assert.deepEqual(kept(sbom), ["node_modules/preact", "node_modules/@preact/signals", "node_modules/y", "node_modules/@preact/signals/node_modules/preact"]);
   for (const c of sbom.components) assert.deepEqual(c, full.components.find((f) => f["bom-ref"] === c["bom-ref"] && f.properties[0].value === c.properties[0].value));
   assert.deepEqual(sbom.dependencies, [
-    { ref: "growcontroller-web@0.1.0", dependsOn: ["@preact/signals@2.11.3", "preact@11.0.0"] },
+    { ref: "doseph-web@0.1.0", dependsOn: ["@preact/signals@2.11.3", "preact@11.0.0"] },
     { ref: "@preact/signals@2.11.3", dependsOn: ["preact@10.0.0"] },
     { ref: "preact@11.0.0", dependsOn: ["y@2.0.0"] },
   ]);
@@ -109,7 +109,7 @@ test("the SBOM names the filter among its tools", () => {
   const sbom = webSbom({ ...full, metadata: { ...full.metadata, tools: [{ vendor: "npm", name: "cli", version: "10.9.9" }] } }, lock);
   assert.deepEqual(sbom.metadata.tools, [
     { vendor: "npm", name: "cli", version: "10.9.9" },
-    { vendor: "growcontroller-software", name: "tools/sbom_web.mjs" },
+    { vendor: "Doseph", name: "tools/sbom_web.mjs" },
   ]);
 });
 

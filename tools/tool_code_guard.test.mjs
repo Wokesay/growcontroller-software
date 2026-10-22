@@ -13,7 +13,7 @@ import { entryListed, shippedProblems, toolCodeGuard } from "../web/scripts/tool
 const root = "/w/web";
 const lock = {
   packages: {
-    "": { name: "growcontroller-web" },
+    "": { name: "doseph-web" },
     "node_modules/preact": { version: "11.0.0" },
     "node_modules/@preact/signals-core": { version: "1.14.4" },
     "node_modules/uplot": { version: "1.6.32" },

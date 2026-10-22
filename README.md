@@ -1,18 +1,21 @@
-# growcontroller-software
+# Doseph
 
-Standalone software for a hydroponic grow controller: platform-neutral C++
-core with setup wizard, sensor catalog, pH/EC dosing, refill and
-circulation control, watchdog and logging. Includes ESP32-S3 firmware, a
-web app for browser and mobile, and a simulator (digital twin) for testing
-without hardware.
+Doseph (dose + pH, said like "Joseph") is open-source software (AGPL-3.0)
+for hydroponics, indoor growing and greenhouses. It mixes nutrient
+solution, keeps pH and EC in range and refills the tank; light, climate
+and watering follow step by step. It brings its own web app for browser
+and phone: no cloud, no account, no Home Assistant needed.
 
----
+**Today** it runs in the simulator (the whole software with a simulated
+tank and pumps, no hardware needed) and as a Home Assistant app that only
+reads your sensors. **Planned:** firmware for an ESP32-S3 on the carrier
+board, a board for sensors and pumps that is in development; the ESP32-S3
+is then meant to do all control. Today the firmware is a skeleton
+(`firmware/README.md`).
 
-Universal plant automation for greenhouses, indoor growing and
-hydroponics: mix nutrient solution, control pH and EC, fill the tank – and
-step by step light, climate and irrigation. The software runs on the hub
-(ESP32-S3) and brings its own web app – no cloud, no account, no Home
-Assistant required.
+Inside: a platform-neutral C++17 core (setup wizard, sensor catalog,
+pH/EC dosing, refill and circulation control, watchdog, logging), the web
+app and the simulator as a digital twin.
 
 > **Status: prototype `0.1.0-proto.4`.** Core, simulator and web app run;
 > the port to the ESP32-S3 follows (`firmware/README.md`). The Home
@@ -34,7 +37,7 @@ are in `README.txt` inside the package. Use only packages from
 Releases: CI runs also store packages as artifacts, but those of pull
 requests are built from code nobody has reviewed yet.
 
-With Home Assistant (OS or Supervised), growcontroller also installs as
+With Home Assistant (OS or Supervised), Doseph also installs as
 an app that reads your sensors and switches nothing:
 [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md).
 
@@ -83,6 +86,8 @@ E2E=1 tools/ci.sh      # plus the browser tests against the simulator
 ## Contributing, bugs, security
 
 - Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Questions, ideas and wishes:
+  [Discussions](https://github.com/Wokesay/doseph/discussions)
 - Bugs: in the app under "Settings › Report a problem" (with a report ID),
   or an issue with the "Bug report" template
 - Never report vulnerabilities as an issue: [`SECURITY.md`](SECURITY.md)
@@ -95,7 +100,7 @@ Home Assistant is an option on top (SD-050).
 
 - **ESP32-S3 on its own** (in development, M1): an Espressif
   ESP32-S3-DevKitC-1 (N32R16V; N8R8 works too, with a shorter history) on
-  the growcontroller carrier board, with sensors and pumps. You flash the
+  the carrier board, with sensors and pumps. You flash the
   firmware yourself and use the web app on the ESP in your browser.
 - **ESP32-S3 with Home Assistant** (planned, M3): the same, plus Home
   Assistant. All values and states, the watchdog included, show in Home
@@ -111,7 +116,7 @@ Does my hardware work?
   sensors in Home Assistant (for example DFRobot, Atlas Scientific,
   DS18B20), the carrier board's inputs and outputs, Bluetooth sensors and
   smart plugs, each with its status. Tested a device?
-  [Report it](https://github.com/Wokesay/growcontroller-software/issues/new?template=device.yml).
+  [Report it](https://github.com/Wokesay/doseph/issues/new?template=device.yml).
 - **Flashing the ESP32-S3:** a step-by-step guide follows with the first
   firmware release. For developers:
   [build and flash your own firmware](firmware/FLASHING.md).

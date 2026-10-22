@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you! Is it listed already? See [docs/COMPATIBILITY.md](https://github.com/Wokesay/growcontroller-software/blob/main/docs/COMPATIBILITY.md).
+        Thank you! Is it listed already? See [docs/COMPATIBILITY.md](https://github.com/Wokesay/doseph/blob/main/docs/COMPATIBILITY.md).
         Please do not post passwords, access tokens or keys (also not in ESPHome YAML: the `api` encryption key, the `ota` password, Wi-Fi details), the address of your Home Assistant from outside, or locations – issues are public.
   - type: input
     id: device
@@ -21,7 +21,7 @@ body:
     attributes:
       label: How is it connected?
       options:
-        - "A sensor in Home Assistant, read by the growcontroller app"
+        - "A sensor in Home Assistant, read by the Doseph app"
         - "Sensor port of the carrier board (RS485, Modbus)"
         - "pH or EC input of the carrier board"
         - "Contact input of the carrier board"

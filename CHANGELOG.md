@@ -1,6 +1,7 @@
 # Changelog
 
-All notable changes to growcontroller-software. Format according to
+All notable changes to Doseph (called growcontroller up to
+0.1.0-proto.4). Format according to
 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), versions
 according to [SemVer](https://semver.org/). Security-relevant changes are
 listed in every release under "Security".
@@ -8,6 +9,11 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Release notes list the SHA-256 checksum of every file** (#312,
+  SD-098, from PD-334): at their end, the same list as `SHA256SUMS`, and
+  how to check a download with `sha256sum` (Linux), `shasum -a 256`
+  (macOS) or `Get-FileHash` (Windows; upper or lower case does not
+  matter).
 - **No watering on water not fit for it** (#298, SD-093, RAT-086): the
   watering pump no longer switches on, by hand, over the API or for a
   test, and a running one goes off, when the tank's pH is below 4.0 or
@@ -134,7 +140,7 @@ listed in every release under "Security".
   pH from Home Assistant in pH stays display only. Level and EC as raw
   values follow.
 - **Hardware compatibility list** (SD-049, `docs/COMPATIBILITY.md`): what
-  works with growcontroller, by connection: ESP32 boards, sensors in Home
+  works with Doseph, by connection: ESP32 boards, sensors in Home
   Assistant (for example what DFRobot's analog pH and EC boards, Atlas
   Scientific EZO circuits and a DS18B20 give today), the carrier board's
   inputs and outputs, wireless sensors and smart plugs, each Tested,
@@ -146,6 +152,35 @@ listed in every release under "Security".
 
 ### Changed
 
+- **growcontroller is now Doseph** (#312, SD-098, from PD-341, PD-343
+  and PD-345 to PD-347): dose + pH, said like "Joseph". The web app, the
+  simulator, the Home Assistant app, the downloads and the docs carry the
+  new name, and the repository moves to `Wokesay/doseph`; GitHub forwards
+  the old address. Downloads are now `doseph-simulator-….zip` and
+  `doseph-web-….tar.gz`, the files the app saves `doseph-config.json`,
+  `doseph-history.csv` (`doseph-verlauf.csv` from a German page) and
+  `doseph-diagnostics-….json`; settings saved under the old name restore
+  as before. A hub that still has the old default name shows "Doseph".
+  The simulator keeps its data in `doseph-data` next to the program; a
+  `growcontroller-daten` from before is used as it is while there is no
+  `doseph-data`. `gc_ha_server` run by hand keeps its data in
+  `doseph-ha-data` unless `--data` says otherwise.
+  - **Home Assistant: Doseph is a new app.** Its new ID (slug) makes Home
+    Assistant install it next to the old growcontroller app, which gets
+    no more updates, also no security fixes. Both used port 8099, so only
+    one runs at a time. To move: in the old app's web UI, Settings › Data
+    › Back up settings; stop the old app and switch off Start on boot;
+    install Doseph from the same repository and set its password; skip
+    the introduction; in Doseph, Settings › Data › Restore settings, which
+    now reads the restored sensors at once; check them under Devices ›
+    Assignment; then uninstall the old app, which deletes its data and its
+    history (save its CSV first to keep the last 7 days). Do not accept
+    Home Assistant's offer to uninstall the old app before you have saved
+    its settings. The steps are in Doseph's Documentation tab ("Coming
+    from growcontroller").
+- **README: what is a plan** (#312, SD-098, from PD-333): the ESP32-S3
+  firmware is planned and a skeleton today; control is to run on an
+  ESP32-S3 on the carrier board.
 - **Control details are decided in the software session; the product
   offers a safety frame, not complete protection** (#298, SD-091, from
   PD-317 and PD-318): the product side keeps the guideline, costs,
@@ -200,18 +235,19 @@ listed in every release under "Security".
   you picked.
 - **The CSV export in the page's language** (RAT-016, SD-083): from a
   German page as before, with semicolons and a decimal comma
-  (`growcontroller-verlauf.csv`); from an English page with commas and a
-  decimal point (`growcontroller-history.csv`). Gaps stay empty in both.
+  (`doseph-verlauf.csv`); from an English page with commas and a
+  decimal point (`doseph-history.csv`). Gaps stay empty in both.
   A series name in the export's address holds only lower-case letters,
   digits, dots and underscores.
 - **English file names:** the settings file is now
-  `growcontroller-config.json` (was `growcontroller-konfiguration.json`),
-  the diagnostic bundle `growcontroller-diagnostics-….json` (was
+  `doseph-config.json` (was `growcontroller-konfiguration.json`),
+  the diagnostic bundle `doseph-diagnostics-….json` (was
   `growcontroller-diagnose-….json`).
 - **API:** a refused change's `error` is now its first finding, with
   `key`, `text` and `args` (the whole list stays in `errors`); `/info`
-  names the hub's language (`language`); `/export.csv` takes `lang=de`
-  or `lang=en` and otherwise uses the hub's.
+  names the hub's language (`language`), and its `product` is now
+  "Doseph" (#312); `/export.csv` takes `lang=de` or `lang=en` and
+  otherwise uses the hub's.
 - **Reasons and checklists in the page's language** (#143, #73, SD-083):
   why a reading is not valid (not assigned, no answer, stale, frozen,
   outside its range, a jump lock), what a function still needs and its
@@ -405,7 +441,7 @@ listed in every release under "Security".
   measured EC (for soaking, for example), or with stirring by hand
   between the parts.
 - **Plan: dosing modules with a fixed rate** (SD-066, SD-084, #132): after
-  0.1.0-proto.5, as part of the work for the carrier board, growcontroller
+  0.1.0-proto.5, as part of the work for the carrier board, Doseph
   will support dosing modules that each run at one fixed rate and keep
   their calibration on a chip in the module. "Fine" (about 12 ml/min) is
   for nutrients, additives and pH in tanks up to about 150 L. "Large"
@@ -546,6 +582,11 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Home Assistant: restored settings read their sensors at once** (#312):
+  settings restored in the app (Settings › Data › Restore settings) read
+  the Home Assistant sensors they pick only after the app was restarted,
+  so a new app showed them without values until then. Now they are read
+  with the next poll.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder
@@ -926,6 +967,12 @@ and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
+For the Home Assistant app, "update to 0.1.0-proto.5" below means moving
+to Doseph: it is a new app in Home Assistant (#312, SD-098, see Changed).
+The growcontroller app (0.1.0-proto.2 to 0.1.0-proto.4) gets no update
+and stays affected, its port 8099 included, until it is uninstalled. The
+app's AppArmor profile is only renamed; what it allows is unchanged.
+
 Vulnerabilities, each with an advisory:
 
 - **Nobody else can set the Home Assistant app's first password** (#79,
@@ -943,11 +990,12 @@ Vulnerabilities, each with an advisory:
     first password; the Home Assistant app switches nothing.
   - Severity: medium, CVSS 3.1 6.4
     (`CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H`), CWE-1188.
-  - Remedy: update to 0.1.0-proto.5. The update keeps a password that is
-    already set: if you did not set it yourself, reinstall the app or
-    restore a backup made before that password was set, then set the
-    password or update at once. On an older version, set the password
-    right after installing.
+  - Remedy: move to Doseph 0.1.0-proto.5 and set its first password with
+    the setup code. Restored settings never bring a password along; if
+    you did not set the old app's password yourself, set Doseph up anew
+    rather than restoring the old app's settings, which someone else may
+    have changed. On an older version, set the password right after
+    installing.
   - Advisory: a GHSA, published with this release; a CVE requested from GitHub.
 - **Someone guessing the password no longer locks everyone out** (SD-051):
   the lockout after 5 failed attempts counted for all devices together, so

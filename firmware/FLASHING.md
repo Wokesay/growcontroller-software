@@ -50,7 +50,7 @@ idf.py -B build-n32r16v -D GC_BOARD=n32r16v -D IDF_TARGET=esp32s3 build
 ```
 
 For the N8R8 write `n8r8` instead of `n32r16v`, here and below. The image
-is `firmware/build-n32r16v/growcontroller_hub.bin`; bootloader and
+is `firmware/build-n32r16v/doseph_hub.bin`; bootloader and
 partition table are next to it (`bootloader/`, `partition_table/`). Never
 flash an image built for one board onto the other: it may start, format
 the storage partition and so lose configuration and password for good;

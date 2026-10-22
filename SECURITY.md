@@ -5,7 +5,7 @@
 Please **never as a public issue**. Report vulnerabilities only through
 GitHub **Private Vulnerability Reporting** (you need a GitHub account;
 there is no e-mail address for reports):
-`https://github.com/Wokesay/growcontroller-software/security/advisories/new`.
+`https://github.com/Wokesay/doseph/security/advisories/new`.
 
 Helpful: the affected version, steps to reproduce (the simulator is often
 enough), possible consequences. Especially important: anything that can
@@ -40,7 +40,7 @@ details confidential until disclosure.
 
 Every fixed vulnerability gets a GitHub Security Advisory in this
 repository
-(`https://github.com/Wokesay/growcontroller-software/security/advisories`),
+(`https://github.com/Wokesay/doseph/security/advisories`),
 with a CVE that we request from GitHub, or the CVE of the component it
 comes from. A vulnerability here is a flaw that someone without the needed
 rights can trigger: a device in the network, a crafted file or another
@@ -59,6 +59,7 @@ there too, without an advisory (SD-079).
 | Version | Security updates |
 |---|---|
 | 0.x (prototype) | only the latest pre-release, including the Home Assistant app: a fix comes in the next pre-release; do not dose or switch real hardware with it |
+| growcontroller Home Assistant app (up to 0.1.0-proto.4) | none: replaced by the Doseph app, a new app in Home Assistant (SD-098); move as in its Documentation tab, "Coming from growcontroller", then uninstall growcontroller |
 
 **Support period for devices:** every board with our firmware gets
 security updates for 7 years from the delivery of that board, also boards

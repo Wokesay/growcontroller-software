@@ -3,7 +3,8 @@
 # Packs the simulator as a download and tests the package:
 #   1. start with arguments (API and embedded web app answer),
 #   2. plain start without arguments as by double-click (port, data folder
-#      next to the program),
+#      next to the program; a data folder from before the name Doseph is
+#      used as it is while there is no new one, #312),
 #   3. plain start with a data folder it cannot read (SD-074, #214),
 #   4. plain start that finds neither its own folder nor the working folder
 #      (#213);
@@ -19,7 +20,7 @@ name="$2"
 cd "$(dirname "$0")/.."
 
 v=$(tr -d '\r\n' < VERSION)
-d="growcontroller-simulator-$v-$name"
+d="doseph-simulator-$v-$name"
 rm -rf "dist/$d"
 mkdir -p "dist/$d"
 if [ -f build-pkg/Release/gc_sim_server.exe ]; then src=build-pkg/Release/gc_sim_server.exe; else src=build-pkg/gc_sim_server; fi
@@ -36,7 +37,7 @@ stop() {
   wait "$1" 2> /dev/null || true
 }
 logs() {
-  for f in sim einfach unreadable no-folder; do echo "--- $f.log"; cat "build-pkg/$f.log" 2> /dev/null || true; done
+  for f in sim einfach before both unreadable unreadable-before no-folder; do echo "--- $f.log"; cat "build-pkg/$f.log" 2> /dev/null || true; done
 }
 # On a failure: the logs, and no simulator left running
 trap 'logs; kill "${pid:-}" 2> /dev/null || true' ERR
@@ -78,27 +79,65 @@ cp "dist/$d/$bin" "$e/"
 pid=$!
 answers build-pkg/einfach.log
 grep -q "Demo-Passwort" build-pkg/einfach.log
-for _ in $(seq 1 30); do [ -f "$e/growcontroller-daten/config.json" ] && break; sleep 1; done
-test -f "$e/growcontroller-daten/config.json"
+for _ in $(seq 1 30); do [ -f "$e/doseph-data/config.json" ] && break; sleep 1; done
+test -f "$e/doseph-data/config.json"
 stop "$pid"
+
+# 2b. A data folder from before the name Doseph, and no new one: it is used as
+#     it is and named, and no new folder is made (#312)
+mv "$e/doseph-data" "$e/growcontroller-daten"
+"./$e/$bin" > build-pkg/before.log 2>&1 &
+pid=$!
+answers build-pkg/before.log
+grep -q "^Daten: .*growcontroller-daten" build-pkg/before.log
+stop "$pid"
+test -f "$e/growcontroller-daten/config.json"
+test ! -e "$e/doseph-data"
+
+# 2c. Both folders: the new one is used, the old one is left as it is
+mkdir "$e/doseph-data"
+"./$e/$bin" > build-pkg/both.log 2>&1 &
+pid=$!
+answers build-pkg/both.log
+grep -q "^Daten: .*doseph-data" build-pkg/both.log
+for _ in $(seq 1 30); do [ -f "$e/doseph-data/config.json" ] && break; sleep 1; done
+stop "$pid"
+test -f "$e/doseph-data/config.json"
+test -f "$e/growcontroller-daten/config.json"
+rm -rf "$e/growcontroller-daten" "$e/doseph-data"
 
 if [ "$windows" = 0 ]; then
   # 3. The data folder next to the program cannot be read (here a link to
   #    itself, as after a start with sudo it may not be entered): it is left
   #    as it is (SD-074, #214)
-  rm -rf "$e/growcontroller-daten"
-  ln -s growcontroller-daten "$e/growcontroller-daten"
+  rm -rf "$e/doseph-data"
+  ln -s doseph-data "$e/doseph-data"
   "./$e/$bin" > build-pkg/unreadable.log 2>&1 &
   pid=$!
   answers build-pkg/unreadable.log
   grep -q "Data cannot be read" build-pkg/unreadable.log
   memory_only build-pkg/unreadable.log
   stop "$pid"
+  test -L "$e/doseph-data"
+
+  # 3b. An old folder from before the name Doseph that cannot be read, and no
+  #     new one: it is used as it is, so memory only, and no new folder is
+  #     made (SD-074, #312)
+  rm -f "$e/doseph-data"
+  ln -s growcontroller-daten "$e/growcontroller-daten"
+  "./$e/$bin" > build-pkg/unreadable-before.log 2>&1 &
+  pid=$!
+  answers build-pkg/unreadable-before.log
+  grep -q "Data cannot be read" build-pkg/unreadable-before.log
+  memory_only build-pkg/unreadable-before.log
+  stop "$pid"
   test -L "$e/growcontroller-daten"
+  test ! -e "$e/doseph-data"
+  rm -f "$e/growcontroller-daten"
 
   # 4. Started by a relative name in a working folder that is gone: no folder
   #    for the data can be found (#213)
-  rm -f "$e/growcontroller-daten"
+  rm -f "$e/doseph-data"
   mkdir "$e/weg"
   bash -c 'cd "$1" && rmdir "$1" && exec -a "$2" "$3"' _ "$PWD/$e/weg" "$bin" "$PWD/$e/$bin" > build-pkg/no-folder.log 2>&1 &
   pid=$!

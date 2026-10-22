@@ -132,7 +132,7 @@ struct Limits {
 };
 
 struct SystemCfg {
-  std::string name = "growcontroller";
+  std::string name = "Doseph";
   bool setupDone = false;
   bool passwordSet = false;  // Erstpasswort einmal gesetzt: Setup über das Netz danach gesperrt
   std::string timezone = "Europe/Berlin";

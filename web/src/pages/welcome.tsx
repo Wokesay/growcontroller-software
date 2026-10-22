@@ -60,7 +60,7 @@ function StepBasics(p: { step: number; next: () => void }) {
           <span>{t("common.language")}</span>
           <Seg<Lang> value={lang.value} onChange={setLang} options={LANGS} label={t("common.language")} />
         </div>
-        <Field label={t("welcome.basics.name")} hint={t("welcome.basics.nameHint")}>
+        <Field label={t("setup.start.name")} hint={t("welcome.basics.nameHint")}>
           <input class="input" name="hubname" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         </Field>
         <Field label={t("setup.start.tz")} hint={state.value!.setupDone ? undefined : t("setup.start.tzHint")}>

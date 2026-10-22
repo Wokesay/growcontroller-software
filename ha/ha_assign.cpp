@@ -174,4 +174,11 @@ gc::Result lifeRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiReques
   return setLife(hub, bus, gc::jstr(body, "role"), gc::jstr(body, "source"), gc::jstr(body, "channel"));
 }
 
+gc::ApiResponse importRoute(gc::Api& api, gc::Hub& hub, HaBus& bus, const gc::ApiRequest& req) {
+  std::lock_guard<std::recursive_mutex> l(hub.mutex());
+  gc::ApiResponse r = api.handle(req);
+  if (r.status == 200) adoptFromConfig(hub, bus);
+  return r;
+}
+
 }  // namespace ha

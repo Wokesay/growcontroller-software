@@ -69,7 +69,7 @@ entry under `[Unreleased]`.
    off on that Home Assistant (off unless switched on). On Windows the
    project owner also starts the release branch's simulator package (an
    artifact of its CI run) once by double click with a
-   `growcontroller-daten` next to it that it may not read (Properties ›
+   `doseph-data` next to it that it may not read (Properties ›
    Security › deny Read): it opens, says "Data cannot be read" and leaves
    the folder as it is (SD-074). The package test does this on macOS and
    Linux (#214). Compare `.nvmrc`
@@ -90,7 +90,8 @@ entry under `[Unreleased]`.
      the simulator for three platforms, the web app, the license notices,
      two SBOMs (CycloneDX: web app from npm, C++ libraries from
      `cmake/deps.cmake`), `SHA256SUMS` and the release notes from the
-     changelog section.
+     changelog section; the notes end with the same checksums and how to
+     check a download on each system (#312).
    - `app-amd64` and `app-aarch64` (`app.yml`, SD-034), without write
      access and without a cache: the Home Assistant app image, each on a
      runner of its architecture, started and checked next to a stand-in
@@ -103,7 +104,7 @@ entry under `[Unreleased]`.
      `SHA256SUMS` and the app images against their checksums and labels,
      checks that the tag still points at the built commit, attests the
      files' build provenance, pushes the app image
-     (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`, one name made from the
+     (`ghcr.io/wokesay/doseph-ha:X.Y.Z`, one name made from the
      two pushed images by digest, plus `X.Y.Z-amd64` and
      `X.Y.Z-aarch64`), attests it, checks the tag once more and creates
      the GitHub release. It runs no npm and builds nothing.
@@ -159,34 +160,49 @@ entry under `[Unreleased]`.
      pass:
 
      ```bash
-     gh attestation verify <file> --repo Wokesay/growcontroller-software \
-       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+     gh attestation verify <file> --repo Wokesay/doseph \
+       --signer-workflow Wokesay/doseph/.github/workflows/release.yml \
        --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
      ```
 
    - The app image is checked the same way:
 
      ```bash
-     gh attestation verify oci://ghcr.io/wokesay/growcontroller-ha:X.Y.Z \
-       --repo Wokesay/growcontroller-software \
-       --signer-workflow Wokesay/growcontroller-software/.github/workflows/release.yml \
+     gh attestation verify oci://ghcr.io/wokesay/doseph-ha:X.Y.Z \
+       --repo Wokesay/doseph \
+       --signer-workflow Wokesay/doseph/.github/workflows/release.yml \
        --source-ref refs/tags/vX.Y.Z --deny-self-hosted-runners
      ```
 
-   - **Once, after the first release with the app:** the project owner
-     makes the package public (GitHub profile → Packages →
-     `growcontroller-ha` → Package settings → Change visibility →
+   - Releases up to 0.1.0-proto.4 were attested under the repository's
+     old name: verify them with `Wokesay/growcontroller-software` in
+     `--repo` and `--signer-workflow`, and their app image as
+     `ghcr.io/wokesay/growcontroller-ha:X.Y.Z` (#312).
+
+   - **Once, after the first release with the app** (and again after the
+     first release as Doseph, whose package `doseph-ha` is new, #312): the
+     project owner makes the package public (GitHub profile → Packages →
+     `doseph-ha` → Package settings → Change visibility →
      Public). Home Assistant downloads it without a login. A public
      package cannot be made private again. Under Package settings →
      Manage Actions access, only this repository should be listed.
    - **Accepting a release with the app, part two** (part one is in step
      1; SD-065), right after `publish`:
      - `docker buildx imagetools inspect
-       ghcr.io/wokesay/growcontroller-ha:X.Y.Z` lists linux/amd64 and
-       linux/arm64;
+       ghcr.io/wokesay/doseph-ha:X.Y.Z`, run without being signed in to
+       the registry, lists linux/amd64 and linux/arm64;
      - on the owner's Home Assistant, with a backup of the previous
        version made first, the update from the store keeps password,
-       sensors and history, and a restart keeps the data;
+       sensors and history, and a restart keeps the data. For
+       0.1.0-proto.5, the first release as Doseph, the move takes the
+       update's place (`ha/app/DOCS.md`, "Coming from growcontroller",
+       #312): after a reload the store lists Doseph under the repository
+       added by its old address and shows the old app as removed from
+       it; the old app still starts; with the old app stopped, Doseph
+       installs, and the old app's settings backup restores in it with
+       its sensors read at once; stopping Doseph and starting the old app
+       again works; and once the old app is uninstalled, a Home Assistant
+       backup made before brings it back with its data;
      - on a second host (a Raspberry Pi and, where possible, a PC) the
        app shows in the store, installs, opens its web UI, sets a
        password and reads sensors;
@@ -195,7 +211,7 @@ entry under `[Unreleased]`.
      - after the update from a version before #80 (the server ran as
        root), the app starts and reads values, so it finds the Supervisor
        in `/etc/hosts`; the host's log (Settings › System › Logs, Host)
-       has no `apparmor="DENIED"` for `*_growcontroller`; restoring the
+       has no `apparmor="DENIED"` for `*_doseph`; restoring the
        app's backup and starting it again works;
      - a new backup holds the new version, and its entry for the app is
        not empty.
@@ -205,11 +221,22 @@ entry under `[Unreleased]`.
      release notes and an issue tell users to keep automatic updates off
      until then, and users who made a backup before updating restore it.
      A reinstall is no way back: `main` carries the failed version.
-   - **Never delete a published app image** (`ghcr.io/wokesay/growcontroller-ha:X.Y.Z`):
+   - **Never delete a published app image** (`ghcr.io/wokesay/doseph-ha:X.Y.Z`,
+     and those of the old name, `ghcr.io/wokesay/growcontroller-ha:X.Y.Z`):
      restoring a backup of the app pulls that version's image again.
    - Merge a version change to `ha/app/config.yaml` only together with
      the release: `config.yaml` on `main` is what every installed app
-     compares itself with (SD-034).
+     compares itself with (SD-034). The same holds for a new slug or
+     image (SD-098): the store offers what `main` names, also an image
+     that is not published yet.
+   - **Never create a repository named `Wokesay/growcontroller-software`
+     again**, not even as a placeholder, and do not rename the account:
+     GitHub forwards the old address to `Wokesay/doseph` only while the
+     name is free, and every Home Assistant that added the old address
+     reads its apps through it (SD-098). For the same reason, the
+     repository's access to the old package `growcontroller-ha` is set to
+     Read (Package settings → Manage Actions access), so no push can
+     change an image a backup pulls again.
    - The SBOMs list what ships, not the build tools (SD-075). The web
      build fails when a module the bundler puts into the app is neither
      our source, the page nor a runtime package of the lockfile, and the
@@ -290,7 +317,12 @@ stand only in the changelog.
   advisory. Check product question #200: if it says safety and
   robustness fixes are vulnerabilities, they get advisories too.
 - **After part two of the acceptance (step 2):** set "patched versions"
-  to the release and publish the advisories.
+  to the release and publish the advisories. For 0.1.0-proto.5, the
+  Home Assistant app gets its fix only as the new app Doseph (SD-098):
+  the advisory names the growcontroller app (up to 0.1.0-proto.4) as
+  affected with no patched version of its own, and the fix as "install
+  Doseph 0.1.0-proto.5, move as in `ha/app/DOCS.md`, then
+  uninstall growcontroller".
 - **At the latest:** 30 days after the fix is on `main` (for the items
   of 0.1.0-proto.5: 2026-11-14, SD-079), the advisory is published even
   if the release has not passed part two of its acceptance, with "fixed

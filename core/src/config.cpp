@@ -247,6 +247,7 @@ Config configFromJson(const json& in) {
   if (j.contains("system")) {
     const auto& s = j["system"];
     c.system.name = s.value("name", c.system.name);
+    if (c.system.name == "growcontroller") c.system.name = SystemCfg{}.name;  // the default before the name Doseph (#312)
     c.system.setupDone = s.value("setupDone", false);
     c.system.passwordSet = s.value("passwordSet", false);
     // One that is no zone name (saved before the hub checked it) falls back to the default

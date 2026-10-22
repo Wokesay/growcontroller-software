@@ -255,7 +255,7 @@ ApiResponse Api::route(const ApiRequest& req) {
   if (is("GET", {"config"})) return jsonResp(200, hub_.configJson());
   if (is("GET", {"config", "export"})) {
     ApiResponse r = jsonResp(200, hub_.configJson());
-    r.headers.emplace_back("Content-Disposition", "attachment; filename=\"growcontroller-config.json\"");
+    r.headers.emplace_back("Content-Disposition", "attachment; filename=\"doseph-config.json\"");
     return r;
   }
   if (is("POST", {"config", "import"})) return fromResult(hub_.importConfig(body));
@@ -296,7 +296,7 @@ ApiResponse Api::route(const ApiRequest& req) {
     ApiResponse r;
     r.contentType = "text/csv; charset=utf-8";
     r.body = hub_.exportCsv(series, qnum(req, "from", now - 7 * 24 * 3600), qnum(req, "to", now), lang);
-    r.headers.emplace_back("Content-Disposition", lang == "de" ? "attachment; filename=\"growcontroller-verlauf.csv\"" : "attachment; filename=\"growcontroller-history.csv\"");
+    r.headers.emplace_back("Content-Disposition", lang == "de" ? "attachment; filename=\"doseph-verlauf.csv\"" : "attachment; filename=\"doseph-history.csv\"");
     return r;
   }
   if (is("GET", {"diagnostics"})) return jsonResp(200, hub_.diagnostics());
