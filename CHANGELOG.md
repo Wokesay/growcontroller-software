@@ -580,6 +580,18 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **Maintenance mode says what it does** (#297, RAT-042): its entry in
+  the event log and the overview no longer say that locks and sensor
+  checks all stay active. While it lasts, readings may jump without
+  locking, and monitoring does not assess pH, EC and water temperature;
+  missing, frozen or impossible values are still reported, and every
+  lock stays on. Next to the button that ends it, a hint says to end it
+  once the work at the tank is done and the readings are steady: after
+  that, a jump locks the reading until it has stayed steady for 15 min.
+- **The smart-plug safety note names the fans that come back on** (#266):
+  it said that every outlet stays off after a power cut. The outlets of
+  the exhaust and circulation fans come back on by themselves (PD-050),
+  unless a Stop is active (PD-076), and the note now says so.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder
