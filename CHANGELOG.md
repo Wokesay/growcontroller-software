@@ -68,6 +68,21 @@ only reads sensors and switches nothing. No compatibility promises.
   watering is not blocked on water that pH and EC say is unfit (SD-091).
 
 ### Added
+- **No watering on water not fit for it** (#298, SD-093, RAT-086): the
+  watering pump no longer switches on, by hand, over the API or for a
+  test, and a running one goes off, when the tank's pH is below 4.0 or
+  above 8.5, or its EC is more than 1.0 mS/cm above the target EC (the
+  higher of this phase's and the last phase's; with EC control off and
+  no phase naming a target, above 5.0; never above 5.0). The band is wide on purpose: it catches a
+  pump that ran too long or dosed too much, while uncorrected tap water
+  and plain water for flushing typically stay fit. An assigned pH or EC
+  probe without a usable reading, or in a calibration, blocks too; a
+  probe not assigned, or calibrated outside the hub, is not checked.
+  With a probe checked, watering also waits after every run of a dosing
+  pump and after every start until a dose has mixed in (at least 4 min,
+  longer in a large tank), and a run that starts stops the pump. There is no override. A refused
+  switch-on says why and when to try again, and an event says why the
+  pump went off.
 - **Each recipe learns its own EC effect** (#143, SD-057, step 4,
   SD-092): EC control learned one effect for whatever recipe it dosed;
   a phase moving to another recipe started from it. Now each recipe
