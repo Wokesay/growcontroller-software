@@ -163,7 +163,7 @@ listed in every release under "Security".
   app does.
 
 ### Changed
-- **Plan: the demo goes public after 0.1.0-proto.5** (SD-094): the demo
+- **Plan: the demo goes public after 0.1.0-proto.5** (SD-098): the demo
   starting in English (#302) is a precondition of proto.5, and the demo
   is announced to a wider public only once proto.5 is released.
 - **Control details are decided in the software session; the product
@@ -405,6 +405,14 @@ listed in every release under "Security".
 - **Decision numbers:** the decision on access from outside the home
   network is now SD-059. It (#123) and the sign-in lockout (#122) had both
   been recorded as SD-051 on the same day; SD-051 stays the lockout.
+- **Plan: 0.1.0-proto.5 for testers** (SD-094 to SD-097): testers start
+  from the docs for newcomers, "Report a problem" opens GitHub's bug
+  form for everyone, the demo speaks English, and a prototype says on the
+  sign-in page and under Settings that it is for testing only and does
+  not meet the EU Cyber Resilience Act. A fixed defect gets a security
+  advisory only if someone without the needed rights can trigger it
+  (PD-320); the other fixes in Security are labelled "not exploitable by
+  an attacker".
 - **Plan: polish before 0.1.0-proto.5** (SD-055 to SD-057): the next
   prototype release comes after a block of fixes from a review: the phone
   layout, a message when Stop or a switch fails, plain words instead of
