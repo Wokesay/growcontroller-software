@@ -5,7 +5,11 @@ chronological, two blank lines between entries. No status field; entries
 are not deleted, a later SD replaces an earlier one and refers to it.
 
 Product decisions are in the product repository (PD). If a PD affects the
-software, an SD "Product requirement (from PD-xxx)" stands here.
+software, an SD "Product requirement (from PD-xxx)" stands here. Control
+details (locks, releases, thresholds, sequences, which devices and pumps
+are allowed) are decided here as SDs along the product's guideline; a PD
+on such a detail is a proposal, and an SD recorded from it stays until a
+later SD changes it (SD-091).
 
 **This log starts with the move to this repository (PD-023).** Before
 that, decisions were made as PDs in the product repository.
@@ -417,7 +421,9 @@ repository.
 - A product question met here is named in the issue and to the project
   owner, not decided here; it is decided and recorded in the product
   repository's session. Changed by SD-069, which SD-072 replaces: it
-  becomes a `product-question` issue in this repository.
+  becomes a `product-question` issue in this repository. Changed by
+  SD-091 (from PD-318): a control detail is not a product question; it is
+  decided here.
 - SD and RAT IDs are still assigned here. The private mapping of RAT IDs
   to their sources stays in the product repository.
 
@@ -1465,7 +1471,9 @@ simulator numbers per `docs/SIMULATOR.md`.
     raise a dose. A reference far from the start effect (below a quarter
     or above four times) is refused.
   - The learned effect belongs to a recipe; another recipe starts from
-    its reference.
+    its reference. Changed by SD-092: from the larger of the start
+    effect and its reference's, so a reference only ever makes a round
+    smaller.
   - A part marked as a fixed addition (a cleanser, for example) is dosed
     per litre of fresh water, also when the water is already at the
     target, and never scaled by an EC correction; its expected EC counts
@@ -2563,6 +2571,10 @@ Recorded on 2026-10-15 from #190, section 3 (SD-029). Replaces SD-069.
   a comment on the question; anything else on a public question is
   outside input. At session start, open `product-question` issues are
   checked for answers.
+- Changed by SD-091 (from PD-318): a control detail is not a product
+  question and is decided here; the product side answers product
+  questions directly along its guideline and writes a PD only for
+  principles, costs or hardware.
 
 
 ## SD-073: A control round a Stop cut settles as after a restart
@@ -4235,7 +4247,8 @@ behaviour; this entry says what applies to the software. Built after
   - Mixes are scheduled to avoid irrigation times where possible; a
     delay is reported.
   - **Open:**
-    - irrigation from a tank whose mix was aborted;
+    - irrigation from a tank whose mix was aborted (decided by SD-093:
+      as from any tank, once mixed in and inside the band);
     - how long irrigation waits for a mix that waits for the user, and
       how the wait meets the "too dry" emergency dose (PD-049) (#284);
     - whether a bucket mix holds irrigation at all (#284).
@@ -4546,9 +4559,374 @@ follow-up of SD-081 and SD-086).
     check (RAT-055), so EC and pH may dose right after Resume into water a
     cut fill diluted; the 0.8 × gap rule and the caps bound it;
   - the first fill after a Release does not wait for the level to settle
-    again; this holds for every inlet latch and is a follow-up;
+    again; this holds for every inlet latch and is a follow-up (done in
+    SD-088);
   - releasing is one tap, as for every inlet latch; SD-059 plans that a
     latch is released only from the home network (M6, not built yet).
+
+---
+
+## SD-088: The first fill after an inlet latch is released waits for the level to settle
+
+Decided by the project owner on 2026-10-20 in the software session
+("umsetzen" for #288, from the `domain` review of SD-087).
+
+- **What the refill does:** while the inlet latch (`inlet.fault`) stands,
+  for any reason, and up to the tick that sees it released, the level
+  reading counts as disturbed, as during a Stop, maintenance or a level
+  calibration (RAT-038). After a person releases it, the first fill waits
+  until the reading has been undisturbed for 3 min (the refill line says
+  so) and plans from a level read then, not from one read before the
+  release. A latch the refill sets and a person releases before the next
+  tick counts too.
+- **Why:** the refill line and the alarm ask the person to check the tank
+  and the inlet before releasing; they may bail, drain or fill it by hand
+  right then, and the reading lags 1.5–2 min. A fill planned from the
+  level before that could end in a false "did not rise" latch after
+  draining; after a top-up by hand it could overfill, as the capacity
+  cut-off reads the same lagging level (RAT-032), or a faulty inlet could
+  pass its rise check on the water added by hand (SD-082). A Stop is
+  already treated so: a person may be at the tank (RAT-031, RAT-038). 3
+  min, the existing assumption, leaves a margin over the lag; a longer
+  wait would open the valve after the person may have left.
+- **Not covered:**
+  - work at the tank that ends more than about a minute after the
+    release, as the reading lags; then the rise check judges the fill as
+    any fill (RAT-031). Longer work belongs under Stop or maintenance,
+    which keep the wait going while they last;
+  - EC or pH may start a round during the wait, and the fill then waits
+    for it to settle and dilutes it (RAT-055); this happens after a Stop
+    or a start as well (#289; done in SD-090);
+  - switching the refill off and on again, which RAT-038 counts as a
+    person at the tank, is not a disturbance of the reading (#289; done
+    in SD-090).
+
+---
+
+## SD-089: Mixing to the target: three details from building SD-057
+
+Decided by the project owner on 2026-10-21 in the software session, from
+the choices `domain` listed in #143 for building SD-057 (S4, S9, S20).
+They fill in what SD-057 leaves open and change one point of it: a
+timeout while stirring by hand stops the mix instead of ending it (S9).
+The rest of SD-057 stands.
+
+- **Stirring by hand waits at most 30 min (S9).** After each part but
+  the last, a guided mix waits at most 30 minutes of operating time for
+  "Continue". Then it stops and stays open: "Resume mix" goes on with the
+  next part, "End mix" ends it, and so do a prime, a calibration, a hand
+  dose or a restart (R6). The message names every part of a pair still
+  missing, with its amount (RAT-054). SD-057 had the timeout end the mix;
+  a stopped mix lets a missing part of a pair still be caught up through
+  the hub, which a hand dose (5 ml by default, RAT-039) cannot do.
+  Cancelling ends the mix with the pair's message, as SD-057 says. Built
+  in #268.
+- **The first step to the target is capped like every EC step (S4).**
+  Way 1 turns about 80 % of the gap into millilitres with the largest of
+  the start effect fixed in code, the recipe's reference and the learned
+  effect, and the step limit (`max_ec_step`, RAT-056) caps it, converted
+  with the same largest effect, as SD-057's first safeguard says. An
+  overshoot can only be undone by draining and diluting. With the cap,
+  the overshoot of a product stronger than the largest known effect
+  stays bounded, whatever the gap: at most the step limit times how far
+  the product exceeds 1.25 times that effect (0.75 mS/cm for a product
+  twice as strong, with the default limit); without it, the overshoot
+  grows with the gap (1.2 mS/cm for a gap of 2.0). A large gap (above
+  1.25 times the step limit, a fresh fill from RO water, for example)
+  costs one more correction round; a product weaker than the start
+  effect gets a smaller first step and more rounds. This replaces the
+  owner's first answer (no step cap), which was given without the
+  overshoot risk; `domain` assessed it (common concentrates are up to
+  about 1.8 times the start effect, and the reference is optional). Not
+  built yet; comes with way 1 (a later step of SD-057).
+- **Mixing to the target needs EC control switched on (S20).** With EC
+  control off, the hub offers way 2 (a fixed pattern) and proposes the
+  probe's EC as the water's EC, only from a valid reading (SD-054),
+  never a missing one (R5). There stays one correction path, with its
+  latches and its learning. Not covered yet: EC control switched on but
+  latched. Not built yet; comes with ways 1 and 2 (later steps of
+  SD-057).
+- **Not chosen:** ending the mix at the stir limit, or a limit of 60 min
+  (S9); the first step without the step cap, faster on a fresh fill
+  but overshooting with a product stronger than 1.25 times the largest
+  known effect, or uncapped only once the recipe has learned its own
+  effect (S4); way 1 dosing its 80 % and stopping, or a correction of
+  the mix's own next to EC control (S20).
+
+---
+
+## SD-090: EC and pH wait while a due fill settles; the refill off is a person at the tank; a released latch resets the count
+
+Decided by the project owner on 2026-10-21 in the software session
+("umsetzen" for #289, from the `domain` and `reviewer` reviews of
+SD-088). Three gaps around the refill, each there before SD-088.
+
+- **EC and pH wait while a due fill waits for the level to settle:** after
+  a Stop, a start, a released inlet latch or irrigation, a fill that is
+  due waits until the level reading has settled (RAT-038). EC and pH now
+  wait then too (`RefillController::holding`), as they already do from the
+  first opening of a refill to its last check (RAT-055). Before, a round
+  could start in that wait, for example after a top-up by hand; the fill
+  then waited for it to settle and diluted it.
+- **No new round while a due fill waits for a dose:** a round already
+  running is not cut: the refill waits for it to settle first, as before,
+  and the round is learned from (RAT-057). But no next round of the same
+  correction starts meanwhile (`ControlEnv::refillDue`); before, the next
+  one started in the very tick the last settled, so the fill waited for
+  the whole correction and then diluted it. The line of EC and pH reads
+  "Waiting: refill first" in both cases (before "Waiting: refilling",
+  also shown while the valve is closed; the refill's own line says what
+  it waits for).
+- **The refill switched off is a person at the tank:** RAT-038 already
+  treats it so for what flowed (kept unconfirmed); now the level reading
+  also counts as disturbed while it is off, so a fill after it is switched
+  on again waits until the reading has settled, as after a Stop.
+- **A released inlet latch resets the count of fills not judged:** a
+  latch drops the pending check and the fills not confirmed, and starts
+  the count of fills in a row that could not be judged again (SD-082,
+  "once a person has looked"). Before, this happened only while
+  automation ran; a latch released during a Stop, maintenance or with the
+  function off left the old records, so the next fill not judged could
+  latch the inlet at once. Now it happens in every tick the latch stands.
+  It drops what flowed unconfirmed as well, as it does under automation:
+  with a stuck level sensor the first fill after the release can plan the
+  whole gap once more, bounded by the inlet's open time, before its rise
+  check latches again (SD-082).
+- **Not covered:**
+  - how long EC and pH wait follows the refill's own waits: 3 min after a
+    disturbance; during irrigation up to half an hour (RAT-038), which
+    starts over when a tick does not reach the wait (for example a level
+    read at the start level);
+  - in ebb and flow, water still draining back after the irrigation pump
+    stops makes the level read low; a fill planned then may overfill.
+    That is a product question (#294).
+
+
+## SD-091: Product requirement (from PD-317, PD-318): the minimal principle, and control details are decided here
+
+Recorded on 2026-10-21 from #298 (SD-029). Changes SD-029 and SD-072 for
+control details. Which band counts as "water not fit for watering", and
+how it meets the rules for a cut mix, is decided here in a later SD for
+#298. Open on the product side: the risk assessment and the manual are
+aligned with the guideline before the first offer.
+
+- **Guideline (PD-317):** the board is the ESP32-S3's extended arm: it
+  reads inputs, passes them on and switches outputs; all control is in
+  the software. Users connect the sensors and devices they want, also
+  through Shelly sockets or in other ways, and the software uses their
+  values for control. The product offers a reasonable safety frame, not
+  complete protection: it is meant to be affordable and easy to handle,
+  and it trusts its users to engage with it: they set it up, flash,
+  connect and automate it themselves and write their own recipes. Not
+  every imaginable case (a device wired wrongly, for example) is ruled
+  out, blocked or tested in advance.
+- **Baseline protection instead of single cases:** the worst case is a
+  pump that ran too long or dosed too much. Three baseline rules stay
+  with the product side:
+  - a crash or a restart stops whatever could cause harm, dosing for
+    example (R6; fans keep their state, PD-050, SD-028);
+  - the hardware time limit of the pumps. Not on board v0.1 (PD-160): a
+    later board brings it (PD-222; which board is the product side's,
+    SD-084). Until then the gateway's cap of 60 s per run and the board
+    watchdog (on a hang, #94) stand in; the safety component's limits are
+    planned (SD-045, SD-066, not built yet). The software's limits stay on
+    top of the hardware limit afterwards;
+  - no watering when pH and EC say the water is not fit. When this was
+    recorded, no pH or EC check guarded the irrigation pump; of the
+    water, only the tank level blocked it (RAT-068). SD-093 builds it.
+- **Freedom:** any pump must work on a pump output, wherever the pump
+  sits (in the container or outside it); the output switches 12 V and
+  the user chooses the pump. Other devices, connections and sensors must
+  be usable too. That a pump may be used does not by itself mean that it
+  may restart on its own. growcontroller is an open-source software
+  project for which hardware can be supplied; its features stay such
+  that a buyer can adapt the setup freely.
+- **Control details are decided here (PD-318):** locks, releases,
+  thresholds, sequences, and which devices and pumps are allowed are
+  software decisions, made along the guideline and recorded as SDs. The
+  product repository keeps the guideline, costs, hardware and the
+  baseline rules above.
+- **Earlier product decisions on such details are proposals:** the PDs
+  and the product side's answers on control details in issues (for
+  example #132, #156 and #164, and the rules for mixing and watering in
+  the comments on #190) are decided along the guideline and simplified
+  where it allows, without a new PD. This includes restrictions such as
+  only certain pumps or only the shop's modules.
+- **Product questions (changes SD-029 and SD-072):** a product question
+  is one about what the product is and offers: its principles, costs,
+  hardware, legal points and the manual. A control detail is not a
+  product question. Product questions are still filed as
+  `product-question` issues under SD-072's rules (public, own words,
+  answers only from the owner's account). The product side answers them
+  directly along the guideline and writes a PD only for principles,
+  costs or hardware. An answer on a control detail counts here as a
+  proposal.
+- **Unchanged:** SD and RAT IDs are assigned here (SD-061); the session
+  does not access the product repository (PD-226); the security and
+  process decisions recorded from #190 are not control details and stay
+  (SD-072, SD-075, SD-077, SD-079).
+
+Added by the software side; the project owner decides them with this
+entry's pull request ("mergen"):
+
+- **How a control detail is decided:** Claude proposes options with a
+  recommendation, the project owner decides in the software session, and
+  the decision becomes an SD (`CLAUDE.md`). An SD already recorded from
+  an earlier PD stays in force until a later SD changes it; nothing is
+  loosened without one. A simplification never goes below the baseline
+  rules or the architecture rules R1–R8, and a logic change to the
+  actuator gateway or a protective cut-off still waits for the project
+  owner's "mergen" (SD-033).
+- **When:** earlier PDs on control details, and open product questions
+  that ask for one (for example #261, #283 and #294), are decided when
+  the function they belong to is built, or earlier where the owner asks.
+  A part of such a question that concerns hardware or costs stays with
+  the product side.
+- **Domain rules:** a control detail decided here that rests on
+  operating practice gets a RAT entry in our own words and a test, like
+  the rules from the product repository (PD-039); its evidence follows
+  `docs/RATIONALE.md` (measured, observed, calculated, found in a review,
+  or "—"), and a number without such a source is marked as an
+  assumption.
+
+
+## SD-092: Each recipe learns its own EC effect; a reference only ever makes a round smaller
+
+Decided by the project owner on 2026-10-21 and 2026-10-22 in the
+software session, a control detail (SD-091), for step 4 of SD-057 (#143), after `domain` found that two of SD-057's
+points cannot both hold: "another recipe starts from its reference" and
+"a typo in a recipe can never raise a dose". A reference that is too low
+(1.2 typed for 2.1 passes the reference check, RAT-056) would make EC
+control's first round on that recipe larger than today, and an
+overshoot can only be undone by draining and diluting (RAT-055). This
+changes SD-057's point on the learned effect; the rest of SD-057 stands.
+
+- **Each recipe learns its own effect** from EC control's clean rounds
+  on it (RAT-057). A round learns into the recipe it dosed, also when
+  EC control has moved to another recipe while it settled.
+- **Nothing learned, a recipe starts from the larger of the start
+  effect fixed in code and its reference's effect** (within a quarter to
+  four times the start effect). A reference only ever makes a round
+  smaller; a product truly weaker than the start effect needs a round
+  more until it is learned.
+- **What is learned is kept within a quarter to four times the start
+  effect fixed in code**, the band the reference must lie in, whatever
+  the recipe's reference; below it, the recipe's start. So a high
+  reference does not raise the band's lower end, and no reference moves
+  its upper end above 1.1 mS/cm per ml/L.
+- **The cap of a round converts the step limit with the larger of the
+  start and the learned effect**, the start already being the larger of
+  the start effect fixed in code and the reference's (SD-057's first
+  safeguard). Neither a small reference nor a small learned effect widens
+  it; a stored value above the band counts at its top, so the cap never
+  shrinks to where no round fits and nothing could be learned again.
+- **An edit of a recipe** that changes the parts EC control scales or
+  their ratio scales the learned effect up by what is no longer scaled
+  (fixed now or removed), as RAT-085 does for a part made fixed, at most
+  to the band's top, and keeps it only if it is at least the recipe's
+  new start; a round on that recipe that settles across the edit learns
+  nothing. A change of all amounts alike or the name keeps it. A
+  reference raised above it forgets it: the same parts may hold a
+  stronger product (decided by the owner on 2026-10-22, from `domain`'s
+  review). An import treats a recipe the hub had and the file keeps the
+  same way; a recipe it leaves out or brings new starts afresh, as one
+  deleted or newly created does, also while a round on its ID settles.
+  At the update, the one effect learned before goes to every recipe
+  whose start it does not undercut. For these, nothing doses more than
+  with either keeping or forgetting the value; an edit that keeps the
+  parts, their ratio and the start keeps what was measured, which may
+  lie below the start.
+- **A part removed from a recipe while a round on it runs is still
+  dosed** in that round: a pair leaves a recipe only whole, and dropping
+  its second part after the first went in would split it (RAT-054). The
+  round stays within the cap it was planned on and learns nothing.
+- **Not covered:** a ratio moved towards a stronger part among those
+  that stay is not bounded by the edit; the 0.8 aim absorbs a blend up to
+  1.25 times stronger, and the cap bounds the rest. The volume a round
+  learns over is read when it has settled; irrigation meanwhile is not
+  yet counted (#301).
+
+Not chosen: a recipe starting from its reference, as SD-057 had it (a
+low reference raises a round, up to the cap); forgetting the learned
+effect on every edit (a strong product would then overshoot on its next
+round); keeping it when a reference is raised above it (a product
+change in the same bottles would dose with the old, too small value).
+
+---
+
+## SD-093: No watering on water not fit for it: a wide band, the probes the hub judges, a dose mixed in first
+
+Decided by the project owner on 2026-10-21 and 2026-10-22 in the software
+session, for the third baseline rule of SD-091 (#298), after the `domain`,
+`security`, `qa`, `reviewer` and `ux` reviews, each question as
+recommended: the band, no override, how probes count, the mixing time,
+the case of a cut mix, an EC target nobody set and when EC control's own
+target counts, the wait after a start, a hand dose with the circulation
+pump off, and no wait without a probe checked. The proposals PD-253 to
+PD-258 and PD-300 to PD-303 on watering after a cut mix are decided by
+it (SD-091).
+
+- **The band (RAT-086):** water is not fit for watering when its pH is
+  below 4.0 or above 8.5, or its EC is more than 1.0 mS/cm above the EC
+  target, and never above 5.0 mS/cm. The target is the higher of this
+  phase's and the last phase's, each as it was in effect (the phase's,
+  else EC control's setting, else the catalog's default), so a tank mixed
+  for the last phase stays fit after a step down (RAT-012). A target
+  counts only when EC control is on or the phase names one: the settings
+  card saves every field, so a target in EC control's settings while it
+  is off may be a default nobody chose. Otherwise only the limit of 5.0
+  counts, so a tank mixed by hand is not refused against it. There is
+  no lower EC bound: plain water flushes. The band catches a pump that
+  ran too long or dosed too much, not a recipe missed: uncorrected tap or
+  RO water typically stays fit (RAT-084). The values are fixed in code
+  (R7) and are assumptions; no setting changes them.
+- **Readings:** only a usable reading counts. A pH or EC probe that is
+  assigned but has no usable reading (offline, no data, stale, frozen,
+  implausible, locked after a jump, not calibrated) blocks: a missing
+  value is never fit (R5). So does a probe in a calibration: it measures
+  a buffer, not the tank. A probe not assigned, or of a device class
+  calibrated outside the hub, is not checked, whatever its reading
+  (RAT-025): a setup may do without probes. With neither probe checked,
+  nothing is checked and nothing waits.
+- **A dose mixes in first:** with a probe checked, every run of a dosing
+  pump holds watering while it runs and for the mixing time after it: at least 240 s and
+  100 s per 20 L in the tank (RAT-052; the scaling is an assumption),
+  never more than 60 min. A run that starts while the pump waters stops
+  it. After every start the hub waits the same time, as a dose the
+  restart cut is not known after it.
+- **Where:** in the gateway (R1), on every path that switches the
+  watering pump on: by hand, over the API and the test run. A running
+  pump goes off as soon as the water is not fit or a dose starts, with an
+  event and without a latch: it can water again once the water is fit.
+  There is no override, by hand neither. Nothing switches the pump on
+  again by itself, so a refusal says why and when to try again.
+- **After a cut mix** the same holds as always: watering once the last
+  run has mixed in and the water is inside the band. The earlier
+  proposals for that case are dropped: waiting times per phase, an
+  emergency dose without probes, excess counted per product, catalogue
+  roles, soft water, and a mix counted as cut after the watering delay.
+  SD-084's rule stays for the irrigation function, not built yet: a
+  planned watering time waits until a running mix is finished.
+- **Residual risks:**
+  - a small overdose in a large tank stays inside the band and is
+    watered (one 60 s run of A and B in 100 L adds about 0.25 mS/cm), and
+    so is a half-finished mix inside the band;
+  - without probes nothing is checked; a probe reading too low (dry, or
+    arbitrary in RO water, RAT-046) can hide an overdose or refuse plain
+    water; tap water above pH 8.5 is refused;
+  - after a hand dose with the circulation pump off (in interval mode),
+    the mixing time can be too short; the check goes on while the pump
+    waters and stops it once the probe sees the dose;
+  - a dosing pump stuck on at the board shows no running dose to the hub
+    (board v0.1 has no hardware time limit), so only the band catches
+    it: part A alone after about 1.4 min in 20 L;
+  - every run of a dosing pump holds watering, also a calibration or
+    priming run into a cup, and correction rounds after a refill hold it
+    for about 20–40 min in 30–60 L;
+  - the lock shows only when someone taps, and a refusal over the API
+    leaves no event (#307);
+  - deep water culture, RDWC and NFT have no watering role yet, so the
+    rule protects pulsed watering only.
 
 ---
 

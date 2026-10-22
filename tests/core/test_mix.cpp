@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <doctest/doctest.h>
 
+#include <limits>
+
 #include "gc/mix.hpp"
 
 using namespace gc;
@@ -118,6 +120,179 @@ TEST_CASE("EC-Deckel: kleine gelernte Wirkung weitet ihn nicht auf (M5-4, RAT-05
   auto n = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 5.0, 0.275, 0.275, kNaN);
   REQUIRE(n.ok);
   CHECK(n.steps[0].ml + n.steps[1].ml <= doctest::Approx(1.0 / 0.275 * 20));
+}
+
+TEST_CASE("EC effect of a recipe: a reference only ever makes a round smaller; the cap from the largest of start, reference and learned (SD-057, RAT-056, RAT-081)") {
+  RecipeCfg r{"r", "Test", "", {{"a", 2.0}, {"b", 2.0}, {"cm", 1.0, true}}};
+  SUBCASE("no reference, nothing learned: the start effect fixed in code") {
+    const auto e = recipeEffect(r, kNaN);
+    CHECK(e.start == doctest::Approx(kEcStartEffect));
+    CHECK(e.dose == doctest::Approx(kEcStartEffect));
+    CHECK(e.largest == doctest::Approx(kEcStartEffect));
+  }
+  SUBCASE("a strong reference: its effect over the scaled parts is the start and the cap's divisor") {
+    r.refEc = 2.0;  // 2.0 / 4 ml/L = 0.5, the fixed part left out (RAT-085)
+    const auto e = recipeEffect(r, kNaN);
+    CHECK(e.start == doctest::Approx(0.5));
+    CHECK(e.dose == doctest::Approx(0.5));
+    CHECK(e.largest == doctest::Approx(0.5));
+  }
+  SUBCASE("a weak reference, or a slip like 1.2 typed for 2.1, never makes a round larger") {
+    for (double ref : {0.6, 1.2}) {  // 0.15 and 0.3 per ml/L, the first below the start effect
+      r.refEc = ref;
+      const auto e = recipeEffect(r, kNaN);
+      CHECK(e.start >= kEcStartEffect);
+      CHECK(e.dose >= kEcStartEffect);
+    }
+    r.refEc = 0.6;
+    CHECK(recipeEffect(r, kNaN).start == doctest::Approx(kEcStartEffect));
+  }
+  SUBCASE("a reference outside the band, as a file edited by hand may bring, counts as none") {
+    for (double ref : {0.2, 5.0, -1.0, 0.0, std::numeric_limits<double>::infinity()}) {
+      r.refEc = ref;
+      const auto e = recipeEffect(r, kNaN);
+      CHECK(e.start == doctest::Approx(kEcStartEffect));
+      CHECK(e.largest == doctest::Approx(kEcStartEffect));
+    }
+  }
+  SUBCASE("learned: the dose uses it within a quarter to four times the start effect fixed in code, below it the recipe's start") {
+    r.refEc = 1.2;  // 0.3 per ml/L
+    auto e = recipeEffect(r, 0.45);
+    CHECK(e.dose == doctest::Approx(0.45));
+    CHECK(e.largest == doctest::Approx(0.45));
+    e = recipeEffect(r, 0.1);  // weaker than the reference, within the band: what was measured
+    CHECK(e.dose == doctest::Approx(0.1));
+    CHECK(e.largest == doctest::Approx(0.3));
+    e = recipeEffect(r, 0.05);  // below a quarter of the start effect: the recipe's start
+    CHECK(e.dose == doctest::Approx(0.3));
+    CHECK(e.largest == doctest::Approx(0.3));
+    e = recipeEffect(r, 3.0);  // above four times (a file edited by hand): four times, for the dose and the cap,
+    CHECK(e.dose == doctest::Approx(4 * kEcStartEffect));  // so the cap never shrinks to where no round fits
+    CHECK(e.largest == doctest::Approx(4 * kEcStartEffect));
+  }
+  SUBCASE("a reference at the band's low end does not keep a strong product from being learned") {
+    r.refEc = 0.28;  // 0.07 per ml/L
+    CHECK(clampEcEffect(0.495, recipeEffect(r, kNaN).start) == doctest::Approx(0.495));
+    CHECK(clampEcEffect(2.0, recipeEffect(r, kNaN).start) == doctest::Approx(4 * kEcStartEffect));
+  }
+  SUBCASE("only fixed parts or no amounts: the reference implies nothing") {
+    RecipeCfg f{"f", "Fixed", "", {{"cm", 1.0, true}}};
+    f.refEc = 1.0;
+    CHECK(recipeEffect(f, kNaN).start == doctest::Approx(kEcStartEffect));
+  }
+}
+
+TEST_CASE("EC effect after an edit: scaled up by parts no longer scaled, kept only at or above the new start; never a larger round than keeping or forgetting it (SD-057, RAT-085)") {
+  const RecipeCfg before{"r", "Test", "", {{"a", 2.0}, {"b", 2.0}, {"cm", 0.6}}};
+  SUBCASE("the same parts in the same ratio: unchanged, also with a new name or a reference below it") {
+    RecipeCfg after = before;
+    for (auto& s : after.steps) s.mlPerL *= 1.5;
+    after.name = "Renamed";
+    after.refEc = 2.0;  // 0.29 per ml/L of 6.9
+    const auto e = editEcEffect(before, after, 0.32);
+    CHECK_FALSE(e.changed);
+    CHECK(e.learned == doctest::Approx(0.32));
+    // Below the start effect, and the start unchanged: what was measured stays
+    RecipeCfg renamed = before;
+    renamed.name = "Renamed";
+    CHECK(editEcEffect(before, renamed, 0.2).learned == doctest::Approx(0.2));
+  }
+  SUBCASE("a reference raised above it, on the same parts: forgotten, as a stronger product in the same bottles may be") {
+    RecipeCfg after = before;
+    after.refEc = 2.3;  // 0.5 per ml/L of 4.6
+    const auto e = editEcEffect(before, after, 0.3);
+    CHECK_FALSE(e.changed);  // the round's parts are the same: what it measures holds
+    CHECK(std::isnan(e.learned));
+    CHECK(editEcEffect(before, after, 0.6).learned == doctest::Approx(0.6));  // above the new start: kept
+  }
+  SUBCASE("a part fixed or removed: scaled up by what left") {
+    RecipeCfg fixed = before;
+    fixed.steps[2].fixed = true;
+    auto e = editEcEffect(before, fixed, 0.3);
+    CHECK(e.changed);
+    CHECK(e.learned == doctest::Approx(0.3 * 4.6 / 4.0));
+    RecipeCfg removed = before;
+    removed.steps.pop_back();
+    e = editEcEffect(before, removed, 0.3);
+    CHECK(e.changed);
+    CHECK(e.learned == doctest::Approx(0.3 * 4.6 / 4.0));
+    // At most to the band's top, so the cap never shrinks to where no round fits
+    RecipeCfg dominant = before;
+    dominant.steps[0].fixed = true;
+    CHECK(editEcEffect(before, dominant, 1.0).learned == doctest::Approx(4 * kEcStartEffect));
+  }
+  SUBCASE("a ratio moved towards a stronger part is not bounded by the edit: kept as learned, the next round shows it") {
+    const RecipeCfg was{"r", "Test", "", {{"a", 1.0}, {"b", 3.0}}};
+    const RecipeCfg now{"r", "Test", "", {{"a", 3.0}, {"b", 1.0}}};
+    const auto e = editEcEffect(was, now, 0.4);
+    CHECK(e.changed);
+    CHECK(e.learned == doctest::Approx(0.4));
+  }
+  SUBCASE("a new ratio: kept when at least the start, forgotten when below") {
+    RecipeCfg after = before;
+    after.steps[0].mlPerL = 3.0;
+    auto e = editEcEffect(before, after, 0.5);
+    CHECK(e.changed);
+    CHECK(e.learned == doctest::Approx(0.5));
+    e = editEcEffect(before, after, 0.2);
+    CHECK(e.changed);
+    CHECK(std::isnan(e.learned));
+  }
+  SUBCASE("nothing learned stays nothing learned; nothing scaled any more forgets it") {
+    RecipeCfg after = before;
+    after.steps[0].mlPerL = 3.0;
+    CHECK(std::isnan(editEcEffect(before, after, kNaN).learned));
+    RecipeCfg none{"r", "Test", "", {{"cm", 0.6, true}}};
+    CHECK(std::isnan(editEcEffect(before, none, 0.5).learned));
+  }
+  SUBCASE("never a larger round than keeping it or forgetting it, nor a looser cap") {
+    Fix f;
+    for (double learned : {0.1, 0.2, 0.3, 0.5, 1.0}) {
+      for (double ref : {kNaN, 1.2, 2.4}) {
+        RecipeCfg after{"r", "Test", "", {{"a", 3.0}, {"b", 3.0}}};
+        after.refEc = ref;
+        f.cfg.recipes[0] = after;
+        const auto e = editEcEffect(before, after, learned);
+        auto ml = [&](double l) {
+          const auto eff = recipeEffect(after, l);
+          const auto d = planEcDose(f.cfg, f.pumps, after, 20, 0.6, eff.dose, eff.largest, 1.0);
+          REQUIRE(d.ok);
+          return d.steps[0].ml + d.steps[1].ml;
+        };
+        CHECK(ml(e.learned) <= doctest::Approx(std::min(ml(learned), ml(kNaN))));
+        CHECK(recipeEffect(after, e.learned).largest >= doctest::Approx(recipeEffect(after, kNaN).largest));
+      }
+    }
+  }
+}
+
+TEST_CASE("EC dose with a recipe's effect: a small reference or a small learned effect never widens the cap; it never goes without one (SD-057, RAT-056, R5)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
+  const double capMl = 1.0 / kEcStartEffect * 20;  // max_ec_step 1.0 over the start effect, 20 L
+  for (double ref : {kNaN, 0.3, 0.55}) {  // none, 0.15 and 0.275 per ml/L
+    for (double learned : {kNaN, 0.08, 0.2}) {
+      f.cfg.recipes[0].refEc = ref;
+      const auto e = recipeEffect(f.cfg.recipes[0], learned);
+      for (double step : {1.0, kNaN, -1.0, std::numeric_limits<double>::infinity()}) {
+        const auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 3.0, e.dose, e.largest, step);
+        REQUIRE(d.ok);
+        CHECK(d.steps[0].ml + d.steps[1].ml <= doctest::Approx(capMl));
+      }
+    }
+  }
+  // Whatever start comes in, the cap is never wider than at the start effect fixed in code (RAT-056)
+  for (double start : {kNaN, 0.1, -1.0}) {
+    const auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 3.0, 0.1, start, 1.0);
+    REQUIRE(d.ok);
+    CHECK(d.steps[0].ml + d.steps[1].ml <= doctest::Approx(capMl));
+  }
+  // A strong reference makes the cap smaller: 1.0 / 0.5 per ml/L
+  f.cfg.recipes[0].refEc = 1.0;
+  const auto e = recipeEffect(f.cfg.recipes[0], kNaN);
+  const auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 20, 3.0, e.dose, e.largest, 1.0);
+  REQUIRE(d.ok);
+  CHECK(d.steps[0].ml + d.steps[1].ml == doctest::Approx(1.0 / 0.5 * 20));
 }
 
 TEST_CASE("EC dose: a fixed addition is neither dosed nor scaled; the round goes to the other parts in their ratio (SD-057, RAT-085)") {

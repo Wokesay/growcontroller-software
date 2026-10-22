@@ -481,6 +481,96 @@ TEST_CASE("Restart: an unreadable run-time state keeps everything stopped and is
   CHECK(h.state()["stopped"] == false);
 }
 
+TEST_CASE("Restart: the one learned EC effect of a state saved before each recipe learned its own carries over; what each recipe learned survives a restart, and goes with its recipe (SD-057)") {
+  gc::Catalog cat = gc::Catalog::builtin();
+  gc::MemoryStorage store;
+  test::FakeBus bus;
+  test::Clock clk;
+  gc::Config cfg;
+  cfg.devices = {{"C1", "pump_cap", ""}, {"C2", "pump_cap", ""}};
+  cfg.canisters = {{"a", "A", "nutrient", "C1", "", "", gc::kNaN}, {"b", "B", "nutrient", "C2", "", "", gc::kNaN}};
+  cfg.recipes = {{"veg", "Veg", "", {{"a", 2.0}, {"b", 2.0}}}, {"bloom", "Bloom", "", {{"a", 3.0}, {"b", 1.0}}}};
+  cfg.recipes[1].refEc = 2.0;  // 0.5 per ml/L: a start above the learned value below
+  store.write("config.json", json(cfg).dump());
+  SUBCASE("saved before: a recipe whose start it does not undercut takes the one learned value, so nothing doses more") {
+    store.write("state.json", json({{"ecEffect", 0.31}}).dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    const json e = h.state()["effects"];
+    CHECK(e["ecByRecipe"] == json({{"veg", 0.31}}));  // not bloom: its reference starts it at 0.5
+    CHECK(e["ec"].get<double>() == doctest::Approx(0.31));  // the first recipe, as EC control picks it
+    REQUIRE(h.stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);  // saved at once (RAT-036)
+    const json saved = json::parse(*store.read("state.json"));
+    CHECK(saved["ecEffects"] == json({{"veg", 0.31}}));
+    CHECK(saved["ecEffect"].get<double>() == doctest::Approx(0.31));  // still there for a version before
+  }
+  SUBCASE("saved with each recipe's own: kept as saved, a damaged entry counts as nothing learned, a restart keeps them") {
+    store.write("state.json", json({{"ecEffect", 0.31}, {"ecEffects", {{"bloom", 0.4}, {"veg", "x"}}}}).dump());
+    {
+      gc::Hub h(cat, bus, store, clk, fakeRandom);
+      h.boot();
+      const json e = h.state()["effects"];
+      CHECK(e["ecByRecipe"] == json({{"bloom", 0.4}}));
+      CHECK(e["ec"].is_null());  // EC control's recipe, the first, learned nothing yet
+      REQUIRE(h.stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);
+      CHECK(json::parse(*store.read("state.json"))["ecEffects"] == json({{"bloom", 0.4}}));
+    }
+    gc::Hub again(cat, bus, store, clk, fakeRandom);
+    again.boot();
+    CHECK(again.state()["effects"]["ecByRecipe"] == json({{"bloom", 0.4}}));
+  }
+  SUBCASE("deleted, or left out of an import: what was learned for it goes too, also when a recipe of that name comes back") {
+    store.write("state.json", json({{"ecEffects", {{"bloom", 0.4}, {"veg", 0.3}}}}).dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    gc::Config next = cfg;
+    next.recipes = {cfg.recipes[0]};
+    REQUIRE(h.importConfig(json(next)).status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.3}}));
+    REQUIRE(h.importConfig(json(cfg)).status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.3}}));  // bloom starts afresh
+    REQUIRE(h.deleteRecipe("veg").status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json::object());
+  }
+  SUBCASE("a recipe new to the hub never takes over a value left behind for its ID, created or imported (as #161)") {
+    gc::Config one = cfg;
+    one.recipes = {cfg.recipes[0]};
+    store.write("config.json", json(one).dump());
+    // Left behind: the settings saved a deletion the run-time state did not, or were reset
+    store.write("state.json", json({{"ecEffects", {{"veg", 0.3}, {"gone", 0.08}, {"bloom", 0.4}}}}).dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.3}}));  // only recipes there are
+    REQUIRE(h.putRecipe({{"name", "Gone"}, {"steps", {{{"canister", "a"}, {"mlPerL", 1.0}}, {{"canister", "b"}, {"mlPerL", 1.0}}}}}).status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.3}}));
+    REQUIRE(h.importConfig(json(cfg)).status == 200);  // brings bloom, new to the hub
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.3}}));
+  }
+  SUBCASE("a recipe the import keeps is as edited: a part no longer scaled scales it up, a new start above it forgets it") {
+    store.write("state.json", json({{"ecEffects", {{"bloom", 0.6}, {"veg", 0.3}}}}).dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    gc::Config next = cfg;
+    next.recipes[0].steps = {{"a", 2.0}, {"b", 2.0, true}};  // veg: b fixed, 0.3 × 4 / 2
+    next.recipes[1].steps = {{"a", 1.0}, {"b", 3.0}};        // bloom: a new ratio, its reference's start 0.5 below 0.6
+    REQUIRE(h.importConfig(json(next)).status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"bloom", 0.6}, {"veg", 0.6}}));
+    next.recipes[1].steps = {{"a", 3.0}, {"b", 1.0}};
+    next.recipes[1].refEc = 3.0;  // 0.75 per ml/L, above what bloom learned
+    REQUIRE(h.importConfig(json(next)).status == 200);
+    CHECK(h.state()["effects"]["ecByRecipe"] == json({{"veg", 0.6}}));
+  }
+  SUBCASE("written for a version before: the value of EC control's recipe; a stored value that is no positive number counts as nothing learned") {
+    store.write("state.json", json({{"ecEffect", 0.31}, {"ecEffects", {{"bloom", 0.4}, {"veg", 0.29}, {"x", 0}, {"y", -1}}}}).dump());
+    gc::Hub h(cat, bus, store, clk, fakeRandom);
+    h.boot();
+    REQUIRE(h.stop(gc::Msg{"stop.app", "STOP button in the app", json::object()}).status == 200);
+    const json saved = json::parse(*store.read("state.json"));
+    CHECK(saved["ecEffect"].get<double>() == doctest::Approx(0.29));  // veg, the first recipe
+    CHECK(saved["ecEffects"] == json({{"bloom", 0.4}, {"veg", 0.29}}));
+  }
+}
+
 TEST_CASE("Restart: a run-time state that cannot be read keeps everything stopped and is kept until Stop or Resume (SD-081)") {
   LockedStorage store;
   test::Clock clk;
@@ -771,6 +861,44 @@ TEST_CASE("Restart: with broken or missing settings too, whether an inlet is ass
   REQUIRE(h.acceptDevice("PLUG-1", "").status == 200);
   REQUIRE(h.bindRole("tank.inlet", "PLUG-1", 0).status == 200);
   CHECK(h.switchRole("tank.inlet", true).body["error"]["key"] == "act.inlet.latched_unknown");
+}
+
+TEST_CASE("Refill: a latch released while automation does not run starts the count of fills not judged again, as one released while it runs (#289, SD-082, SD-090)") {
+  LockedStorage store;
+  test::Clock clk;
+  test::FakeBus bus;
+  finishedRunWithInlet(store, clk, bus);
+  // saved: the inlet latched, one fill in a row not judged, a check pending and fills not confirmed
+  json st = json::parse(store.held("state.json").value_or("{}"));
+  st["latches"]["inlet.fault"] = {{"at", 1790000000}, {"why", {{"key", "why.level_invalid"}, {"text", "No valid level reading"}}}};
+  st["refill"] = {{"unjudged", 1},
+                  {"check", {{"at", 1790000000}, {"due", 1790000600}, {"expectedL", 3.0}, {"openMin", 1.5}}},
+                  {"unconfirmed", {{"startL", 20.0}, {"sumL", 3.0}, {"openMin", 1.5}}}};
+  json cfg = json::parse(store.held("config.json").value_or("{}"));
+  cfg["functions"]["refill"] = {{"enabled", true}, {"params", json::object()}};
+  bool maintenance = false;
+  SUBCASE("during a Stop") { st["stopped"] = true; }
+  SUBCASE("during maintenance") { maintenance = true; }
+  SUBCASE("with the refill switched off") { cfg["functions"]["refill"]["enabled"] = false; }
+  store.MemoryStorage::write("state.json", st.dump());
+  store.MemoryStorage::write("config.json", cfg.dump());
+  gc::Catalog cat = gc::Catalog::builtin();
+  clk.ms += 60000;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  if (maintenance) REQUIRE(h.maintenance(30).status == 200);
+  for (int i = 0; i < 3; ++i) {
+    clk.ms += 1000;
+    h.tick();
+  }
+  REQUIRE(h.ackLatch("inlet.fault").status == 200);  // a person has looked
+  clk.ms += 1000;
+  h.tick();
+  h.flush();
+  const json saved = json::parse(store.held("state.json").value_or("{}"));
+  CHECK(saved.value("/refill/unjudged"_json_pointer, json()) == 0);
+  CHECK_FALSE(saved.value("/refill/check"_json_pointer, json()).is_object());
+  CHECK_FALSE(saved.value("/refill/unconfirmed"_json_pointer, json()).is_object());
 }
 
 TEST_CASE("Restart: an inlet latch saved with a damaged reason or cause still holds as an ordinary one, and no tick fails on it (SD-087)") {

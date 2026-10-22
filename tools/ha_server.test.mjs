@@ -6,14 +6,18 @@
 // up root before it opens its port (#80). The first password needs
 // the setup code the start prints (#79). Values that a stand-in Home
 // Assistant reports reach the hub's readings (#112), with the session
-// taken from the one cookie named exactly gc_session. A --config it cannot
-// read or a number out of range ends with a message, not a crash (#213). Runs the built
-// server (tools/ci.sh builds it first; the app image's own server in
-// .github/workflows/app.yml).
+// taken from the one cookie named exactly gc_session. A --config or
+// --token-file it cannot read, or that is a folder, or a number out of range
+// ends with a message naming it and why, not a crash or "No token" (#213); a
+// token file named wins over GC_HA_TOKEN, a named pipe is read once, and a
+// token given in place of its file is not shown. A --data it cannot create
+// ends with a message, and a --web it cannot read leaves it running without
+// the web app. Runs the built server (tools/ci.sh builds it first; the app
+// image's own server in .github/workflows/app.yml).
 //   node --test tools/ha_server.test.mjs      (GC_HA_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer as httpServer, get, request } from "node:http";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -116,6 +120,31 @@ async function startApp(data, { web = join(tmp, "no-web"), extraEnv = {} } = {})
   return app;
 }
 
+// Started in dir with a mapping and a token, plus args: check(port) once
+// it answers, then a clean stop on SIGTERM. What it printed.
+async function startServer(dir, args, check = async () => {}) {
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  const port = await freePort();
+  const child = spawn(bin, ["--config", config, "--data", join(dir, "hub"), ...args, "--host", "127.0.0.1", "--port", String(port)], {
+    env: env({ GC_HA_TOKEN: "t" }),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (out += c));
+  const ended = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
+  try {
+    for (let i = 0; i < 60 && !(await info(port)); i++) await new Promise((r) => setTimeout(r, 250));
+    assert.ok(await info(port), `the server answers on ${port}:\n${out}`);
+    await check(port);
+  } finally {
+    child.kill("SIGTERM");
+  }
+  assert.deepEqual(await ended, { code: 0, signal: null }, out);
+  return out;
+}
+
 // The setup code the start printed (#79), once it is out.
 async function setupCode(output) {
   for (let i = 0; i < 60; i++) {
@@ -132,11 +161,13 @@ if (process.env.CI && !existsSync(bin)) throw new Error(`${bin} is not built`);
 const skip = !existsSync(bin) ? `${bin} is not built` : process.platform === "win32" ? "POSIX only" : false;
 
 test("--app refuses a mapping file and a token file", { skip }, () => {
-  for (const args of [["--app", "--config", "x.json"], ["--config", "x.json", "--app"], ["--app", "--token-file", "t"]]) {
-    const r = run(args, { SUPERVISOR_TOKEN: "t" });
+  for (const args of [["--app", "--config", "x.json"], ["--config", "x.json", "--app"], ["--app", "--token-file", "t"], ["--app", "--token-file", ""]]) {
+    // a refusal that broke would start in the test's folder, not in /data/hub
+    const r = run([...args, "--data", join(tmp, "refused")], { SUPERVISOR_TOKEN: "t" });
     assert.equal(r.status, 2, args.join(" "));
     assert.match(r.stderr, /leave out --config and --token-file/);
   }
+  assert.ok(!existsSync(join(tmp, "refused")), "no data folder");
 });
 
 test("--app takes the token only from SUPERVISOR_TOKEN and writes nothing without it", { skip }, () => {
@@ -156,14 +187,35 @@ test("--app takes the token only from SUPERVISOR_TOKEN and writes nothing withou
   assert.ok(!existsSync(data));
 });
 
-test("a --config it cannot read ends with a message, not a crash (#213)", { skip }, () => {
-  // its status cannot be read (a link to itself; also a folder it may not enter)
+test("a --config through a link to itself ends with a message, not a crash (#213)", { skip }, () => {
+  // its status cannot be read, for root too
   const dir = mkdtempSync(join(tmp, "config-"));
   symlinkSync("loop", join(dir, "loop"));
   const r = run(["--config", join(dir, "loop", "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
   assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
   assert.match(r.stderr, /ha\.json: cannot be read \(.+\)\n/);
   assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --config below a folder it may not enter ends with a message, not a crash (#213)", { skip }, (t) => {
+  // the file is there, but its status cannot be read
+  const dir = mkdtempSync(join(tmp, "config-"));
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  writeFileSync(join(locked, "ha.json"), JSON.stringify({ url: "http://127.0.0.1:9" }));
+  chmodSync(locked, 0o000);
+  try {
+    try {
+      statSync(join(locked, "ha.json"));
+      return t.skip("this process enters any folder");
+    } catch {}
+    const r = run(["--config", join(locked, "ha.json"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    assert.match(r.stderr, /ha\.json: cannot be read \(Permission denied\)\n/);
+    assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+  } finally {
+    chmodSync(locked, 0o700); // so it can be removed
+  }
 });
 
 test("a --config that is there but cannot be opened says so, not that it holds no mapping (#213)", { skip }, (t) => {
@@ -178,6 +230,187 @@ test("a --config that is there but cannot be opened says so, not that it holds n
   assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
   assert.match(r.stderr, /ha\.json: cannot be read \(.+\)\n/);
   assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --config that is not there, or a folder, says so, not that it holds no mapping", { skip }, () => {
+  const dir = mkdtempSync(join(tmp, "config-"));
+  mkdirSync(join(dir, "folder"));
+  for (const [file, says] of [["missing", "file not found"], ["folder", "is a folder, not a file"]]) {
+    const r = run(["--config", join(dir, file), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    assert.ok(r.stderr.split("\n").includes(`${join(dir, file)}: ${says}`), r.stderr);
+    assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+  }
+});
+
+// A --token-file it cannot use is named with the reason, never "No token":
+// that would send whoever starts it looking for the token, not the file. It
+// does not fall back to GC_HA_TOKEN either: the file named wins.
+test("a --token-file it cannot read names it and why, not that there is no token", { skip }, () => {
+  const dir = mkdtempSync(join(tmp, "token-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  symlinkSync("loop", join(dir, "loop"));
+  mkdirSync(join(dir, "folder"));
+  // each also as root
+  for (const [file, says] of [
+    ["missing", "file not found"],
+    [join("loop", "token"), /^cannot be read \(.+\)$/],
+    ["folder", "is a folder, not a file"],
+  ]) {
+    const r = run(["--config", config, "--token-file", join(dir, file), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    const line = r.stderr.split("\n").find((l) => l.startsWith(`${join(dir, file)}: `));
+    assert.ok(line, r.stderr);
+    if (typeof says === "string") assert.equal(line.slice(join(dir, file).length + 2), says);
+    else assert.match(line.slice(join(dir, file).length + 2), says);
+    assert.doesNotMatch(r.stderr, /No token/);
+    assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+  }
+  // one it reads but that holds no token says so
+  writeFileSync(join(dir, "empty"), "\n");
+  const r = run(["--config", config, "--token-file", join(dir, "empty"), "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.ok(r.stderr.split("\n").includes(`${join(dir, "empty")}: holds no token`), r.stderr);
+  assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --token-file it may not read, or below a folder it may not enter, says so", { skip }, (t) => {
+  const dir = mkdtempSync(join(tmp, "token-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  writeFileSync(join(dir, "closed"), "t\n");
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  writeFileSync(join(locked, "token"), "t\n");
+  chmodSync(join(dir, "closed"), 0o000);
+  chmodSync(locked, 0o000);
+  try {
+    try {
+      readFileSync(join(dir, "closed"));
+      return t.skip("this process reads any file");
+    } catch {}
+    try {
+      statSync(join(locked, "token"));
+      return t.skip("this process enters any folder");
+    } catch {}
+    for (const file of [join(dir, "closed"), join(locked, "token")]) {
+      const r = run(["--config", config, "--token-file", file, "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+      assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+      assert.ok(r.stderr.split("\n").includes(`${file}: cannot be read (Permission denied)`), r.stderr);
+      assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+    }
+  } finally {
+    chmodSync(locked, 0o700); // so it can be removed
+  }
+});
+
+test("a --token-file with no name, or the token in place of its file, ends without showing it", { skip }, () => {
+  const dir = mkdtempSync(join(tmp, "token-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  // an empty name (an unset shell variable) is no reason to take GC_HA_TOKEN
+  let r = run(["--config", config, "--token-file", "", "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.ok(r.stderr.split("\n").includes("--token-file needs the name of a file that holds the token"), r.stderr);
+  // a long-lived token is a JWT; this one is shaped like one, not one
+  const token = "eyJstand-in.eyJstand-in.stand-in";
+  r = run(["--config", config, "--token-file", token, "--data", join(dir, "hub")], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.ok(r.stderr.split("\n").includes("--token-file takes a file that holds the token, not the token (not shown here)"), r.stderr);
+  assert.ok(!r.stderr.includes(token) && !r.stdout.includes(token), "the token is not shown");
+  assert.ok(!existsSync(join(dir, "hub")), "no data folder");
+});
+
+test("a --config and --token-file that are named pipes are read once, not emptied by a look first", { skip, timeout: 120000 }, async () => {
+  const dir = mkdtempSync(join(tmp, "pipe-"));
+  const writers = [];
+  // each waits until the server opens it, then writes and ends
+  const pipe = (name, text) => {
+    assert.equal(spawnSync("mkfifo", [join(dir, name)]).status, 0, "mkfifo");
+    const w = spawn("sh", ["-c", 'printf "%s" "$1" > "$0"', join(dir, name), text], { stdio: "ignore" });
+    writers.push({ w, ended: new Promise((resolve) => w.on("exit", (code, signal) => resolve({ code, signal }))) });
+    return join(dir, name);
+  };
+  const within = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r("still waiting for a reader"), ms))]);
+  try {
+    // the last --config counts
+    await startServer(dir, ["--config", pipe("ha-pipe", JSON.stringify({ url: "http://127.0.0.1:9" })), "--token-file", pipe("token", "t\n")], async () => {
+      // both were opened: what it runs with came from them, not from ha.json or GC_HA_TOKEN
+      for (const { ended } of writers) assert.deepEqual(await within(ended, 5000), { code: 0, signal: null });
+    });
+  } finally {
+    for (const { w } of writers) w.kill();
+  }
+});
+
+test("a --data it cannot create ends with a message, and a link stays as it was", { skip }, () => {
+  // through a link to itself, for root too: the app job runs this file as root
+  const dir = mkdtempSync(join(tmp, "data-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  symlinkSync("loop", join(dir, "loop"));
+  const data = join(dir, "loop", "hub");
+  const r = run(["--config", config, "--data", data], { GC_HA_TOKEN: "t" });
+  assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+  assert.ok(r.stderr.split("\n").includes(`The data folder ${data} cannot be written. Choose a writable one with --data.`), r.stderr);
+  assert.equal(readlinkSync(join(dir, "loop")), "loop");
+});
+
+test("a --data below a folder it may not enter ends with a message", { skip }, (t) => {
+  const dir = mkdtempSync(join(tmp, "data-"));
+  const config = join(dir, "ha.json");
+  writeFileSync(config, JSON.stringify({ url: "http://127.0.0.1:9" }));
+  const locked = join(dir, "locked");
+  mkdirSync(locked);
+  chmodSync(locked, 0o000);
+  try {
+    try {
+      readdirSync(locked);
+      return t.skip("this process enters any folder");
+    } catch {}
+    const data = join(locked, "hub");
+    const r = run(["--config", config, "--data", data], { GC_HA_TOKEN: "t" });
+    assert.deepEqual([r.status, r.signal], [2, null], r.stderr);
+    assert.ok(r.stderr.split("\n").includes(`The data folder ${data} cannot be written. Choose a writable one with --data.`), r.stderr);
+  } finally {
+    chmodSync(locked, 0o700); // so it can be removed
+  }
+  assert.deepEqual(readdirSync(locked), [], "nothing created in it");
+});
+
+// A --web whose status cannot be read is no web app, not a crash at the
+// start: it runs without it, says why (its wording is the C library's) and
+// stops cleanly.
+const webSaysWhy = (web) => new RegExp(`The web app in ${web.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} cannot be read; growcontroller runs without it\\. Detail: .+\\.\\n`);
+
+test("a --web through a link to itself: it runs without the web app and says why", { skip, timeout: 120000 }, async () => {
+  // for root too: the app job runs this file as root
+  const dir = mkdtempSync(join(tmp, "web-"));
+  symlinkSync("loop", join(dir, "loop"));
+  const out = await startServer(dir, ["--web", join(dir, "loop")]);
+  assert.match(out, webSaysWhy(join(dir, "loop")));
+});
+
+test("a --web below a folder it may not enter: it runs without the web app and says why", { skip, timeout: 120000 }, async (t) => {
+  const dir = mkdtempSync(join(tmp, "web-"));
+  const locked = join(dir, "locked");
+  mkdirSync(join(locked, "dist"), { recursive: true });
+  writeFileSync(join(locked, "dist", "index.html"), '<div id="app"></div>');
+  chmodSync(locked, 0o000);
+  try {
+    try {
+      statSync(join(locked, "dist", "index.html"));
+      return t.skip("this process enters any folder");
+    } catch {}
+    const out = await startServer(dir, ["--web", join(locked, "dist")], async (port) => {
+      assert.doesNotMatch(await (await fetch(`http://127.0.0.1:${port}/`)).text(), /id="app"/, "not its web app");
+    });
+    assert.match(out, webSaysWhy(join(locked, "dist")));
+    assert.match(out, /Detail: Permission denied\.\n/);
+  } finally {
+    chmodSync(locked, 0o700); // so it can be removed
+  }
 });
 
 test("a number option out of range names the range (#213)", { skip }, () => {

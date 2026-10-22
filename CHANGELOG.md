@@ -8,6 +8,56 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **No watering on water not fit for it** (#298, SD-093, RAT-086): the
+  watering pump no longer switches on, by hand, over the API or for a
+  test, and a running one goes off, when the tank's pH is below 4.0 or
+  above 8.5, or its EC is more than 1.0 mS/cm above the target EC (the
+  higher of this phase's and the last phase's; with EC control off and
+  no phase naming a target, above 5.0; never above 5.0). The band is wide on purpose: it catches a
+  pump that ran too long or dosed too much, while uncorrected tap water
+  and plain water for flushing typically stay fit. An assigned pH or EC
+  probe without a usable reading, or in a calibration, blocks too; a
+  probe not assigned, or calibrated outside the hub, is not checked.
+  With a probe checked, watering also waits after every run of a dosing
+  pump and after every start until a dose has mixed in (at least 4 min,
+  longer in a large tank), and a run that starts stops the pump. There is no override. A refused
+  switch-on says why and when to try again, and an event says why the
+  pump went off.
+- **Each recipe learns its own EC effect** (#143, SD-057, step 4,
+  SD-092): EC control learned one effect for whatever recipe it dosed;
+  a phase moving to another recipe started from it. Now each recipe
+  learns its own from EC control's clean rounds on it, and a round
+  learns into the recipe it dosed. A recipe that has learned nothing
+  starts from the start effect, or from the larger effect its chart EC
+  implies, so a chart EC only ever makes a round smaller; the cap of a
+  round converts with the larger of that start and the learned effect,
+  so neither a low chart EC nor a small learned effect widens it. An
+  edit that changes a recipe's parts or their ratio keeps its learned
+  effect only at or above the recipe's new start, scaled up first by
+  parts that are fixed or removed now, and a chart EC raised above it
+  forgets it; a round on that recipe that settles across the edit learns
+  nothing. An import does the same for a recipe the hub had; a recipe it
+  leaves out or brings new, or one deleted or created, starts afresh.
+  After the update, every recipe whose start it does not undercut starts
+  from the effect learned before. A recipe's ID must be there and used
+  once. `/state` names the effect of EC control's recipe and of each
+  recipe (`effects.ecByRecipe`).
+- **A mix mixes in before it ends** (#143, SD-057, step 3): with a
+  circulation pump, a mix now ends only once its nutrients have mixed in
+  (as long as EC or pH control waits after a dose, whichever is longer,
+  at least about 100 s per 20 L in the tank, at most 60 min); the mix
+  card shows the minutes left, offers no button to skip or cancel it, and
+  says so when the pump is not running (off or unknown for 10 s). EC and
+  pH control and refill decide only after that. A mix ended, stopped, or cut short by a failure,
+  an internal error or a restart with nutrients in makes EC and pH
+  control wait for the circulation pump and settle first, at least 15 min
+  and as long as the longer of their settle times; EC decides first, now
+  also when both waits end together. So does a mix whose pump did not run
+  while it mixed in. Their line says why while the pump does not run, and
+  such a wait logs no correction. Stirring by hand now waits at most 30
+  minutes after a part (SD-089): then the mix stops, names the parts of a pair
+  still missing with their amounts, and can go on ("Resume mix") or be
+  ended ("End mix"); a mix cancelled with a pair half in names them too.
 - **Fixed amounts in a recipe** (#143, SD-057, step 2, RAT-085): a
   bottle that is not one of a pair can be marked "Feste Menge" / "Fixed
   amount", for an addition the maker gives a fixed amount per litre for,
@@ -96,6 +146,22 @@ listed in every release under "Security".
 
 ### Changed
 
+- **Control details are decided in the software session; the product
+  offers a safety frame, not complete protection** (#298, SD-091, from
+  PD-317 and PD-318): the product side keeps the guideline, costs,
+  hardware and three baseline rules: a crash or restart stops whatever
+  could cause harm, a hardware time limit for the pumps, and no watering
+  when pH and EC say the water is not fit. Locks, releases, thresholds,
+  sequences and which devices and pumps are allowed are decided here as
+  SDs; earlier product decisions on them are proposals, to be simplified
+  along the guideline, and what was recorded from them stays until a
+  later decision changes it. The guideline wants any pump and device to
+  be usable; the software follows in later changes. Product questions
+  are about what the product is and offers (`CLAUDE.md`,
+  `docs/WORKFLOW.md`). Two baseline rules are not met yet: board v0.1
+  has no hardware time limit for the pumps, and watering on water that
+  is not fit is not blocked yet (that follows in a later change for
+  #298).
 - **Core tests on every core** (#260): `tools/ci.sh`, and with it CI's
   `checks` job, runs the C++ tests with `tools/core_tests.sh`: each test
   case in a process and a temporary folder of its own, as many at once
@@ -479,6 +545,20 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The Home Assistant server names a token file it cannot read** (#213):
+  a `gc_ha_server --token-file` that was missing, could not be read (no
+  permission, a folder it may not enter, a link that loops), was a folder
+  or held no token said only "No token: --token-file FILE or GC_HA_TOKEN",
+  even with `GC_HA_TOKEN` set, which sent you looking for the token rather
+  than the file. Now it names the file and why, as `--config` does. The
+  file named still wins over `GC_HA_TOKEN`, and `--token-file ""` (an unset
+  shell variable) is refused instead of quietly taking `GC_HA_TOKEN`. A
+  token given in place of its file is refused without showing it, since
+  the output may go to a log. Both files are opened once, so a named pipe
+  works as `--config` too. A `--config` that is a folder now says so
+  instead of "the mapping must be a JSON object". `tools/ha_server.test.mjs`
+  now also starts it with a `--data` it cannot create and a `--web` it
+  cannot read (a link that loops; a folder it may not enter, not as root).
 - **A missing saved state on a hub that ran before keeps everything
   stopped** (#238, SD-086): when `state.json` was gone (deleted, or a
   damaged entry the flash reports as not found) but the hub's events were
@@ -499,6 +579,25 @@ listed in every release under "Security".
   the inlet stays shut until released under Tank & control. A state file
   kept unread (SD-081) is not written over for this latch; a real cut-off
   of the inlet replaces its reason and is kept.
+- **The first fill after the inlet is released waits for the level to
+  settle** (#288, SD-088): a person who released the inlet latch could
+  have the refill open in the very next second, planned from the level
+  before the release, though they had just been asked to check the tank.
+  Bailing it then could end in a false "did not rise" latch. Now the first
+  fill after a release waits 3 min, as after a Stop, and plans from the
+  level read then.
+- **Three gaps around the refill** (#289, SD-090): while a fill that is
+  due waited for the level to settle (after a Stop, a start, a release or
+  irrigation), EC or pH could start a round that the fill then diluted;
+  now they wait too. While a due fill waited for a round to settle, EC or
+  pH started the next round of their correction at once, so the fill
+  waited for all of it; now no new round starts, and the line reads
+  "Waiting: refill first". Switching the refill off and on again let a fill open
+  at once from a reading taken while someone worked at the tank; now it
+  waits for the level to settle, as after a Stop. And an inlet latch
+  released during a Stop, maintenance or with the refill off kept the
+  count of fills not judged, so the next such fill could latch the inlet
+  at once; now a latch resets it however it is released.
 - **A cold refill no longer locks the water temperature** (#272,
   RAT-042): while the inlet is open and for 5 min after it closes, the
   hub now counts a change of the water temperature as expected, as it
@@ -558,6 +657,8 @@ listed in every release under "Security".
   folder. The port search stops at 65535. The download's smoke test also
   starts it plainly with a data folder it cannot read (SD-074) and with no
   folder for the data, on macOS and Linux (#214).
+  `tools/ha_server.test.mjs` now also starts `gc_ha_server` with a
+  `--config` below a folder it may not enter (not as root).
 - **The hub keeps a file it cannot read** (#211, SD-081): a file of the
   hub that is there but cannot be read (no permission, for example root's
   files after a start with `sudo`, or a read error of the disk or flash)
@@ -820,7 +921,7 @@ severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Three are safety and robustness
+and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -950,13 +1051,35 @@ Safety and robustness fixes, no vulnerability:
   planned, which stops pH control until 15 min of calm, the safe direction;
   that dose's effect is then not learned, which a follow-up addresses. A
   jump in the last minutes of another announcement (after a mix or hand
-  dose, the inlet, an EC round or a probe calibration) is still taken as
-  explained; that stays open.
+  dose, the inlet, an EC round or a probe calibration, and in the 10 s
+  after maintenance mode was ended early) is still taken as explained;
+  that stays open.
   - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
   - Impact: concerns the hub's own probes, which only the simulator has
     so far; there, pH control dosed twice on the jumped reading.
   - Severity: low; no CVSS, as it is not a vulnerability.
   - Remedy: update to 0.1.0-proto.5.
+- **Ending maintenance mode early switches jump checks back on** (#292,
+  RAT-042): while maintenance mode lasted, the hub announced a change of
+  every reading until the end of the window the user had asked for, and
+  ending or shortening it kept those announcements. A user who started
+  it for 240 min and ended it after 5 min left the jump lock off for
+  every sensor for almost four more hours. Maintenance now announces a
+  change only 10 s ahead, renewed on every tick, never past its end:
+  ended early, a jump locks again within 10 s; a window that runs out
+  behaves as before.
+  - Affected: the Home Assistant app and the simulator, 0.1.0-proto.2 to
+    0.1.0-proto.4.
+  - Impact: a reading that jumped in that time was not locked: it showed
+    as valid (or as calibrated elsewhere) and went into the history, and
+    no jump alarm was logged. In the simulator, pH and EC control could
+    dose on it within their caps per dose, and a level that jumped could
+    let the circulation pump's dry-run latch release itself and the pumps
+    and the inlet act on it. The Home Assistant app switches nothing.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5. Until then, after ending or
+    shortening maintenance mode, restart the app or the simulator ("Power
+    cut / restart") while no mix or dose runs.
 
 A protective cut-off added:
 

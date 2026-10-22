@@ -221,6 +221,8 @@ class ParamView {
   json v_ = json::object();
 };
 ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn);
+// The same for one phase of the running grow (phase < 0: none), whichever phase runs now
+ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn, int phase);
 
 // At or below this, a canister's stock counts as booked below zero: it shows
 // as at least -1 ml, and a rounding difference under 0.5 ml raises no alarm (SD-066).
@@ -233,7 +235,9 @@ struct RuntimeState {
   double tankVolumeL = kNaN;               // ohne Füllstandskopf: aus Mischläufen
   Epoch lastMixAt = 0;  // start of the running mix, then the end of the last one (RAT-003)
   double phEffect = kNaN;  // gelernte Wirkung pH− (pH je ml/L), nur aus sauberen Gaben
-  double ecEffect = kNaN;  // learned effect of the recipe, mS/cm per ml/L of the parts EC control scales (RAT-085)
+  double ecEffect = kNaN;  // the last learned EC effect, still written for a version before the effect per recipe
+  // Learned EC effect per recipe, mS/cm per ml/L of the parts EC control scales (SD-092, RAT-057, RAT-085)
+  std::map<std::string, double> ecEffects;
   std::map<std::string, json> latches;     // gerastete Sperren mit Grund
   std::map<std::string, Epoch> selfReleased;  // latch → when it last released itself (SD-022)
   std::map<std::string, Epoch> jumpLocks;  // Rolle → gesperrt bis

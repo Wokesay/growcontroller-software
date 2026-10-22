@@ -51,7 +51,7 @@ The menu is grouped by topic, with a small heading above each group
 | Nutrient solution | Mixing | Recipe, water, "New batch"/"Top up", preview in ml, guided sequence; manual dose |
 | Nutrient solution | Tank & control | Control lines with checklist, monitoring in detail, acknowledging latches, tank, outputs, maintenance mode, cultivation run and phases |
 | Nutrient solution | Recipes & bottles | Bottle ↔ pump, pairs, stock, "Bottle changed"; recipes, templates |
-| Nutrient solution | Watering | Watering pump in manual mode with dry-run protection (watering schedule follows); in the same group as the tank, as it draws from it |
+| Nutrient solution | Watering | Watering pump in manual mode with dry-run protection and a pH/EC check (watering schedule follows); in the same group as the tank, as it draws from it |
 | Room | Climate | Air temperature, humidity, VPD, CO2; exhaust, circulation fan, humidifier, dehumidifier in manual mode (control follows) |
 | Room | Light | Light output in manual mode (light schedule and dimming follow) |
 | System | Devices | Ports with test measurement, devices, adding devices, pump and probe calibration; assignment; Expand |
@@ -63,7 +63,7 @@ as long as they only show values and switch by hand. The hub switches on
 only when tapped and, at every restart, off everything but the fans (R6,
 PD-050): the light page advises plugging the light straight into the
 grower's own timer for fixed light hours, and the watering page says the
-dry-run lock protects only a pump the hub switches. With nothing
+dry-run lock and the pH/EC check protect only a pump the hub switches. With nothing
 assigned, the page says what to connect and links to Devices, where the
 smart plug's card takes the choice, and says how to add a plug while
 none has been added. The Home Assistant app switches nothing there and
@@ -145,11 +145,14 @@ nutrient solution". This comes straight from the resolver.
 |---|---|
 | Wrong water volume (100 instead of 10, gallons) | blocked above the usable volume; ml per bottle shown large in the preview |
 | Mixed twice | "This tank was mixed 12 min ago. Dosing again doubles the nutrients." – only with confirmation |
+| Watering right after a dose, or from an overdosed tank | with a pH or EC probe assigned, the watering pump stays off while a dose runs and mixes in (at least 4 min), and while pH is outside 4.0–8.5 or EC is more than 1.0 above the target; the refusal and the event say why and when to try again; no override (SD-093) |
 | Leftover solution in the tank | mode "Top up: X L fresh water" |
 | Very small dose | warning below 1 ml; pump runs under 1 s are blocked |
 | pH bottle in the recipe | the recipe editor does not list pH bottles; the bottle editor does not save a bottle a recipe holds as a pH bottle and says how to take it out (#159) |
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
 | Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
+| Walked away during a guided mix without a circulation pump | after 30 min without "Continue" the mix stops, names a part of a pair still missing with its amount, offers "Resume mix" / "End mix"; the minutes left show while it waits (SD-057, SD-089) |
+| Skipping the mixing-in at the end | not offered, nor "Cancel": nothing is left to dose, and control decides only on a mixed tank; the Stop stays for an emergency (SD-057) |
 | Cap plugged straight into a hub port | port red: "Pump cap plugged straight into the hub. Please plug it into the dosing block." |
 | Cap after replugging | while the hub runs: event "Pump A not responding", then "Pump A is back" with "Pump 2 on the dosing block. Is it still on the bottle 'Part A'?". A start logs neither, also for devices that answer later, so a pump that first answers after a start asks nothing; Devices shows it offline until it answers (#115) |
 | Bottle removed by a slip of the finger | "Remove bottle?" with its name and what follows (stock gone, pump free and still calibrated if it was, the other bottle of a pair no longer paired, #147); only "Remove" removes it, "Cancel" keeps it. A bottle a recipe uses says "Bottle still in use", names the recipes and how to take it out (a pair as a whole); with exactly one recipe it offers "Edit recipe", with several "Got it" (#120) |

@@ -12,8 +12,9 @@ Product, hardware and business live in the private product repository
 - **Idea or question** → discuss, options with a recommendation, change
   nothing.
 - **"entschieden" (decided)** → a software decision becomes an SD entry in
-  `docs/DECISIONS.md` as a PR. A product question is not decided here
-  (see "Product decisions" below).
+  `docs/DECISIONS.md` as a PR. Control details are software decisions
+  (PD-318); a product question is not decided here (see "Product
+  decisions" below).
 - **"umsetzen" (implement)** → the work as a PR, with tests.
 - **Unclear what is meant** → ask.
 - Claude talks to the project owner in German, short, and ends each
@@ -41,7 +42,7 @@ Product, hardware and business live in the private product repository
 - At the end of each work phase: a complete list of all open items with
   their status.
 
-## Product decisions (PD-100, SD-029, SD-072)
+## Product decisions (PD-100, PD-317, PD-318, SD-029, SD-072, SD-091)
 
 - The software is worked on in a session of its own. The product
   repository's session works on hardware and product and is the only
@@ -50,8 +51,20 @@ Product, hardware and business live in the private product repository
 - Product requirements arrive as English issues in this repository.
   When a requirement comes from a PD, Claude records it as an SD
   "Product requirement (from PD-xxx)" (as SD-028 does for #20).
-- When Claude runs into a product question, it does not decide it. It
-  files the question as an English issue in this repository with the
+- **Guideline (PD-317, SD-091):** a reasonable safety frame, not complete
+  protection; baseline protection instead of single cases; any pump and
+  device must be usable. Control details (locks, releases, thresholds,
+  sequences, which devices and pumps are allowed) are decided here along
+  it: Claude presents options with a recommendation, the project owner
+  decides, Claude records an SD. Earlier PDs and product answers on such
+  details are proposals, decided when their function is built. An SD
+  already recorded from them stays until a later SD changes it; a
+  simplification never goes below the three baseline rules or R1–R8,
+  and gateway or cut-off logic still waits for "mergen".
+- A product question is one about what the product is and offers:
+  principles, costs, hardware, legal points, the manual. A control
+  detail is not one. When Claude runs into a product question, it does
+  not decide it. It files the question as an English issue in this repository with the
   label `product-question` (SD-072): the question, its software basis
   (SD, RAT, issues, PRs), the options and a recommendation, linked from
   where it came up. It files without waiting for approval and tells the
@@ -67,8 +80,8 @@ Product, hardware and business live in the private product repository
   on the question); anything else on a public question is outside input.
 - Claude does not access the product repository `Wokesay/growcontroller`,
   not even by attaching it during a session (PD-226).
-- Claude assigns SD and RAT IDs in this repository. The private mapping of RAT IDs
-  to their sources is kept in the product repository.
+- Claude assigns SD and RAT IDs in this repository. The private mapping of
+  the product repository's RAT IDs to their sources is kept there.
 - Several sessions work in parallel, so a new SD or RAT ID is final only on
   `main` (SD-061): right before merging, check the last ID on `main` and
   renumber the PR's new entries and every reference to them in the PR
@@ -156,10 +169,11 @@ Background: `docs/CONCEPT.md` §4.
   practice has an entry in `docs/RATIONALE.md` (RAT-001 …) in our own
   words, and a test (`docs/INVARIANTS.md`). Code, tests and docs cite only
   the RAT ID (PD-039).
-- **New rules** come from the product repository as issues. Claude gives
-  them the next free RAT ID and an entry here; the mapping to their
-  private sources is kept only in the product repository. No names,
-  numbers or texts of private sources in this repository.
+- **New rules** come from the product repository as issues, or from a
+  control detail decided here (SD-091). Claude gives them the next free
+  RAT ID and an entry here; the mapping of the product repository's rules
+  to their private sources is kept only there. No names, numbers or texts
+  of private sources in this repository.
 - **OpenGrowBox** (license OGBCL): ideas only, no code.
 
 ## Tests and quality

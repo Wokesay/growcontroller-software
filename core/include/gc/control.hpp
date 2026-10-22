@@ -41,6 +41,7 @@ struct ControlEnv {
   bool ecBusy = false;
   bool phBusy = false;       // pH dosiert oder schwingt ein: EC-Runde wartet (RAT-057)
   bool refilling = false;    // Zulauf offen: Wirkung nicht messbar, nicht dosieren (RAT-055)
+  bool refillDue = false;    // a fill is due and waits for a dose to settle: no new round meanwhile (SD-090)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
 };
@@ -67,10 +68,29 @@ class EcController {
   bool busy() const { return phase_ != Phase::Idle; }
   bool wantsCirculation() const { return phase_ != Phase::Idle || wantsCirc_; }
   Epoch lastDoseAt() const { return lastDoseAt_; }
-  // The recipe's fixed parts changed under a running round: it doses no part that is fixed now and
-  // learns nothing, so the effect stays on the parts EC control scales now (RAT-085, RAT-057). A fixed
-  // part is never one of a pair, so no pair is split.
+  // Nutrients went in outside a round that settled them (a mix cut, failed or interrupted, SD-057): wait
+  // for the circulation pump and settle first, as a round a Stop cut does (SD-073), for at least
+  // `floor`. byStop keeps the Stop's words on the line. Without a round of its own, the settle ends
+  // without judging one: nothing is learned or logged.
+  void settleFirst(bool byStop, Ms floor) {
+    quiet_ = (cut_ && quiet_) || phase_ == Phase::Idle;  // a quiet settle stays quiet when cut again
+    cutFloor_ = cut_ ? std::max(cutFloor_, floor) : floor;
+    cut_ = true;
+    cutByMix_ = !byStop;
+    reset();
+  }
+  bool dosing() const { return phase_ == Phase::Dosing; }
+  // The parts of the recipe a round doses, or their ratio, changed under it (an edit or an import): it
+  // doses no part that is fixed now and learns nothing, so the effect stays on the parts EC control
+  // scales now (RAT-085, RAT-057, SD-092). A fixed part is never one of a pair, so no pair is split. A
+  // removed part is still dosed: a pair leaves a recipe only whole, and dropping its second part after
+  // the first went in would split it (RAT-054); the round stays within the cap it was planned on.
   void recipeChanged(const RecipeCfg& r);
+  // The recipe a round doses is gone (deleted, left out of an import) or a new one took its ID: the
+  // round learns nothing (SD-092, RAT-057)
+  void recipeGone(const std::string& id) {
+    if (id == roundRecipe_) clean_ = false;
+  }
   // The wall clock stepped by `d`: keep the distance of the pauses.
   void shiftClock(Epoch d) {
     if (lastDoseAt_ > 0) lastDoseAt_ += d;
@@ -83,8 +103,12 @@ class EcController {
   int round_ = 0, noEffect_ = 0, seq_ = 0;
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
   bool cut_ = false;        // a Stop cut the round: settle it once the circulation pump runs
+  bool cutByMix_ = false;   // … or a mix was cut with nutrients in (settleFirst)
+  bool quiet_ = false;      // … with no round of its own to judge when it has settled
+  Ms cutFloor_ = 0;         // the least the cut settles (settleFirst)
   bool wantsCirc_ = false;  // the cut round waits for the circulation pump
   double ecBefore_ = kNaN, mlRound_ = 0, startEc_ = kNaN, target_ = kNaN;
+  std::string roundRecipe_;  // the recipe the round doses: its effect is learned, whatever the phase is now (RAT-057, SD-092)
   Ms circWaitSince_ = 0;  // seit wann die Runde auf die Umwälzpumpe wartet
   Ms cutWaitSince_ = 0;   // since when the cut round waits for the circulation pump
   Ms settleUntil_ = 0;
@@ -97,6 +121,14 @@ class PhController {
   void tick(const Ctx& c, ControlEnv& env);
   void onDoseFinished(const Ctx& c, const DoseProgress& p);
   void stopRound();  // as EcController::stopRound
+  void settleFirst(bool byStop, Ms floor) {  // as EcController::settleFirst
+    quiet_ = (cut_ && quiet_) || phase_ == Phase::Idle;
+    cutFloor_ = cut_ ? std::max(cutFloor_, floor) : floor;
+    cut_ = true;
+    cutByMix_ = !byStop;
+    reset();
+  }
+  bool dosing() const { return phase_ == Phase::Dosing; }
   bool pending() const { return cut_ && phase_ == Phase::Idle; }
   void reset() {
     phase_ = Phase::Idle;
@@ -114,6 +146,9 @@ class PhController {
   bool pendingCirc_ = false;
   bool clean_ = true;
   bool cut_ = false;     // as in EcController
+  bool cutByMix_ = false;
+  bool quiet_ = false;
+  Ms cutFloor_ = 0;
   Ms cutWaitSince_ = 0;
   int doses_ = 0, noEffect_ = 0, seq_ = 0;
   double phBefore_ = kNaN, mlLast_ = 0, startPh_ = kNaN;
@@ -127,10 +162,14 @@ class RefillController {
   void tick(const Ctx& c, ControlEnv& env);
   const CtlStatus& status() const { return st_; }
   bool filling() const { return filling_; }
+  // A fill is due and waits only for a running dose or round to settle: EC and pH start no new round
+  // (SD-090). The running one goes on and is learned from (RAT-057), unlike while holding().
+  bool dueAfterDose() const { return dueAfterDose_; }
   // From the first opening of a refill until the rise of its last fill is checked, EC and pH wait:
-  // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-082)
+  // a round in a tank half filled would be diluted by the next step (RAT-055, RAT-057, SD-082). So
+  // they do while a fill that is due waits for the level reading to settle (SD-090).
   bool holding(const RuntimeState& rt) const {
-    return filling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
+    return filling_ || settling_ || step_ < steps_ || (rt.refill.is_object() && rt.refill.contains("check"));
   }
   void shiftClock(RuntimeState& rt, Epoch d);
   // A level calibration of the bound level sensor committed this new curve (SD-082)
@@ -149,8 +188,11 @@ class RefillController {
   void latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args);
   bool booted_ = false;
   bool filling_ = false;
+  bool settling_ = false;  // a fill is due and waits in this tick for the level reading to settle (SD-090)
+  bool dueAfterDose_ = false;  // a fill is due and waits in this tick for a dose to settle (SD-090)
   Ms startedMs_ = 0, plannedMs_ = 0;
-  Ms disturbedMs_ = 0;  // the level reading was last disturbed by maintenance, a hand on the valve or a start
+  Ms disturbedMs_ = 0;  // the level reading was last disturbed: a start, Stop, maintenance, the function off, a level calibration, a hand on the valve, an inlet latch
+  bool latchSeen_ = false;  // the inlet latch stood at the last tick, or was set in it: the tick that sees it released is a disturbance too (SD-088)
   Ms irrigatedMs_ = std::numeric_limits<Ms>::min() / 2;  // the irrigation pump last ran; not since the start
   Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle after irrigation
   Epoch bootEpoch_ = 0;

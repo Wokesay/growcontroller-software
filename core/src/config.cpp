@@ -466,7 +466,9 @@ std::vector<Msg> validateConfig(const Config& c, const Catalog& cat) {
     if (!k.pair.empty()) pairCount[k.pair]++;
   for (const auto& [p, n] : pairCount)
     if (n < 2) err(say("cfg.pair.single", {{"pair", p}}));
+  std::set<std::string> recipeIds;  // what each recipe learned is kept by its ID (SD-092)
   for (const auto& r : c.recipes) {
+    if (r.id.empty() || !recipeIds.insert(r.id).second) err(say("cfg.recipe.id", {{"name", r.name}}));
     if (r.steps.empty()) err(say("cfg.recipe.empty", {{"name", r.name}}));
     std::set<std::string> pairsInRecipe, seen;
     for (const auto& s : r.steps) {
@@ -605,6 +607,10 @@ std::string ParamView::str(const std::string& key) const {
 }
 
 ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn) {
+  return effectiveParams(cat, c, fn, c.grow.state == "running" ? c.grow.phase : -1);
+}
+
+ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn, int phase) {
   json v = json::object();
   const FunctionDef* fd = cat.function(fn);
   if (!fd) return ParamView(v);
@@ -613,8 +619,8 @@ ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string
   auto it = c.functions.find(fn);
   if (it != c.functions.end())
     for (const auto& [k, val] : it->second.params.items()) v[k] = val;
-  if (c.grow.state == "running" && c.grow.phase >= 0 && c.grow.phase < static_cast<int>(c.grow.phases.size())) {
-    const auto& ph = c.grow.phases[static_cast<size_t>(c.grow.phase)].params;
+  if (c.grow.state == "running" && phase >= 0 && phase < static_cast<int>(c.grow.phases.size())) {
+    const auto& ph = c.grow.phases[static_cast<size_t>(phase)].params;
     for (const auto& p : fd->params)
       if (p.phase && ph.contains(p.key)) v[p.key] = ph[p.key];
   }
@@ -624,11 +630,14 @@ ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string
 void to_json(json& j, const RuntimeState& s) {
   json stock = json::object();
   for (const auto& [k, v] : s.stockMl) stock[k] = numOrNull(v);
+  json effects = json::object();
+  for (const auto& [k, v] : s.ecEffects) effects[k] = numOrNull(v);
   j = {{"stockMl", stock},
        {"tankVolumeL", numOrNull(s.tankVolumeL)},
        {"lastMixAt", s.lastMixAt},
        {"phEffect", numOrNull(s.phEffect)},
        {"ecEffect", numOrNull(s.ecEffect)},
+       {"ecEffects", effects},
        {"latches", s.latches},
        {"selfReleased", s.selfReleased},
        {"jumpLocks", s.jumpLocks},
@@ -650,6 +659,10 @@ RuntimeState runtimeFromJson(const json& j) {
   s.lastMixAt = j.value("lastMixAt", Epoch{0});
   s.phEffect = numOrNaN(j, "phEffect");
   s.ecEffect = numOrNaN(j, "ecEffect");
+  // An entry that is no positive number counts as nothing learned (R5): the recipe starts afresh
+  if (j.contains("ecEffects") && j["ecEffects"].is_object())
+    for (const auto& [k, v] : j["ecEffects"].items())
+      if (v.is_number() && isNum(v.get<double>()) && v.get<double>() > 0) s.ecEffects[k] = v.get<double>();
   if (j.contains("latches")) s.latches = j["latches"].get<std::map<std::string, json>>();
   // Read as strictly as the latches: a damaged entry makes the whole state damaged (RAT-063)
   // A damaged or out-of-range time reads as implausible: the next latch holds, and the guard

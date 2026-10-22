@@ -96,7 +96,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.state = "off";
     st_.line = say("ec.off");
     reset();
-    cut_ = false;
+    cut_ = quiet_ = false;
+    cutFloor_ = 0;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ec_control");
@@ -147,15 +148,20 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;  // its effect is not learned (RAT-057)
-      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+      settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       wantsCirc_ = true;
       if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
       // A refusal the gateway knows shows at once (the circulation line names why); a pump that
       // just does not come on after 2 min, as for a round waiting to dose (RAT-037, RAT-039)
       const bool late = c.now - cutWaitSince_ > 2 * kMinute;
-      st_.state = !circOk || late ? "blocked" : "working";
-      st_.line = say(!circOk ? "ec.cut_circ_blocked" : late ? "ec.cut_no_circ" : "ec.wait_circ");
+      st_.state = !circOk || late ? "blocked" : quiet_ ? "waiting" : "working";
+      st_.line = say(!circOk && cutByMix_ ? "ec.mixcut_circ_blocked"
+                     : !circOk            ? "ec.cut_circ_blocked"
+                     : late && cutByMix_  ? "ec.mixcut_no_circ"
+                     : late               ? "ec.cut_no_circ"
+                     : quiet_             ? "ec.mixcut_wait_circ"
+                                          : "ec.wait_circ");
       return;
     }
   }
@@ -163,12 +169,20 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ec-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
-      st_.state = "working";
-      st_.line = say("ec.settling", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
-                                     {"left", mmss(settleUntil_ - c.now)}});
+      st_.state = quiet_ ? "waiting" : "working";
+      st_.line = quiet_ ? say("ec.mixcut_settling", {{"left", mmss(settleUntil_ - c.now)}})
+                        : say("ec.settling", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
+                                              {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     cut_ = false;  // a cut round has settled: decide as after any settle time
+    cutFloor_ = 0;
+  }
+  if (phase_ == Phase::Settling && quiet_) {
+    quiet_ = false;  // nothing of its own to judge: decide afresh below
+    phase_ = Phase::Idle;
+  }
+  if (phase_ == Phase::Settling) {
     if (!ec.usable()) {
       st_.state = "blocked";
       st_.line = say("ec.invalid", {{"reason", ec.reason}});
@@ -176,9 +190,10 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
     double rise = *ec.value - ecBefore_;
-    if (clean_ && mlRound_ > 0 && isNum(env.volumeL)) {
-      double observed = rise / (mlRound_ / env.volumeL);
-      c.rt.ecEffect = clampEffect(observed, kEcStartEffect);
+    // Learned for the recipe the round dosed, within the band, below it that recipe's start (SD-092, RAT-057)
+    if (const RecipeCfg* dosed = c.cfg.recipe(roundRecipe_); dosed && clean_ && mlRound_ > 0 && isNum(env.volumeL)) {
+      const double observed = rise / (mlRound_ / env.volumeL);
+      c.rt.ecEffects[roundRecipe_] = c.rt.ecEffect = clampEcEffect(observed, recipeEffect(*dosed, kNaN).start);
     }
     if (clean_) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
     if (noEffect_ >= 2) {
@@ -282,7 +297,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ec.wait_job");
     return;
   }
-  if (env.refilling) {
+  if (env.refilling || env.refillDue) {
     st_.state = "waiting";
     st_.line = say("ec.wait_refill");
     return;
@@ -297,8 +312,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ec.no_circ");
     return;
   }
-  auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value,
-                         clampEffect(c.rt.ecEffect, kEcStartEffect), kEcStartEffect, p.num("max_ec_step"));
+  const RecipeEffect eff = recipeEffect(*recipe, learnedEcEffect(c.rt, recipe->id));
+  auto plan = planEcDose(c.cfg, c.pumps, *recipe, env.volumeL, target - *ec.value, eff.dose, eff.largest, p.num("max_ec_step"));
   if (!plan.ok) {
     st_.state = "blocked";
     st_.line = say("ec.plan", {{"reason", plan.reason}});
@@ -306,6 +321,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   }
   if (round_ == 0) startEc_ = *ec.value;
   round_++;
+  roundRecipe_ = recipe->id;
   ecBefore_ = *ec.value;
   mlRound_ = 0;
   clean_ = true;
@@ -334,6 +350,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
 }
 
 void EcController::recipeChanged(const RecipeCfg& r) {
+  if (r.id != roundRecipe_) return;  // the recipe the round doses, whatever the phase's is now
   clean_ = false;
   queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
                               [&](const DoseStep& d) {
@@ -346,6 +363,7 @@ void EcController::recipeChanged(const RecipeCfg& r) {
 void EcController::stopRound() {
   if (phase_ == Phase::Idle) return;
   cut_ = true;
+  cutByMix_ = false;  // the Stop's words; a quiet settle stays quiet and keeps its floor
   reset();
 }
 
@@ -359,7 +377,8 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.state = "off";
     st_.line = say("ph.off");
     reset();
-    cut_ = false;
+    cut_ = quiet_ = false;
+    cutFloor_ = 0;
     return;
   }
   auto p = effectiveParams(c.cat, c.cfg, "ph_control");
@@ -409,25 +428,38 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;
-      settleUntil_ = c.now + std::max<Ms>(kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5));
+      settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       pendingCirc_ = true;
       if (cutWaitSince_ == 0) cutWaitSince_ = std::max<Ms>(c.now, 1);
       const bool late = c.now - cutWaitSince_ > 2 * kMinute;
-      st_.state = !circOk || late ? "blocked" : "working";
-      st_.line = say(!circOk ? "ph.cut_circ_blocked" : late ? "ph.cut_no_circ" : "ph.wait_circ");
+      st_.state = !circOk || late ? "blocked" : quiet_ ? "waiting" : "working";
+      st_.line = say(!circOk && cutByMix_ ? "ph.mixcut_circ_blocked"
+                     : !circOk            ? "ph.cut_circ_blocked"
+                     : late && cutByMix_  ? "ph.mixcut_no_circ"
+                     : late               ? "ph.cut_no_circ"
+                     : quiet_             ? "ph.mixcut_wait_circ"
+                                          : "ph.wait_circ");
       return;
     }
   }
   if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ph-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
-      st_.state = "working";
-      st_.line = say("ph.settling", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_},
-                                     {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
+      st_.state = quiet_ ? "waiting" : "working";
+      st_.line = quiet_ ? say("ph.mixcut_settling", {{"left", mmss(settleUntil_ - c.now)}})
+                        : say("ph.settling", {{"from", numOrNull(phBefore_)}, {"target", numOrNull(target)}, {"n", doses_},
+                                              {"max", numOrNull(p.num("max_doses"))}, {"left", mmss(settleUntil_ - c.now)}});
       return;
     }
     cut_ = false;
+    cutFloor_ = 0;
+  }
+  if (phase_ == Phase::Settling && quiet_) {  // as in EcController
+    quiet_ = false;
+    phase_ = Phase::Idle;
+  }
+  if (phase_ == Phase::Settling) {
     if (!phOk) {
       st_.state = "blocked";
       st_.line = say("ph.invalid", {{"reason", ph.reason}});
@@ -500,7 +532,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ph.wait_job");
     return;
   }
-  if (env.refilling) {
+  if (env.refilling || env.refillDue) {
     st_.state = "waiting";
     st_.line = say("ph.wait_refill");
     return;
@@ -563,6 +595,7 @@ void PhController::onDoseFinished(const Ctx& c, const DoseProgress& p) {
 void PhController::stopRound() {
   if (phase_ == Phase::Idle) return;
   cut_ = true;
+  cutByMix_ = false;  // the Stop's words; a quiet settle stays quiet and keeps its floor
   reset();
 }
 
@@ -684,6 +717,7 @@ void RefillController::keepForPerson(const Ctx& c, double levelNow) {
 
 void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title, const Msg& text, const json& args) {
   c.rt.latches["inlet.fault"] = {{"at", c.epoch}, {"why", why}};
+  latchSeen_ = true;  // also when it is released before the next tick (SD-088)
   c.log.add(c.epoch, "alarm", "alarm", title, text, args);
   c.rt.refill.erase("check");
   c.rt.refill.erase("unconfirmed");
@@ -695,6 +729,8 @@ void RefillController::latchInlet(const Ctx& c, const Msg& why, const Msg& title
 
 void RefillController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
+  settling_ = false;
+  dueAfterDose_ = false;
   json& rec = c.rt.refill;
   if (!rec.is_object()) rec = json::object();
   for (const char* r : {"fill", "check", "unconfirmed"})
@@ -702,10 +738,16 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   const auto open = env.act.roleState(c.cfg, "tank.inlet");
   const Irrigation irr = irrigation(c, env);
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
-  // happened before it is not known, and so does a Stop: a person may be at the tank. Only irrigation
-  // may end the wait early: it reads the level too high, so a fill comes out smaller; a hand fill or
-  // draining could make it larger (RAT-038, SD-082).
-  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || env.levelCalibrating || (open.value_or(false) && !filling_)) disturbedMs_ = c.now;
+  // happened before it is not known, and so do a Stop, the function switched off (SD-090) and an inlet
+  // latch up to the tick that sees it released: a person may be at the tank, so the first fill after a
+  // release plans from a level read after it (SD-088). Only irrigation may end the wait early: it reads
+  // the level too high, so a fill comes out smaller; a hand fill or draining could make it larger
+  // (RAT-038, SD-082).
+  const bool latched = c.rt.latches.count("inlet.fault") > 0;
+  if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || !enabled(c, "refill") || env.levelCalibrating ||
+      (open.value_or(false) && !filling_) || latched || latchSeen_)
+    disturbedMs_ = c.now;
+  latchSeen_ = latched;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
   const Ms settleSince = settleSince_;
   settleSince_ = -1;  // kept only by a tick that waits for the reading to settle
@@ -739,6 +781,13 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
                                                 {"steps", static_cast<int>(std::clamp(jnumOr(k, "steps", 1), 1.0, 1000.0))}}));
       rec["check"]["more"] = false;
     }
+  }
+  // A latch waits for a person: once they have looked, the count starts again, also when they release
+  // it during a Stop, maintenance or with the function off, when the refill does not run (SD-082, SD-090)
+  if (latched) {
+    rec.erase("check");
+    rec.erase("unconfirmed");
+    rec["unjudged"] = 0;
   }
   const auto& level = c.truth.get("tank.level");
   const double levelNow = level.usable() ? *level.value : kNaN;
@@ -857,11 +906,8 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     keepForPerson(c, levelNow);
     return;
   }
-  if (c.rt.latches.count("inlet.fault")) {
-    endSteps();
-    rec.erase("check");
-    rec.erase("unconfirmed");
-    rec["unjudged"] = 0;  // once a person has looked, the count starts again
+  if (latched) {
+    endSteps();  // its check, the fills not confirmed and the count were reset above (SD-090)
     st_.state = "latched";
     const bool unknown = unknownStateLatch(c.rt.latches.at("inlet.fault"));  // set by an unknown run-time state (SD-087)
     st_.line = say(unknown ? "refill.latched_unknown" : "refill.latched");
@@ -1002,7 +1048,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     return;
   }
   if (env.doser.busy() || env.userJob || env.ecBusy || env.phBusy) {
-    // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055)
+    // Zulauf verdünnt: nicht während einer Gabe oder ihres Einschwingens (RAT-055). Meanwhile no new
+    // round starts, so the fill does not wait for a whole correction and then dilute it (SD-090)
+    dueAfterDose_ = true;
     st_.state = "waiting";
     st_.line = say("refill.dosing");
     return;
@@ -1012,6 +1060,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // (irrigation every few minutes) does not keep the tank short: the fill goes ahead, marked as irrigated.
   bool unsettled = false;
   if (c.now - disturbedMs_ < kSettleMs) {
+    settling_ = true;  // EC and pH wait too: the fill would dilute a round started now (RAT-055, SD-090)
     st_.state = "waiting";
     st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - disturbedMs_))}});
     return;
@@ -1019,6 +1068,7 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   if (c.now - irrigatedMs_ < kSettleMs) {
     settleSince_ = settleSince < 0 ? c.now : settleSince;
     if (c.now - settleSince_ < kSettleMaxMs) {
+      settling_ = true;
       st_.state = "waiting";
       st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - irrigatedMs_))}});
       return;

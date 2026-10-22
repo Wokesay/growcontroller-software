@@ -23,6 +23,11 @@ Result Result::fail(int st, const Msg& m, json extra) {
 
 namespace {
 
+// How long a mix waits for the user to stir by hand before it stops, open to go on (SD-057, SD-089)
+constexpr Ms kStirWaitMax = 30 * kMinute;
+// A pump that reads off or unknown this long while a mix mixes in stands still; a single missed
+// report does not (an assumption, like the mixing time per volume)
+constexpr Ms kPumpStandsAfter = 10 * kSecond;
 constexpr const char* kConfigFile = "config.json";
 constexpr const char* kStateFile = "state.json";
 constexpr const char* kAuthFile = "auth.json";
@@ -140,7 +145,13 @@ std::string Hub::newId(const std::string& prefix) {
 }
 
 Ctx Hub::ctx() {
-  return Ctx{cat_, cfg_, rt_, truth_, log_, pumps_, clock_.nowMs(), clock_.epoch(), stopped_, maintenanceUntil_};
+  // A calibration on the device of the tank's pH or EC probe, idle ones too: its readings are not the tank's
+  bool probeCalibrating = false;
+  for (const char* role : {"tank.ph", "tank.ec"})
+    if (const Binding* b = cfg_.binding(role))
+      for (const auto& [key, sess] : probeSessions_)
+        probeCalibrating = probeCalibrating || jstr(sess, "device") == b->device;
+  return Ctx{cat_, cfg_, rt_, truth_, log_, pumps_, clock_.nowMs(), clock_.epoch(), stopped_, maintenanceUntil_, probeCalibrating};
 }
 
 void Hub::logEvent(const std::string& type, const std::string& sev, Msg title, Msg text) {
@@ -276,6 +287,12 @@ void Hub::boot() {
     log_.add(bootEpoch_, "system", "alarm", say("ev.state_missing"),
              say(inletUnknown ? "ev.state_missing.text_inlet" : "ev.state_missing.text", {{"file", kStateFile}}));
   }
+  // A state saved before each recipe learned its own EC effect: the one learned value carries over to
+  // every recipe whose start it does not undercut (where it came from is not known), so nothing doses
+  // more after the update (SD-092)
+  if (stateObj && !stateJson.contains("ecEffects") && isNum(rt_.ecEffect))
+    for (const auto& r : cfg_.recipes)
+      if (rt_.ecEffect >= recipeEffect(r, kNaN).start) rt_.ecEffects[r.id] = rt_.ecEffect;
   const bool stateSaid = kept_.count(kStateFile) > 0 || (!stateRaw && ranBefore);
 
   if (auto s = read(kAuthFile)) auth_.load(json::parse(*s, nullptr, false));
@@ -303,6 +320,7 @@ void Hub::boot() {
   // A Stop survives the restart and stops the fans too (PD-076).
   stopped_ = rt_.stopped;
   act_.stopAll(cat_, cfg_, clock_.nowMs(), !stopped_);
+  act_.holdWatering(clock_.nowMs());  // a dose the restart cut has not mixed in (SD-093)
   if (stopped_ && !stateSaid)  // a kept or missing state says why everything stays off
     log_.add(bootEpoch_, "system", "alarm", say("ev.stop_kept"), say("ev.stop_kept.text"));
   if (auto s = read(kJobFile)) {
@@ -311,7 +329,7 @@ void Hub::boot() {
     const bool mix = jstr(j, "type") == "mix";
     // A mix cut off by the restart, or left failed, ends now: reported with what is in the tank, and
     // the window against mixing twice counts from here, not from its start (RAT-003)
-    if (state == "running" || state == "waiting_user" || state == "mixing" || (mix && state == "failed")) {
+    if (activeJobState(state) || (mix && state == "failed")) {
       if (mix) rt_.lastMixAt = std::max<Epoch>({rt_.lastMixAt, bootEpoch_, 1});  // 1: a clock at 0 still counts (lastMixAt 0 is "never")
       double idxNum = jnum(j, "index", 0);
       size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
@@ -324,7 +342,14 @@ void Hub::boot() {
       }
       json at{{"step", idx + 1}, {"total", total}, {"done", done}};
       const bool none = done.empty();
-      log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"), say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
+      // All parts were in when the restart cut its time to mix in: said so, not as a part missing
+      const bool allIn = state == "settling";
+      const bool ctl = controlOn();
+      log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"),
+               allIn ? say(ctl ? "ev.reboot.text_settling" : "ev.reboot.text_settling_plain", at)
+                     : say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
+      // Nutrients went in that nothing settled: EC and pH wait for the circulation pump first (SD-057, R6)
+      if (mix && !none) settleControllersFirst(false);
       j["state"] = "aborted";
       j["message"] = say("job.reboot");
       writeJob(j.dump());
@@ -524,6 +549,8 @@ void Hub::saveState() {
   const bool newLatch = std::any_of(rt_.latches.begin(), rt_.latches.end(), [](const auto& l) { return !unknownStateLatch(l.second); });
   if (newLatch || !rt_.jumpLocks.empty()) stopKeepingState();
   rt_.clock = clock_.stamp();
+  // A version before the effect per recipe reads the one value: that of EC control's recipe (SD-092)
+  if (const RecipeCfg* r = ecRecipe(); r && rt_.ecEffects.count(r->id)) rt_.ecEffect = rt_.ecEffects.at(r->id);
   writeFile(kStateFile, json(rt_).dump());
   stateDirty_ = false;
 }
@@ -617,6 +644,7 @@ void Hub::tick() {
       if (userJobActive()) {
         const json done = amounts(job_->steps);
         const bool none = done.empty();
+        mixCut(false);  // what went in settles first (SD-057)
         finishJob("aborted", say(none ? "job.internal_none" : "job.internal", {{"done", done}}));
       }
     } catch (...) {
@@ -728,8 +756,11 @@ void Hub::tickImpl() {
   // valve closes, as the readings follow late (RAT-042, #272)
   if (act_.roleState(cfg_, "tank.inlet").value_or(false))
     for (const char* r : {"tank.ec", "tank.ph", "tank.level", "tank.water_temp"}) truth_.expectChange(r, now + 5 * kMinute);
+  // Maintenance explains a change only 10 s ahead, never past its end, renewed every tick before
+  // the readings are judged: ended early, a jump locks again within 10 s (RAT-042, #292)
   if (epoch < maintenanceUntil_)
-    for (const auto& [role, def] : cat_.roles) truth_.expectChange(role, now + (maintenanceUntil_ - epoch) * kSecond);
+    for (const auto& [role, def] : cat_.roles)
+      truth_.expectChange(role, now + std::min<Ms>((maintenanceUntil_ - epoch) * kSecond, 10 * kSecond));
   for (const auto& [key, sess] : probeSessions_) {
     if (sess.value("idle", false)) continue;  // left for 30 min: a jump is a jump again (RAT-042)
     std::string dev = jstr(sess, "device");
@@ -797,10 +828,14 @@ void Hub::tickImpl() {
   // A latch or a pending check the refill set is saved at once, also when a later step throws (RAT-063, SD-082)
   if (rt_.refill != refillBefore || rt_.latches != latchesBeforeRefill) stateDirty_ = true;
   env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
-  // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073)
+  env.refillDue = refill_.dueAfterDose();
+  // A round a Stop cut that still waits for the circulation pump holds the other controller (SD-073).
+  // pH also waits in the tick in which EC's settling ends: when both end together, EC decides
+  // first, as after every round (RAT-004)
   env.phBusy = ph_.busy() || ph_.pending();
+  const bool ecWasBusy = ec_.busy() || ec_.pending();
   ec_.tick(c, env);
-  env.ecBusy = ec_.busy() || ec_.pending();
+  env.ecBusy = ecWasBusy || ec_.busy() || ec_.pending();
   env.lastEcDoseAt = ec_.lastDoseAt();
   ph_.tick(c, env);
   bool demand = ec_.wantsCirculation() || ph_.wantsCirculation() || (job_ && job_->circulation && userJobActive());
@@ -957,6 +992,15 @@ json Hub::state() {
       if (auto st = act_.roleState(cfg_, role)) outputs[role] = *st;
   j["outputs"] = outputs;
   j["job"] = job_ ? json(*job_) : json(nullptr);
+  // What a job waits for still has this long: mixing in, or the user's stirring (SD-057)
+  if (job_ && job_->waitUntil > 0 && (job_->state == "mixing" || job_->state == "settling" || (job_->type == "mix" && job_->state == "waiting_user")))
+    j["job"]["waitLeftS"] = std::max<Ms>(0, job_->waitUntil - clock_.nowMs()) / kSecond;
+  if (job_ && job_->state == "settling") {
+    // what the pump reads (unknown stays unknown, R5), and whether the mix counts it as standing still
+    const auto pump = act_.roleState(cfg_, "tank.circulation");
+    j["job"]["circulating"] = pump ? json(*pump) : json(nullptr);
+    j["job"]["pumpStands"] = job_->pumpStands;
+  }
   j["lastJob"] = lastJob_ ? json(*lastJob_) : json(nullptr);
   if (doser_.active()) {
     const auto& o = *doser_.active();
@@ -977,7 +1021,12 @@ json Hub::state() {
     stock[k.id] = it == rt_.stockMl.end() ? json(nullptr) : numOrNull(it->second);
   }
   j["stock"] = stock;
-  j["effects"] = {{"ph", numOrNull(rt_.phEffect)}, {"ec", numOrNull(rt_.ecEffect)}};
+  // EC: what EC control learned for the recipe it doses now, and for each recipe there is (SD-092)
+  json byRecipe = json::object();
+  for (const auto& r : cfg_.recipes)
+    if (rt_.ecEffects.count(r.id)) byRecipe[r.id] = numOrNull(rt_.ecEffects.at(r.id));
+  const RecipeCfg* ecr = ecRecipe();
+  j["effects"] = {{"ph", numOrNull(rt_.phEffect)}, {"ec", ecr ? numOrNull(learnedEcEffect(rt_, ecr->id)) : json(nullptr)}, {"ecByRecipe", byRecipe}};
   j["lastMixAt"] = rt_.lastMixAt;
   j["manual"] = {{"values", rt_.manual}, {"at", rt_.manualAt}};
   j["grow"] = json(cfg_)["grow"];
@@ -1527,38 +1576,29 @@ Result Hub::putRecipe(const json& j) {
   auto errs = validateConfig(next, cat_);
   allowLonePair(errs);
   if (!errs.empty()) return errors(errs);
-  // EC control learned its effect per ml/L of the parts it scaled. A part of its recipe that is fixed now
-  // leaves that effect on fewer ml/L: scaled up by what left, so the next round doses less, never more
-  // (RAT-085, RAT-056). The effect of each recipe of its own comes with SD-057's later steps.
-  if (const RecipeCfg* before = cfg_.recipe(id)) {
-    // The recipe EC control uses, as it picks it: the set one, or the first (activeRecipe in control.cpp)
-    const std::string set = effectiveParams(cat_, cfg_, "ec_control").str("recipe");
-    const std::string active = cfg_.recipe(set) ? set : cfg_.recipes.empty() ? "" : cfg_.recipes.front().id;
-    auto fixedNow = [&](const std::string& can) {
-      for (const auto& s : r->steps)
-        if (s.canister == can) return s.fixed;
-      return false;
-    };
-    double scaledBefore = 0, moved = 0;  // the old amounts the effect was learned on, and those of the parts fixed now
-    bool changed = false;
-    for (const auto& o : before->steps) {
-      if (o.fixed || !isNum(o.mlPerL)) continue;
-      scaledBefore += o.mlPerL;
-      if (fixedNow(o.canister)) moved += o.mlPerL;
-    }
-    for (const auto& s : r->steps) {
-      const auto o = std::find_if(before->steps.begin(), before->steps.end(), [&](const RecipeStep& x) { return x.canister == s.canister; });
-      changed |= o != before->steps.end() && o->fixed != s.fixed;
-    }
-    if (id == active && changed) ec_.recipeChanged(*r);  // a running round was planned on the old parts
-    if (id == active && isNum(rt_.ecEffect) && moved > 0 && scaledBefore > moved) {
-      rt_.ecEffect *= scaledBefore / (scaledBefore - moved);
-      stateDirty_ = true;
-    }
-  }
+  if (const RecipeCfg* before = cfg_.recipe(id)) recipeEdited(*before, *r);
+  else forgetEcEffect(id);  // a new recipe never takes over what was learned for one of that ID (SD-092, as #161)
   cfg_ = next;
   saveConfig(say("ev.cfg.recipe", {{"name", r->name}}));
   return Result::ok({{"id", id}});
+}
+
+// An edit or an import of a recipe: what its learned EC effect keeps (scaled up by parts no longer
+// scaled, kept only at or above its new start), and a round planned on its old parts learns nothing
+// (SD-092, RAT-085, RAT-057)
+void Hub::recipeEdited(const RecipeCfg& before, const RecipeCfg& after) {
+  const EffectEdit e = editEcEffect(before, after, learnedEcEffect(rt_, after.id));
+  if (!e.changed) return;
+  ec_.recipeChanged(after);
+  if (isNum(e.learned)) rt_.ecEffects[after.id] = e.learned;
+  else rt_.ecEffects.erase(after.id);
+  stateDirty_ = true;
+}
+
+// What was learned for a recipe goes with it, and a round on it that still settles learns nothing (SD-092)
+void Hub::forgetEcEffect(const std::string& id) {
+  ec_.recipeGone(id);
+  if (rt_.ecEffects.erase(id)) stateDirty_ = true;
 }
 
 Result Hub::deleteRecipe(const std::string& id) {
@@ -1567,6 +1607,7 @@ Result Hub::deleteRecipe(const std::string& id) {
   if (it == cfg_.recipes.end()) return Result::fail(404, say("recipe.unknown"));
   std::string name = it->name;
   cfg_.recipes.erase(it);
+  forgetEcEffect(id);
   saveConfig(say("ev.cfg.recipe_removed", {{"name", name}}));
   return Result::ok();
 }
@@ -1743,6 +1784,14 @@ Result Hub::importConfig(const json& j) {
   // later, never takes over one left behind (#161)
   for (auto it = rt_.stockMl.begin(); it != rt_.stockMl.end();)
     it = cfg_.canister(it->first) && next.canister(it->first) ? std::next(it) : rt_.stockMl.erase(it);
+  // So does what EC control learned for a recipe the hub had and the file keeps, as edited by it; one
+  // the file leaves out or brings new starts afresh (SD-092, as #161)
+  for (const auto& r : cfg_.recipes)
+    if (!next.recipe(r.id)) forgetEcEffect(r.id);
+  for (const auto& nr : next.recipes) {
+    if (const RecipeCfg* before = cfg_.recipe(nr.id)) recipeEdited(*before, nr);
+    else forgetEcEffect(nr.id);
+  }
   stateDirty_ = true;
   cfg_ = next;
   if (net_)
@@ -1880,6 +1929,94 @@ void Hub::finishJob(const std::string& state, Msg m) {
   if (state == "done" || state == "aborted") job_.reset();
 }
 
+namespace {
+// Each part of a pair with a part in the tank that is not complete, with what is still missing: the
+// ratio is off until it is in (RAT-054)
+json missingPairParts(const Job& j) {
+  json out = json::array();
+  for (const auto& s : j.steps) {
+    if (s.dose.pair.empty() || s.state == "done") continue;
+    const bool started = std::any_of(j.steps.begin(), j.steps.end(),
+                                     [&](const JobStep& o) { return o.dose.pair == s.dose.pair && o.mlDone > 0; });
+    if (started) out.push_back(say("amount", {{"name", s.dose.name}, {"ml", numOrNull(isNum(s.dose.ml) ? std::max(0.0, s.dose.ml - s.mlDone) : kNaN)}}));
+  }
+  return out;
+}
+}  // namespace
+
+bool Hub::controllerFree(const char* fn, const char* latch) const {
+  // switched on and not locked: a locked controller waits for a person, not for the mixed tank
+  auto it = cfg_.functions.find(fn);
+  return it != cfg_.functions.end() && it->second.enabled && !rt_.latches.count(latch);
+}
+
+const RecipeCfg* Hub::ecRecipe() const {
+  if (const RecipeCfg* r = cfg_.recipe(effectiveParams(cat_, cfg_, "ec_control").str("recipe"))) return r;
+  return cfg_.recipes.empty() ? nullptr : &cfg_.recipes.front();
+}
+bool Hub::controlOn() const { return controllerFree("ec_control", "ec.no_effect") || controllerFree("ph_control", "ph.no_effect"); }
+
+Ms Hub::mixSettleMs() const {
+  auto on = [&](const char* fn) {
+    auto it = cfg_.functions.find(fn);
+    return it != cfg_.functions.end() && it->second.enabled;
+  };
+  // the controller's own settle time in seconds, read as it reads it: missing or out of range is 5 min
+  auto settle = [&](const char* fn) -> double {
+    if (!on(fn)) return 0;
+    const double m = effectiveParams(cat_, cfg_, fn).num("settle_min");
+    return (isNum(m) && m > 0 && m <= 24 * 60 ? m : 5) * 60;
+  };
+  double s = std::max(settle("ec_control"), settle("ph_control"));
+  if (s == 0) s = 5 * 60;  // no control waits, but a pH measured by hand needs a mixed tank too
+  if (on("ph_control")) s = std::max(s, 240.0);  // pH is judged 240 s after an EC-raising dose at the earliest (RAT-046)
+  // At least the measured time to tolerance with margin, about 100 s at 20 L (RAT-058), scaled with
+  // the volume in the tank; the scaling is an assumption, as in the twin's mixing model (RAT-052)
+  const double v = tankVolume();
+  if (isNum(v) && v > 0) s = std::max(s, 100.0 * v / 20.0);
+  // A fixed ceiling (R7), the longest settle time the catalog allows: a volume typed wrong never holds
+  // control for longer
+  return static_cast<Ms>(std::min(s, 60.0 * 60) * kSecond);
+}
+
+void Hub::finishMixDone(Ctx& c, bool unmixed) {
+  Job& j = *job_;
+  json summary = json::array();
+  double total = 0;
+  for (const auto& s : j.steps) {
+    summary.push_back(say("amount", {{"name", s.dose.name}, {"ml", s.mlDone}}));
+    total += s.mlDone;
+  }
+  const json after = j.info.contains("after") && j.info["after"].is_object() ? j.info["after"] : json(nullptr);
+  json args{{"water", numOrNull(jnum(j.info, "waterL"))}, {"recipe", jstr(j.info, "recipeName")}, {"after", after}};
+  args["summary"] = summary;
+  log_.add(c.epoch, "mix", "info", say("ev.mix.done"), say("ev.mix.done.text", args), {{"job", j.id}, {"totalMl", total}});
+  // Without control, nothing waits for the pump afterwards: the texts say to mix before measuring
+  const bool ctl = controlOn();
+  finishJob("done", !unmixed ? say("mix.done", args) : ctl ? say("mix.done_unmixed", args) : say("mix.done_unmixed_plain", args));
+}
+
+void Hub::mixCut(bool byStop, bool doseCut) {
+  if (!job_ || job_->type != "mix" || job_->cutMarked) return;
+  const bool anyIn = doseCut || std::any_of(job_->steps.begin(), job_->steps.end(), [](const JobStep& s) { return s.mlDone > 0; });
+  if (!anyIn) return;
+  job_->cutMarked = true;  // once until more goes in: ending a failed mix later adds nothing new
+  settleControllersFirst(byStop);
+}
+
+void Hub::settleControllersFirst(bool byStop) {
+  // Both settle first, for as long as each other's settle time and the volume need, so they end
+  // together and EC decides first, as after every round (RAT-004, the tie in `tickImpl`); pH's own
+  // mark keeps it waiting also when EC control is switched off meanwhile. A locked controller carries
+  // none: it would hold the other until someone acknowledges. One in a dosing round of its own keeps
+  // the round, which settles after its doses anyway; a reset would drop a pair's second part (RAT-054).
+  // The settle announces nothing new: EC is announced while it settles, as after any EC round, and a
+  // pH reading that jumps while the nutrients mix in locks, the safe side (RAT-042).
+  const Ms floor = std::max<Ms>(15 * kMinute, mixSettleMs());
+  if (controllerFree("ec_control", "ec.no_effect") && !ec_.dosing()) ec_.settleFirst(byStop, floor);
+  if (controllerFree("ph_control", "ph.no_effect") && !ph_.dosing()) ph_.settleFirst(byStop, floor);
+}
+
 // A new job replaces a failed mix only after ending it as an abort, which reports what is in the
 // tank and starts the window against mixing twice (RAT-003); before, it was dropped without a trace.
 void Hub::endFailedMix() {
@@ -1887,7 +2024,8 @@ void Hub::endFailedMix() {
 }
 
 void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
-  if (!job_) return;
+  // only a dose of this job, and only while a part is due: a mix that mixes in at its end has none
+  if (!job_ || p.orderId.rfind(job_->id + "-", 0) != 0 || job_->index >= job_->steps.size()) return;
   Job& j = *job_;
   auto& st = j.steps[j.index];
   st.mlDone += p.mlDone;
@@ -1905,6 +2043,7 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
                     {{"name", st.dose.name}, {"reason", p.error}, {"partner", partner}, {"step", j.index}});
     const bool mix = j.type == "mix";
     log_.add(c.epoch, "mix", "alarm", say(mix ? "ev.mix.interrupted" : "ev.job.failed"), j.message, {{"job", j.id}});
+    mixCut(false);
     if (j.type != "mix") finishJob("failed", j.message);
     saveJob();
     return;
@@ -1923,17 +2062,18 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
   }
   j.index++;
   if (j.index >= j.steps.size()) {
-    json summary = json::array();
-    double total = 0;
-    for (const auto& s : j.steps) {
-      summary.push_back(say("amount", {{"name", s.dose.name}, {"ml", s.mlDone}}));
-      total += s.mlDone;
+    // With the circulation pump, the nutrients mix in before the mix ends, so EC and pH never decide
+    // on a tank that has not mixed (SD-057, RAT-052)
+    const Ms settle = j.circulation ? mixSettleMs() : 0;
+    if (settle > 0) {
+      j.state = "settling";
+      j.waitUntil = c.now + settle;
+      const Ms min = (settle + kMinute - 1) / kMinute;
+      j.message = controlOn() ? say("mix.settling", {{"min", min}}) : say("mix.settling_plain", {{"min", min}});
+      saveJob();
+      return;
     }
-    const json after = j.info.contains("after") && j.info["after"].is_object() ? j.info["after"] : json(nullptr);
-    json args{{"water", numOrNull(jnum(j.info, "waterL"))}, {"recipe", jstr(j.info, "recipeName")}, {"after", after}};
-    args["summary"] = summary;
-    log_.add(c.epoch, "mix", "info", say("ev.mix.done"), say("ev.mix.done.text", args), {{"job", j.id}, {"totalMl", total}});
-    finishJob("done", say("mix.done", args));
+    finishMixDone(c, false);
     return;
   }
   // Zwischen den Gaben durchmischen: mit Umwälzpumpe Countdown, sonst von Hand rühren.
@@ -1943,6 +2083,7 @@ void Hub::onJobDose(Ctx& c, const DoseProgress& p) {
     j.message = say("mix.circulate");
   } else if (j.guided) {
     j.state = "waiting_user";
+    j.waitUntil = c.now + kStirWaitMax;  // a mix never waits without end (SD-057, SD-089)
     j.message = say("mix.stir", {{"name", st.dose.name}, {"ml", st.mlDone}});
   } else {
     startJobStep(c);
@@ -1955,6 +2096,41 @@ void Hub::tickJob(Ctx& c) {
   Job& j = *job_;
   if (j.state == "mixing" && c.now >= j.waitUntil) {
     if (startJobStep(c)) saveJob();
+  } else if (j.state == "settling") {
+    // A pump that stands still mixes nothing: the card says so, the mix still ends, and EC and pH then
+    // wait for the pump themselves instead of deciding on a tank that has not mixed (SD-057, SD-073).
+    // Off or unknown for kPumpStandsAfter counts, not a single missed report, which mixes in as much.
+    const bool pumping = act_.roleState(cfg_, "tank.circulation").value_or(false);
+    if (pumping) j.pumpOffSince = 0;
+    else if (j.pumpOffSince == 0) j.pumpOffSince = std::max<Ms>(c.now, 1);
+    const bool stands = !pumping && c.now - j.pumpOffSince >= kPumpStandsAfter;
+    if (stands) j.unmixed = true;
+    if (c.now >= j.waitUntil) {
+      const bool unmixed = j.unmixed;
+      finishMixDone(c, unmixed);
+      if (unmixed) settleControllersFirst(false);
+    } else if (stands != j.pumpStands) {
+      // Says when it stands still; back on (only a running pump ends standing still), it says how the
+      // mix will end: not mixed yet, and mixed once more by control
+      j.pumpStands = stands;
+      const bool ctl = controlOn();
+      if (stands) j.message = ctl ? say("mix.settling_no_circ") : say("mix.settling_no_circ_plain");
+      else j.message = ctl ? say("mix.settling_resumed") : say("mix.settling_resumed_plain");
+      saveJob();
+    }
+  } else if (j.type == "mix" && j.state == "waiting_user" && j.waitUntil > 0 && c.now >= j.waitUntil) {
+    // Nobody tapped "Continue" in time: the mix stops, open to go on with the next part or to be ended
+    // (RAT-003). The parts of a pair still missing are named with what is missing (RAT-054).
+    const json partners = missingPairParts(j);
+    const std::string last = j.index > 0 ? j.steps[j.index - 1].dose.name : std::string();
+    const Ms min = kStirWaitMax / kMinute;
+    j.state = "failed";
+    j.message = partners.empty() ? say("mix.stir_timeout", {{"min", min}, {"name", last}})
+                                 : say("mix.stir_timeout_pair", {{"min", min}, {"name", last}, {"partners", partners}});
+    // A forgotten tap is no danger by itself; a pair half in is
+    log_.add(c.epoch, "mix", partners.empty() ? "warn" : "alarm", say("ev.mix.stir_timeout"), j.message, {{"job", j.id}});
+    mixCut(false);
+    saveJob();
   }
 }
 
@@ -1978,9 +2154,14 @@ Result Hub::jobResume(const std::string& id) {
   auto& st = job_->steps[job_->index];
   if (auto it = pumps_.find(st.dose.pump); it != pumps_.end()) st.dose.flowMlPerMin = it->second.flowMlPerMin;
   const std::string name = st.dose.name;  // st gilt nach startJobStep nicht mehr sicher
+  const bool cutShort = st.state == "failed";  // else the mix waited for stirring and goes on (SD-057)
   Ctx c = ctx();
   if (!startJobStep(c)) return Result::fail(422, job_->message, {{"job", *job_}});
-  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.resumed"), say("ev.mix.resumed.text", {{"name", name}}));
+  // A rest below an accurate run counts as in and can end the mix right away: then the job is gone
+  // and "Mix done" says what happened. Else more goes in, and a later cut marks the controllers again.
+  if (!job_) return Result::ok(jobJson());
+  job_->cutMarked = false;
+  log_.add(clock_.epoch(), "mix", "info", say("ev.mix.resumed"), say(cutShort ? "ev.mix.resumed.text" : "ev.mix.resumed.next", {{"name", name}}));
   saveJob();
   return Result::ok(jobJson());
 }
@@ -1995,7 +2176,11 @@ Result Hub::jobAbort(const std::string& id) {
   const bool none = done.empty();
   const bool mix = job_->type == "mix";
   log_.add(clock_.epoch(), "mix", "warn", say(mix ? "ev.mix.aborted" : "ev.job.aborted"), say(none ? "ev.contents_none" : "ev.contents", {{"done", done}}), {{"job", id}});
-  finishJob("aborted", say(none ? "job.aborted_none" : "job.aborted", {{"done", done}}));
+  // Cancelled with a pair half in: the parts still missing are named (SD-057, RAT-054)
+  const json partners = mix ? missingPairParts(*job_) : json::array();
+  mixCut(false);
+  finishJob("aborted", partners.empty() ? say(none ? "job.aborted_none" : "job.aborted", {{"done", done}})
+                                        : say("job.aborted_pair", {{"done", done}, {"partners", partners}}));
   return Result::ok();
 }
 
@@ -2377,6 +2562,7 @@ Result Hub::stop(const Msg& who) {
   }
   ec_.stopRound();
   ph_.stopRound();
+  mixCut(true, unbooked && unbooked->purpose == "mix");  // a part dropped unbooked went in all the same
   if (job_) finishJob("aborted", say("job.emergency_stop"));
   saveState();
   if (first || wasKept) log_.add(clock_.epoch(), "system", "alarm", say("ev.stop"), say("ev.stop.text", {{"who", who}}));

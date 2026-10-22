@@ -891,6 +891,10 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   }
   // EC control's recipe: CalMag (0.6 of 4.6 ml/L) fixed leaves the learned effect on 4.0 ml/L, so it grows
   // by 4.6 / 4.0 and the next round doses less; unticking it again keeps the larger effect
+  // The demo's mix mixes in before EC control decides and lands in its band (SD-057): a lower EC gives
+  // EC control a round to learn from
+  for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);
+  s.world().fill(40, 1.0, 5.9);
   for (int h = 0; h < 12 && !c.state()["effects"]["ec"].is_number(); ++h) s.fastForward(1);
   REQUIRE(c.state()["effects"]["ec"].is_number());
   const double learned = c.state()["effects"]["ec"].get<double>();
@@ -932,6 +936,79 @@ TEST_CASE("Recipes: a fixed part is refused for a pair and as anything but yes o
   e = effect();
   c.ok("POST", "/api/v1/recipes", {{"id", "wachstum"}, {"steps", steps(true, false)}});
   CHECK(effect() == doctest::Approx(e * 4.6 / 4.0));
+}
+
+TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into the recipe it dosed, and nothing when that recipe is edited or replaced under it (SD-092, RAT-057)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  auto effects = [&] { return c.state()["effects"]; };
+  auto learned = [&](const std::string& id) { return effects()["ecByRecipe"].contains(id); };
+  auto line = [&] { return c.state()["controllers"]["ec"]["line"]["key"].get<std::string>(); };
+  auto idOf = [&](const std::string& name) {
+    const gc::json cfg = c.ok("GET", "/api/v1/config");
+    for (const auto& r : cfg["recipes"])
+      if (r["name"] == name) return r["id"].get<std::string>();
+    return std::string();
+  };
+  auto useRecipe = [&](const std::string& id) { c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"recipe", id}}}}); };
+  auto bloomSteps = [](double calmag, bool fixed) {
+    return gc::json::array({{{"canister", "teil-a"}, {"mlPerL", 2.6}}, {{"canister", "teil-b"}, {"mlPerL", 2.6}},
+                            {{"canister", "calmag"}, {"mlPerL", calmag}, {"fixed", fixed}}});
+  };
+  // The demo's mix mixes in first; a lower EC then gives EC control a round on its recipe
+  for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);
+  s.world().fill(40, 1.0, 5.9);
+  for (int h = 0; h < 12 && !learned("wachstum"); ++h) s.fastForward(1);
+  REQUIRE(learned("wachstum"));
+  const double veg = effects()["ecByRecipe"]["wachstum"].get<double>();
+  CHECK(effects()["ec"].get<double>() == doctest::Approx(veg));
+  // Another recipe has learned nothing: it starts from its own start, not from the other's
+  c.ok("POST", "/api/v1/grow/complete", gc::json::object());  // the phase's recipe would win (R4)
+  const std::string bloom = idOf("Blüte");
+  REQUIRE_FALSE(bloom.empty());
+  useRecipe(bloom);
+  CHECK(effects()["ec"].is_null());
+  CHECK_FALSE(learned(bloom));
+  s.world().fill(40, 0.6, 5.9);
+  for (int h = 0; h < 12 && !learned(bloom); ++h) s.fastForward(1);
+  REQUIRE(learned(bloom));
+  CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));  // left alone
+  // A recipe EC control does not use: its own value scales up when a part is fixed (RAT-085)
+  const double bloomLearned = effects()["ecByRecipe"][bloom].get<double>();
+  useRecipe("wachstum");
+  c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(0.4, true)}});
+  CHECK(effects()["ecByRecipe"][bloom].get<double>() == doctest::Approx(bloomLearned * 5.6 / 5.2));
+  CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));
+  // A chart EC above what it learned forgets it (SD-092): 2.4 over 5.6 ml/L
+  c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(0.4, false)}, {"refEc", 2.4}});
+  REQUIRE_FALSE(learned(bloom));
+  // A round on it settles while EC control moves to another recipe
+  useRecipe(bloom);
+  s.world().fill(40, 0.6, 5.9);
+  for (int i = 0; i < 2 * 720 && line() != "ec.settling"; ++i) s.step(5000);
+  REQUIRE(line() == "ec.settling");
+  useRecipe("wachstum");
+  auto settle = [&] {
+    for (int i = 0; i < 720 && line() == "ec.settling"; ++i) s.step(5000);
+    REQUIRE(line() != "ec.settling");
+  };
+  SUBCASE("left as it is: the round learns into the recipe it dosed, the other keeps its own") {
+    settle();
+    CHECK(learned(bloom));
+    CHECK(effects()["ecByRecipe"]["wachstum"].get<double>() == doctest::Approx(veg));
+  }
+  SUBCASE("its recipe edited while it settles: it learns nothing, though EC control doses another now") {
+    c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(1.2, false)}, {"refEc", 2.4}});
+    settle();
+    CHECK_FALSE(learned(bloom));
+  }
+  SUBCASE("its recipe deleted and one of that name created while it settles: the new one learns nothing of it") {
+    REQUIRE(c.call("DELETE", "/api/v1/recipes/" + bloom).first == 200);
+    REQUIRE(c.ok("POST", "/api/v1/recipes", {{"name", "Blüte"}, {"steps", bloomSteps(0.4, false)}})["id"] == bloom);
+    settle();
+    CHECK_FALSE(learned(bloom));
+  }
 }
 
 TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {

@@ -89,10 +89,18 @@ test("Ersteinrichtung bis zum ersten geführten Mischlauf", async ({ page, reque
   await expect(page.getByRole("cell", { name: "20,0 ml" }).first()).toBeVisible();
   await page.getByTestId("mix-start").click();
 
-  // Geführt ohne Umwälzpumpe: nach jeder Gabe "umrühren, weiter"
-  for (let i = 0; i < 2; i++) {
-    await page.getByRole("button", { name: /Weiter \(Schritt/ }).click({ timeout: 90_000 });
-  }
+  // Geführt ohne Umwälzpumpe: nach jeder Gabe "umrühren, weiter". 30 min ohne „Weiter“ halten den
+  // Mischlauf an, mit dem Teil des Paars, der noch fehlt (SD-057)
+  const job = page.getByTestId("job");
+  await expect(page.getByRole("button", { name: /Weiter \(Schritt/ })).toBeVisible({ timeout: 90_000 });
+  await expect(job).toContainText(/Ohne „Weiter“ hält der Mischlauf in \d+\smin an\./);
+  await page.evaluate(() => fetch("/api/v1/sim/advance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hours: 0.51 }) }));
+  await expect(job.getByText("unterbrochen", { exact: true })).toBeVisible();
+  await expect(job).toContainText(/Nach Teil [AB] kam 30\smin kein „Weiter“\. Fehlt: Teil [AB] \d+,\d\sml – bis dahin stimmt das Verhältnis nicht\./);
+  await expect(job.getByRole("button", { name: /nachholen/ })).toHaveCount(0);
+  await expect(job.getByRole("button", { name: "Mischlauf beenden" })).toBeVisible();
+  await job.getByRole("button", { name: "Mischlauf fortsetzen" }).click();
+  await page.getByRole("button", { name: /Weiter \(Schritt/ }).click({ timeout: 90_000 });
   await expect(page.getByText(/Fertig: 10,0 L/)).toBeVisible({ timeout: 90_000 });
   await simSpeed(page, 1);
 

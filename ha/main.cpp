@@ -229,11 +229,44 @@ std::string readFile(const std::string& path) {
   return ss.str();
 }
 
+// The text of a file named at the start, or why not, as "<path>: …" (#213):
+// an error to name, not a crash at the start or a message that is not true
+// ("the mapping must be a JSON object", "No token"). Opened once, so a named
+// pipe is read, not emptied by a look first.
+bool readNamed(const std::string& path, std::string& text, std::string& why) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
+    why = path + (ec ? ": cannot be read (" + ec.message() + ")" : ": file not found");
+    return false;
+  }
+  if (std::filesystem::is_directory(path, ec)) {  // opened, it reads as empty
+    why = path + ": is a folder, not a file";
+    return false;
+  }
+  errno = 0;
+  std::ifstream f(path);
+  const int err = errno;
+  if (!f) {  // there but not opened (no permission)
+    why = path + ": cannot be read (" + (err ? std::generic_category().message(err) : "cannot be opened") + ")";
+    return false;
+  }
+  std::stringstream ss;
+  ss << f.rdbuf();
+  text = ss.str();
+  return true;
+}
+
+// A long-lived token is a JWT ("eyJ…" with two dots). Given in place of its
+// file, it is not printed: the output may go to a log.
+bool looksLikeToken(const std::string& s) {
+  return s.rfind("eyJ", 0) == 0 && std::count(s.begin(), s.end(), '.') == 2 && s.find('/') == std::string::npos;
+}
+
 void usage() {
   std::cout << "growcontroller on Home Assistant (read-only spike) " << gc::embedded::kVersion << "\n"
             << "  --config FILE       {\"url\": \"http://192.168.1.20:8123\"} (an IP, not .local; as an app use --app);\n"
             << "                      sensors are picked in the web app\n"
-            << "  --token-file FILE   long-lived access token (or the environment variable GC_HA_TOKEN)\n"
+            << "  --token-file FILE   long-lived access token (without it: the environment variable GC_HA_TOKEN)\n"
             << "  --data DIR          where the hub keeps its files (growcontroller-ha-data)\n"
             << "  --port N            HTTP port (8090)\n"
             << "  --host ADDR         address (127.0.0.1)\n"
@@ -255,6 +288,7 @@ void usage() {
 
 int main(int argc, char** argv) {
   std::string config, tokenFile, data, host, web;
+  bool namedTokenFile = false;
   int port = 0;
   int ingressPort = 0;
   std::string ingressFrom;
@@ -280,7 +314,6 @@ int main(int argc, char** argv) {
       return static_cast<int>(n);
     };
     if (a == "--config") config = next();
-    else if (a == "--token-file") tokenFile = next();
     else if (a == "--data") data = next();
     else if (a == "--port") port = number();
     else if (a == "--host") host = next();
@@ -289,7 +322,10 @@ int main(int argc, char** argv) {
     else if (a == "--ingress-port") ingressPort = number();
     else if (a == "--ingress-from") ingressFrom = next();
     else if (a == "--app") app = true;
-    else if (a == "--help" || a == "-h") {
+    else if (a == "--token-file") {
+      tokenFile = next();
+      namedTokenFile = true;
+    } else if (a == "--help" || a == "-h") {
       usage();
       return 0;
     } else {
@@ -318,7 +354,7 @@ int main(int argc, char** argv) {
     std::cerr << "--ingress-from takes the Supervisor's address (172.30.32.2) or one of this computer's (127.x.x.x)\n";
     return 2;
   }
-  if (app && (!config.empty() || !tokenFile.empty())) {
+  if (app && (!config.empty() || namedTokenFile)) {
     std::cerr << "--app takes Home Assistant's address and token from the Supervisor; leave out --config and --token-file\n";
     return 2;
   }
@@ -326,31 +362,31 @@ int main(int argc, char** argv) {
     usage();
     return 2;
   }
-  std::error_code configErr;  // a file it may not read is an error to name, not a crash at the start (#213)
-  if (!app && !std::filesystem::exists(config, configErr)) {
-    if (configErr)
-      std::cerr << config << ": cannot be read (" << configErr.message() << ")\n";
-    else
-      std::cerr << config << ": file not found\n";
+  if (namedTokenFile && tokenFile.empty()) {  // an unset shell variable is no reason to take GC_HA_TOKEN
+    std::cerr << "--token-file needs the name of a file that holds the token\n";
     return 2;
   }
-  if (!app) {
-    errno = 0;
-    std::ifstream probe(config);  // there but not opened (no permission): say so, not "no JSON object"
-    const int err = errno;
-    if (!probe) {
-      std::cerr << config << ": cannot be read (" << (err ? std::generic_category().message(err) : "cannot be opened") << ")\n";
-      return 2;
-    }
+  std::string configText, why;
+  if (!app && !readNamed(config, configText, why)) {
+    std::cerr << why << "\n";
+    return 2;
   }
   std::string err;
-  const auto mapping = ha::parseMapping(app ? gc::json{{"url", "http://supervisor/core"}} : gc::json::parse(readFile(config), nullptr, false), err);
+  const auto mapping = ha::parseMapping(app ? gc::json{{"url", "http://supervisor/core"}} : gc::json::parse(configText, nullptr, false), err);
   if (!err.empty()) {
     std::cerr << (app ? "--app" : config) << ": " << err << "\n";
     return 2;
   }
   const char* tokenVar = app ? "SUPERVISOR_TOKEN" : "GC_HA_TOKEN";
-  std::string token = tokenFile.empty() ? (std::getenv(tokenVar) ? std::getenv(tokenVar) : "") : readFile(tokenFile);
+  // A token file named wins over GC_HA_TOKEN, also when it cannot be read
+  std::string token;
+  if (tokenFile.empty()) {
+    token = std::getenv(tokenVar) ? std::getenv(tokenVar) : "";
+  } else if (!readNamed(tokenFile, token, why)) {
+    std::cerr << (looksLikeToken(tokenFile) ? "--token-file takes a file that holds the token, not the token (not shown here)" : why)
+              << "\n";
+    return 2;
+  }
   // Not passed on to anything this process starts. The Supervisor also sets
   // the same token under its old name.
   std::vector<const char*> clear = {tokenVar};
@@ -364,7 +400,10 @@ int main(int argc, char** argv) {
   }
   while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
   if (token.empty()) {
-    std::cerr << (app ? "No SUPERVISOR_TOKEN: start this as a Home Assistant app with homeassistant_api\n" : "No token: --token-file FILE or GC_HA_TOKEN\n");
+    if (!tokenFile.empty())
+      std::cerr << tokenFile << ": holds no token\n";
+    else
+      std::cerr << (app ? "No SUPERVISOR_TOKEN: start this as a Home Assistant app with homeassistant_api\n" : "No token: --token-file FILE or GC_HA_TOKEN\n");
     return 2;
   }
 

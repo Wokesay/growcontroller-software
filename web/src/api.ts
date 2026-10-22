@@ -40,8 +40,9 @@ export type CtlStatus = {
 export type JobStep = { name: string; canister: string; color: string; pair: string; ml: number | null; mlDone: number; state: string };
 export type Job = {
   id: string; type: "mix" | "manual" | "calibration" | "prime";
-  state: "running" | "waiting_user" | "mixing" | "done" | "failed" | "aborted";
+  state: "running" | "waiting_user" | "mixing" | "settling" | "done" | "failed" | "aborted";
   index: number; steps: JobStep[]; message: Msg; startedAt: number; finishedAt: number; guided: boolean;
+  waitLeftS?: number; circulating?: boolean | null; pumpStands?: boolean;
   info: Record<string, any>;
 };
 
@@ -72,7 +73,7 @@ export type HubState = {
   job: Job | null; lastJob: Job | null;
   dosing: { order: string; purpose: string; canister: string; name: string; ml: number | null; mlDone: number; run: number; runs: number } | null;
   watchdog: Watchdog; functions: FunctionState[]; latches: Record<string, any>;
-  stock: Record<string, number | null>; effects: { ph: number | null; ec: number | null };
+  stock: Record<string, number | null>; effects: { ph: number | null; ec: number | null; ecByRecipe: Record<string, number | null> };
   lastMixAt: number; manual: { values: Record<string, number>; at: number }; grow: Grow; eventId: number;
   // pending: a point waiting for the next report of a sensor on its own schedule (SD-041); failed: none came in time
   probeCalibration: Record<string, { device: string; kind: string; points: [number, number][]; pending?: { since: number; reference: number }; failed?: Msg }>;

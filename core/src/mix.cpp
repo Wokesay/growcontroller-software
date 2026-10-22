@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 #include "gc/messages.hpp"
 
@@ -172,9 +173,10 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
     return d;
   }
   if (!isNum(maxEcStep) || maxEcStep <= 0) maxEcStep = 1.0;  // Katalog-Vorgabe, nie ohne Deckel
-  if (!isNum(startEffect) || startEffect <= 0) startEffect = effectPerMlL;
+  if (!isNum(startEffect) || startEffect <= 0) startEffect = kEcStartEffect;
   const double rawMlPerL = 0.8 * gapEc / effectPerMlL;
-  const double capMlPerL = maxEcStep / std::max(startEffect, effectPerMlL);
+  // Never wider than at the start effect fixed in code, whatever comes in (RAT-056)
+  const double capMlPerL = maxEcStep / std::max({kEcStartEffect, startEffect, effectPerMlL});
   const double totalMlPerL = std::min(rawMlPerL, capMlPerL);  // ml/L des ganzen Rezepts
   d.factor = totalMlPerL / rawMlPerL;
   for (const auto& s : recipe.steps) {
@@ -212,6 +214,71 @@ double clampEffect(double observed, double start) {
   if (observed < 0.25 * start) return start;
   if (observed > 4.0 * start) return 4.0 * start;
   return observed;
+}
+
+namespace {
+// The parts EC control scales, by canister, as validateConfig counts them (RAT-085)
+std::map<std::string, double> scaledParts(const RecipeCfg& recipe) {
+  std::map<std::string, double> parts;
+  for (const auto& s : recipe.steps)
+    if (!s.fixed && isNum(s.mlPerL) && s.mlPerL > 0) parts[s.canister] += s.mlPerL;
+  return parts;
+}
+double sumOf(const std::map<std::string, double>& parts) {
+  double sum = 0;
+  for (const auto& [can, ml] : parts) sum += ml;
+  return sum;
+}
+}  // namespace
+
+RecipeEffect recipeEffect(const RecipeCfg& recipe, double learned) {
+  RecipeEffect e;
+  const double sum = sumOf(scaledParts(recipe));
+  // A reference outside the band (a file edited by hand, an import) counts as none
+  const double ref = isNum(recipe.refEc) && recipe.refEc > 0 && sum > 0 ? recipe.refEc / sum : kNaN;
+  if (isNum(ref) && ref >= kRefEffectMin * kEcStartEffect && ref <= kRefEffectMax * kEcStartEffect)
+    e.start = std::max(kEcStartEffect, ref);
+  e.dose = clampEcEffect(learned, e.start);
+  // A stored value above the band counts at its top, as one learned there: the cap never shrinks so far
+  // that no round fits and nothing could be learned again (RAT-056)
+  e.largest = std::max(e.start, e.dose);
+  return e;
+}
+
+double clampEcEffect(double observed, double start) {
+  if (!isNum(observed) || observed < kRefEffectMin * kEcStartEffect) return start;
+  return std::min(observed, kRefEffectMax * kEcStartEffect);
+}
+
+double learnedEcEffect(const RuntimeState& rt, const std::string& recipe) {
+  auto it = rt.ecEffects.find(recipe);
+  return it == rt.ecEffects.end() ? kNaN : it->second;
+}
+
+EffectEdit editEcEffect(const RecipeCfg& before, const RecipeCfg& after, double learned) {
+  EffectEdit e;
+  const auto was = scaledParts(before), now = scaledParts(after);
+  const double sumWas = sumOf(was), sumNow = sumOf(now);
+  // The same parts in the same ratio (all amounts alike, or only the name or the reference): unchanged
+  bool same = was.size() == now.size() && sumWas > 0 && sumNow > 0;
+  for (auto w = was.begin(), n = now.begin(); same && w != was.end(); ++w, ++n)
+    same = w->first == n->first && std::fabs(w->second / sumWas - n->second / sumNow) < 1e-9;
+  if (same || (was.empty() && now.empty())) {
+    // A higher reference on the same parts may be a stronger product in the same bottles: what was
+    // learned below its new start is forgotten (SD-092)
+    const double startNow = recipeEffect(after, kNaN).start;
+    if (!(isNum(learned) && learned < startNow && startNow > recipeEffect(before, kNaN).start)) e.learned = learned;
+    return e;
+  }
+  e.changed = true;
+  if (!isNum(learned)) return e;
+  double gone = 0;  // what was scaled and is no longer: fixed now or removed
+  for (const auto& [can, ml] : was)
+    if (!now.count(can)) gone += ml;
+  if (gone >= sumWas || sumNow <= 0) return e;  // nothing it was learned on is scaled any more
+  const double scaled = std::min(learned * sumWas / (sumWas - gone), kRefEffectMax * kEcStartEffect);
+  if (scaled >= recipeEffect(after, kNaN).start) e.learned = scaled;
+  return e;
 }
 
 PhDose planPhDose(double ph, double target, double effectPerMlL, double volumeL, double maxMl) {

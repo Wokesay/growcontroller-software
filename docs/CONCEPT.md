@@ -1,8 +1,10 @@
 # Concept: growcontroller as standalone software
 
 As of 2026-10-07. **V** = proposal, **A** = assumption, [PD-xxx] = decided in
-the product repository. Software decisions not decided by a PD are still
-drafts (`docs/DECISIONS.md`).
+the product repository. Software decisions are SDs in `docs/DECISIONS.md`;
+its drafts apply only after "entschieden". Since PD-318, a PD on a
+control detail is a proposal, and an SD recorded from it stays until a
+later SD changes it (SD-091).
 
 ## 1. Goal
 
@@ -108,7 +110,8 @@ UI and API always match, and a rollback takes the UI along.
   running (PD-077).
 - **R7:** The catalog can only tighten safety. The minimum lives in the
   gateway: calibration value, run time limits, one run at a time,
-  Stop, dry run, emergency limit of the inlet.
+  Stop, dry run, emergency limit of the inlet, no watering on water not
+  fit for it (SD-093).
 - **R8:** One event loop with an injected clock. This makes tests
   deterministic and time-lapse in the simulator possible.
 

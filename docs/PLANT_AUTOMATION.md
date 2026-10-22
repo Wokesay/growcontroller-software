@@ -11,8 +11,9 @@ greenhouse, indoor growing and hydroponics. Basis: drafts by `architekt`,
 2026-10-06.
 
 > **Draft.** Everything here is a proposal, even where it sounds settled
-> ("fixed in code", "plug-in devices only"). Decisions are made as PDs in
-> the product repository; open points are in §9.
+> ("fixed in code", "plug-in devices only"). Decisions on principles,
+> costs and hardware are made as PDs in the product repository, control
+> details as SDs here (SD-091); open points are in §9.
 > Decided on 2026-10-06: scope, neutral wording and German/English
 > (PD-018; English is the default, PD-035), 230 V devices via sockets
 > (PD-019), behaviour after a power failure (PD-020), pH/EC heads (PD-021).
