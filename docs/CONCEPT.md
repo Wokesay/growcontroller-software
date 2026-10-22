@@ -110,7 +110,8 @@ UI and API always match, and a rollback takes the UI along.
   running (PD-077).
 - **R7:** The catalog can only tighten safety. The minimum lives in the
   gateway: calibration value, run time limits, one run at a time,
-  Stop, dry run, emergency limit of the inlet.
+  Stop, dry run, emergency limit of the inlet, no watering on water not
+  fit for it (SD-093).
 - **R8:** One event loop with an injected clock. This makes tests
   deterministic and time-lapse in the simulator possible.
 
