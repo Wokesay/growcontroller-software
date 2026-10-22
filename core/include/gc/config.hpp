@@ -221,6 +221,8 @@ class ParamView {
   json v_ = json::object();
 };
 ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn);
+// The same for one phase of the running grow (phase < 0: none), whichever phase runs now
+ParamView effectiveParams(const Catalog& cat, const Config& c, const std::string& fn, int phase);
 
 // At or below this, a canister's stock counts as booked below zero: it shows
 // as at least -1 ml, and a rounding difference under 0.5 ml raises no alarm (SD-066).
