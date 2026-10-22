@@ -8,6 +8,16 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Pages for testers** (SD-094): `docs/GETTING_STARTED.md` says what
+  growcontroller can do and what not yet, starts the simulator in five
+  steps and the Home Assistant app, and leads through a tour of about 15
+  minutes, each step with what you should see. `docs/FEEDBACK.md` asks
+  five questions and says where each kind of report goes and what never
+  to post. The README, the docs index, `CONTRIBUTING.md`, the simulator's
+  `README.txt` and the Home Assistant app's documentation point to them.
+  Feedback goes to a Discussions category "Tester feedback" with a form
+  of its own; the bug form asks for the steps and the browser and system,
+  and offers the Home Assistant app as where it happened.
 - **Each recipe learns its own EC effect** (#143, SD-057, step 4,
   SD-092): EC control learned one effect for whatever recipe it dosed;
   a phase moving to another recipe started from it. Now each recipe
@@ -523,6 +533,11 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **"Report publicly on GitHub" works for anyone** (SD-094): the link in
+  Settings › Report a problem asked GitHub to set labels, which only the
+  project may do, so GitHub answered "Not Found" to everyone else. It now
+  opens the bug form with the description, the version and the report ID
+  filled in, and still sends no diagnostic data.
 - **The Home Assistant server names a token file it cannot read** (#213):
   a `gc_ha_server --token-file` that was missing, could not be read (no
   permission, a folder it may not enter, a link that loops), was a folder

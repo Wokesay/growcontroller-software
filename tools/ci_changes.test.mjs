@@ -19,6 +19,7 @@ test("docs-only changes skip the full CI", () => {
   assert.equal(needsFullCi(["docs/templates/claude-triage.yml"]), false);
   assert.equal(needsFullCi(["LICENSES/AGPL-3.0-or-later.txt", ".claude/agents/qa.md"]), false);
   assert.equal(needsFullCi([".github/ISSUE_TEMPLATE/device.yml"]), false);
+  assert.equal(needsFullCi([".github/DISCUSSION_TEMPLATE/tester-feedback.yml"]), false);
   assert.equal(needsFullCi(["docs/Über uns.md", "docs/my file.md"]), false);
   assert.equal(needsFullCi([]), false);
   assert.equal(needsFullCi([""]), false);

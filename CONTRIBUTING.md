@@ -75,5 +75,7 @@ either measured (with source) or marked as an assumption.
 
 ## Ideas and questions
 
-Please use Discussions, not issues. An issue is created once an idea is
-accepted.
+Please use [Discussions](https://github.com/Wokesay/growcontroller-software/discussions),
+not issues. An issue is created once an idea is accepted. Tried a
+release? [`docs/FEEDBACK.md`](docs/FEEDBACK.md) says what we would like to
+hear and where.

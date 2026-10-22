@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The form of the Discussions category "Tester feedback" (SD-094); the file
+# name is the category's slug.
+title: "[Feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying growcontroller! Start here if you have not yet: [Getting started](https://github.com/Wokesay/growcontroller-software/blob/main/docs/GETTING_STARTED.md).
+        Short answers are fine, and you can skip any question but the first. Please do not post passwords, access tokens or keys (also not from ESPHome YAML: the `api` key, the `ota` password, Wi-Fi details), the address of your Home Assistant or locations – Discussions are public.
+        A bug you can repeat goes to the [bug form](https://github.com/Wokesay/growcontroller-software/issues/new?template=bug.yml); a vulnerability never here, see [SECURITY.md](https://github.com/Wokesay/growcontroller-software/blob/main/SECURITY.md).
+  - type: dropdown
+    id: tried
+    attributes:
+      label: What did you try?
+      multiple: true
+      options:
+        - Simulator
+        - Home Assistant app
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings › Display and info, row Software
+      placeholder: 0.1.0-proto.4
+  - type: textarea
+    id: stuck
+    attributes:
+      label: Where did you get stuck or have to guess?
+  - type: textarea
+    id: words
+    attributes:
+      label: Which words did you not understand?
+  - type: textarea
+    id: wrong
+    attributes:
+      label: Did the app ever show something you knew was wrong?
+  - type: textarea
+    id: needs
+    attributes:
+      label: What would you need before letting it run your tank?
+  - type: input
+    id: system
+    attributes:
+      label: Phone or computer, which browser and system?
+      placeholder: e.g. Firefox on Windows 11; Safari on iPhone
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?

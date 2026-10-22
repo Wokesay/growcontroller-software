@@ -127,5 +127,5 @@ Supervisor and gets its access from it. No token is needed.
 
 AGPL-3.0-or-later. The source code of exactly this version is linked on
 the web app's sign-in page and under Settings, and the license texts are
-in the image under `/licenses`. Problems and ideas:
-<https://github.com/Wokesay/growcontroller-software/issues>.
+in the image under `/licenses`. Feedback, problems and ideas: see
+<https://github.com/Wokesay/growcontroller-software/blob/main/docs/FEEDBACK.md>.

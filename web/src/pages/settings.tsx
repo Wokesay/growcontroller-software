@@ -141,10 +141,16 @@ function Report() {
     a.download = `growcontroller-diagnostics-${diag.reportId}.json`;
     a.click();
   };
+  // The bug form with its text fields filled in (SD-094). No labels: GitHub answers a query
+  // parameter the visitor has no right to with 404, and the form sets its labels itself.
   const issue = diag
-    ? `${ISSUE_URL}?labels=bug,triage&title=${encodeURIComponent(`[${diag.reportId}] ${Array.from(text).slice(0, 60).join("") || tIn("en", "settings.issueTitle")}`)}&body=${encodeURIComponent(
-        tIn("en", "settings.issueBody", { text, version: diag.info.version, platform: diag.info.platform.kind, id: diag.reportId }),
-      )}`
+    ? `${ISSUE_URL}?${new URLSearchParams({
+        template: "bug.yml",
+        title: `[${diag.reportId}] ${Array.from(text).slice(0, 60).join("") || tIn("en", "settings.issueTitle")}`,
+        what: text,
+        version: diag.info.version,
+        report: diag.reportId,
+      })}`
     : "";
   return (
     <div class="stack">

@@ -14,6 +14,10 @@ step by step light, climate and irrigation. The software runs on the hub
 (ESP32-S3) and brings its own web app – no cloud, no account, no Home
 Assistant required.
 
+> **Trying it out?** Start with [Getting started](docs/GETTING_STARTED.md):
+> the simulator in five steps and a short tour. Then tell us what you
+> think: [Feedback](docs/FEEDBACK.md).
+
 > **Status: prototype `0.1.0-proto.4`.** Core, simulator and web app run;
 > the port to the ESP32-S3 follows (`firmware/README.md`). The Home
 > Assistant app only reads sensors and switches nothing. Do not use it to

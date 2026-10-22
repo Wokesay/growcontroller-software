@@ -2,6 +2,8 @@
 
 | File | Content |
 |---|---|
+| [GETTING_STARTED.md](GETTING_STARTED.md) | **For testers:** what growcontroller can do today, the simulator and the Home Assistant app, a short tour |
+| [FEEDBACK.md](FEEDBACK.md) | **For testers:** what we would like to hear and where to tell us |
 | [CONCEPT.md](CONCEPT.md) | Goal, platform (ESP32-S3, option C), layers, rules R1–R8, status of the prototype |
 | [RATIONALE.md](RATIONALE.md) | Rationale register: one entry per domain rule with its reason and evidence (RAT-001 …) |
 | [INVARIANTS.md](INVARIANTS.md) | Domain rules (M1–M15) with implementation and test evidence |
