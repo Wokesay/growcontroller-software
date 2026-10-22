@@ -20,6 +20,7 @@ World::World() : rng_(42) { reset(); }
 void World::reset() {
   now_ = 0;
   tank = Tank{};
+  levelSeenL = gc::kNaN;
   ports.clear();
   out[0] = out[1] = false;
   netPlugs.clear();
@@ -244,6 +245,8 @@ void World::advance(Ms now) {
 
 void World::step(Ms dt) {
   const double dts = static_cast<double>(dt) / 1000.0;
+  if (levelLagS > 0 && !std::isnan(levelSeenL)) levelSeenL += (tank.volumeL - levelSeenL) * (1.0 - std::exp(-dts / levelLagS));
+  else levelSeenL = tank.volumeL;
   // Raumklima (Annahmen, docs/SIMULATOR.md)
   {
     const bool light = loadOn("light"), exhaust = loadOn("exhaust"), hum = loadOn("humidifier"),
@@ -325,7 +328,8 @@ void World::step(Ms dt) {
   // Köpfe liefern alle 5 s einen Messwert
   for (auto& [p, d] : ports) {
     if (d.cls == "dosing_block" || d.fault == "offline") continue;
-    if (now_ - d.lastSample >= kSampleMs && now_ - d.pluggedAt >= 2000) d.lastSample = now_;
+    const Ms every = d.cls == "head_level" && levelSampleMs > 0 ? levelSampleMs : kSampleMs;
+    if (now_ - d.lastSample >= every && now_ - d.pluggedAt >= 2000) d.lastSample = now_;
   }
 }
 
@@ -355,7 +359,7 @@ double World::rawEc(const Device* d) const {
 
 double World::rawLevelV(const Device* d) const {
   if (d && d->fault == "frozen") return d->frozenLevel;  // a stuck level sensor (#155)
-  double v = tank.volumeL;
+  double v = levelLagS > 0 && !std::isnan(levelSeenL) ? levelSeenL : tank.volumeL;
   double volts = v < 3.0 ? 0.5 + 0.03 * v : 0.59 + 0.04 * (v - 3.0);  // unten nichtlinear (vgl. RAT-078)
   return std::round((volts + noise(0.002)) * 10000.0) / 10000.0;
 }

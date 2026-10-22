@@ -1929,7 +1929,10 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     s.step(30000, 5000);
     CHECK(refillLine(c)["key"] == "refill.settle");
     CHECK_FALSE(inletOpen(c));
-    REQUIRE(soon(s, [&] { return inletOpen(c); }, 5 * 60 * 1000, 5000));
+    s.step(4 * 60 * 1000, 5000);  // from 3 min after the stop it waits for the level to stop rising (SD-099)
+    CHECK(refillLine(c)["key"] == "refill.drain_back");
+    CHECK_FALSE(inletOpen(c));
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
     // The pump runs during this fill, yet the level rose enough: that counts, nothing is left unjudged
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
     s.step(30000, 5000);
@@ -1953,7 +1956,7 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
     REQUIRE(soon(s, [&] { return refillLine(c)["key"] == "refill.settle"; }, 2 * 60 * 1000, 5000));
     CHECK_FALSE(inletOpen(c));
-    REQUIRE(soon(s, [&] { return inletOpen(c); }, 5 * 60 * 1000, 5000));
+    REQUIRE(soon(s, [&] { return inletOpen(c); }, 7 * 60 * 1000, 5000));  // the first verdict on the level comes 6 min after the stop (SD-099)
   }
   SUBCASE("after maintenance the fill waits its full settling time, however long irrigation kept it waiting before") {
     sim::Simulation s(test::opts("demo"));
@@ -1992,6 +1995,124 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
     CHECK(refillLine(c)["key"] == "refill.settle");
     CHECK_FALSE(inletOpen(c));
     REQUIRE(soon(s, [&] { return inletOpen(c); }, 3 * 60 * 1000, 5000));
+  }
+  SUBCASE("ebb and flow: while water drains back the fill waits until the level stops rising, so it does not overfill (#294, SD-099)") {
+    // The twin's own level reading follows at once; the real one lags 1.5–2 min (RAT-038). A sensor that
+    // reports every 45 s never counts as calm and waits the full half hour.
+    for (const auto& [lagS, reportS] : std::vector<std::pair<double, int>>{{0.0, 5}, {105.0, 5}, {0.0, 45}}) {
+      CAPTURE(lagS);
+      CAPTURE(reportS);
+      sim::Simulation s(test::opts("demo"));
+      Client c{s};
+      demoAt(s, c, 28, 25, 30);
+      for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+      irrigationPlug(s, c);
+      s.world().levelLagS = lagS;
+      s.world().levelSampleMs = reportS * 1000;
+      s.step(10 * 60 * 1000, 5000);  // a round EC or pH began before has mixed in: watering waits for it (SD-093)
+      c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+      for (int i = 0; i < 24; ++i) {  // the flood takes 12 L in 2 min (the twin's irrigation draws none itself)
+        s.world().tank.volumeL -= 0.5;
+        s.step(5000, 5000);
+      }
+      c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+      // 8 L drain back, with a time constant of 4 min (an assumption); 2 L stay in the substrate, so the
+      // tank ends below the start level and is filled
+      double back = 8.0;
+      bool openedEarly = false, opened = false;
+      for (int i = 0; i < 12 * 25; ++i) {
+        const double dV = back * (1 - std::exp(-5.0 / 240.0));
+        back -= dV;
+        s.world().tank.volumeL += dV;
+        s.step(5000, 5000);
+        opened = opened || inletOpen(c);
+        openedEarly = openedEarly || (inletOpen(c) && back > 1.5);
+        if (i == 12 * 5) CHECK(refillLine(c)["key"] == "refill.drain_back");  // 5 min after the pump stopped
+      }
+      CHECK_FALSE(openedEarly);  // without SD-099 it opened 3 min after the pump stopped, with 3.8 L still to come
+      if (reportS > 30) CHECK_FALSE(opened);  // a value held between reports is not taken as calm
+      REQUIRE(soon(s, [&] { return refills(c) >= 1 && !inletOpen(c); }, 30 * 60 * 1000, 10000));
+      CHECK(s.world().tank.volumeL <= 30.0 + 1.0);
+      CHECK_FALSE(inletLatched(c));
+    }
+  }
+  SUBCASE("run-to-waste drip: a level that falls after irrigation is calm, the fill plans at the first verdict 6 min after the pump stopped (SD-099)") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    irrigationPlug(s, c);
+    s.step(10 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+    s.world().tank.volumeL = 20.0;  // what the drippers took
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    int seconds = 0;
+    for (; seconds < 8 * 60 && !inletOpen(c); seconds += 5) {
+      s.world().tank.volumeL -= 0.04;  // the last drops still leave: 0.5 L a minute
+      s.step(5000, 5000);
+    }
+    CHECK(seconds >= 6 * 60 - 5);
+    CHECK(seconds <= 6 * 60 + 30);
+  }
+  SUBCASE("a level still rising half an hour after irrigation: the fill goes ahead, marked as irrigated (SD-099)") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    irrigationPlug(s, c);
+    s.step(10 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+    s.world().tank.volumeL = 12.0;  // the flood, well below the start level
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    bool opened = false;
+    int minutes = 0;
+    for (; minutes < 40 && !opened; ++minutes) {  // 0.35 L a minute come back, well more than calm allows
+      for (int i = 0; i < 12 && !opened; ++i) {
+        s.world().tank.volumeL += 0.35 / 12;
+        s.step(5000, 5000);
+        opened = inletOpen(c) || refills(c) > 0;
+      }
+      if (minutes == 10) CHECK(refillLine(c)["key"] == "refill.drain_back");
+    }
+    CHECK(minutes >= 29);  // it waited while the level rose
+    CHECK(minutes <= 31);  // at most half an hour from the start of the wait
+    REQUIRE(opened);
+    freezeLevel(s);  // the fill shows no rise: as it is marked, it is not judged as "did not rise"
+    REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null() || inletLatched(c); }, 30 * 60 * 1000, 10000));
+    CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
+  }
+  SUBCASE("a Stop during the drain-back: the half hour counts from the pump's stop, and the fill is marked as irrigated (SD-099)") {
+    sim::Simulation s(test::opts("demo"));
+    Client c{s};
+    demoAt(s, c, 28, 25, 30);
+    for (const char* f : {"ec_control", "ph_control"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+    irrigationPlug(s, c);
+    s.step(10 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", true}});
+    s.world().tank.volumeL = 12.0;
+    s.step(60000, 5000);
+    c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", false}});
+    const auto rise = [&](int minutes) {  // 0.35 L a minute come back, well more than calm allows
+      for (int i = 0; i < minutes * 12 && !inletOpen(c); ++i) {
+        s.world().tank.volumeL += 0.35 / 12;
+        s.step(5000, 5000);
+      }
+    };
+    rise(2);
+    c.ok("POST", "/api/v1/stop");
+    rise(5);
+    c.ok("POST", "/api/v1/resume");
+    rise(10);  // the plain 3 min after the Stop, then the wait for the level, which began only now
+    CHECK(refillLine(c)["key"] == "refill.drain_back");
+    rise(12);  // 29 min after the pump stopped
+    CHECK_FALSE(inletOpen(c));
+    rise(3);
+    REQUIRE(inletOpen(c));  // 30 min after the pump's stop, not 30 min after the wait began
+    freezeLevel(s);
+    REQUIRE(soon(s, [&] { return !lastEvent(c, "tank", "ev.refill.unjudged").is_null() || inletLatched(c); }, 30 * 60 * 1000, 10000));
+    CHECK(lastEvent(c, "tank", "ev.refill.unjudged")["text"]["key"] == "refill.unjudged.irrigation");
   }
   SUBCASE("irrigation every few minutes keeps the first fill waiting at most half an hour, and EC with it") {
     sim::Simulation s(test::opts("demo"));

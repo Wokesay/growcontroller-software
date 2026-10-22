@@ -8,6 +8,7 @@
 // Vorschlag anwender; Quelle: RAT-037, RAT-039, RAT-046).
 #pragma once
 
+#include <deque>
 #include <limits>
 #include <optional>
 #include <string>
@@ -195,6 +196,17 @@ class RefillController {
   bool latchSeen_ = false;  // the inlet latch stood at the last tick, or was set in it: the tick that sees it released is a disturbance too (SD-088)
   Ms irrigatedMs_ = std::numeric_limits<Ms>::min() / 2;  // the irrigation pump last ran; not since the start
   Ms settleSince_ = -1;  // a fill has waited since then for the reading to settle after irrigation
+  // Level readings from 3 min after the irrigation pump stopped, once a second, the last 3 min, and
+  // whether the level has been calm since: water that drains back makes it rise (SD-099). Not kept
+  // across a restart (R6).
+  struct LevelSeen {
+    Ms at;
+    double litres;
+    Ms reported;  // the sensor's report the value comes from
+  };
+  std::deque<LevelSeen> drainBack_;
+  Ms drainSince_ = 0;  // the first of these readings
+  bool calmSeen_ = true;
   Epoch bootEpoch_ = 0;
   double startL_ = kNaN, plannedL_ = kNaN;
   // The refill as planned at its first fill: target, rate and open time, then step by step the

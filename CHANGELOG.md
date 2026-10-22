@@ -580,6 +580,15 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A fill after watering waits until the water has run back** (#294,
+  SD-099): in ebb and flow, water runs back from the table into the tank
+  for a while after the watering pump stops. A fill planned 3 min after
+  the pump stopped started from a level that was low only for that, and
+  could fill the tank past its target once the water was back. Now a fill
+  after watering also waits until the level has stopped rising: at least
+  6 min after the pump stops, as the level reading lags, and at most
+  30 min as before. A falling level, as in a run-to-waste drip system,
+  counts as calm, so the fill starts after those 6 min.
 - **Maintenance mode says what it does** (#297, RAT-042): its entry in
   the event log and the overview no longer say that locks and sensor
   checks all stay active. While it lasts, readings may jump without
