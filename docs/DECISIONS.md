@@ -2430,8 +2430,8 @@ Decided by the project owner on 2026-10-15 (#163, PR #183). Adds to
 SD-058, whose check runs with the npm that comes with Node.
 
 - **The pin:** `.nvmrc` names one exact Node version, 22.23.3 when this
-  was decided, the newest of Node 22 (raised to 22.23.4 on 2026-10-22). Every job that sets up Node reads it
-  (`tools/workflows.test.mjs`). Before, `node-version: 22` took whatever
+  was decided, the newest of Node 22 (raised to 22.23.4 on 2026-10-22).
+  Every job that sets up Node reads it (`tools/workflows.test.mjs`). Before, `node-version: 22` took whatever
   the runner image had, so the npm that checks the signatures changed
   without review, and a failure could not be reproduced.
 - **Raising it:** by hand, in a pull request of its own, with a `security`
@@ -2469,7 +2469,7 @@ amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
 - **What:** the image's web stage, which installs the web app's packages
   and checks their registry signatures (SD-058), starts from the official
   `node` image at the version of `.nvmrc` on the Alpine release of the
-  other stages, pinned by digest (`node:22.23.3-alpine3.24@sha256:…`). It
+  other stages, pinned by digest (`node:22.23.4-alpine3.24@sha256:…`). It
   brings the npm of that Node release, the one CI checks with (npm
   10.9.9 on 2026-10-15). Before, the stage installed Alpine's `nodejs`
   and `npm` (24 and 11 on 2026-10-15), so the image checked with a
@@ -2496,20 +2496,21 @@ amd64 below. Completes SD-070 for the Home Assistant app image (SD-034).
   web stage's Alpine come only with a raise of `.nvmrc`.
 - **Where Node comes from:** the `node` image is maintained by the
   Node.js Docker team (`https://github.com/nodejs/docker-node`) and built
-  and published on Docker Hub by Docker's Official Images program. On
-  amd64 it unpacks the musl build of `unofficial-builds.nodejs.org`,
-  checked against a checksum written in docker-node's Dockerfile, not
-  against a signature of the Node release keys, although `nodejs.org`
-  publishes a signed musl build for amd64 too; on arm64 it builds Node
+  and published on Docker Hub by Docker's Official Images program. Up to
+  Node 22.23.3, on amd64 it unpacked the musl build of
+  `unofficial-builds.nodejs.org`, checked against a checksum written in
+  docker-node's Dockerfile, not against a signature of the Node release
+  keys, although `nodejs.org` publishes a signed musl build for amd64
+  too; on arm64 it builds Node
   from the `nodejs.org` sources, checked against those keys
   (`22/alpine3.24/Dockerfile` there and
   `https://nodejs.org/dist/v22.23.3/SHASUMS256.txt`, read 2026-10-15).
   That gap on amd64 ended earlier than expected: from Node 22.23.4 on
   (docker-node commit `80f02a5`, read 2026-10-22), the image takes the
   musl build from `nodejs.org` on amd64 too, checked against the release
-  keys' signature of `SHASUMS256.txt.asc`. Node is not shipped, though it
-  builds what is (the web app in the image) and checks the packages, so a tampered Node
-  could pass a bad package and change the web app.
+  keys' signature of `SHASUMS256.txt.asc`. Node is not shipped, though
+  it builds what is (the web app in the image) and checks the packages,
+  so a tampered Node could pass a bad package and change the web app.
 - **Docker Hub:** both base images come from it, as alpine did before.
   The digest pins their content, so a changed image on the registry
   fails the build instead of entering it; what remains is availability
