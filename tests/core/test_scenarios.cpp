@@ -785,6 +785,10 @@ TEST_CASE("Scenario: pumps far too slow for the tank: rounds made smaller that r
   CHECK(learned.get<double>() == doctest::Approx(0.27).epsilon(0.3));
 }
 
+namespace {
+std::string irrigationPlug(sim::Simulation& s, Client& c);
+}  // namespace
+
 TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds made smaller for slow pumps that are too small to judge alone count together (SD-102, RAT-055)") {
   sim::Simulation s(test::opts("demo"));
   Client c{s};
@@ -823,6 +827,22 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
         if (r["id"] == "veg") veg = r;
       veg["steps"][2]["mlPerL"] = 0.5;
       c.ok("POST", "/api/v1/recipes", veg);
+    };
+  }
+  SUBCASE("0.3 ml/min, the watering pump pressed while round 2 settles: rounds 2 and 3, which watering made unclean, are left out, the sum goes on (SD-103)") {
+    // EC control off until a watering pump is bound and its 10 min from binding have run out
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    const std::string plug = irrigationPlug(s, c);
+    s.step(11 * 60 * 1000, 5000);
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+    slow(0.3);
+    expected = 6;  // round 3 starts less than 10 min after the press
+    whileRound2Settles = [&s, plug] {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      auto& o = s.world().netPlug(plug)->outlets[0];
+      o.on = true;
+      o.onSince = s.world().now();
+      ++o.switchOns;
     };
   }
   const auto before = c.state()["eventId"].get<std::uint64_t>();
@@ -3668,6 +3688,343 @@ TEST_CASE("Scenario: a fill that falls due while EC settles a round waits for th
   REQUIRE(soon(s, [&] { return inletOpen(c); }, 30 * 60 * 1000, 5000));
   CHECK(findEvents(c, "dose").size() == doses);  // no next round between the settled one and the fill
   CHECK(c.state()["effects"]["ec"] != effectBefore);  // the settled round was learned from (RAT-057)
+}
+
+namespace {
+// Demo at 40 L with the refill off, the circulation pump always on and a watering pump on a plug, 11 min
+// after binding it: from then a round has not watered (SD-103)
+struct Watered {
+  std::filesystem::path dir;
+  std::unique_ptr<sim::Simulation> sp;
+  std::unique_ptr<Client> cp;
+  std::string plug;
+  Watered() {
+    dir = std::filesystem::temp_directory_path() / ("gc-test-watered-" + std::to_string(std::random_device{}()));
+    std::filesystem::remove_all(dir);
+    auto o = test::opts("demo");
+    o.dataDir = dir.string();
+    sp = std::make_unique<sim::Simulation>(o);
+    cp = std::make_unique<Client>(Client{*sp});
+    demoAt(*sp, *cp, 40.0);
+    cp->ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+    cp->ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+    plug = irrigationPlug(*sp, *cp);
+    sp->step(11 * 60 * 1000, 5000);
+  }
+  ~Watered() {
+    cp.reset();
+    sp.reset();
+    std::filesystem::remove_all(dir);
+  }
+  sim::Simulation& s() { return *sp; }
+  Client& c() { return *cp; }
+  json line(const char* fn) { return c().state()["controllers"][fn]["line"]["key"]; }
+  json effect(const char* kind) { return c().state()["effects"][kind]; }
+  int count(const char* type, const char* title) {
+    int n = 0;
+    for (const auto& e : findEvents(c(), type)) n += e["title"]["key"] == title ? 1 : 0;
+    return n;
+  }
+  // Pressed at the plug: the hub reads it as on, then the gateway cuts it during the mixing time (SD-093)
+  void press() {
+    const int cuts = count("block", "ev.irrigation.dose");
+    {
+      std::lock_guard<std::recursive_mutex> l(s().mutex());
+      auto& o = s().world().netPlug(plug)->outlets[0];
+      o.on = true;
+      o.onSince = s().world().now();  // as its button does, so the plug's own auto-off counts from now
+      ++o.switchOns;
+    }
+    s().step(5000, 5000);
+    REQUIRE(count("block", "ev.irrigation.dose") == cuts + 1);  // the hub read it as on and cut it
+  }
+  void pump(bool on) { c().ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", on}}); }
+  void control(const char* fn, bool on) { c().ok("PATCH", std::string("/api/v1/functions/") + fn, {{"enabled", on}}); }
+  // The water changed with control off, by hand in a minute of maintenance mode so no jump locks the
+  // probes, then on once the readings have followed (the twin's pH has a dead time)
+  void water(const char* fn, double ec, double ph) {
+    control(fn, false);
+    c().ok("POST", "/api/v1/maintenance", {{"minutes", 1}});
+    s().world().fill(40.0, ec, ph);
+    s().step(10 * 60 * 1000, 5000);
+  }
+};
+}  // namespace
+
+TEST_CASE("Scenario: an EC or pH round that watering overlaps learns nothing: the pump on, its state not known, stopped or the hub started less than 10 min before (#301, SD-103, RAT-057)") {
+  // A flood draws tank water out during the settle and the drain-back brings the table's water back, so
+  // what the round sees is not the dose's own effect.
+  Watered w;
+  auto& s = w.s();
+  auto& c = w.c();
+
+  SUBCASE("EC") {
+    w.control("ph_control", false);
+    w.water("ec_control", 0.9, 5.9);  // the demo's EC target is 1.4
+    SUBCASE("without watering the round learns") {
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 5 * 60 * 1000, 5000));
+      const json before = w.effect("ec");
+      CHECK(soon(s, [&] { return w.effect("ec") != before; }, 7 * 60 * 1000, 5000));
+    }
+    SUBCASE("the pump read as on during the settle") {
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 5 * 60 * 1000, 5000));
+      const json before = w.effect("ec");
+      w.press();
+      REQUIRE(soon(s, [&] { return w.line("ec") != "ec.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(c.state()["controllers"]["ec"]["state"] != "blocked");  // judged, not reset
+      CHECK(w.effect("ec") == before);
+    }
+    SUBCASE("the pump's state not known during the settle") {
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 5 * 60 * 1000, 5000));
+      const json before = w.effect("ec");
+      s.control("fault", {{"device", w.plug}, {"fault", "offline"}});
+      REQUIRE(soon(s, [&] { return w.line("ec") != "ec.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(w.effect("ec") == before);
+    }
+    SUBCASE("a round that starts 8 min after the pump stopped, and settles after the 10 min") {
+      const json before = w.effect("ec");
+      w.pump(true);
+      s.step(30000, 5000);
+      w.pump(false);
+      s.step(8 * 60 * 1000, 5000);
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 3 * 60 * 1000, 5000));
+      REQUIRE(soon(s, [&] { return w.line("ec") != "ec.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(c.state()["controllers"]["ec"]["state"] != "blocked");
+      CHECK(w.effect("ec") == before);
+    }
+    SUBCASE("a round that starts 11 min after the pump stopped learns again") {
+      const json before = w.effect("ec");
+      w.pump(true);
+      s.step(30000, 5000);
+      w.pump(false);
+      s.step(11 * 60 * 1000, 5000);
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 3 * 60 * 1000, 5000));
+      CHECK(soon(s, [&] { return w.effect("ec") != before; }, 7 * 60 * 1000, 5000));
+    }
+    SUBCASE("the state not known, then back reading off: the 10 min count from then, as the plug may have run its own schedule") {
+      const json before = w.effect("ec");
+      s.control("fault", {{"device", w.plug}, {"fault", "offline"}});
+      s.step(3 * 60 * 1000, 5000);
+      s.control("fault", {{"device", w.plug}, {"fault", "none"}});
+      REQUIRE(soon(s, [&] { return c.state()["outputs"]["zone.irrigation_pump"] == false; }, 60 * 1000, 5000));
+      w.control("ec_control", true);
+      REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 3 * 60 * 1000, 5000));
+      REQUIRE(soon(s, [&] { return w.line("ec") != "ec.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(w.effect("ec") == before);
+    }
+    SUBCASE("a restart: the 10 min count from the start, as it may have cut a flood (R6)") {
+      const json before = w.effect("ec");
+      s.reboot();
+      Client again{s};
+      again.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+      again.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+      REQUIRE(soon(s, [&] { return again.state()["controllers"]["ec"]["line"]["key"] == "ec.settling"; }, 3 * 60 * 1000, 5000));
+      REQUIRE(soon(s, [&] { return again.state()["controllers"]["ec"]["line"]["key"] != "ec.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(again.state()["effects"]["ec"] == before);
+    }
+  }
+
+  SUBCASE("pH") {
+    w.control("ec_control", false);
+    w.water("ph_control", 1.4, 6.6);  // the demo's pH target is 5.8
+    w.control("ph_control", true);
+    REQUIRE(soon(s, [&] { return w.line("ph") == "ph.settling"; }, 5 * 60 * 1000, 5000));
+    const json before = w.effect("ph");
+    SUBCASE("without watering the round learns") {
+      CHECK(soon(s, [&] { return w.effect("ph") != before; }, 6 * 60 * 1000, 5000));
+    }
+    SUBCASE("the pump read as on during the settle") {
+      w.press();
+      REQUIRE(soon(s, [&] { return w.line("ph") != "ph.settling"; }, 6 * 60 * 1000, 5000));
+      s.step(10000, 5000);
+      CHECK(w.effect("ph") == before);
+    }
+  }
+  SUBCASE("a mix to the target's first step, EC control's round 1 (SD-102 D7)") {
+    w.control("ph_control", false);
+    w.water("ec_control", 0.02, 6.5);  // fresh water
+    const json before = c.state()["effects"]["ecByRecipe"].value("veg", json());
+    startMeasured(c);
+    REQUIRE(soon(s, [&] { return c.state()["job"]["state"] != "measuring"; }, 30 * 60 * 1000, 5000));
+    SUBCASE("without watering it learns") {}
+    SUBCASE("the pump read as on while it mixes in: judged, not learned") { w.press(); }
+    const bool pressed = w.count("block", "ev.irrigation.dose") > 0;
+    REQUIRE(soon(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+    CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_handover");
+    s.step(30 * 1000, 5000);
+    const json learned = c.state()["effects"]["ecByRecipe"].value("veg", json());
+    CHECK((learned == before) == pressed);
+  }
+}
+
+TEST_CASE("Scenario: \"no effect\" latches after two clean rounds without effect, or four that only watering made unclean (#301, SD-103, RAT-041, RAT-055)") {
+  // Points: a clean round without effect 2, a watered one 1, the latch at 4; a judged round with an effect
+  // resets the count; another disturbance (here the inlet opened by hand) neither counts nor resets. The
+  // twin's products do nothing (an empty bottle, a blocked line, a probe in a cup read the same), except in
+  // a round marked with an effect. Each plan: c clean, w watered, d disturbed, W watered with an effect.
+  struct Plan {
+    const char* name;
+    const char* rounds;
+    int latchAfter;  // 1-based
+  };
+  const Plan plans[] = {{"two clean rounds latch", "cc", 2},
+                        {"watered rounds count half: three do not latch, the fourth does", "wwww", 4},
+                        {"one clean and two watered rounds latch", "cww", 3},
+                        {"a disturbed round neither counts nor resets", "cddc", 4},
+                        // the rounds after it watered too, as a clean one would start only 10 min after the press
+                        {"a round with an effect resets the count, also a watered one", "cWwwww", 6}};
+  for (const std::string kind : {"ec", "ph"})
+    for (const Plan& plan : plans)
+      SUBCASE((kind + ": " + plan.name).c_str()) {
+        Watered w;
+        auto& s = w.s();
+        auto& c = w.c();
+        const bool ec = kind == "ec";
+        const char* fn = ec ? "ec_control" : "ph_control";
+        const std::string settling = kind + ".settling", latch = kind + ".no_effect";
+        w.control(ec ? "ph_control" : "ec_control", false);
+        w.water(fn, ec ? 0.5 : 1.4, ec ? 5.9 : 6.6);  // far from the targets (EC 1.4, pH 5.8): a round with an effect leaves a gap
+        const auto effective = [&](bool on) {
+          std::lock_guard<std::recursive_mutex> l(s.mutex());
+          s.world().liquids["grow_a"].ecPerMlL = on ? 0.275 : 0;
+          s.world().liquids["grow_b"].ecPerMlL = on ? 0.275 : 0;
+          s.world().liquids["calmag"].ecPerMlL = on ? 0.217 : 0;
+          s.world().liquids["ph_down"].phPerMlL = on ? -4.0 : 0;
+        };
+        const std::string rounds = plan.rounds;
+        effective(rounds[0] == 'W');
+        w.control(fn, true);
+        for (size_t k = 0; k < rounds.size(); ++k) {
+          CAPTURE(k);
+          REQUIRE(soon(s, [&] { return w.line(kind.c_str()) == settling; }, 5 * 60 * 1000, 5000));
+          if (k + 1 < rounds.size()) effective(rounds[k + 1] == 'W');  // for the next round's dose
+          if (rounds[k] == 'w' || rounds[k] == 'W') w.press();
+          if (rounds[k] == 'd') {
+            c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", true}});
+            s.step(10000, 5000);
+            c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", false}});
+          }
+          REQUIRE(soon(s, [&] { return w.line(kind.c_str()) != settling; }, 7 * 60 * 1000, 5000));
+          s.step(5000, 5000);
+          CHECK(c.state()["latches"].contains(latch) == (k + 1 == static_cast<size_t>(plan.latchAfter)));
+        }
+      }
+}
+
+TEST_CASE("Scenario: a pH dose without a measurable fall, clean or watered, sets the learned pH effect to at least its start and never lowers it, so doses do not grow (#301, SD-103, RAT-041)") {
+  Watered w;
+  auto& s = w.s();
+  SUBCASE("clean, after a high learned effect: it stays, the next dose does not grow") {
+    w.control("ec_control", false);
+    w.water("ph_control", 1.4, 6.6);
+    const auto pHminus = [&](double phPerMlL) {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().liquids["ph_down"].phPerMlL = phPerMlL;
+    };
+    pHminus(-12.0);  // strong: a clean dose learns an effect well above the start of 5 pH per ml/L
+    w.control("ph_control", true);
+    REQUIRE(soon(s, [&] { return w.line("ph") == "ph.settling"; }, 5 * 60 * 1000, 5000));
+    pHminus(-0.4);  // the next dose falls by less than 0.03 (air in the line, a sluggish probe)
+    REQUIRE(soon(s, [&] { return w.line("ph") != "ph.settling"; }, 7 * 60 * 1000, 5000));
+    s.step(5000, 5000);
+    const json high = w.effect("ph");
+    REQUIRE(high.is_number());
+    REQUIRE(high.get<double>() > 6.0);
+    REQUIRE(soon(s, [&] { return w.line("ph") == "ph.settling"; }, 5 * 60 * 1000, 5000));
+    REQUIRE(soon(s, [&] { return w.line("ph") != "ph.settling"; }, 7 * 60 * 1000, 5000));
+    s.step(5000, 5000);
+    CHECK(w.effect("ph") == high);
+  }
+  SUBCASE("watered, after a low learned effect: it rises to the start") {
+    w.control("ec_control", false);
+    w.water("ph_control", 1.4, 6.6);
+    const auto pHminus = [&](double phPerMlL) {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().liquids["ph_down"].phPerMlL = phPerMlL;
+    };
+    pHminus(-2.0);  // weak: a clean dose learns an effect below the start of 5 pH per ml/L, so the next doses grow
+    w.control("ph_control", true);
+    REQUIRE(soon(s, [&] { return w.line("ph") == "ph.settling"; }, 5 * 60 * 1000, 5000));
+    pHminus(0);  // the next doses do nothing (an empty bottle)
+    REQUIRE(soon(s, [&] { return w.line("ph") != "ph.settling"; }, 7 * 60 * 1000, 5000));
+    s.step(5000, 5000);
+    const json weak = w.effect("ph");
+    REQUIRE(weak.is_number());
+    REQUIRE(weak.get<double>() < 4.0);
+    REQUIRE(soon(s, [&] { return w.line("ph") == "ph.settling"; }, 5 * 60 * 1000, 5000));
+    w.press();
+    REQUIRE(soon(s, [&] { return w.line("ph") != "ph.settling"; }, 7 * 60 * 1000, 5000));
+    s.step(5000, 5000);
+    CHECK(w.effect("ph") == 5.0);
+  }
+}
+
+TEST_CASE("Scenario: the watering pump unbound lets learning's tail run out; bound to another plug, it starts again (#301, SD-103, RAT-057)") {
+  Watered w;
+  auto& s = w.s();
+  auto& c = w.c();
+  w.control("ph_control", false);
+  w.water("ec_control", 0.9, 5.9);
+  const json before = w.effect("ec");
+  SUBCASE("unbound right after a run: a round within the 10 min learns nothing") {
+    w.pump(true);
+    s.step(30000, 5000);
+    w.pump(false);
+    c.ok("DELETE", "/api/v1/roles/zone.irrigation_pump");
+  }
+  SUBCASE("bound to another plug: the 10 min start again, as a restart may have cut a flood there") {
+    const std::string other = irrigationPlug(s, c);
+    REQUIRE(other != w.plug);
+  }
+  w.control("ec_control", true);
+  REQUIRE(soon(s, [&] { return w.line("ec") == "ec.settling"; }, 3 * 60 * 1000, 5000));
+  REQUIRE(soon(s, [&] { return w.line("ec") != "ec.settling"; }, 6 * 60 * 1000, 5000));
+  s.step(10000, 5000);
+  CHECK(c.state()["controllers"]["ec"]["state"] != "blocked");
+  CHECK(w.effect("ec") == before);
+}
+
+TEST_CASE("Scenario: a clean EC or pH round learns over the volume the dose went into, the one when the round started (#301, SD-103, RAT-057)") {
+  // The same round twice; in the second the level falls by 8 L during the settle (below the jump
+  // threshold, no inlet, no watering). The dose mixed into the 40 L of the start: both learn the same.
+  for (const std::string kind : {"ec", "ph"}) {
+    CAPTURE(kind);
+    json learned[2];
+    for (int k = 0; k < 2; ++k) {
+      sim::Simulation s(test::opts("demo"));
+      Client c{s};
+      demoAt(s, c, 40.0);
+      c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+      c.ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+      const bool ec = kind == "ec";
+      c.ok("PATCH", std::string("/api/v1/functions/") + (ec ? "ph_control" : "ec_control"), {{"enabled", false}});
+      const std::string fnPatch = std::string("/api/v1/functions/") + (ec ? "ec_control" : "ph_control");
+      c.ok("PATCH", fnPatch, {{"enabled", false}});
+      s.world().fill(40.0, ec ? 0.9 : 1.4, ec ? 5.9 : 6.6);
+      s.step(10 * 60 * 1000, 5000);  // the readings have followed the new water (the twin's pH has a dead time)
+      c.ok("PATCH", fnPatch, {{"enabled", true}});
+      const std::string fn = ec ? "ec" : "ph", settling = ec ? "ec.settling" : "ph.settling";
+      REQUIRE(soon(s, [&] { return c.state()["controllers"][fn]["line"]["key"] == settling; }, 30 * 60 * 1000, 5000));
+      const json before = c.state()["effects"][kind];
+      if (k == 1) s.world().tank.volumeL -= 8.0;
+      REQUIRE(soon(s, [&] { return c.state()["effects"][kind] != before; }, 7 * 60 * 1000, 5000));
+      learned[k] = c.state()["effects"][kind];
+    }
+    REQUIRE(learned[0].is_number());
+    REQUIRE(learned[1].is_number());
+    CHECK(learned[0] != (kind == "ec" ? json(nullptr) : json(5.0)));  // learned, not the start value
+    CHECK(learned[1].get<double>() == doctest::Approx(learned[0].get<double>()).epsilon(0.02));
+  }
 }
 
 TEST_CASE("Scenario: the refill switched off and on again waits for the level to settle before it fills (#289, RAT-038, SD-090)") {

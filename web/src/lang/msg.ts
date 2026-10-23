@@ -44,7 +44,7 @@ export const msgDe: Record<string, string> = {
 
   // pH correction
   "ph.off": "Aus",
-  "ph.latched": "Freigabe nötig: pH sank nach zwei Gaben nicht – prüf den Kanister mit pH− und die Sonde, dann gib frei",
+  "ph.latched": "Freigabe nötig: pH sank nach den letzten Gaben nicht – prüf Kanister mit pH−, Pumpe und Sonde, dann gib frei",
   "ph.settling": "Regelt: pH {from:2} → {target:2} · Teilgabe {n} von {max:0} · wartet {left} auf Durchmischung",
   "ph.invalid": "Gesperrt: pH – {reason}",
   "ph.dosing": "Regelt: pH {from:2} → {target:2} · Teilgabe {n} · dosiert",
@@ -403,7 +403,7 @@ export const msgDe: Record<string, string> = {
   "ev.ec.first_no_effect.text_plain": "Runde 1 des Mischlaufs hob die EC nur von {from:2} auf {to:2} mS/cm. Sonde im Wasser, Pumpen fördern, Liter stimmen? Dann tippe unter Tank & Regelung auf „Freigeben“.",
   "ev.ec.first_strong": "EC stieg stärker als erwartet",
   "ev.ec.first_strong.text": "Runde 1 hob die EC um {rise:2} mS/cm, erwartet waren etwa {expected:2} mS/cm. Prüf die EC laut Plan im Rezept und die Liter im Tank; liegt die EC über dem Ziel, verdünn mit frischem Wasser.",
-  "ev.ec.no_effect.text": "EC stieg nach zwei Runden nicht. Prüf Sonde, Pumpen und Kanister, dann tippe unter Tank & Regelung auf „Freigeben“.",
+  "ev.ec.no_effect.text": "EC stieg nach den letzten Runden nicht. Prüf Sonde, Pumpen und Kanister, dann tippe unter Tank & Regelung auf „Freigeben“.",
   "ev.ec.done": "EC nachdosiert",
   "ev.ec.max": "EC-Nachdosierung: Höchstzahl Runden",
   "ev.ec.rounds_one": "EC {from:2} → {to:2} in {n} Runde",
@@ -412,7 +412,7 @@ export const msgDe: Record<string, string> = {
   "ev.ec.round_cancelled.text": "Die Umwälzpumpe lief nicht an. Ohne Durchmischung keine Dosierung.",
   "ev.ec.aborted": "EC-Nachdosierung abgebrochen",
   "ev.ph.no_effect": "pH-Regelung ohne Wirkung",
-  "ev.ph.no_effect.text": "pH sank nach zwei Gaben nicht. Prüf den Kanister mit pH− und die Sonde, dann tippe unter Tank & Regelung auf „Freigeben“.",
+  "ev.ph.no_effect.text": "pH sank nach den letzten Gaben nicht. Prüf Kanister mit pH−, Pumpe und Sonde, dann tippe unter Tank & Regelung auf „Freigeben“.",
   "ev.ph.done": "pH korrigiert",
   "ev.ph.max": "pH-Korrektur: Höchstzahl Gaben",
   "ev.ph.doses_one": "pH {from:2} → {to:2} mit {n} Gabe",

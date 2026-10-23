@@ -4852,7 +4852,8 @@ changes SD-057's point on the learned effect; the rest of SD-057 stands.
   that stay is not bounded by the edit; the 0.8 aim absorbs a blend up to
   1.25 times stronger, and the cap bounds the rest. The volume a round
   learns over is read when it has settled; irrigation meanwhile is not
-  yet counted (#301).
+  yet counted (#301; since SD-103 the volume is read when the round
+  starts, and a round watering overlaps learns nothing).
 
 Not chosen: a recipe starting from its reference, as SD-057 had it (a
 low reference raises a round, up to the cap); forgetting the learned
@@ -5350,7 +5351,8 @@ risk SD-099 named for it.
     its own schedule, its button or Home Assistant does, as the hub reads
     its state;
   - a round of EC or pH control whose settle time overlaps a flood can
-    learn from a level that is still coming back (#301);
+    learn from a level that is still coming back (#301; closed by
+    SD-103: such a round learns nothing);
   - the twin's irrigation draws no water, so the test changes the tank's
     volume itself, with the reading following at once and with a lag of
     105 s.
@@ -5539,6 +5541,131 @@ entered and level litres, or a refusal above 10 % (D4); the plain target
 open until EC control is done (D8); waiting for SD-060, or a tick per mix
 (D9); a warning up front, or leaving large tanks short of the target
 (D10).
+
+## SD-103: A round that watering overlaps learns nothing and counts half towards "no effect"; a round learns over the volume when it started
+
+Decided by the project owner on 2026-10-23 in the software session
+(#301, from the `domain` review of SD-057 step 4), a control detail
+under SD-091, each question as recommended: when a round counts as
+watered and the volume it learns over; after the reviews of
+`reviewer`, `qa` and `domain`, how such a round counts towards "no
+effect" and that learning keeps a tail of its own. How it fits SD-102,
+merged meanwhile, follows from these rules (below). Changes RAT-057 and
+what RAT-041 and RAT-055 count; closes SD-092's "Not covered" point on
+the volume and SD-101's residual risk on learning during a flood.
+
+- **What it fixes:** a round of EC or pH control learned its effect
+  over the volume read when it had settled, and a watering pump running
+  meanwhile did not make the round unclean. A flood draws tank water
+  out during the settle and the drain-back brings the table's water in,
+  with its own EC and pH; the rise or fall the round sees is then not
+  its dose's own. For EC the learned effect sticks to the recipe the
+  round dosed until its next clean round (SD-092). Example from the
+  review: 30 % of the tank drawn during the settle makes the effect come
+  out about 30 % low, and the next round doses about 43 % more.
+- **Watered:** a round, from its start until it has settled, counts as
+  watered while the watering pump (`zone.irrigation_pump`) reads as on,
+  while its state is not known (a plug offline runs its own schedule),
+  and until 10 min after either, the time SD-101 gives the drain-back.
+  The same 10 min run from the first tick the pump is bound, also after
+  a restart, which may have cut a flood (R6). A watered round learns
+  nothing. The 10 min were set for the level; for EC and pH they are an
+  assumption, not measured (the table's water mixing in, its own EC and
+  pH).
+- **"No effect" counts it half:** a watered round without effect counts
+  half towards the "no effect" latch (RAT-041, RAT-055), so it latches
+  after 2 clean rounds without effect or 4 watered ones; a judged round
+  with an effect resets the count. Not counting them at all would switch
+  the latch off while watering lasts (drip shots, a plug offline), and
+  counting them fully would latch on drain-back that hides a dose's
+  effect (runoff from rockwool raising pH). Other disturbances (the
+  inlet, a user job, a dose of the other controller, a recipe changed,
+  a cut round) neither count nor reset, as before; most of them also
+  hold back new rounds.
+- **pH doses do not grow:** a pH dose without a measurable fall (under
+  0.03), clean or watered, tells nothing about the effect; it sets the
+  learned pH effect to at least its start value and never lowers a higher
+  one, so from the next dose on the doses are at the start size or
+  smaller up to the latch (`security`'s and `domain`'s findings, decided
+  by the owner). Before, a clean dose without a measurable fall could
+  learn a low effect and make the next dose several times bigger (up to
+  16 times, bounded by the dose cap), an overshoot if the fault cleared
+  on it. EC has the same gap; it needs
+  values of its own (the start per recipe) and is a follow-up.
+- **Over the volume at the start:** a clean round learns over the volume
+  read when it started (EC) or when its dose started (pH): the volume
+  the dose went into and the one it was planned on. With watering and
+  the inlet excluded, the two differ only by what else leaves the tank,
+  such as evaporation, and a constant error of the level curve cancels
+  between planning and learning. When the level is not usable, the volume
+  is the one entered or set by the last mix, as for planning
+  (`Hub::tankVolume`), and its error cancels the same way.
+- **Only learning and the count change:** the round still doses, settles
+  and decides as before; watering itself waits for a dose to mix in
+  (SD-093).
+- **With SD-102:** the first step of a mix to the target, EC control's
+  round 1 (D7), learns nothing when watering overlaps it, by the same
+  tail, from when its parts go in until the hand-over; it is still
+  judged at once (D6). A round made smaller for slow pumps and too small
+  to judge alone that watering made unclean is left out of the sum like
+  any round not clean: it neither counts nor resets, and the sum goes
+  on; a watered round judged alone counts half. Each small round's
+  millilitres per litre are taken over the volume at its start.
+- **Residual risks:**
+  - a pump the hub does not see (not bound, a drain valve, a second
+    pump, a shot shorter than the interval at which the hub reads the
+    plug) makes no round watered;
+  - pauses in watering shorter than about 15 min (10 min plus a round)
+    leave no clean round, so nothing is learned while they last: the
+    effect stays at its last value, or at the start value within the
+    cap; once the system types exist (M4), the exclusion may be limited
+    to systems where water drains back;
+  - with every round watered (drip shots, a plug offline, someone
+    switching the plug at the device or in the network), the latch needs
+    4 rounds instead of 2: for EC up to twice as much goes in before a
+    probe fault latches (4 × the largest EC step instead of 2, each round
+    capped); for pH the first dose is as in the clean case and the doses
+    after it stay at the start size or smaller: 2 more than clean, each
+    at most 0.06 ml/L (about 0.3 pH at the start effect), so at most
+    twice the clean case, and at most 0.42 ml/L instead of 0.30 ml/L at
+    the lowest learned effect;
+  - drain-back that fakes an effect (runoff with a higher EC, or a lower
+    pH) resets the "no effect" count, so the latch may not trip while it
+    does so at least every fourth watered round; this needs a probe that
+    reads the tank, so it can hide an empty bottle, a blocked line or a
+    failed pump, not a probe that misses the doses (watered rounds reset
+    the count before too; the window grew from 2 rounds to 4);
+    drain-back that hides an effect (runoff raising pH) can latch a
+    working dose after 4 watered rounds, on the safe side, and a person
+    releases it;
+  - unbinding the watering pump lets the tail run out; binding it to
+    another device starts it again;
+  - a high learned pH effect gone stale (the tank became much more
+    buffered, by a new mix with harder water) can no longer be learned
+    lower from small doses: doses under about 0.024 ml/L fall less than
+    0.03, so the "no effect" latch trips and the grower finds nothing
+    wrong, until a correction starts at a larger gap; the safe side, a
+    false alarm instead of an overshoot (learning after a release is a
+    possible follow-up);
+  - a drain-back slower than 10 min, or the start reading taken before
+    returned water has mixed in (circulation in interval mode), can still
+    reach a clean round, and its learned effect can come out too low: up
+    to about 20 % the 0.8 aim absorbs it, beyond that the next dose
+    overshoots, for pH beyond undoing (a longer tail for learning, or a
+    mixing time before the start reading, is a follow-up);
+  - the twin's watering draws no water, so the tests check only how
+    rounds are counted; the volume test takes 8 L out at once during the
+    settle, and the twin keeps the concentration (water taken out, not
+    evaporated).
+- **The texts:** the "no effect" event for EC, and the latch line and
+  event for pH, say "after the last few rounds" (doses) instead of
+  "after two", true for both counts; pH's name the pump among what to
+  check (`ux`). EC's latch line keeps SD-102's "after dosing", which
+  also fits a first step that locked.
+- **Merging:** it changes when the "no effect" latch fires, a protective
+  latch, so it needs `security` and the project owner's "mergen"
+  (SD-033). Without a bound watering pump the latch behaves as before (2
+  clean rounds).
 
 ---
 

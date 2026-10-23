@@ -253,6 +253,9 @@ class Hub {
   bool waterOn_ = false;
   std::deque<std::pair<Ms, double>> waterStarts_;
   double waterLowL_ = kNaN;
+  // Learning's own tail (SD-103): until when a round counts as watered, and the device the pump was bound to
+  Ms waterLearnUntil_ = 0;
+  std::string waterBoundTo_;
   Epoch bootEpoch_ = 0;
   Ms bootMs_ = 0;
   Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastSnapshot_ = 0;

@@ -40,6 +40,8 @@ constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-
 constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)
 constexpr Ms kMaxPhAge = 10 * kMinute;    // älter → keine Korrektur (RAT-043)
 constexpr double kSmallRoundEc = 0.06;    // three times the no-effect threshold of 0.02 (SD-102)
+// "No effect" latches after 2 clean rounds without effect, or 4 that only watering made unclean (SD-103)
+constexpr int kNoEffectPoints = 4;
 
 std::string mmss(Ms ms) {
   Ms s = std::max<Ms>(0, ms / 1000);
@@ -157,6 +159,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;  // its effect is not learned (RAT-057)
+      disturbed_ = true;
       settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       wantsCirc_ = true;
@@ -174,8 +177,14 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
   }
-  // Wirkung nur aus sauberen Gaben lernen: kein Zulauf, keine fremde Gabe dazwischen (RAT-057).
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ec-"))) clean_ = false;
+  // Learn the effect only from clean doses: no inlet, no foreign dose in between (RAT-057), no watering
+  // and no drain-back after it (SD-103). A round only watering made unclean still counts towards "no
+  // effect", by half.
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ec-"))) {
+    clean_ = false;
+    disturbed_ = true;
+  }
+  if (phase_ != Phase::Idle && env.watering) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = quiet_ ? "waiting" : "working";
@@ -205,7 +214,8 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     // rise counts from its own start, so what happens to the tank between rounds stays out; a round that
     // is not clean is left out, and the sum goes on.
     const bool tiny = limited_ && isNum(expectedRise_) && expectedRise_ < kSmallRoundEc;
-    const double mlPerL = isNum(env.volumeL) && env.volumeL > 0 ? mlRound_ / env.volumeL : kNaN;
+    // over the volume the dose went into, read when the round started (SD-103)
+    const double mlPerL = isNum(volRound_) && volRound_ > 0 ? mlRound_ / volRound_ : kNaN;
     double judged = kNaN, judgedMlPerL = kNaN;  // the rise judged and learned now, and the ml per litre behind it
     if (small_.recipe != roundRecipe_ || (clean_ && !tiny)) small_ = {};
     if (clean_ && !tiny) {
@@ -228,10 +238,13 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       const double observed = judged / judgedMlPerL;
       c.rt.ecEffects[roundRecipe_] = c.rt.ecEffect = clampEcEffect(observed, recipeEffect(*dosed, kNaN).start);
     }
-    if (isNum(judged)) noEffect_ = judged < 0.02 ? noEffect_ + 1 : 0;
-    if (noEffect_ >= 2) {
+    // "No effect" counts a judged rise 2 points and the rise of a round only watering made unclean 1 (SD-103);
+    // a small round that is not clean is left out, as above, and a disturbed round counts nothing
+    if (isNum(judged)) noEffect_ = judged < 0.02 ? noEffect_ + 2 : 0;
+    else if (!clean_ && !disturbed_ && !tiny) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
+    if (noEffect_ >= kNoEffectPoints) {
       c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
-      noEffect_ = 0;  // nach dem Quittieren wieder zwei Runden
+      noEffect_ = 0;  // after the acknowledgement, 4 points again (2 clean or 4 watered rounds)
       small_ = {};
       c.log.add(c.epoch, "alarm", "alarm", say("ev.ec.no_effect"), say("ev.ec.no_effect.text"));
       reset();
@@ -360,7 +373,9 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   roundRecipe_ = recipe->id;
   ecBefore_ = *ec.value;
   mlRound_ = 0;
+  volRound_ = env.volumeL;
   clean_ = true;
+  disturbed_ = false;
   limited_ = plan.limited;
   {
     double ml = 0;
@@ -405,6 +420,7 @@ EcController::FirstStep EcController::adoptFirstStep(const Ctx& c, const FirstSt
   roundRecipe_ = in.recipe;
   mlRound_ = 0;    // learned here already
   clean_ = false;  // … and judged: its settle neither learns nor counts it again
+  disturbed_ = true;
   return FirstStep::Adopted;
 }
 
@@ -430,6 +446,7 @@ void EcController::recipeChanged(const RecipeCfg& r) {
   if (r.id == small_.recipe) small_ = {};  // small rounds summed on the parts as they were (RAT-057)
   if (r.id != roundRecipe_) return;  // the recipe the round doses, whatever the phase's is now
   clean_ = false;
+  disturbed_ = true;
   queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
                               [&](const DoseStep& d) {
                                 return std::any_of(r.steps.begin(), r.steps.end(),
@@ -506,6 +523,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     if (env.circulationOn || !c.cfg.binding("tank.circulation")) {
       phase_ = Phase::Settling;
       clean_ = false;
+      disturbed_ = true;
       settleUntil_ = c.now + std::max<Ms>({kAbortRestS * kSecond, minutesParam(p.num("settle_min"), 5), cutFloor_});
     } else {
       pendingCirc_ = true;
@@ -521,7 +539,11 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
   }
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ph-"))) clean_ = false;
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ph-"))) {
+    clean_ = false;
+    disturbed_ = true;
+  }
+  if (phase_ != Phase::Idle && env.watering) clean_ = false;  // as in EcController (SD-103)
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = quiet_ ? "waiting" : "working";
@@ -545,9 +567,16 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
     double drop = phBefore_ - *ph.value;
-    if (clean_ && mlLast_ > 0 && isNum(env.volumeL)) c.rt.phEffect = clampEffect(drop / (mlLast_ / env.volumeL), kPhStartEffect);
-    if (clean_) noEffect_ = drop < 0.03 ? noEffect_ + 1 : 0;  // RAT-020, RAT-041
-    if (noEffect_ >= 2) {
+    // A dose without a measurable fall, clean or watered, tells nothing about the effect: it learns only
+    // towards the smaller dose, the effect at least its start and never lower than learned, so the doses up
+    // to the "no effect" latch do not grow (SD-103)
+    if (!disturbed_ && drop < 0.03) {
+      c.rt.phEffect = std::max(clampEffect(c.rt.phEffect, kPhStartEffect), kPhStartEffect);
+    } else if (clean_ && mlLast_ > 0 && isNum(volLast_)) {
+      c.rt.phEffect = clampEffect(drop / (mlLast_ / volLast_), kPhStartEffect);
+    }
+    if (!disturbed_) noEffect_ = drop < 0.03 ? noEffect_ + (clean_ ? 2 : 1) : 0;  // RAT-020, RAT-041, SD-103
+    if (noEffect_ >= kNoEffectPoints) {
       c.rt.latches["ph.no_effect"] = {{"at", c.epoch}};
       noEffect_ = 0;
       c.log.add(c.epoch, "alarm", "alarm", say("ev.ph.no_effect"), say("ev.ph.no_effect.text"));
@@ -647,7 +676,9 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
   if (!env.doser.start(c, env.act, o, err)) return block(say("ph.dose_failed", {{"reason", err}}));
   if (doses_ == 0) startPh_ = *ph.value;
   phBefore_ = *ph.value;
+  volLast_ = env.volumeL;
   clean_ = true;
+  disturbed_ = false;
   phase_ = Phase::Dosing;
   st_.state = "working";
   st_.line = say("ph.start", {{"from", *ph.value}, {"target", numOrNull(target)}, {"n", doses_ + 1}, {"ml", numOrNull(plan.ml)}});

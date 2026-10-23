@@ -25,6 +25,8 @@ namespace {
 
 // How long a mix waits for the user to stir by hand before it stops, open to go on (SD-057, SD-089)
 constexpr Ms kStirWaitMax = 30 * kMinute;
+// Water still drains back this long after the watering pump stops (SD-101, SD-103; an assumption)
+constexpr Ms kWaterTail = 10 * kMinute;
 // A pump that reads off or unknown this long while a mix mixes in stands still; a single missed
 // report does not (an assumption, like the mixing time per volume)
 constexpr Ms kPumpStandsAfter = 10 * kSecond;
@@ -747,7 +749,15 @@ void Hub::watchClock(Ms now) {
 void Hub::announceWatering(Ms now) {
   constexpr double kGateL = 2.0;  // a gate, not a threshold: above it the 20 L apply (an assumption)
   constexpr Ms kDrainBack = 30 * kMinute;
-  const bool on = act_.roleState(cfg_, "zone.irrigation_pump").value_or(false);
+  const auto state = act_.roleState(cfg_, "zone.irrigation_pump");
+  const bool on = state.value_or(false);
+  // Learning's own tail, read here before the gateway may cut a pump switched on at its plug: renewed while
+  // the pump reads on or its state is not known (a plug offline runs its own schedule), and from the first
+  // tick it is bound to a device, as a restart may have cut a flood; unbound, it runs out (SD-103, RAT-057)
+  const Binding* pump = cfg_.binding("zone.irrigation_pump");
+  const std::string boundTo = pump ? pump->device + "/" + std::to_string(pump->channel) : std::string();
+  if (pump && (!state || *state || boundTo != waterBoundTo_)) waterLearnUntil_ = now + kWaterTail;
+  waterBoundTo_ = boundTo;
   const auto& lv = truth_.get("tank.level");
   const double l = lv.usable() ? *lv.value : kNaN;  // the last reading, before this tick's
   if (on && !waterOn_) {
@@ -764,7 +774,7 @@ void Hub::announceWatering(Ms now) {
   while (waterStarts_.size() > 1 && now - waterStarts_.front().first > kDrainBack) waterStarts_.pop_front();
   if (on && isNum(waterLowL_) && isNum(l)) waterLowL_ = std::min(waterLowL_, l);
   waterOn_ = on;
-  if (on) waterTailUntil_ = now + 10 * kMinute;
+  if (on) waterTailUntil_ = now + kWaterTail;
   if (now >= waterTailUntil_) return;
   double topL = kNaN;
   for (const auto& start : waterStarts_) {
@@ -871,6 +881,9 @@ void Hub::tickImpl() {
   env.lastEcDoseAt = ec_.lastDoseAt();
   env.circulationOn = act_.roleState(cfg_, "tank.circulation").value_or(false);
   env.refilling = act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_);
+  // Watering draws tank water out and the drain-back brings the table's water in: a round over it
+  // learns nothing (announceWatering, SD-103, RAT-057)
+  env.watering = now < waterLearnUntil_;
   env.calibrating = !probeSessions_.empty();
   if (const Binding* lb = cfg_.binding("tank.level"))
     for (const auto& [key, sess] : probeSessions_)
@@ -2354,6 +2367,10 @@ void Hub::tickJob(Ctx& c) {
   if (j.type == "mix" && (activeJobState(j.state) || j.state == "failed") && j.state != "measuring" &&
       (act_.roleState(cfg_, "tank.inlet").value_or(false) || refill_.holding(rt_) || !probeSessions_.empty() || c.epoch < maintenanceUntil_))
     j.dirty = j.diluted = true;
+  // Watering and its drain-back change the litres the step went into: judged, but not learned, as an EC round
+  // over them (SD-103)
+  if (j.type == "mix" && (activeJobState(j.state) || j.state == "failed") && j.state != "measuring" && c.now < waterLearnUntil_)
+    j.dirty = true;
   if (j.state == "measuring") {
     // The pump mixes the water for the measuring time from when it runs, then the hub reads it. A pump that
     // does not come on within 2 min or stops for 10 s once it ran, a probe calibrated or a reading not usable
