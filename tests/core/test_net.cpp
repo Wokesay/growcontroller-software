@@ -706,6 +706,22 @@ TEST_CASE("Watering: a dose holds watering while it runs and until it has mixed 
   sim::Simulation s(test::opts("demo"));
   Client c{s};
   const std::string id = wateringDemo(s, c);
+  SUBCASE("a mix to the target with the probe holds it while it measures the tank, until it ends (SD-102)") {
+    setWater(s, c, 0.9, 5.8, 40);
+    REQUIRE(water(c, true).first == 200);  // running: stopped as routine, not as water unfit
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+    const std::string job = c.ok("POST", "/api/v1/mix/start",
+                                 {{"recipe", "veg"}, {"waterL", 40}, {"guided", false}, {"confirmRepeat", true}, {"amounts", "measured"}})["job"]["id"];
+    s.step(5000);
+    REQUIRE(c.state()["job"]["state"] == "measuring");
+    CHECK_FALSE(outlet(s, id, 0).on);
+    CHECK(cuts(c, "ev.irrigation.measuring") == 1);
+    CHECK(cuts(c, "ev.irrigation.water") == 0);
+    CHECK(refusal(c)["key"] == "act.irrigation.measuring");
+    c.ok("POST", "/api/v1/jobs/" + job + "/abort");  // nothing went in: nothing to mix in either
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    CHECK(water(c, true).first == 200);
+  }
   SUBCASE("31 L: at least 240 s") {
     CHECK(water(c, true).first == 200);
     c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 2}});
@@ -1207,4 +1223,61 @@ TEST_CASE("Inlet latch: a reason saved before SD-032, as a message or damaged st
     CHECK_FALSE(c.state()["latches"].contains("inlet.fault"));
   }
   std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Mixing to the target with the probe and a circulation pump on a smart plug: one that does not come on within 2 min, or stops for 10 s once it ran, ends the measuring with nothing in; the measuring time counts from when it runs (SD-102, RAT-037, RAT-039)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  quietDemo(s, c);
+  setWater(s, c, 0.5, 5.8, 40);
+  const std::string id = addPlug(s, c, "shelly_plug", json::array());
+  c.ok("PUT", "/api/v1/roles/tank.circulation", {{"device", id}, {"channel", 0}});
+  s.step(10000);
+  auto start = [&] {  // EC control on right before the start, else it starts a round of its own first
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}, {"params", {{"settle_min", 4}}}});
+    c.ok("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", 40}, {"guided", false}, {"confirmRepeat", true}, {"amounts", "measured"}});
+  };
+  auto endedWith = [&] {
+    const json last = c.state()["lastJob"];
+    CHECK(last["state"] == "aborted");
+    return last["message"]["key"].get<std::string>();
+  };
+  SUBCASE("the plug refuses to switch: it waits for the pump, says so, and ends after 2 min") {
+    fault(s, id, "stuck");
+    start();
+    s.step(60000, 1000);
+    json job = c.state()["job"];
+    REQUIRE(job["state"] == "measuring");
+    CHECK(job["pumpStands"] == true);
+    CHECK(job["message"]["key"] == "mix.measure_wait_pump");
+    CHECK(job["waitLeftS"].is_null());  // its time has not started
+    s.step(70000, 1000);
+    CHECK(c.state()["job"].is_null());
+    const std::string key = endedWith();
+    CHECK((key == "mix.measure_no_circ" || key == "mix.measure_circ_blocked"));
+    CHECK(c.state()["dosing"].is_null());
+  }
+  SUBCASE("it comes on late: the measuring time counts from then") {
+    fault(s, id, "stuck");
+    start();
+    s.step(60000, 1000);
+    fault(s, id, "none");
+    REQUIRE(until(s, [&] { return outlet(s, id, 0).on; }, 30000, 500));
+    s.step(2000, 1000);
+    const json job = c.state()["job"];
+    REQUIRE(job["state"] == "measuring");
+    CHECK(job["message"]["key"] == "mix.measuring");
+    CHECK(job["waitLeftS"].get<int>() > 230);  // 4 min settle time, from when it ran
+  }
+  SUBCASE("it goes offline once it ran: after 10 s") {
+    start();
+    REQUIRE(until(s, [&] { return outlet(s, id, 0).on; }, 30000, 500));
+    s.step(20000, 1000);
+    fault(s, id, "offline");
+    s.step(20000, 1000);
+    CHECK(c.state()["job"].is_null());
+    const std::string key = endedWith();
+    CHECK((key == "mix.measure_no_circ" || key == "mix.measure_circ_blocked"));
+  }
 }

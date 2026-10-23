@@ -45,6 +45,9 @@ default password (EN 18031-1).
 | Stopping a cap | reports "stopped" (failed) with its job ID and run time still readable; a second stop changes nothing | **Assumption**; what the pump driver (milestone M1) must do as well |
 | Inlet | 2 L/min | RAT-038: 1.44–1.54 L/min |
 | EC of the inlet water | 0.02 mS/cm | **Assumption** (about reverse-osmosis water), also the EC of every fill a scenario makes; a fixed pattern with the water's EC entered as 0 lands 0.02 higher in the twin when the recipe's chart EC matches the twin's parts (SD-098, test_scenarios "a fixed pattern to a target EC without a probe lands where the plan says") |
+| A dry EC probe (fault `ec_zero`) | reads about 0.01 mS/cm with the probe's noise (σ 0.004), never below 0 | **Assumption**; a real dry probe reads near 0 but not a fixed value. A constant reading would count as frozen after 15 min, so a mix to the target's hand-over would find the probe not usable instead of judging round 1 (SD-102 D6) |
+| Fixed additions | CalMag at 0.217 mS/cm per ml/L against 0.275 for A and B, both measured (RAT-080, RAT-055); no much weaker fixed part such as a cleanser (**assumption**) | so learning round 1 over all parts (SD-102 D7) comes out close to the twin's effect; with a weak fixed part it would read lower |
+| Fresh water's EC | mixes into the tank at once, with no layering | **Assumption**; real fresh water often lies apart from the probe at first. Mixing to the target with the probe (SD-102) measures after its measuring time, so in the twin the measuring never changes the plan unless a test moves the EC meanwhile (test_scenarios "mixing to the target with the probe measures first …") |
 | Water temperature | a daily curve of 19–22 °C; fresh water moves it towards the inlet water's temperature by volume, at once, with no layering and no lag of the probe, and it returns to the curve with t63 3 h; the inlet water is as warm as the tank unless a test sets it (`inletTempC`) | **Assumption**, not measured |
 | Level reading | follows the volume at once, every 5 s; a test can give it a first-order lag (`levelLagS`) and another report interval (`levelSampleMs`) | assumption: no lag (the real one lags 1.5–2 min, RAT-038); a lag is tried only in the drain-back tests. Irrigation draws no water from the tank, so they change the tank's volume themselves (assumptions): the refill's (SD-099) a flood of 12 L in 2 min, 8 L back with a time constant of 4 min, 2 L left in the substrate so a fill is due, without a lag, with a lag of 105 s and with a report every 45 s; the level's jump lock's (SD-101) a flood of 38 L in 4 min from 55 L, 36 L back with a time constant of 5 min (23 L within the first 5 min), without a lag and with a lag of 105 s |
 | Drift | pH rises, EC falls slightly, water evaporates | **Assumption**, not measured |
@@ -75,7 +78,11 @@ default password (EN 18031-1).
 - **Measurements missing:** the initial effects in nutrient solution
   (RAT-081) and the mixing time by volume (M-3) are open. The core's
   floor for mixing in at the end of a mix (100 s per 20 L, `Hub::mixSettleMs`)
-  rests on the same assumption, so no simulator test can confirm it.
+  and the measuring time of a mix to the target with the probe (the same
+  100 s per 20 L, SD-102) rest on the same assumption, so no simulator test
+  can confirm them. The probe's EC has no temperature dependence in the
+  twin, so the under-reading of cold fresh water the plan names (SD-102 D9)
+  never shows.
 - **Bus not modelled:** the Modbus bus itself, i.e. timing, timeouts and
   CRC, is not modelled. That belongs in the firmware's driver tests.
 

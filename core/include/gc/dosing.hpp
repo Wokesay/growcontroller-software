@@ -91,6 +91,8 @@ class Actuators {
     doseUntil_ = std::max(doseUntil_.value_or(now), now);
     holdFromStart_ = true;
   }
+  // While a mix measures the tank first, watering waits until then; 0 ends the wait (SD-102)
+  void holdWateringWhile(Ms until) { measureUntil_ = until; }
 
   // Stop: all pumps and outputs off, idempotent (RAT-036).
   // Counts as switching off: minimum pauses hold afterwards too.
@@ -146,6 +148,7 @@ class Actuators {
   // after a start the start itself (SD-093). None before the first.
   std::optional<Ms> doseUntil_;
   bool holdFromStart_ = false;  // the hold is the start's, no dose ran since
+  Ms measureUntil_ = 0;         // a mix measures the tank until then (holdWateringWhile)
   std::map<std::string, Ms> onSince_;  // Rolle → eingeschaltet seit
   std::optional<Ms> dryBackSince_;     // level back above the release level since (SD-022)
   bool dryOffSeen_ = false;            // the latched pump has been read as off (SD-067)
@@ -225,8 +228,12 @@ struct Job {
   bool circulation = false;           // Umwälzpumpe vom Auftrag eingeschaltet
   bool unmixed = false;               // the circulation pump stood still while the mix settled at its end
   bool pumpStands = false;            // … and the card says so now
-  Ms pumpOffSince = 0;                // since when the pump reads off or unknown while it mixes in; 0: it runs
+  Ms pumpOffSince = 0;                // since when the pump reads off or unknown while it measures or mixes in; 0: it runs
   bool cutMarked = false;             // EC and pH were told to settle what went in (Hub::mixCut)
+  bool dirty = false;                 // way 1: the mix resumed, its recipe changed, the inlet opened or a probe was calibrated: nothing is learned (RAT-057)
+  bool diluted = false;               // … the inlet opened or a probe was calibrated: the rise says nothing, so it is not judged either (SD-102 D6)
+  Ms measureFrom = 0;                 // way 1: when the pump first ran while it measures; 0: not yet
+  bool ecDosed = false;               // way 1 stopped part way: EC control has started a round since, so it is not resumed
   json info = json::object();         // Rezept, Wasser, Einmessdaten
 };
 void to_json(json& j, const Job& job);

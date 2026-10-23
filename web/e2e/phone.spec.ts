@@ -10,6 +10,9 @@ const PAGES: [string, ((p: Page) => Promise<unknown>)?][] = [
   ["/", (p) => expect(p.getByTestId("event").first()).toBeVisible()],
   ["/tank"],
   ["/mischen", async (p) => {
+    // the recipe's amounts: with EC top-up on, "To target with probe" may be preselected and find the tank at its target (SD-102)
+    const recipeTab = p.getByRole("tab", { name: /^(Laut Rezept|As in recipe)$/ });
+    if (await recipeTab.count()) await recipeTab.click();
     await p.locator("input[name=water]").fill("40");
     await expect(p.locator(".content table").first()).toBeVisible();
   }],

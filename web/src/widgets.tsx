@@ -162,32 +162,58 @@ export const latchLabel = (k: string) => {
   return t("widgets.latch.other");
 };
 
-const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", settling: "widgets.job.settling", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
+const jobStateText: Record<string, TextKey> = { running: "widgets.job.running", waiting_user: "widgets.job.waitingUser", mixing: "widgets.job.mixing", settling: "widgets.job.settling", measuring: "widgets.job.measuring", done: "widgets.job.done", failed: "widgets.job.failed", aborted: "widgets.job.aborted" };
 
 export function JobView(p: { job: Job; compact?: boolean }) {
   const j = p.job;
   const dosing = state.value?.dosing;
   const total = j.steps.length;
   const title = j.type === "mix" ? t("widgets.jobMix", { name: j.info.recipeName ?? "", l: num(j.info.waterL, 1) }) : j.type === "calibration" ? t("widgets.jobCalibration") : j.type === "prime" ? t("term.prime") : t("widgets.jobManual");
-  // Mixing in at the end with the pump standing still: said, not shown as mixing (SD-057)
-  const pumpStands = j.state === "settling" && j.pumpStands === true;
-  const stateText = pumpStands ? t("widgets.job.waitingPump") : jobStateText[j.state] ? t(jobStateText[j.state]) : "";
+  // Mixing in at the end, or measuring first, with the pump not running: said, not shown as mixing (SD-057, SD-102)
+  const pumpStands = (j.state === "settling" || j.state === "measuring") && j.pumpStands === true;
+  // Way 1 handed over to an EC top-up that is locked, off or waits for the probe: done, but not fine (SD-102)
+  const notFine = j.state === "done" && ["mix.done_handover_locked", "mix.done_handover_off", "mix.done_handover_latched", "mix.done_handover_no_ec"].includes(j.message.key ?? "");
+  const needsRelease = j.state === "done" && ["mix.done_handover_locked", "mix.done_handover_latched"].includes(j.message.key ?? "");
+  const nothingNeeded = j.state === "aborted" && j.message.key === "mix.measure_at_target";
+  // Ended by the hub, not by the user: something to do, said as such
+  const hubEnded = j.state === "aborted" && ((j.message.key ?? "").startsWith("mix.measure_") && !nothingNeeded || ["job.emergency_stop_pair", "job.aborted_pair"].includes(j.message.key ?? ""));
+  const notMixed = hubEnded && (j.message.key ?? "").startsWith("mix.measure_");
+  const attention = notFine || hubEnded;
+  const measuredRuns = j.state === "measuring" || j.state === "running" || j.state === "mixing" || j.state === "settling" || j.state === "waiting_user";
+  const stateText = pumpStands
+    ? t("widgets.job.waitingPump")
+    : nothingNeeded
+      ? t("widgets.job.nothingNeeded")
+      : needsRelease
+        ? t("widgets.job.needsRelease")
+        : notMixed
+          ? t("widgets.job.notMixed")
+          : jobStateText[j.state]
+            ? t(jobStateText[j.state])
+            : "";
   const mins = (s: number | undefined) => Math.max(1, Math.ceil((s ?? 0) / 60));
   return (
     <div class="stack-sm" data-testid="job">
       <div class="row-between">
         <h3>{title}</h3>
-        <Pill tone={j.state === "failed" ? "bad" : j.state === "done" ? "ok" : j.state === "aborted" ? "neutral" : j.state === "waiting_user" || pumpStands ? "warn" : "info"} dot pulse={!pumpStands && (j.state === "running" || j.state === "mixing" || j.state === "settling")}>
+        <Pill tone={j.state === "failed" ? "bad" : attention ? "warn" : j.state === "done" || nothingNeeded ? "ok" : j.state === "aborted" ? "neutral" : j.state === "waiting_user" || pumpStands ? "warn" : "info"} dot pulse={!pumpStands && (j.state === "running" || j.state === "mixing" || j.state === "settling" || j.state === "measuring")}>
           {stateText}
         </Pill>
       </div>
+      {j.type === "mix" && j.info.amounts === "measured" && typeof j.info.ecTarget === "number" && (
+        <p class="small muted">{t(measuredRuns ? "widgets.jobMeasured" : "widgets.jobMeasuredEnded", { target: num(j.info.ecTarget, 2) })}</p>
+      )}
+      {/* what it measured, once it has: the amounts below are worked out on it (SD-102) */}
+      {j.type === "mix" && j.info.amounts === "measured" && j.info.measured === true && typeof j.info.waterEc === "number" && (
+        <p class="small muted">{t("widgets.jobMeasuredNow", { ec: num(j.info.waterEc, 2), expected: num(typeof j.info.expectedEc === "number" ? j.info.expectedEc : null, 2) })}</p>
+      )}
       {j.type === "mix" && j.info.amounts === "target" && typeof j.info.targetEc === "number" && (
         <p class="small muted">{t(j.info.mode === "topup" ? "widgets.jobTargetTopup" : "widgets.jobTarget", { target: num(j.info.targetEc, 2), expected: num(typeof j.info.expectedEc === "number" ? j.info.expectedEc : null, 2) })}</p>
       )}
       {/* the state, not the minutes, for screen readers: a stopped mix needs an action */}
       <span class="sr-only" role="status">
         {title}: {stateText}
-        {j.state === "failed" ? ` ${msg(j.message)}` : ""}
+        {j.state === "failed" || attention ? ` ${msg(j.message)}` : ""}
       </span>
       {!p.compact && (
         <div class="steps">
@@ -210,19 +236,45 @@ export function JobView(p: { job: Job; compact?: boolean }) {
                   )}
                 </div>
                 <span class="num small">
-                  {s.mlDone > 0 ? `${num(s.mlDone, 1)} / ` : ""}
-                  {num(s.ml, 1)} ml
+                  {/* way 1 works the amounts out again once it has measured: none to show before (SD-102) */}
+                  {j.info.amounts === "measured" && j.info.measured !== true ? (
+                    <span aria-label={t("widgets.afterMeasuring")}>–</span>
+                  ) : (
+                    <>
+                      {s.mlDone > 0 ? `${num(s.mlDone, 1)} / ` : ""}
+                      {num(s.ml, 1)} ml
+                    </>
+                  )}
                 </span>
               </div>
             );
           })}
         </div>
       )}
-      <p class={j.state === "failed" ? "" : "muted"} style={j.state === "failed" ? "color:var(--bad);font-weight:600" : ""}>
+      <p class={j.state === "failed" || attention ? "" : "muted"} style={j.state === "failed" ? "color:var(--bad);font-weight:600" : ""}>
         {msg(j.message)}
-        {j.state === "settling" && !pumpStands && j.waitLeftS != null && <> {t("widgets.waitLeft", { min: mins(j.waitLeftS) })}</>}
+        {(j.state === "settling" || j.state === "measuring") && !pumpStands && j.waitLeftS != null && <> {t("widgets.waitLeft", { min: mins(j.waitLeftS) })}</>}
         {j.state === "waiting_user" && j.type === "mix" && j.waitLeftS != null && <> {t("widgets.stirLeft", { min: mins(j.waitLeftS) })}</>}
       </p>
+      {needsRelease && (
+        <div>
+          <a class="btn sm" href="#/tank">
+            {t("widgets.toTank")}
+          </a>
+        </div>
+      )}
+      {j.state === "done" && j.message.key === "mix.done_handover_off" && (
+        <div>
+          <a class="btn sm" href="#/funktionen">
+            {t("widgets.toFunctions")}
+          </a>
+        </div>
+      )}
+      {j.noResume && <p class="small">{msg(j.noResume)}</p>}
+      {/* Handed to EC top-up: its own line says when the tank is ready (SD-102 D8) */}
+      {j.type === "mix" && j.info.amounts === "measured" && j.state === "done" && j.message.key === "mix.done_handover" && state.value && (
+        <p class="small muted" data-testid="job-ec-now">{t("widgets.ecNow", { line: msg(state.value.controllers.ec.line) })}</p>
+      )}
       <div class="row">
         {(j.state === "waiting_user" || j.state === "mixing") && j.type === "mix" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/continue`).then(refreshState)}>
@@ -230,19 +282,19 @@ export function JobView(p: { job: Job; compact?: boolean }) {
           </Button>
         )}
         {/* a part cut short is completed; after a wait for stirring the mix goes on with the next part */}
-        {j.state === "failed" && j.type === "mix" && j.steps[j.index]?.state === "failed" && (
+        {j.state === "failed" && j.type === "mix" && !j.noResume && j.steps[j.index]?.state === "failed" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/resume`).then(refreshState)}>
             <RotateCcw size={16} /> {t("widgets.redo", { name: j.steps[j.index]?.name ?? "" })}
           </Button>
         )}
-        {j.state === "failed" && j.type === "mix" && j.steps[j.index]?.state !== "failed" && (
+        {j.state === "failed" && j.type === "mix" && !j.noResume && j.steps[j.index]?.state !== "failed" && (
           <Button variant="primary" onClick={() => post(`/jobs/${j.id}/resume`).then(refreshState)}>
             <Play size={16} /> {t("widgets.resumeMix")}
           </Button>
         )}
         {/* Not while mixing in: nothing is left to dose, and ending it early only makes control wait
             longer; the Stop stays for an emergency (SD-057) */}
-        {(j.state === "running" || j.state === "waiting_user" || j.state === "mixing" || j.state === "failed") && (
+        {(j.state === "running" || j.state === "waiting_user" || j.state === "mixing" || j.state === "measuring" || j.state === "failed") && (
           <Button variant="danger-soft" onClick={() => post(`/jobs/${j.id}/abort`).then(refreshState)}>
             <Square size={14} /> {j.state === "failed" && j.type === "mix" ? t("widgets.endMix") : t("common.cancel")}
           </Button>

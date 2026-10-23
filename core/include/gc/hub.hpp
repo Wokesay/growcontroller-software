@@ -170,12 +170,14 @@ class Hub {
   void onJobDose(Ctx& c, const DoseProgress& p);
   bool startJobStep(Ctx& c);
   void finishJob(const std::string& state, Msg m);
-  void finishMixDone(Ctx& c, bool unmixed);  // all parts in: the mix's report and "done"
+  void finishMixDone(Ctx& c, bool unmixed, const Msg* handover = nullptr);  // all parts in: the mix's report and "done"
   Ms mixSettleMs() const;      // how long a mix mixes in at its end
   bool controllerFree(const char* fn, const char* latch) const;  // switched on and not locked
   bool controlOn() const;      // EC or pH control free: something waits for the mixed tank
   const RecipeCfg* ecRecipe() const;  // the recipe EC control doses, as it picks it (activeRecipe in control.cpp)
-  MixRequest mixRequest(const json& req) const;  // a mix as asked, with the EC target's range (SD-098)
+  MixRequest mixRequest(const json& req);  // a mix as asked, with the EC target's range and what way 1 needs (SD-098, SD-102)
+  void measuredDone(Ctx& c);  // way 1 has measured the mixed water: plan again and dose, or end with nothing in (SD-102)
+  void handOver(Ctx& c);  // way 1's first step has mixed in: EC control takes it as its first round (SD-102)
   void recipeEdited(const RecipeCfg& before, const RecipeCfg& after);  // its learned EC effect, its round (SD-092)
   void forgetEcEffect(const std::string& id);  // a recipe deleted, left out or new (SD-092)
   // A mix ending early with nutrients in (or a part cut unbooked): EC and pH settle first (SD-057)
@@ -184,10 +186,14 @@ class Hub {
   json jobJson() const;  // {job, lastJob}: job ist leer, wenn der Auftrag gerade fertig wurde
   double tankVolume() const;
   void endFailedMix();
-  // A job of the user's that holds control: dosing, waiting for the user, mixing between parts, or the
-  // mix settling at its end (SD-057). The boot report lists the same states.
-  static bool activeJobState(const std::string& s) { return s == "running" || s == "waiting_user" || s == "mixing" || s == "settling"; }
+  // A job of the user's that holds control: dosing, waiting for the user, mixing between parts, the mix
+  // settling at its end (SD-057) or measuring first (SD-102). The boot report lists the same states.
+  static bool activeJobState(const std::string& s) {
+    return s == "running" || s == "waiting_user" || s == "mixing" || s == "settling" || s == "measuring";
+  }
   bool userJobActive() const { return job_ && activeJobState(job_->state); }
+  // A mix to the target stopped with a pair half in: EC and pH wait until it is resumed or ended (SD-102, RAT-054)
+  bool pairOpen() const;
   std::string newId(const std::string& prefix);
   void detectDevices();
   // Probe sessions each tick: a point of a sensor on its own schedule takes

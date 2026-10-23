@@ -90,6 +90,7 @@ test("A bottle that is not one of a pair can have a fixed amount; card, mix plan
   await expect(bottle.locator("#bottle-problems")).toContainText("„CalMag“ ist in „Veg“ eine feste Menge.");
   await bottle.getByRole("button", { name: "Abbrechen" }).click();
   await page.goto("/#/mischen");
+  await page.getByRole("tablist", { name: "Mengen" }).getByRole("tab", { name: "Laut Rezept" }).click();  // with EC top-up on, the probe's way is preselected (SD-102)
   await page.getByLabel("Rezept").selectOption({ label: "Veg" });
   await page.locator("input[name=water]").fill("20");
   await expect(page.getByTestId("mix-preview").getByText("feste Menge")).toBeVisible();
@@ -179,10 +180,13 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   await page.goto("/#/mischen");
   await page.reload();
-  // EC control on: it takes the tank to its own target after mixing, so only the recipe's amounts (SD-089 S20)
+  // EC control on: to its target with the probe, or the recipe's amounts; no fixed pattern, as EC control takes
+  // the tank to its own target after mixing (SD-089 S20, SD-102 D1)
+  const choice = page.getByRole("tablist", { name: "Mengen" });
+  await expect(choice.getByRole("tab", { name: "Aufs Ziel mit Sonde" })).toBeVisible();
+  await expect(choice.getByRole("tab", { name: "Auf Ziel-EC" })).toHaveCount(0);
+  await choice.getByRole("tab", { name: "Laut Rezept" }).click();
   await expect(page.getByTestId("mix-ec-control")).toContainText("Die EC-Nachdosierung ist an");
-  await expect(page.getByTestId("mix-ec-control")).toContainText("Schalte „EC nachdosieren“ unter Funktionen aus, dann geht „Auf Ziel-EC“.");
-  await expect(page.getByRole("tablist", { name: "Mengen" })).toHaveCount(0);
   expect(await ecControl(page, false)).toBe(200);
   await page.reload();
   await page.locator("select[name=recipe]").selectOption({ label: "Veg" });
@@ -253,4 +257,81 @@ test("Mixing to an EC without measuring is offered with EC control off, needs th
   await simSpeed(page, 1);
   expect(await saveChart(page, "Veg", { refEc: null, ph: null })).toBe(200);
   expect(await ecControl(page, true)).toBe(200);
+});
+
+test("Mixing to the target with the probe is preselected with EC top-up on: it shows the tank's EC and round 1, measures first, can be cancelled meanwhile, and hands over to EC top-up (SD-057, SD-102)", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/mischen");
+  // Fresh water in the twin; EC top-up off meanwhile, else it raises the water itself once the probe reads it
+  expect(await ecControl(page, false)).toBe(200);
+  await expect(page.getByText("„Aufs Ziel mit Sonde“ gibt es, wenn „EC nachdosieren“ unter Funktionen an ist.")).toBeVisible();
+  await page.request.post("/api/v1/sim/water", { data: { volumeL: 40, ec: 0.02, ph: 6.5 } });
+  await simSpeed(page, 20);
+  await expect
+    .poll(async () => page.evaluate(async () => {
+      const r = (await (await fetch("/api/v1/state")).json()).readings["tank.ec"];
+      return r.usable === true && r.value < 0.2;
+    }), { timeout: 120_000 })
+    .toBe(true);
+  await simSpeed(page, 0);  // held: EC top-up must not start a round before the mix
+  expect(await ecControl(page, true)).toBe(200);
+  await page.reload();
+  const choice = page.getByRole("tablist", { name: "Mengen" });
+  await expect(choice.getByRole("tab", { name: "Aufs Ziel mit Sonde" })).toHaveAttribute("aria-selected", "true");
+  await page.locator("input[name=water]").fill("40");
+  const preview = page.getByTestId("mix-preview");
+  await expect(preview).not.toContainText("geht nur mit dem Rezept");  // EC top-up's own recipe is preselected (D2)
+  // EC top-up's recipe as the hub names it (D2), and its target, also before EC top-up has run since it was switched on
+  const ecRecipe = await page.evaluate(async () => {
+    const st = await (await fetch("/api/v1/state")).json();
+    const cfg = await (await fetch("/api/v1/config")).json();
+    return (cfg.recipes as { id: string; name: string }[]).find((r) => r.id === st.mixWay1.recipe)?.name ?? "?";
+  });
+  await expect(page.getByTestId("mix-ec-control")).toContainText(`Mit „${ecRecipe}“: Der Hub wälzt um, misst die EC und dosiert Runde 1`);
+  await expect(page.getByTestId("mix-ec-control")).toContainText(/auf ihr Ziel \(\d+,\d{2}\smS\/cm\)/);
+  await expect(page.getByTestId("mix-measured")).toContainText(/^Tank jetzt: 0,0\d\smS\/cm laut Sonde · \d+\sL laut Füllstand/);
+  await expect(page.getByTestId("mix-expected")).toContainText("Runde 1 bis etwa");
+  await expect(preview).toContainText("ohne Temperaturausgleich");
+  await expect(preview.locator("th").nth(2)).toHaveText("ml/L im Rezept");
+  // A top-up asks for the litres in the tank now only without a level; the demo's level reads
+  const mode = page.getByRole("tablist", { name: "Neu oder auffüllen" });
+  await mode.getByRole("tab", { name: "Auffüllen" }).click();
+  await expect(page.getByText("Frisches Wasser (schon drin)")).toBeVisible();
+  await expect(page.locator("input[name=tankNow]")).toHaveCount(0);
+  await mode.getByRole("tab", { name: "Neu ansetzen" }).click();
+  await expect(page.getByTestId("mix-start")).toBeEnabled();
+  const recent = await page.evaluate(async () => {
+    const st = await (await fetch("/api/v1/state")).json();
+    return st.lastMixAt > 0 && st.now - st.lastMixAt < 30 * 60;
+  });
+  await page.getByTestId("mix-start").click();
+  if (recent) await page.getByRole("button", { name: "Trotzdem mischen" }).click();  // the mix before was minutes ago (RAT-003)
+  const job = page.getByTestId("job");
+  await expect(job.getByText("misst", { exact: true })).toBeVisible();
+  await expect(job).toContainText("Aufs Ziel mit Sonde (");
+  await expect(job).toContainText("Wälzt um und misst die EC");
+  await expect(job.getByRole("button", { name: "Abbrechen" })).toBeVisible();  // nothing is in yet: no need for the Stop
+  await expect(job.locator(".step .num").first()).toHaveText("–");  // the amounts are worked out again once measured
+  await simSpeed(page, 20);
+  await expect(job.getByText("fertig", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(job).toContainText("Runde 1 drin: EC");
+  await expect(page.getByTestId("job-ec-now")).toContainText("EC nachdosieren jetzt:");
+  await simSpeed(page, 1);
+});
+
+test("Mixing to the target with the probe is not preselected while the probe gives no EC: the recipe's amounts are, and the page says why (SD-102 D1)", async ({ page }) => {
+  await login(page);
+  await page.request.post("/api/v1/sim/fault", { data: { device: "PHEC-3F2A91", fault: "offline" } });
+  await simSpeed(page, 20);
+  await expect
+    .poll(async () => page.evaluate(async () => (await (await fetch("/api/v1/state")).json()).mixWay1.blocked?.key ?? null), { timeout: 120_000 })
+    .toBe("mix.measured_no_ec");
+  await simSpeed(page, 1);
+  await page.goto("/#/mischen");
+  await page.reload();
+  const choice = page.getByRole("tablist", { name: "Mengen" });
+  await expect(choice.getByRole("tab", { name: "Laut Rezept" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("mix-ec-control")).toContainText("„Aufs Ziel mit Sonde“ braucht eine gültige EC von der Sonde im Tank");
+  await expect(page.getByTestId("mix-ec-control")).toContainText("Schalte „EC nachdosieren“ unter Funktionen aus, dann geht „Auf Ziel-EC“ ohne Sonde.");
+  await page.request.post("/api/v1/sim/fault", { data: { device: "PHEC-3F2A91", fault: "none" } });
 });

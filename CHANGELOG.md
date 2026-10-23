@@ -8,6 +8,39 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Mixing to the target with the probe** (#143, SD-057, step 6, SD-102,
+  RAT-088): with EC top-up on and a probe and circulation pump assigned,
+  the mix page offers "To target with probe" for EC top-up's own recipe
+  and preselects it while it can run (else the recipe's amounts, with
+  the reason; once anything in the form is changed, the choice stays).
+  The hub circulates the water first, for 100 s per 20 L and at least EC
+  top-up's settle time from when the pump runs, and measures it (the
+  card shows the time left or that it waits for the pump; watering
+  waits; it can be cancelled with nothing in). It works the amounts out
+  again, doses round 1 of 0.8 × the gap to where EC top-up aims (at most
+  the step limit, converted with the largest known effect, and at most
+  the recipe's amounts while the recipe has neither a chart EC nor a
+  learned effect, for the fresh water; fixed parts on the fresh litres)
+  in the recipe's
+  order, mixes it in and hands it to EC top-up, which judges it at once,
+  learns it when clean and takes over the rest; the card then says what
+  happened and shows EC top-up's own line. A round 1 that did not raise
+  EC (a dry or misplaced probe) locks EC top-up at once and is not
+  learned. On a top-up without a usable level the page asks for the
+  litres in the tank now. Refused in maintenance mode and while EC
+  top-up settles a round. A mix that ends with nothing in (cancelled,
+  stopped, restarted, refused after measuring, the pump, the inlet or the
+  probe ending the measuring, or the tank at the target once measured)
+  undoes the window against mixing twice; the litres it booked stay. One
+  that stopped with a pair half in holds EC and pH control until it is
+  resumed or ended. The plan names the tank's EC, the litres and where
+  they come from, the step limit and that the EC is not temperature
+  compensated; the recipe's amounts stay the second choice, with a note
+  when they land above EC top-up's target. For API clients: `amounts`
+  `"measured"` and `tankNowL` on `/mix/plan` and `/mix/start`, the job
+  state `measuring`, `state.mixWay1` (`hardware`, `blocked`, `recipe`),
+  `controllers.ec.info.recipe`, the
+  job's `noResume`, and 409 `mix.resume_ec_dosed` (`docs/API.md`).
 - **A prototype says it is for testing only** (SD-096, from #250): the
   sign-in page (also when the first password is set), the Home Assistant
   app's introduction and Settings › Display and info say "For testing
@@ -190,6 +223,25 @@ listed in every release under "Security".
   app does.
 
 ### Changed
+- **An EC round over the partial-run limit is made smaller instead of
+  refused** (#143, SD-102, RAT-054): with small pumps or a large tank,
+  EC top-up refused a round that needed more than 6 pump runs per part
+  and the tank stayed below its target. Now the round is made smaller by
+  one factor for all parts (the pair keeps its ratio), its line says so,
+  and the next rounds close the rest. Such a round that should raise EC
+  by less than 0.06 mS/cm, at the effect learned for the recipe, is not
+  judged on its own: clean ones of one recipe are judged and learned
+  together once they should raise EC by 0.06 between them, so very slow
+  pumps stay usable, a recipe with a small effect is not locked, and a
+  dry probe still locks EC top-up.
+- **EC top-up's lock says what to check** (#143, SD-102): "EC didn't
+  rise after dosing – check the probe, pumps and bottles, then release",
+  as the lock now also follows round 1 of a mix to the target, not only
+  two rounds of its own; the event of two rounds without effect names
+  the probe too.
+- **A Stop or a restart with a pair half in names the part still
+  missing** (#143, RAT-054), as cancelling a mix already did; after a
+  restart as an alarm.
 - **Plan: the demo goes public after 0.1.0-proto.5** (SD-100): the demo
   starting in English (#302) is a precondition of proto.5, and the demo
   is announced to a wider public only once proto.5 is released.
@@ -625,6 +677,12 @@ listed in every release under "Security".
   frees when it ends, also after a crash. A link planted under that name
   is not followed, and a data folder it cannot read stays as it was
   (SD-074).
+- **A chart EC raised on a recipe's same parts forgets what was learned**
+  (#143, SD-092, SD-102): a recipe whose chart EC was raised above its
+  learned effect, with the amounts left as they were, kept that effect,
+  although SD-092 says it is forgotten (it may be a stronger product in
+  the same bottles). Now it is forgotten, by an edit and by an import,
+  and EC top-up starts again from the recipe's new start.
 - **A flood no longer locks the level and cuts the watering pump**
   (#324, SD-101): in ebb and flow, a flood can take more than 20 L out of
   the tank within minutes, and the drain-back brings it back as fast.

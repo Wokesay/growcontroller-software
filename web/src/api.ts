@@ -40,9 +40,10 @@ export type CtlStatus = {
 export type JobStep = { name: string; canister: string; color: string; pair: string; ml: number | null; mlDone: number; state: string };
 export type Job = {
   id: string; type: "mix" | "manual" | "calibration" | "prime";
-  state: "running" | "waiting_user" | "mixing" | "settling" | "done" | "failed" | "aborted";
+  state: "running" | "waiting_user" | "mixing" | "settling" | "measuring" | "done" | "failed" | "aborted";
   index: number; steps: JobStep[]; message: Msg; startedAt: number; finishedAt: number; guided: boolean;
   waitLeftS?: number; circulating?: boolean | null; pumpStands?: boolean;
+  noResume?: Msg;  // a way-1 mix stopped part way that the hub will not resume, and why (SD-102)
   info: Record<string, any>;
 };
 
@@ -69,6 +70,8 @@ export type HubState = {
   ports: Port[]; devices: Device[]; readings: Record<string, Reading>;
   tank: { volumeL: number | null; source: "level" | "mix"; capacityL: number | null; minL: number | null };
   controllers: { ec: CtlStatus; ph: CtlStatus; refill: CtlStatus; circulation: CtlStatus };
+  // Mixing to the target with the probe (SD-102 D1): an EC probe and a circulation pump assigned, why it cannot run now
+  mixWay1: { hardware: boolean; blocked: Msg | null; recipe: string | null };
   outputs: Record<string, boolean>;
   job: Job | null; lastJob: Job | null;
   dosing: { order: string; purpose: string; canister: string; name: string; ml: number | null; mlDone: number; run: number; runs: number } | null;
@@ -131,7 +134,10 @@ export type MixPlan = {
   steps: { canister: string; name: string; color: string; pair: string; ml: number | null; mlPerL: number | null; flowMlPerMin: number | null; runs: number[]; fixed?: boolean }[];
   errors: Msg[]; warnings: Msg[]; after: Msg; totalMl: number; totalMs: number;
   // A fixed pattern to a target EC (SD-098): the factor on the scaled parts (null while refused), the EC to expect, notes
-  amounts: "recipe" | "target" | ""; targetEc: number | null; waterEc: number | null; factor: number | null; expectedEc: number | null; infos: Msg[];
+  amounts: "recipe" | "target" | "measured" | ""; targetEc: number | null; waterEc: number | null; factor: number | null; expectedEc: number | null; infos: Msg[];
+  // Way 1 (SD-102): the litres the scaled parts are worked out on and where from, the effect, the step limit cut
+  tankL: number | null; litresFrom: "level" | "entered" | ""; effect: number | null; capped: boolean;
+  ecTarget: number | null;  // EC control's set target; targetEc is where it aims, below it by the pH reserve
 };
 
 export type SeriesData = { series: string; stepS: number; t: number[]; avg: (number | null)[]; min: (number | null)[]; max: (number | null)[] };
