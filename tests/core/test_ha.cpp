@@ -125,7 +125,8 @@ TEST_CASE("Home Assistant: the mapping is checked before anything is read") {
                                                       {"http://[::1]:8123/core/", "http://[::1]:8123/core"},
                                                       {"http://ha/core///", "http://ha/core"},
                                                       {"http://home_assistant:8123", "http://home_assistant:8123"}};
-  for (const auto& [url, normal] : kept) {
+  for (const auto& pair : kept) {
+    const auto url = pair.first, normal = pair.second;  // no structured binding: CAPTURE reads it in a lambda (#309)
     CAPTURE(url);
     CHECK(ha::parseMapping({{"url", url}}, err).url == normal);
     CHECK(err.empty());

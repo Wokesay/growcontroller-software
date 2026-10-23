@@ -681,9 +681,10 @@ TEST_CASE("Storage: after an import onto a fresh hub every stock is unknown and 
   c.ok("POST", "/api/v1/config/import", file);
   const json stock = c.state()["stock"];
   REQUIRE(stock.contains("part-a"));
-  for (const auto& [id, ml] : stock.items()) {
+  for (const auto& item : stock.items()) {
+    const std::string& id = item.key();  // no structured binding: CAPTURE reads it in a lambda (#309)
     CAPTURE(id);
-    CHECK(ml.is_null());
+    CHECK(item.value().is_null());
   }
   c.ok("POST", "/api/v1/canisters", {{"id", "part-a"}, {"name", "Part A new"}});
   CHECK(c.state()["stock"]["part-a"].is_null());

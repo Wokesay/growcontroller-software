@@ -266,11 +266,8 @@ tools/dev.sh
   ninja-build g++`, plus Node.js 22 from [nodejs.org](https://nodejs.org/)
   or your version manager. Debian 11 ships a CMake that is too old.
 - **macOS:** the Xcode command line tools (`xcode-select --install`), then
-  `brew install cmake ninja node`. Until
-  [issue #309](https://github.com/Wokesay/growcontroller-software/issues/309)
-  is fixed, a compiler warning stops the build with Apple's compiler:
-  run `cmake -S . -B build -G Ninja -DGC_WERROR=OFF` once before
-  `tools/dev.sh`. CI builds the macOS package on macOS 14.
+  `brew install cmake ninja node`. CI builds the macOS package on
+  macOS 14 and every target with clang.
 - **Windows:** the simplest way is WSL 2 with Ubuntu and the steps above;
   the browser on Windows reaches `http://127.0.0.1:8080`. A native build
   with Visual Studio 2022 is what CI does for the Windows package

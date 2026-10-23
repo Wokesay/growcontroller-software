@@ -40,8 +40,8 @@ The CI (`.github/workflows/ci.yml`) runs on every PR and every push to
 `main`. For a change to code it runs exactly these steps plus E2E, the
 firmware build for both boards (N32R16V, N8R8), the simulator packages for Windows, macOS and Linux
 (each started with arguments and plainly, as by a double click; on macOS and Linux also with a data
-folder it cannot read, SD-074, and with no folder for the data to be found, #213; `tools/package.sh`) and
-the Home Assistant app image.
+folder it cannot read, SD-074, and with no folder for the data to be found, #213; `tools/package.sh`),
+the Home Assistant app image and a build of every target with clang, the compiler family of the Mac (#309).
 For a docs-only change its first job `changes` (`tools/ci_changes.mjs`)
 skips these heavy jobs, and only the quick checks run
 (`.github/workflows/checks.yml`: architecture rules, the CI and release
