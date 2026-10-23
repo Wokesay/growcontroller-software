@@ -41,6 +41,9 @@ class SensorTruth {
   static std::optional<Msg> checkCalibration(const std::string& kind, const json& data);
   // Eine eigene Dosierung erklärt einen Sprung bis zu diesem Zeitpunkt (RAT-042).
   void expectChange(const std::string& role, Ms until);
+  // A reading at or below `upTo` counts as explained until then; one above it does not, and one not
+  // known explains nothing. One caller per role: each call replaces the bound, renewed on every tick (SD-101).
+  void expectChangeUpTo(const std::string& role, Ms until, double upTo);
 
   const Reading& get(const std::string& role) const;
   // How old a value of this role may be before it is stale: the catalog's
@@ -65,6 +68,8 @@ class SensorTruth {
     Ms lastTs = 0;
     std::deque<std::pair<Ms, double>> window;  // für die Sprungprüfung
     Ms explainedUntil = 0;
+    Ms boundedUntil = 0;  // explained up to `bound` (SD-101)
+    double bound = kNaN;
     // A sensor on its own schedule (SD-035): the device the gaps belong to,
     // its last report and the last gaps between reports
     bool ownSchedule = false;

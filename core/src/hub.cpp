@@ -691,6 +691,46 @@ void Hub::watchClock(Ms now) {
   lastTickMs_ = now;
 }
 
+// A flood takes water out of the tank and the drain-back brings it back, never above where a run of the
+// series started within SD-099's longest drain-back of 30 min. So the running watering pump explains a
+// level up to 2 L above the lowest reading of the run, a fall; until 10 min after it stops, a level up to
+// 2 L above the highest level such a run started at. A reading above is judged as any change: more than
+// 20 L within 5 min locks, so a sensor that jumps high still does. A run that starts within the 10 min
+// continues the series. A state not known counts as off; a level not usable when a run started explains
+// nothing for that run, nor after the stop for its series (RAT-042, SD-101, #324)
+void Hub::announceWatering(Ms now) {
+  constexpr double kGateL = 2.0;  // a gate, not a threshold: above it the 20 L apply (an assumption)
+  constexpr Ms kDrainBack = 30 * kMinute;
+  const bool on = act_.roleState(cfg_, "zone.irrigation_pump").value_or(false);
+  const auto& lv = truth_.get("tank.level");
+  const double l = lv.usable() ? *lv.value : kNaN;  // the last reading, before this tick's
+  if (on && !waterOn_) {
+    if (now >= waterTailUntil_) waterStarts_.clear();
+    // A state that flaps is one run within a minute, so the list holds at most one start a minute
+    if (!waterStarts_.empty() && now - waterStarts_.back().first < kMinute) {
+      double& last = waterStarts_.back().second;
+      last = isNum(last) && isNum(l) ? std::max(last, l) : kNaN;
+    } else {
+      waterStarts_.emplace_back(now, l);
+    }
+    waterLowL_ = l;
+  }
+  while (waterStarts_.size() > 1 && now - waterStarts_.front().first > kDrainBack) waterStarts_.pop_front();
+  if (on && isNum(waterLowL_) && isNum(l)) waterLowL_ = std::min(waterLowL_, l);
+  waterOn_ = on;
+  if (on) waterTailUntil_ = now + 10 * kMinute;
+  if (now >= waterTailUntil_) return;
+  double topL = kNaN;
+  for (const auto& start : waterStarts_) {
+    if (!isNum(start.second)) {
+      topL = kNaN;
+      break;
+    }
+    topL = isNum(topL) ? std::max(topL, start.second) : start.second;
+  }
+  truth_.expectChangeUpTo("tank.level", waterTailUntil_, (on ? waterLowL_ : topL) + kGateL);
+}
+
 // The wall clock jumped: deadlines in wall time keep their distance; jump
 // locks and maintenance never last longer than they can (RAT-044).
 void Hub::shiftDeadlines(Epoch jump, Epoch epoch) {
@@ -720,7 +760,7 @@ void Hub::tickImpl() {
   pumps_ = pumpsFrom(devices_);
   detectDevices();
   // Angekündigte Änderungen erklären Sprünge (Quelle: RAT-042): eigene
-  // Mischläufe und Handgaben, offener Zulauf, Kalibrierung, Pflegemodus.
+  // Mischläufe und Handgaben, offener Zulauf, laufende Gießpumpe (nur der Füllstand), Kalibrierung, Pflegemodus.
   if (userJobActive() || (doser_.active() && doser_.active()->purpose != "ph" && doser_.active()->purpose != "ec")) {
     truth_.expectChange("tank.ec", now + 10 * kMinute);
     truth_.expectChange("tank.ph", now + 10 * kMinute);
@@ -732,6 +772,7 @@ void Hub::tickImpl() {
   // valve closes, as the readings follow late (RAT-042, #272)
   if (act_.roleState(cfg_, "tank.inlet").value_or(false))
     for (const char* r : {"tank.ec", "tank.ph", "tank.level", "tank.water_temp"}) truth_.expectChange(r, now + 5 * kMinute);
+  announceWatering(now);
   // Maintenance explains a change only 10 s ahead, never past its end, renewed every tick before
   // the readings are judged: ended early, a jump locks again within 10 s (RAT-042, #292)
   if (epoch < maintenanceUntil_)

@@ -625,6 +625,20 @@ listed in every release under "Security".
   frees when it ends, also after a crash. A link planted under that name
   is not followed, and a data folder it cannot read stays as it was
   (SD-074).
+- **A flood no longer locks the level and cuts the watering pump**
+  (#324, SD-101): in ebb and flow, a flood can take more than 20 L out of
+  the tank within minutes, and the drain-back brings it back as fast.
+  The level's jump lock took that for a faulty sensor: it locked the
+  level for 15 min, and the watering pump went off mid-flood as "level
+  invalid". Now, while the watering pump runs, a fall of the level counts
+  as explained, and until 10 min after it stops a rise back up to where
+  the run started (2 L margin; of a series of runs, those started within
+  the last 30 min). A level that jumps past that, the dangerous direction
+  for the dry-run protection, is judged as before: more than 20 L within
+  5 min locks. Jumps of EC, pH and water temperature still lock, and a
+  pump whose state is not known explains nothing. The trade-off: a level
+  that jumps low, or high back up to where the run started, while
+  watering or within 10 min after it is no longer locked or alarmed.
 - **The simulator builds on a Mac again** (#309): Apple's compiler
   stopped `tools/dev.sh` at a warning about a C++20 extension in the
   sensor truth's sign-of-life check, which GCC did not report. The code
