@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "gc/messages.hpp"
 #include "gc/mix.hpp"
 
 using namespace gc;
@@ -211,6 +212,31 @@ TEST_CASE("EC-Gabe: 0,8 × Lücke, gemeinsam skaliert (M5-1, RAT-054/RAT-055)") 
   REQUIRE(c.ok);
   CHECK(c.factor == doctest::Approx(0.5));
   CHECK(c.steps[0].ml / c.steps[1].ml == doctest::Approx(1.0));
+}
+
+TEST_CASE("EC dose over the partial-run limit: made smaller by one factor for all parts, never refused or capped per pump (SD-102, RAT-054)") {
+  Fix f;
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 2.0}, {"b", 1.0}}};
+  f.pumps["C1"].flowMlPerMin = 6.0;  // a small pump: part A alone needs more than 6 runs of 60 s
+  // 100 L, gap 1.0: 0.8 / 0.275 = 2.91 ml/L of the recipe, A 194 ml = 32 min at 6 ml/min
+  const auto d = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 100, 1.0, 0.275, 0.275, 1.0);
+  REQUIRE(d.ok);
+  CHECK(d.limited);
+  CHECK(d.steps[0].ml == doctest::Approx(36.0).epsilon(0.001));  // 6 runs × 60 s × 6 ml/min
+  CHECK(d.steps[0].ml == doctest::Approx(2.0 * d.steps[1].ml));  // the pair keeps its ratio
+  CHECK(d.steps[0].runs.size() <= 6);
+  CHECK(d.factor == doctest::Approx(36.0 / (0.8 / 0.275 * 2.0 / 3.0 * 100)).epsilon(0.001));
+  // Within the limit nothing changes
+  const auto small = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 10, 1.0, 0.275, 0.275, 1.0);
+  REQUIRE(small.ok);
+  CHECK_FALSE(small.limited);
+  CHECK(small.factor == doctest::Approx(1.0));
+  // Made smaller, a part below one accurate run still refuses the round, for the whole pair
+  f.cfg.recipes[0] = {"r", "Test", "", {{"a", 2.0}, {"b", 0.01}}};  // B 1.4 ml is 1.7 s before, 0.2 s after
+  const auto tiny = planEcDose(f.cfg, f.pumps, f.cfg.recipes[0], 100, 1.0, 0.275, 0.275, 1.0);
+  CHECK_FALSE(tiny.ok);
+  CHECK(tiny.steps.empty());
+  CHECK(tiny.reason.key == "mix.part");
 }
 
 TEST_CASE("EC-Deckel: kleine gelernte Wirkung weitet ihn nicht auf (M5-4, RAT-056)") {
@@ -666,6 +692,289 @@ TEST_CASE("Fixed pattern to a target EC: refused without a reference, a target i
     p = planMix(f.cfg, f.rt, f.pumps, req, 1790000000, true);
     CHECK_FALSE(hasKey(p.warnings, "mix.ph_gate"));
     CHECK(hasKey(p.infos, "mix.ph_adds_ec"));
+  }
+}
+
+namespace {
+// Way 1 (SD-057, SD-102): to EC control's aim with the tank's probe, as the hub fills the request
+MixRequest measuredReq(double probeEc, double aim, double water = 20, double tankL = 20, const std::string& mode = "new") {
+  MixRequest req{"r", water, mode, true};
+  req.amounts = "measured";
+  req.ecControlOn = true;
+  req.ecControlTarget = aim;
+  req.ecAim = aim;
+  req.ecTolerance = 0.1;
+  req.maxEcStep = 1.0;
+  req.ecRecipe = "r";
+  req.probeEc = probeEc;
+  req.tankL = tankL;
+  req.enteredL = tankL;
+  req.litresFrom = "entered";
+  if (mode == "topup") req.tankNowL = tankL;
+  req.circulationBound = req.circulationOk = true;
+  return req;
+}
+MixPlan measured(Fix& f, const MixRequest& req, bool phAuto = false) { return planMix(f.cfg, f.rt, f.pumps, req, 1790000000, phAuto); }
+}  // namespace
+
+TEST_CASE("Mix to the target with the probe: the first step is 0.8 × the gap, at most the step limit, at the largest effect; the pair in its ratio; fixed parts per fresh litre and in the gap (SD-102, SD-089, RAT-054, RAT-056, RAT-085)") {
+  Fix f;
+  f.cfg.recipes[0].refEc = 3 * 0.275;  // a chart EC at the start effect: the step limit, not the recipe's amounts, bounds round 1
+  SUBCASE("nothing learned, no chart EC: from the start effect") {
+    const auto p = measured(f, measuredReq(0.1, 1.0));  // 0.8 × 0.9 = 0.72 mS/cm, under the step limit
+    REQUIRE(p.ok);
+    CHECK(p.effect == doctest::Approx(0.275));
+    CHECK(p.factor == doctest::Approx(0.72 / 0.275 / 3));
+    CHECK(mlOf(p, "a") == doctest::Approx(2.0 * 0.72 / 0.275 / 3 * 20));
+    CHECK(mlOf(p, "a") == doctest::Approx(2.0 * mlOf(p, "b")));
+    CHECK(p.expectedEc == doctest::Approx(0.82));
+    CHECK_FALSE(p.capped);
+    CHECK(hasKey(p.infos, "mix.measured_uncompensated"));  // no compensation built yet (SD-102 D9)
+    const json j = p;
+    CHECK(j["tankL"] == doctest::Approx(20));
+    CHECK(j["litresFrom"] == "entered");
+    CHECK(j["ecTarget"] == doctest::Approx(1.0));
+  }
+  SUBCASE("a large gap: the step limit, then EC control closes the rest") {
+    const auto p = measured(f, measuredReq(0.0, 1.8));  // 0.8 × 1.8 = 1.44 > 1.0
+    REQUIRE(p.ok);
+    CHECK(p.capped);
+    CHECK(p.expectedEc == doctest::Approx(1.0));
+    CHECK(hasKey(p.infos, "mix.measured_capped"));
+    CHECK(p.after.key == "mix.after_handover_manual");
+  }
+  SUBCASE("the largest known effect: a learned one below the start counts as the start, above the band at its top; a chart EC twice as strong halves the step") {
+    const double base = measured(f, measuredReq(0.0, 1.8)).totalMl;
+    f.rt.ecEffects["r"] = 0.1;
+    CHECK(measured(f, measuredReq(0.0, 1.8)).totalMl == doctest::Approx(base));
+    f.rt.ecEffects["r"] = 2.0;
+    CHECK(measured(f, measuredReq(0.0, 1.8)).totalMl == doctest::Approx(base * 0.275 / 1.1));
+    f.rt.ecEffects.erase("r");
+    f.cfg.recipes[0].refEc = 1.65;  // 0.55 per ml/L over A 2 + B 1
+    CHECK(measured(f, measuredReq(0.0, 1.8)).totalMl == doctest::Approx(base / 2));
+  }
+  SUBCASE("a fixed part goes in per litre of fresh water and counts in the gap") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    const auto p = measured(f, measuredReq(0.0, 1.0));
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "cm") == doctest::Approx(10.0));
+    const double fixedEc = 0.275 * 0.5;
+    CHECK(p.factor == doctest::Approx(0.8 * (1.0 - fixedEc) / 0.275 / 3));
+    CHECK(p.expectedEc == doctest::Approx(0.8 * (1.0 - fixedEc) + fixedEc));
+  }
+  SUBCASE("with a chart EC or a learned effect not bounded by the recipe's amounts: feedback follows") {
+    f.cfg.recipes[0] = {"r", "Test", "", {{"a", 0.2}, {"b", 0.1}}};
+    f.cfg.recipes[0].refEc = 0.3 * 0.275;
+    auto p = measured(f, measuredReq(0.0, 1.0));
+    REQUIRE(p.ok);
+    CHECK(p.factor > 1.0);
+    CHECK(mlOf(p, "a") == doctest::Approx(0.2 * 0.8 / 0.275 / 0.3 * 20));
+    CHECK_FALSE(hasKey(p.infos, "mix.measured_recipe_cap"));
+    f.cfg.recipes[0].refEc = kNaN;
+    f.rt.ecEffects["r"] = 0.275;
+    p = measured(f, measuredReq(0.0, 1.0));
+    CHECK(p.factor > 1.0);
+  }
+  SUBCASE("neither a chart EC nor a learned effect: round 1 doses at most the recipe's amounts on the tank's litres") {
+    f.cfg.recipes[0] = {"r", "Test", "", {{"a", 0.2}, {"b", 0.1}}};
+    const auto p = measured(f, measuredReq(0.0, 1.0, 20, 20));
+    REQUIRE(p.ok);
+    CHECK(p.factor == doctest::Approx(1.0));
+    CHECK(mlOf(p, "a") == doctest::Approx(0.2 * 20));
+    CHECK(p.expectedEc == doctest::Approx(0.275 * 0.3));
+    CHECK(hasKey(p.infos, "mix.measured_recipe_cap"));
+    // on a top-up at most the recipe's amounts for the fresh water, not for the whole tank
+    f.cfg.recipes[0] = {"r", "Test", "", {{"a", 1.0}, {"b", 1.0}}};
+    const auto t = measured(f, measuredReq(1.2, 1.8, 15, 50, "topup"));
+    REQUIRE(t.ok);
+    CHECK(mlOf(t, "a") == doctest::Approx(1.0 * 15));
+    CHECK(hasKey(t.infos, "mix.measured_recipe_cap"));
+    // a chart EC outside the band counts as none
+    f.cfg.recipes[0].refEc = 2 * 0.275 * 10;
+    CHECK(mlOf(measured(f, measuredReq(1.2, 1.8, 15, 50, "topup")), "a") == doctest::Approx(15));
+  }
+}
+
+TEST_CASE("Mix to the target with the probe: within 30 min of the last mix it asks first, naming what would go in twice (SD-102, RAT-003)") {
+  Fix f;
+  f.rt.lastMixAt = 1790000000 - 600;
+  MixRequest req = measuredReq(0.1, 1.0);
+  req.confirmRepeat = false;
+  SUBCASE("no fixed part: it measures and doses only the gap") {
+    const auto p = measured(f, req);
+    CHECK_FALSE(p.ok);
+    CHECK(hasKey(p.errors, "mix.recent_measured_plain"));
+  }
+  SUBCASE("a fixed part would go in twice") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    CHECK(hasKey(measured(f, req).errors, "mix.recent_measured"));
+  }
+  SUBCASE("the recipe's amounts go in twice") {
+    const MixRequest plain{"r", 20, "new", false};
+    CHECK(hasKey(planMix(f.cfg, f.rt, f.pumps, plain, 1790000000, false).errors, "mix.recent"));
+  }
+  SUBCASE("confirmed: it asks nothing") {
+    req.confirmRepeat = true;
+    const auto p = measured(f, req);
+    CHECK(p.ok);
+    CHECK_FALSE(hasKey(p.errors, "mix.recent_measured_plain"));
+  }
+}
+
+TEST_CASE("Mix to the target with the probe: refused with EC control off or without a target, in maintenance, over a round of EC control, for another recipe, without a valid EC (never 0), with a probe calibrated, the circulation pump missing or blocked, the inlet open, unknown litres or more than the tank holds; at the aim with the fixed parts only those (SD-102, R5, RAT-006)") {
+  Fix f;
+  auto refused = [&](const MixRequest& req, const char* key) {
+    const auto p = measured(f, req);
+    CHECK_FALSE(p.ok);
+    CHECK(hasKey(p.errors, key));
+    CHECK(json(p)["factor"].is_null());
+  };
+  auto req = measuredReq(0.1, 1.0);
+  req.ecControlOn = false;
+  refused(req, "mix.measured_off");
+  refused(measuredReq(0.1, kNaN), "mix.measured_no_target");
+  req = measuredReq(0.1, 1.0);
+  req.maintenance = true;  // maintenance explains every jump and holds EC control: the first step would never be judged (D6)
+  refused(req, "mix.measured_maintenance");
+  req = measuredReq(0.1, 1.0);
+  req.ecBusy = true;
+  refused(req, "mix.measured_ec_busy");
+  req = measuredReq(0.1, 1.0);
+  req.ecRecipe = "other";
+  refused(req, "mix.measured_recipe");
+  refused(measuredReq(kNaN, 1.0), "mix.measured_no_ec");
+  req = measuredReq(0.1, 1.0);
+  req.probeCalibrating = true;
+  refused(req, "mix.measured_calibrating");
+  req = measuredReq(0.1, 1.0);
+  req.circulationBound = req.circulationOk = false;
+  refused(req, "mix.measured_no_circ");
+  req = measuredReq(0.1, 1.0);
+  req.circulationOk = false;
+  req.circulationReason = say("act.stopped");
+  refused(req, "mix.measured_circ_blocked");
+  CHECK(measured(f, req).errors.front().args["reason"]["key"] == "act.stopped");  // the block's reason, named
+  req = measuredReq(0.1, 1.0);
+  req.inletOpen = true;
+  refused(req, "mix.measured_inlet");
+  refused(measuredReq(0.1, 1.0, 20, kNaN), "mix.measured_no_litres");
+  // A top-up without a usable level asks for the litres in the tank now, at least the fresh water (D4)
+  req = measuredReq(0.5, 1.0, 10, 40, "topup");
+  req.tankNowL = kNaN;
+  refused(req, "mix.measured_tank_now");
+  req.tankNowL = 8;
+  refused(req, "mix.measured_tank_now_low");
+  // More than the tank holds: entered, or a level read too high
+  refused(measuredReq(0.1, 1.0, 20, 70), "mix.over_capacity");
+  req = measuredReq(0.1, 1.0, 20, 70);
+  req.litresFrom = "level";
+  refused(req, "mix.measured_level_high");
+  // At the aim minus the tolerance, as EC control judges it: nothing goes in, said against its set target; on a
+  // new batch the old tank is still in, so it says to drain first
+  refused(measuredReq(0.95, 1.0), "mix.measured_at_target_new");
+  refused(measuredReq(0.95, 1.0, 10, 40, "topup"), "mix.measured_at_target");
+  req = measuredReq(0.1, 1.0, 20, 0.2);
+  req.litresFrom = "level";
+  refused(req, "mix.measured_tank_empty");
+  f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+  auto p = measured(f, measuredReq(0.95, 1.0));
+  REQUIRE(p.ok);
+  CHECK(std::isnan(mlOf(p, "a")));
+  CHECK(mlOf(p, "cm") == doctest::Approx(10.0));
+  CHECK(hasKey(p.warnings, "mix.measured_at_target_fixed"));
+  // The tank alone below it, but with the fixed parts within the tolerance: only the fixed parts, as EC
+  // control would dose nothing either (D5)
+  p = measured(f, measuredReq(0.8, 1.0));  // 0.8 + 0.275 × 0.5 = 0.94 ≥ 0.9
+  REQUIRE(p.ok);
+  CHECK(std::isnan(mlOf(p, "a")));
+  CHECK(mlOf(p, "cm") == doctest::Approx(10.0));
+  CHECK(p.expectedEc == doctest::Approx(0.8 + 0.275 * 0.5));
+}
+
+TEST_CASE("Mix to the target with the probe: a top-up on the tank's litres and fixed parts on the fresh ones; the notes; the recipe's amounts above EC control's target are named (SD-102, RAT-011, RAT-046, RAT-012)") {
+  Fix f;
+  f.cfg.recipes[0].refEc = 3 * 0.275;  // a chart EC: the step limit, not the recipe's amounts, bounds round 1
+  SUBCASE("top-up: scaled parts on the tank's 40 L, a fixed part on the fresh 10 L") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    auto req = measuredReq(0.5, 1.0, 10, 40, "topup");
+    req.litresFrom = "level";
+    const auto p = measured(f, req);
+    REQUIRE(p.ok);
+    const double fixedEc = 0.275 * 0.5 * 10 / 40;
+    const double factor = 0.8 * (1.0 - 0.5 - fixedEc) / 0.275 / 3;
+    CHECK(mlOf(p, "a") == doctest::Approx(2.0 * factor * 40));
+    CHECK(mlOf(p, "cm") == doctest::Approx(5.0));
+    CHECK_FALSE(hasKey(p.warnings, "mix.water_ec_high"));  // a new fill only
+    CHECK_FALSE(hasKey(p.warnings, "mix.measured_litres"));  // the fresh water alone says nothing about the tank
+  }
+  SUBCASE("a new fill whose level contradicts the litres typed: the fixed parts on the level's litres too") {
+    f.cfg.recipes[0].steps.push_back({"cm", 0.5, true});
+    auto req = measuredReq(0.0, 1.0, 30, 40);
+    req.litresFrom = "level";
+    req.enteredL = 30;
+    const auto p = measured(f, req);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "cm") == doctest::Approx(0.5 * 40));  // all the water is fresh
+    CHECK(hasKey(p.warnings, "mix.measured_litres"));
+    req.waterL = req.enteredL = 400;  // typed ten times too much: refused as with the other ways
+    CHECK(hasKey(measured(f, req).errors, "mix.over_capacity"));
+  }
+  SUBCASE("a top-up with more fresh water than the level reads: refused") {
+    auto req = measuredReq(0.5, 1.0, 10, 8, "topup");
+    req.litresFrom = "level";
+    CHECK(hasKey(measured(f, req).errors, "mix.measured_fresh_above_level"));
+  }
+  SUBCASE("top-up without a usable level: on the litres in the tank now, as entered") {
+    auto req = measuredReq(0.5, 1.0, 10, 25, "topup");
+    const auto p = measured(f, req);
+    REQUIRE(p.ok);
+    CHECK(mlOf(p, "a") == doctest::Approx(2.0 * 0.8 * 0.5 / 0.275 / 3 * 25));
+  }
+  SUBCASE("entered litres more than 10 % off the level: said, the level counts") {
+    auto req = measuredReq(0.1, 1.0, 30, 40);
+    req.litresFrom = "level";
+    req.enteredL = 30;
+    CHECK(hasKey(measured(f, req).warnings, "mix.measured_litres"));
+    req.enteredL = 38;
+    CHECK_FALSE(hasKey(measured(f, req).warnings, "mix.measured_litres"));
+  }
+  SUBCASE("water above 0.4 on a new fill; below pH control's EC lock the pH by hand") {
+    CHECK(hasKey(measured(f, measuredReq(0.5, 1.4)).warnings, "mix.water_ec_high"));
+    auto req = measuredReq(0.1, 0.6);
+    req.phEcFloor = 0.8;
+    auto p = measured(f, req, true);
+    CHECK(hasKey(p.warnings, "mix.ph_gate"));
+    CHECK(p.after.key == "mix.after_handover_manual");
+    req.phEcFloor = 0.5;
+    p = measured(f, req, true);
+    CHECK_FALSE(hasKey(p.warnings, "mix.ph_gate"));
+    CHECK(p.after.key == "mix.after_handover_auto");
+    req.ecControlTarget = 0.75;  // the aim 0.15 below it, the room the pH correction takes (D5)
+    p = measured(f, req, true);
+    CHECK_FALSE(hasKey(p.infos, "mix.ph_adds_ec"));  // the aim already keeps room for it (D5)
+    CHECK(json(p)["ecTarget"] == doctest::Approx(0.75));
+  }
+  SUBCASE("the recipe's amounts with EC control on: landing above its target is named, as EC is never lowered") {
+    f.cfg.recipes[0].refEc = 1.65;
+    auto req = measuredReq(0.3, 1.4);
+    req.amounts = "recipe";
+    CHECK(hasKey(measured(f, req).warnings, "mix.recipe_above_target"));  // 1.65 + 0.3 > 1.4 + 0.1
+    req.ecRecipe = "other";  // the better way only where it is one
+    CHECK(hasKey(measured(f, req).warnings, "mix.recipe_above_target_plain"));
+    req.ecRecipe = "r";
+    req.circulationOk = false;
+    CHECK(hasKey(measured(f, req).warnings, "mix.recipe_above_target_plain"));
+    req.circulationOk = true;
+    req.ecControlTarget = 2.0;
+    CHECK_FALSE(hasKey(measured(f, req).warnings, "mix.recipe_above_target"));
+    req.ecControlTarget = 1.4;
+    req.probeEc = 1.35;  // the old batch still in: drain first, not "mix to the target"
+    auto w = measured(f, req).warnings;
+    CHECK(hasKey(w, "mix.recipe_on_full_tank"));
+    CHECK_FALSE(hasKey(w, "mix.recipe_above_target"));
+    req.probeEc = 0.3;
+    req.mode = "topup";
+    CHECK_FALSE(hasKey(measured(f, req).warnings, "mix.recipe_above_target"));
   }
 }
 

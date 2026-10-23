@@ -351,7 +351,9 @@ double World::rawEc(const Device* d) const {
   if (tank.volumeL < 0.5 && !probeBuffer) truth = 0.0;
   double raw = truth * ecFactor + noise(0.004);
   if (d) {
-    if (d->fault == "ec_zero") return 0.003;
+    // dry or out of the water: near 0 with the probe's noise, so the hub's standstill check does not take
+    // it for frozen (an assumption, docs/SIMULATOR.md)
+    if (d->fault == "ec_zero") return std::round(std::max(0.0, 0.01 + noise(0.004)) * 1000.0) / 1000.0;
     if (d->fault == "frozen") return d->frozenEc;
   }
   return std::max(0.0, std::round(raw * 1000.0) / 1000.0);

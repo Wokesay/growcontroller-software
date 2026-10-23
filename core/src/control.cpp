@@ -39,6 +39,7 @@ constexpr double kEcFromPhDown = 1.04;    // mS/cm je ml/L pH− (RAT-053)
 constexpr Epoch kEcRestS = 240;           // Ruhezeit EC-Gate nach EC-Gabe (RAT-058)
 constexpr Epoch kAbortRestS = 15 * 60;    // rest after an aborted dose; also the least a round cut by a Stop settles (SD-073)
 constexpr Ms kMaxPhAge = 10 * kMinute;    // älter → keine Korrektur (RAT-043)
+constexpr double kSmallRoundEc = 0.06;    // three times the no-effect threshold of 0.02 (SD-102)
 
 std::string mmss(Ms ms) {
   Ms s = std::max<Ms>(0, ms / 1000);
@@ -88,6 +89,20 @@ bool enabled(const Ctx& c, const std::string& fn) {
 
 // ---------------------------------------------------------------- EC
 
+double ecAim(const Ctx& c) {
+  auto p = effectiveParams(c.cat, c.cfg, "ec_control");
+  double target = p.num("ec_target");
+  // Vorhalt für die folgende pH−-Gabe (RAT-053): das pH− hebt die EC mit.
+  const auto& ph = c.truth.get("tank.ph");
+  if (isNum(target) && enabled(c, "ph_control") && ph.usable()) {
+    auto pp = effectiveParams(c.cat, c.cfg, "ph_control");
+    double gap = *ph.value - pp.num("ph_target");
+    double eff = clampEffect(c.rt.phEffect, kPhStartEffect);
+    if (gap > 0) target -= std::min(0.3, gap / eff * kEcFromPhDown);
+  }
+  return target;
+}
+
 void EcController::tick(const Ctx& c, ControlEnv& env) {
   st_.checks.clear();
   st_.info = json::object();
@@ -102,27 +117,20 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   }
   auto p = effectiveParams(c.cat, c.cfg, "ec_control");
   const auto& ec = c.truth.get("tank.ec");
-  const auto& ph = c.truth.get("tank.ph");
   double tol = p.num("ec_tolerance");
-  double target = p.num("ec_target");
-  // Vorhalt für die folgende pH−-Gabe (RAT-053): das pH− hebt die EC mit.
-  if (enabled(c, "ph_control") && ph.usable()) {
-    auto pp = effectiveParams(c.cat, c.cfg, "ph_control");
-    double gap = *ph.value - pp.num("ph_target");
-    double eff = clampEffect(c.rt.phEffect, kPhStartEffect);
-    if (gap > 0) target -= std::min(0.3, gap / eff * kEcFromPhDown);
-  }
+  const double target = ecAim(c);
   target_ = target;
   const RecipeCfg* recipe = activeRecipe(c, p);
   st_.info = {{"target", numOrNull(p.num("ec_target"))}, {"targetEffective", numOrNull(target)},
-              {"tolerance", numOrNull(tol)}, {"round", round_}};
+              {"tolerance", numOrNull(tol)}, {"round", round_}, {"recipe", recipe ? json(recipe->id) : json(nullptr)}};
 
   st_.checks.push_back({ec.usable(), ec.usable() ? say("check.ec_ok") : say("check.ec_bad", {{"reason", ec.reason}})});
   st_.checks.push_back({recipe != nullptr, recipe ? say("check.recipe", {{"name", recipe->name}}) : say("check.no_recipe")});
   bool circOk = !env.act.inhibit(c, "tank.circulation").has_value();
   st_.checks.push_back({circOk, say(circOk ? "check.circ_free" : "check.circ_blocked")});
   st_.checks.push_back({!c.rt.latches.count("ec.no_effect"), say("check.no_latch")});
-  st_.checks.push_back({!env.userJob, say(env.userJob ? "check.job_running" : "check.no_job")});
+  st_.checks.push_back({!env.userJob && !env.pairOpen,
+                        env.userJob ? say("check.job_running") : env.pairOpen ? say("check.pair_open") : say("check.no_job")});
 
   if (!automation(c, st_)) {
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.auto_off"));
@@ -134,6 +142,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ctl.calibrating");
     if (phase_ == Phase::Dosing && env.doser.busy()) env.doser.abort(c, env.act, say("abort.calibrating"));
     reset();
+    small_ = {};  // readings before and after a calibration are not comparable
     return;
   }
   if (c.rt.latches.count("ec.no_effect")) {
@@ -166,7 +175,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     }
   }
   // Wirkung nur aus sauberen Gaben lernen: kein Zulauf, keine fremde Gabe dazwischen (RAT-057).
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ec-"))) clean_ = false;
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ec-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = quiet_ ? "waiting" : "working";
@@ -190,15 +199,40 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
     double rise = *ec.value - ecBefore_;
+    // A round made smaller for slow pumps that should raise EC by less than 0.06 mS/cm says too little on
+    // its own: clean ones of one recipe are judged and learned together once they should raise EC by 0.06
+    // between them, so any pump stays usable and a dry probe is still caught (SD-102, PD-317). Each round's
+    // rise counts from its own start, so what happens to the tank between rounds stays out; a round that
+    // is not clean is left out, and the sum goes on.
+    const bool tiny = limited_ && isNum(expectedRise_) && expectedRise_ < kSmallRoundEc;
+    const double mlPerL = isNum(env.volumeL) && env.volumeL > 0 ? mlRound_ / env.volumeL : kNaN;
+    double judged = kNaN, judgedMlPerL = kNaN;  // the rise judged and learned now, and the ml per litre behind it
+    if (small_.recipe != roundRecipe_ || (clean_ && !tiny)) small_ = {};
+    if (clean_ && !tiny) {
+      judged = rise;
+      judgedMlPerL = mlPerL;
+    } else if (clean_) {
+      small_.recipe = roundRecipe_;
+      small_.rise += rise;
+      small_.expected += expectedRise_;
+      if (isNum(mlPerL)) small_.mlPerL += mlPerL;
+      else small_.learnable = false;
+      if (small_.expected >= kSmallRoundEc) {
+        judged = small_.rise;
+        judgedMlPerL = small_.learnable ? small_.mlPerL : kNaN;
+        small_ = {};
+      }
+    }
     // Learned for the recipe the round dosed, within the band, below it that recipe's start (SD-092, RAT-057)
-    if (const RecipeCfg* dosed = c.cfg.recipe(roundRecipe_); dosed && clean_ && mlRound_ > 0 && isNum(env.volumeL)) {
-      const double observed = rise / (mlRound_ / env.volumeL);
+    if (const RecipeCfg* dosed = c.cfg.recipe(roundRecipe_); dosed && isNum(judged) && isNum(judgedMlPerL) && judgedMlPerL > 0) {
+      const double observed = judged / judgedMlPerL;
       c.rt.ecEffects[roundRecipe_] = c.rt.ecEffect = clampEcEffect(observed, recipeEffect(*dosed, kNaN).start);
     }
-    if (clean_) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
+    if (isNum(judged)) noEffect_ = judged < 0.02 ? noEffect_ + 1 : 0;
     if (noEffect_ >= 2) {
       c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
       noEffect_ = 0;  // nach dem Quittieren wieder zwei Runden
+      small_ = {};
       c.log.add(c.epoch, "alarm", "alarm", say("ev.ec.no_effect"), say("ev.ec.no_effect.text"));
       reset();
       return;
@@ -233,7 +267,9 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   }
   if (phase_ == Phase::Dosing) {
     st_.state = "working";
-    st_.line = say("ec.dosing", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_}});
+    st_.line = limited_ ? say("ec.dosing_limited", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_},
+                                                    {"runs", c.cfg.limits.bounded().maxPartialRuns}})
+                        : say("ec.dosing", {{"from", numOrNull(ecBefore_)}, {"target", numOrNull(target)}, {"round", round_}});
     if (!env.doser.busy() && !queue_.empty() && env.circulationOn) {
       DoseOrder o;
       o.id = "ec-" + std::to_string(++seq_);
@@ -292,9 +328,9 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ec.cooldown");
     return;
   }
-  if (env.userJob) {
+  if (env.userJob || env.pairOpen) {
     st_.state = "waiting";
-    st_.line = say("ec.wait_job");
+    st_.line = say(env.userJob ? "ec.wait_job" : "ec.wait_pair");
     return;
   }
   if (env.refilling || env.refillDue) {
@@ -325,10 +361,51 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   ecBefore_ = *ec.value;
   mlRound_ = 0;
   clean_ = true;
+  limited_ = plan.limited;
+  {
+    double ml = 0;
+    for (const auto& s : plan.steps) ml += isNum(s.ml) ? s.ml : 0;
+    // at the effect the round is planned on: a recipe that learned a small effect is not expected to do more
+    expectedRise_ = isNum(env.volumeL) && env.volumeL > 0 ? eff.dose * ml / env.volumeL : kNaN;
+  }
   queue_ = plan.steps;
   phase_ = Phase::Dosing;
   st_.state = "working";
-  st_.line = say("ec.start", {{"from", *ec.value}, {"target", numOrNull(target)}, {"round", round_}});
+  st_.line = limited_ ? say("ec.dosing_limited", {{"from", *ec.value}, {"target", numOrNull(target)}, {"round", round_},
+                                                  {"runs", c.cfg.limits.bounded().maxPartialRuns}})
+                      : say("ec.start", {{"from", *ec.value}, {"target", numOrNull(target)}, {"round", round_}});
+}
+
+EcController::FirstStep EcController::adoptFirstStep(const Ctx& c, const FirstStepIn& in) {
+  reset();
+  cut_ = quiet_ = false;
+  cutFloor_ = 0;
+  // A step not judged (fresh water, a refill, maintenance) says nothing about the probe: what was counted stays
+  if (in.judge) {
+    noEffect_ = 0;
+    small_ = {};
+  }
+  const double rise = in.ecNow - in.ecBefore;
+  const bool expected = isNum(in.expectedRise);
+  if (in.judge && rise < std::max(0.02, 0.25 * (expected ? in.expectedRise : 0))) {
+    c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
+    c.log.add(c.epoch, "alarm", "alarm", say("ev.ec.first_no_effect"),
+              expected ? say("ev.ec.first_no_effect.text", {{"from", in.ecBefore}, {"to", in.ecNow}, {"expected", in.expectedRise}})
+                       : say("ev.ec.first_no_effect.text_plain", {{"from", in.ecBefore}, {"to", in.ecNow}}));
+    return FirstStep::Locked;
+  }
+  if (in.judge && expected && rise > 4 * in.expectedRise)
+    c.log.add(c.epoch, "control", "warn", say("ev.ec.first_strong"), say("ev.ec.first_strong.text", {{"rise", rise}, {"expected", in.expectedRise}}));
+  if (const RecipeCfg* dosed = c.cfg.recipe(in.recipe); dosed && in.learn && in.ml > 0 && isNum(in.litres) && in.litres > 0)
+    c.rt.ecEffects[in.recipe] = c.rt.ecEffect = clampEcEffect(rise / (in.ml / in.litres), recipeEffect(*dosed, kNaN).start);
+  phase_ = Phase::Settling;
+  settleUntil_ = c.now;
+  round_ = 1;
+  startEc_ = ecBefore_ = in.ecBefore;
+  roundRecipe_ = in.recipe;
+  mlRound_ = 0;    // learned here already
+  clean_ = false;  // … and judged: its settle neither learns nor counts it again
+  return FirstStep::Adopted;
 }
 
 void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgress& p) {
@@ -350,6 +427,7 @@ void EcController::onDoseFinished(const Ctx& c, ControlEnv& env, const DoseProgr
 }
 
 void EcController::recipeChanged(const RecipeCfg& r) {
+  if (r.id == small_.recipe) small_ = {};  // small rounds summed on the parts as they were (RAT-057)
   if (r.id != roundRecipe_) return;  // the recipe the round doses, whatever the phase's is now
   clean_ = false;
   queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
@@ -443,7 +521,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
   }
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || foreignDose(env, "ph-"))) clean_ = false;
+  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ph-"))) clean_ = false;
   if (phase_ == Phase::Settling) {
     if (c.now < settleUntil_) {
       st_.state = quiet_ ? "waiting" : "working";
@@ -527,9 +605,9 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("ph.wait_rest", {{"left", mmss((kEcRestS - sinceEc) * 1000)}});
     return;
   }
-  if (env.userJob) {
+  if (env.userJob || env.pairOpen) {
     st_.state = "waiting";
-    st_.line = say("ph.wait_job");
+    st_.line = say(env.userJob ? "ph.wait_job" : "ph.wait_pair");
     return;
   }
   if (env.refilling || env.refillDue) {

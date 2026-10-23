@@ -237,6 +237,9 @@ std::optional<Msg> Actuators::waterUnfit(const Ctx& c) const {
   if (!ph && !ec) return std::nullopt;  // nothing to check, so nothing to wait for either
   // A probe in a calibration measures a buffer, not the tank
   if (c.probeCalibrating) return say("act.irrigation.calibrating");
+  // A mix measuring the tank: watering would change its litres and what it measures (SD-102)
+  if (c.now < measureUntil_)
+    return say("act.irrigation.measuring", {{"min", std::max(1.0, std::ceil(static_cast<double>(measureUntil_ - c.now) / kMinute))}});
   // A dose shows on the probes only once it has mixed in (RAT-052): every run of a dosing pump, and a
   // start that may have cut one, holds watering for the mixing time. Nothing switches the pump on
   // again by itself: the texts say when to try again, in whole minutes.
@@ -550,7 +553,9 @@ void Actuators::enforce(const Ctx& c) {
     std::optional<Msg> unfit;
     if (!why) unfit = waterUnfit(c);
     const bool dose = unfit && (unfit->key == "act.irrigation.dosing" || unfit->key == "act.irrigation.mixing" || unfit->key == "act.irrigation.started");
-    if (unfit && cut(c, "zone.irrigation_pump", "irrigation.water", "block", dose ? "info" : "warn", say(dose ? "ev.irrigation.dose" : "ev.irrigation.water"),
+    const bool measuring = unfit && unfit->key == "act.irrigation.measuring";  // a mix measuring the tank first: routine too (SD-102)
+    if (unfit && cut(c, "zone.irrigation_pump", "irrigation.water", "block", dose || measuring ? "info" : "warn",
+                     say(dose ? "ev.irrigation.dose" : measuring ? "ev.irrigation.measuring" : "ev.irrigation.water"),
                      say("ev.irrigation.off.text", {{"why", *unfit}}))) {
       onSince_.erase("zone.irrigation_pump");
       offSince_["zone.irrigation_pump"] = c.now;

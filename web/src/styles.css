@@ -296,6 +296,11 @@ small, .small { font-size: 0.85rem; }
 .seg { display: inline-flex; padding: 3px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--border); gap: 2px; flex-wrap: wrap; }
 .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; font-size: 0.88rem; }
 .seg.lg button { min-height: 44px; padding: 10px 16px; font-size: 0.95rem; }  /* the first tap on a phone (SD-014) */
+@media (max-width: 600px) {
+  /* a choice that wraps on a phone does so in full rows, each easy to hit */
+  .seg.lg { display: flex; width: 100%; }
+  .seg.lg button { flex: 1 1 auto; white-space: normal; }
+}
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .toggle { position: relative; width: 44px; height: 26px; flex: none; }
 .toggle input { opacity: 0; width: 0; height: 0; }
