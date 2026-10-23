@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Form for the Discussions category "Feedback" (slug "feedback"); GitHub
+# uses it only while that category exists.
+title: "Feedback: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying growcontroller! Short notes are welcome too; only the first field is needed.
+        Something broken? A [bug report](https://github.com/Wokesay/growcontroller-software/issues/new?template=bug.yml) is better. A vulnerability? Never here: see [SECURITY.md](https://github.com/Wokesay/growcontroller-software/blob/main/SECURITY.md).
+        Discussions are public and linked to your GitHub account: please leave out passwords, Wi-Fi details and where you live.
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Your feedback
+      description: What worked, where you got stuck, which texts you did not understand, what surprised you.
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How did you try it?
+      options:
+        - Simulator download from Releases
+        - Built it myself
+        - Home Assistant app
+        - Only read the docs
+  - type: input
+    id: system
+    attributes:
+      label: Version, system and browser
+      description: The version is under Settings › Display and info.
+      placeholder: e.g. the version, macOS 15, Safari
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your own setup (optional)
+      description: Your system (for example DWC, RDWC, drip, ebb and flow), which pumps, probes and sensors you use, which language and units you would want.
+  - type: textarea
+    id: needs
+    attributes:
+      label: What would it need before you would use it? (optional)

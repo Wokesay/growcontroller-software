@@ -1,7 +1,39 @@
 # Contributing
 
-Thanks for your interest. In short: small PRs, a test first, everything
-in English.
+Thanks for your interest.
+
+## Ways to help right now
+
+The project is a prototype, so the most useful help needs no code:
+
+- **Try the demo and give feedback** ([`docs/DEMO.md`](docs/DEMO.md)):
+  where you got stuck, which texts you did not understand, what your own
+  setup would need. Post it in
+  [Discussions](https://github.com/Wokesay/growcontroller-software/discussions).
+- **Report bugs** with the
+  [bug report form](https://github.com/Wokesay/growcontroller-software/issues/new?template=bug.yml);
+  "simulator only" is a fine answer for the hardware.
+- **Tell us about your devices** with the
+  [device form](https://github.com/Wokesay/growcontroller-software/issues/new?template=device.yml): probes, pumps,
+  smart plugs, sensors in Home Assistant. It helps decide what gets supported
+  ([`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)).
+- **Improve texts and docs:** an unclear sentence in the app or the docs
+  is a bug too. English and German are the app's languages.
+- **Code:** read on. In short: small PRs, a test first, everything in
+  English. For anything larger than a fix, open a discussion first, so
+  that we agree on the way before you spend the time. A fix for a
+  vulnerability never goes into a public PR: mention it in the private
+  report ([`SECURITY.md`](SECURITY.md)).
+
+**How this repository works:** it is built by one maintainer with an AI
+coding assistant (Claude Code), which writes most of the code, tests and
+docs, and every decision is recorded (`docs/DECISIONS.md`; SD-, PD- and
+RAT- numbers are explained in
+[`docs/FAQ.md`](docs/FAQ.md#what-do-sd--pd--rat--and-m1-mean)). The
+review steps below name the maintainer's AI review agents
+(`.claude/agents/`, `docs/WORKFLOW.md`); as an outside contributor you
+do not run them, the maintainer does. You need CI green, a test for your
+change and a CHANGELOG entry.
 
 ## License of contributions
 
@@ -31,6 +63,10 @@ under CC-BY-4.0 (data); lightningcss as a build tool also under MPL-2.0
 ship, and the check refuses it otherwise (#102).
 
 ## Develop
+
+What to install on Linux, macOS or Windows:
+[`docs/DEMO.md`](docs/DEMO.md#8-build-it-yourself-instead); `tools/ci.sh`
+also needs [reuse](https://reuse.software/) (`pipx install reuse==6.2.0`).
 
 ```bash
 tools/dev.sh                    # simulator + web app on :8080
@@ -77,3 +113,7 @@ either measured (with source) or marked as an assumption.
 
 Please use Discussions, not issues. An issue is created once an idea is
 accepted.
+
+## Conduct
+
+Be kind, criticise the work and not the person: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
