@@ -5,6 +5,7 @@
 // öffentlichen Methoden unter dem Hub-Mutex auf.
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -194,6 +195,7 @@ class Hub {
   // longer explains jumps, but holds pH and EC control until it is saved or
   // cancelled, as the probe may still be in a buffer (SD-041)
   void tendProbeSessions(Ms now);
+  void announceWatering(Ms now);
   static void addProbePoint(json& sess, double raw, double ref);
   static constexpr Ms kProbeIdle = 30 * kMinute;
   static constexpr Ms kSameReportMs = 2 * kSecond;  // as SD-035: reports under 2 s apart are one
@@ -239,6 +241,12 @@ class Hub {
   std::map<std::string, json> probeSessions_;
   bool stopped_ = false;
   Epoch maintenanceUntil_ = 0;
+  // The watering pump's announcement of the level (SD-101): until when, whether it read as on, when
+  // and at which level the runs of this series started, and the lowest reading of the run going on
+  Ms waterTailUntil_ = 0;
+  bool waterOn_ = false;
+  std::deque<std::pair<Ms, double>> waterStarts_;
+  double waterLowL_ = kNaN;
   Epoch bootEpoch_ = 0;
   Ms bootMs_ = 0;
   Epoch lastSample_ = 0, lastWatch_ = 0, lastStateSave_ = 0, lastSnapshot_ = 0;

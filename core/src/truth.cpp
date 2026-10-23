@@ -170,6 +170,12 @@ void SensorTruth::expectChange(const std::string& role, Ms until) {
   t.explainedUntil = std::max(t.explainedUntil, until);
 }
 
+void SensorTruth::expectChangeUpTo(const std::string& role, Ms until, double upTo) {
+  auto& t = tracks_[role];
+  t.boundedUntil = until;
+  t.bound = upTo;
+}
+
 Ms SensorTruth::freshLimit(const CapabilityDef& cap, const Track* learned) {
   const Ms catalog = static_cast<Ms>(cap.maxAgeS * 1000.0);
   if (!learned) return catalog;
@@ -366,12 +372,13 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
                                                            {"min", numOrNull(cap->plausMin)}, {"max", numOrNull(cap->plausMax)}}));
     } else {
       // Jump lock: a change above the threshold within 5 min that no announced
-      // intervention explains (mix, hand dose, EC round, inlet, calibration,
-      // maintenance; not an own pH dose, RAT-042) locks until 15 min of calm.
+      // intervention explains (mix, hand dose, EC round, inlet, the watering pump for the level,
+      // calibration, maintenance; not an own pH dose, RAT-042) locks until 15 min of calm.
       if (s->ts != tr.lastTs) {
         tr.lastTs = s->ts;
         while (!tr.window.empty() && s->ts - tr.window.front().first > kJumpWindow) tr.window.pop_front();
-        bool explained = now < tr.explainedUntil;
+        // A bound not known explains nothing (R5)
+        bool explained = now < tr.explainedUntil || (now < tr.boundedUntil && isNum(tr.bound) && *assessed <= tr.bound);
         if (isNum(cap->jump) && !explained && !tr.window.empty()) {
           auto [mn, mx] = std::minmax_element(tr.window.begin(), tr.window.end(),
                                               [](const auto& a, const auto& c) { return a.second < c.second; });

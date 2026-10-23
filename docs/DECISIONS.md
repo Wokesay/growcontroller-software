@@ -2298,8 +2298,9 @@ wait and the reasons to hold are own rules, not from a source.
     clock jump. One stored before the clock was known, or damaged, counts
     as the moment the clock is known: one more careful hour, then it ages
     out; the other latches are kept;
-  - `jump`: the level jumped while latched (RAT-042) without an inlet run
-    or maintenance mode to explain it, for example a sensor stuck high,
+  - `jump`: the level jumped while latched (RAT-042) without an inlet run,
+    maintenance mode or, since SD-101, a watering run to explain it, for
+    example a sensor stuck high,
     condensation, or a hose without maintenance mode (one tap then, with
     the person at the tank);
   - a latch without a stored cause (saved by an older version), with any
@@ -2326,7 +2327,9 @@ wait and the reasons to hold are own rules, not from a source.
     tank under about 20 L between its minimum and its capacity no stuck
     reading is a jump at all;
   - a wrong reading while the inlet is open and for 5 min after it, since
-    a refill explains a change;
+    a refill explains a change; nor, since SD-101, a fall of the level,
+    or a rise back to where a run started, while the watering pump runs
+    and for 10 min after it;
   - a wrong first reading after a restart, since the jump check starts
     without a reference.
   The level has no standstill check, and its plausible range is 0–1000 L.
@@ -5201,7 +5204,8 @@ Changes SD-082 for the drain-back it named as a residual risk.
     and water a circulation pump in interval mode holds outside the tank
     (NFT, RDWC) stays SD-082's residual risk;
   - a flood or drain-back of more than 20 L within 5 min locks the level
-    as a jump and can cut the watering pump mid-flood (#324);
+    as a jump and can cut the watering pump mid-flood (#324; closed by
+    SD-101: the running watering pump explains a level change);
   - the twin's irrigation draws no water and its level reading follows at
     once and every 5 s unless a test sets a lag or a report interval, so
     the tests change the tank's volume themselves and run the
@@ -5234,6 +5238,120 @@ and `security`.
 Not chosen: pulling proto.5 forward without steps 4 to 6 of SD-057
 (it would change SD-055's order); announcing now with proto.4 (an older
 demo in German, and a known weakness in its Home Assistant app).
+
+## SD-101: The watering pump explains a level change (a flood and its drain-back lock nothing)
+
+Decided by the project owner on 2026-10-23 in the software session
+(#324, from the `domain` review for #294), a control detail under
+SD-091, each question as recommended: first the time after the stop,
+only the level and only the watering pump; after the reviews of
+`reviewer`, `qa`, `domain` and `security`, that the 10 min stay with the
+corrected numbers below and that the explanation is bounded upwards.
+Changes RAT-042 and what SD-067's `jump` hold sees; closes the residual
+risk SD-099 named for it.
+
+- **What it fixes:** the level's jump lock (a change of more than 20 L
+  within 5 min, RAT-042) knew the hub's own inlet but not the watering
+  pump. In ebb and flow a flood can take more than that out of the tank
+  within minutes, and the drain-back brings it back as fast (a
+  120 × 120 cm table holds about 30–45 L at a shallow flood, about 70 L
+  at a deep one; assumptions, not measured). The level then locked for
+  15 min: the gateway cut the watering pump mid-flood as "level
+  invalid" (the dry-run protection), the refill waited, the circulation
+  pump could not be switched on, and a dry-run latch of the circulation
+  pump set during the flood held for a person instead of releasing
+  itself (SD-067).
+- **The rule:** watering can only lower the level, and the drain-back
+  brings it back at most to where the run started. So while the
+  watering pump (`zone.irrigation_pump`) reads as on, a reading up to
+  2 L above the lowest reading of the run counts as explained, so a
+  fall; until 10 min after it stops, a reading up to 2 L above the
+  highest level a run of the series started at. A run that starts
+  within the 10 min of the one before continues the series; of its
+  runs, only those started within the last 30 min count (SD-099's
+  longest drain-back), so a series of drip shots does not keep the
+  morning's level as its bound. A reading above the bound is judged as
+  any change again: more than 20 L within 5 min of the last explained
+  reading locks, so a level sensor that jumps high, the dangerous
+  direction for the dry-run cut-offs, still does. Renewed on every
+  tick, as for the inlet. The 2 L are a gate, not a lock threshold:
+  above it the 20 L apply, so a small gate only makes the check
+  stricter; it covers noise and a small recovery while the pump runs (an
+  assumption). A pump whose state is not known counts as off, and a
+  state that flaps counts as one run within a minute. A level not
+  usable when a run started explains nothing for that run, nor after the
+  stop for its series: a jump then locks, the safe side.
+- **10 min, not the inlet's 5:** water still runs back after the stop,
+  and the reading lags 1.5–2 min (RAT-038). Readings within the 10 min
+  set the reference, so only what comes back after them counts. With a
+  drain-back that fades exponentially, the 10 min keep any table up to
+  about 110 L from locking, whatever the time constant (5 min: about
+  58 L). With a drain-back of nearly constant flow, as from a table
+  draining under gravity, about 52 L with the reading 2 min late (5 min:
+  about 32 L, so an ordinary table could lock). 30 min would leave a
+  jumping sensor unnoticed for half an hour after every watering. All of
+  this rests on assumptions about the drain-back.
+- **Only the level:** watering takes tank water out and the drain-back
+  brings mostly the same water back, so EC, pH and water temperature are
+  expected to stay below their jump thresholds (0.5 mS/cm, 1.0 pH,
+  3 °C; an assumption, to be checked on an ebb-and-flow installation).
+  Explained, they would hide probe faults. A jump of these while
+  watering still locks, and a probe without a usable reading stops
+  watering (SD-093): the safe side.
+- **Only the watering pump:** a circulation pump holds water outside the
+  tank while it runs (NFT, RDWC); how much is not known. Explained while
+  it runs, one running all the time would switch the level's jump lock
+  off for good. It stays SD-082's residual risk until a case or a
+  measurement shows that it moves 20 L within 5 min.
+- **What still checks the level meanwhile:** its age, the bound above,
+  the minimum level at the gateway (the dry-run cut-offs below it, which
+  read the same sensor) and, after watering, the refill's wait for a
+  calm level (SD-099). Its plausible range is 0–1000 L for every tank,
+  and it has no standstill check (SD-067).
+- **Residual risks:**
+  - a level sensor that jumps low, or high but not past the bound, while
+    the pump runs or within 10 min after it stops is not locked and
+    raises no alarm; a false low reading errs towards the dry-run
+    cut-offs and a fill, which SD-082 and SD-099 check, and a false high
+    one within the bound can release a dry-run latch (SD-067);
+  - a reading past the bound is locked only as without watering: more
+    than 20 L within 5 min; a sensor stuck 15 L above the run's lowest
+    reading is not;
+  - a pump that stops delivering while its plug reads on (air drawn in
+    at a low level, a thermal or float switch in the pump, a timer after
+    the plug, an overflow that siphons the table) lets the table drain
+    back during the run: more than 20 L within 5 min then locks the
+    level and cuts the pump as "level invalid", mostly the safe side;
+    the lock's text asks about work by hand, which does not fit;
+  - a deep flood with a drain-back of nearly constant flow (more than
+    about 50 L) can still lock the level after the 10 min: an alarm, and
+    until 15 min of calm the circulation pump not switched on (EC and pH
+    wait for it, RAT-047) and a dry-run latch held for a person;
+  - watering more often than every 10 min, as with drip shots, keeps
+    falls explained all the time, and rises up to the highest level a
+    shot of the last 30 min started at; once the system types exist
+    (M4), the explanation may be limited to ebb and flow;
+  - a refill already open when a flood starts adds water the bound does
+    not know; after the inlet's own 5 min, the drain-back can pass the
+    bound and locks only above 20 L within 5 min;
+  - a series of floods lasting more than 30 min drops its first start
+    from the bound, so the last drain-back can pass it; it locks only
+    above 20 L within 5 min;
+  - a smart plug that reports "on" falsely keeps falls explained for as
+    long as it does, and 10 min after; the hub's run limit covers only
+    runs it started;
+  - a restart during a flood switches the pump off (R6) and forgets the
+    explanation, so the drain-back after it can lock the level, and a
+    dry-run latch set during the flood then holds for a person;
+  - a pump the hub does not see (not bound as the watering pump, a drain
+    valve or a second pump) explains nothing; one bound and switched by
+    its own schedule, its button or Home Assistant does, as the hub reads
+    its state;
+  - a round of EC or pH control whose settle time overlaps a flood can
+    learn from a level that is still coming back (#301);
+  - the twin's irrigation draws no water, so the test changes the tank's
+    volume itself, with the reading following at once and with a lag of
+    105 s.
 
 ---
 

@@ -1788,6 +1788,270 @@ TEST_CASE("Scenario: a cold refill trips no water temperature jump lock: the ope
   }
 }
 
+TEST_CASE("Scenario: a flood and its drain-back trip no level jump lock: the watering pump explains a fall of the level, and a rise back to where it started, while it runs and until 10 min after it stops (#324, SD-101, RAT-042)") {
+  // Demo tank of 60 L at 55 L. In ebb and flow a flood can take more than the level's jump threshold
+  // (20 L in 5 min) out of the tank within minutes, and the drain-back brings it back as fast. The twin's
+  // irrigation draws no water, so the test changes the tank's volume itself; the numbers are assumptions
+  // (docs/SIMULATOR.md). EC and pH control and the refill are off: watering waits for no mixing time
+  // (SD-093), and an open inlet would explain the level.
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoAt(s, c, 55);
+  for (const char* f : {"ec_control", "ph_control", "refill"}) c.ok("PATCH", std::string("/api/v1/functions/") + f, {{"enabled", false}});
+  const std::string plug = irrigationPlug(s, c);
+  s.step(16 * 60 * 1000, 5000);  // a round EC or pH began before has mixed in, and the level has been calm
+  const auto quality = [&](const char* role) { return c.state()["readings"][role]["quality"].get<std::string>(); };
+  const auto levelJumps = [&] {
+    int n = 0;
+    for (const auto& e : findEvents(c, "block"))
+      n += e["title"]["key"] == "ev.jump" && e["data"]["role"] == "tank.level" ? 1 : 0;
+    return n;
+  };
+  const auto pump = [&](bool on) { c.ok("POST", "/api/v1/roles/zone.irrigation_pump/switch", {{"on", on}}); };
+  const auto pumpOn = [&] { return c.state()["outputs"]["zone.irrigation_pump"] == true; };
+  const auto cutWhy = [&] {
+    const json e = lastEvent(c, "block", "ev.irrigation.off");
+    return e.is_null() ? std::string() : e["text"]["args"]["why"]["key"].get<std::string>();
+  };
+  REQUIRE(quality("tank.level") == "ok");
+  REQUIRE(levelJumps() == 0);
+  // A deep flood: 38 L out within 4 min, from 55 to 17 L
+  const auto flood = [&](double litres, const std::function<void()>& each) {
+    for (int i = 0; i < 48; ++i) {
+      s.world().tank.volumeL -= litres / 48;
+      s.step(5000, 5000);
+      each();
+    }
+  };
+  // Back with a time constant of 5 min (as SD-099 assumes), 63 % of it within the first 5 min
+  const auto drainBack = [&](double litres, const std::function<void()>& each) {
+    double back = litres;
+    for (int i = 0; i < 12 * 25; ++i) {
+      const double dV = back * (1 - std::exp(-5.0 / 300.0));
+      back -= dV;
+      s.world().tank.volumeL += dV;
+      s.step(5000, 5000);
+      each();
+    }
+  };
+  const auto nothing = [] {};
+
+  SUBCASE("the same flood with the pump off is a jump") {
+    flood(38, nothing);
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("the same drain-back with the pump off is a jump") {
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 1}});  // to 17 L by hand, explained
+    s.world().tank.volumeL = 17.0;
+    s.step(2 * 60 * 1000, 5000);
+    REQUIRE(quality("tank.level") == "ok");
+    drainBack(36, nothing);  // 23 L within the first 5 min
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("a flood and its drain-back lock nothing, also with a lagging reading, and the pump runs on until switched off") {
+    // The real reading lags 1.5–2 min (RAT-038); the twin's follows at once unless a test sets a lag
+    for (const double lagS : {0.0, 105.0}) {
+      CAPTURE(lagS);
+      s.world().levelLagS = lagS;
+      const double before = s.world().tank.volumeL;
+      pump(true);
+      bool locked = false, cut = false;
+      const auto watch = [&] {
+        locked = locked || quality("tank.level") != "ok";
+        cut = cut || !pumpOn();
+      };
+      flood(38, watch);
+      soon(s, [&] { watch(); return false; }, 60 * 1000, 5000);  // flooded, the table holds the water
+      CHECK_FALSE(cut);  // without the fix for #324 the gateway cut it as "level invalid" mid-flood
+      pump(false);
+      drainBack(36, [&] { locked = locked || quality("tank.level") != "ok"; });  // 2 L stay in the substrate
+      CHECK(s.world().tank.volumeL == doctest::Approx(before - 2.2).epsilon(0.01));
+      CHECK_FALSE(locked);
+      CHECK(levelJumps() == 0);
+      CHECK(cutWhy().empty());
+    }
+  }
+
+  SUBCASE("a level that jumps up while the pump runs still locks, and the pump goes off as for a reading not valid") {
+    pump(true);
+    flood(38, nothing);
+    REQUIRE(quality("tank.level") == "ok");
+    REQUIRE(levelJumps() == 0);
+    s.world().tank.volumeL += 25.0;  // a sensor stuck high reads the same: 25 L above the lowest reading of the run
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+    REQUIRE(soon(s, [&] { return !pumpOn(); }, 60 * 1000, 5000));
+    CHECK(cutWhy() == "why.level_invalid");
+  }
+
+  SUBCASE("after the stop, a rise back to just below where the run started is explained") {
+    pump(true);
+    flood(38, nothing);
+    pump(false);
+    s.step(60 * 1000, 5000);
+    s.world().tank.volumeL += 36.0;  // at once, to 53 L
+    s.step(60 * 1000, 5000);
+    CHECK(quality("tank.level") == "ok");
+    CHECK(levelJumps() == 0);
+  }
+
+  SUBCASE("after the stop, a rise past where the run started is a jump: drain-back cannot bring more than the flood took") {
+    pump(true);
+    flood(38, nothing);
+    pump(false);
+    s.step(60 * 1000, 5000);
+    REQUIRE(quality("tank.level") == "ok");
+    REQUIRE(levelJumps() == 0);
+    s.world().tank.volumeL += 42.0;  // at once, to 59 L, 2 L past the bound of 55 + 2 L
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("a run within the 10 min continues the series: the drain-back of both may rise back to where the first started") {
+    pump(true);
+    flood(38, nothing);  // from 55 to 17 L
+    pump(false);
+    s.step(60 * 1000, 5000);
+    pump(true);  // from 17 L
+    s.step(30000, 5000);
+    pump(false);
+    s.step(60 * 1000, 5000);
+    REQUIRE(quality("tank.level") == "ok");
+    s.world().tank.volumeL += 36.0;  // at once, to 53 L: far above where the second run started
+    s.step(60 * 1000, 5000);
+    CHECK(quality("tank.level") == "ok");
+    CHECK(levelJumps() == 0);
+  }
+
+  SUBCASE("a run after the 10 min starts a new series: a rise past where it started is a jump") {
+    pump(true);  // from 55 L
+    s.step(30000, 5000);
+    pump(false);
+    s.step(11 * 60 * 1000, 5000);
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 1}});  // to 30 L by hand, explained
+    s.world().tank.volumeL = 30.0;
+    s.step(2 * 60 * 1000, 5000);
+    REQUIRE(quality("tank.level") == "ok");
+    pump(true);  // from 30 L
+    s.step(30000, 5000);
+    pump(false);
+    s.step(60 * 1000, 5000);
+    s.world().tank.volumeL += 25.0;  // to 55 L, past 30 + 2 L
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("drip shots every 8 min: only runs started within the last 30 min count, so a reading back at where the first shots started is a jump") {
+    for (int k = 0; k < 6; ++k) {  // from 55 L down to 25 L, 5 L a shot; nothing drains back
+      pump(true);
+      for (int i = 0; i < 6; ++i) {
+        s.world().tank.volumeL -= 5.0 / 6;
+        s.step(5000, 5000);
+      }
+      pump(false);
+      s.step(8 * 60 * 1000 - 30000, 5000);
+    }
+    REQUIRE(quality("tank.level") == "ok");
+    REQUIRE(levelJumps() == 0);
+    // 48 min after the first shot: the shots of the last 30 min started at 40 L at most
+    s.world().tank.volumeL += 25.0;  // to 50 L
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("the pump explains while it runs and 10 min after it stops: a fall 9 min after a 5 min run is explained, a rise 11 min after it is a jump") {
+    // 9 min after the stop is 14 min after the start, so the announcement is renewed while it runs. The
+    // 10 min count from the stop on the hub's clock; a reading that lags moves the edge.
+    pump(true);
+    s.step(5 * 60 * 1000, 5000);
+    pump(false);
+    s.step(9 * 60 * 1000, 5000);
+    s.world().tank.volumeL -= 25.0;
+    s.step(60 * 1000, 5000);
+    CHECK(quality("tank.level") == "ok");
+    CHECK(levelJumps() == 0);
+    s.step(60 * 1000, 5000);
+    s.world().tank.volumeL += 25.0;
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("a run that starts with the level not usable explains nothing for its series, also not the runs before it") {
+    pump(true);  // from 55 L
+    s.step(30000, 5000);
+    pump(false);
+    s.step(10000, 5000);
+    s.control("fault", {{"device", "LVL-77B210"}, {"fault", "offline"}});
+    REQUIRE(soon(s, [&] { return quality("tank.level") != "ok"; }, 3 * 60 * 1000, 5000));
+    s.step(60 * 1000, 5000);  // a run of its own: one within a minute of the last start is the same run
+    {  // pressed on at the plug: the gateway switches it off again, as the level is not valid
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().netPlug(plug)->outlets[0].on = true;
+    }
+    REQUIRE(soon(s, [&] { return cutWhy() == "why.level_invalid"; }, 60 * 1000, 5000));
+    REQUIRE_FALSE(pumpOn());
+    s.control("fault", {{"device", "LVL-77B210"}, {"fault", "none"}});
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "ok"; }, 2 * 60 * 1000, 5000));
+    REQUIRE(levelJumps() == 0);
+    flood(38, nothing);  // within the 10 min of both runs
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("a pump whose state is not known explains nothing") {
+    pump(true);
+    s.step(30000, 5000);
+    s.control("fault", {{"device", plug}, {"fault", "offline"}});
+    s.step(11 * 60 * 1000, 5000);  // what it explained while it read as on has run out
+    REQUIRE(c.state()["outputs"]["zone.irrigation_pump"].is_null());
+    flood(38, nothing);
+    REQUIRE(soon(s, [&] { return quality("tank.level") == "jump"; }, 60 * 1000, 5000));
+    CHECK(levelJumps() == 1);
+  }
+
+  SUBCASE("the pump explains only the level: an EC, pH or water temperature jump while it runs and after it still locks") {
+    pump(true);
+    s.step(30000, 5000);
+    s.world().tank.ec += 1.0;
+    REQUIRE(soon(s, [&] { return quality("tank.ec") == "jump"; }, 60 * 1000, 5000));
+    // A probe without a usable reading stops watering (SD-093)
+    REQUIRE(soon(s, [&] { return !pumpOn(); }, 60 * 1000, 5000));
+    CHECK_FALSE(lastEvent(c, "block", "ev.irrigation.water").is_null());
+    s.world().tank.ph += 1.5;
+    REQUIRE(soon(s, [&] { return quality("tank.ph") == "jump"; }, 5 * 60 * 1000, 5000));
+    s.world().tank.tempDev += 4.0;
+    REQUIRE(soon(s, [&] { return quality("tank.water_temp") == "jump"; }, 60 * 1000, 5000));
+    CHECK(quality("tank.level") == "ok");
+  }
+
+  SUBCASE("a flood that ran the circulation pump dry: after the drain-back its latch releases itself; a reading past where the run started holds it for a person (SD-067)") {
+    c.ok("PATCH", "/api/v1/functions/circulation", {{"params", {{"mode", "always"}}}});
+    REQUIRE(soon(s, [&] { return c.state()["outputs"]["tank.circulation"] == true; }, 60 * 1000, 5000));
+    pump(true);
+    flood(53, nothing);  // to 2 L, below the minimum of 3 L
+    REQUIRE(c.state()["latches"].contains("circulation.dry"));
+    CHECK(cutWhy() == "why.irrigation_low");  // the minimum's own cut, the level still valid
+    SUBCASE("the drain-back") {
+      drainBack(51, nothing);
+      CHECK(levelJumps() == 0);
+      CHECK_FALSE(c.state()["latches"].contains("circulation.dry"));
+      CHECK_FALSE(lastEvent(c, "unblock", "ev.circ.dry.released").is_null());
+    }
+    SUBCASE("a reading past where the run started") {
+      s.step(60 * 1000, 5000);
+      s.world().tank.volumeL = 59.0;
+      s.step(30 * 60 * 1000, 5000);
+      CHECK(levelJumps() == 1);
+      const json st = c.state();
+      REQUIRE(st["latches"].contains("circulation.dry"));
+      CHECK(st["latches"]["circulation.dry"]["hold"] == "jump");
+    }
+  }
+}
+
 TEST_CASE("Scenario: a level that does not rise after a refill latches the inlet; a slower inlet within reason does not (#155, SD-082, RAT-031)") {
   SUBCASE("a stuck level sensor: one step, then the latch, no second step") {
     sim::Simulation s(test::opts("demo"));
