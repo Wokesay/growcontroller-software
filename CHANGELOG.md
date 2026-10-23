@@ -683,6 +683,27 @@ listed in every release under "Security".
   although SD-092 says it is forgotten (it may be a stronger product in
   the same bottles). Now it is forgotten, by an edit and by an import,
   and EC top-up starts again from the recipe's new start.
+- **EC and pH control learn nothing from a round that watering
+  overlaps** (#301, SD-103): a flood draws tank water out while a round
+  settles, and the drain-back brings the table's water in with its own
+  EC and pH, so the round saw more than its own dose. For EC the wrong
+  effect stuck to the recipe until its next clean round, and the next
+  round dosed more. Now a round counts as watered while the watering
+  pump runs, while its state is not known, and until 10 min after
+  either or after the hub started: it learns nothing, and counts half
+  towards the "no effect" latch, which then latches after 2 clean rounds
+  or 4 watered ones without effect. With slow pumps, a sum of small
+  rounds with a watered one in it counts half the same way, so the latch
+  still trips when every round is watered. The first step of a mix to
+  the target learns nothing either when watering overlaps it, but is
+  still judged at once. A pH dose without a measurable fall, clean or
+  watered, now sets the learned pH effect to at least its start and
+  never lowers it, so the next doses do not grow; before, a clean one
+  could make the next dose several times bigger. A clean round, and a
+  mix's first step, learns over the volume its dose went into, read when
+  it started, not when it had settled. The "no effect" texts say "after
+  the last few rounds" instead of "after two", and pH's name its pump
+  among what to check.
 - **A flood no longer locks the level and cuts the watering pump**
   (#324, SD-101): in ebb and flow, a flood can take more than 20 L out of
   the tank within minutes, and the drain-back brings it back as fast.
@@ -1113,7 +1134,7 @@ severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
+and the fourth refers to AMD's CVE-2025-62626. Five are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -1271,6 +1292,21 @@ Safety and robustness fixes, no vulnerability:
   - Remedy: update to 0.1.0-proto.5. Until then, after ending or
     shortening maintenance mode, restart the app or the simulator ("Power
     cut / restart") while no mix or dose runs.
+- **EC and pH control no longer learn a wrong effect from watering, and
+  pH doses no longer grow after one without a fall** (#301, SD-103):
+  a round that watering overlapped learned its effect from what the
+  flood and its drain-back did to the tank, about 30 % low when 30 % of
+  the tank was drawn during its settle, so the next round dosed about
+  43 % more. A clean pH dose without a measurable fall learned an effect
+  near zero and could make the next doses several times bigger (up to
+  16 times, within the dose cap), an overshoot if the fault cleared on
+  one of them. Now a watered round learns nothing, and a dose without a
+  measurable fall never lowers the learned pH effect below its start.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 
 A protective cut-off added:
 
@@ -1307,6 +1343,17 @@ A protective cut-off added:
 
 A protective cut-off relaxed on purpose:
 
+- **The "no effect" latch counts a round that watering overlaps half**
+  (#301, SD-103): while the watering pump runs, while its state is not
+  known, and until 10 min after either, a round of EC or pH control
+  learns nothing and counts half towards the "no effect" latch, so it
+  needs up to 4 such rounds instead of 2; for EC with slow pumps, 4 sums
+  of small rounds (about 8 rounds) instead of 2. Without a bound watering
+  pump nothing changes. Residual risk: drain-back that fakes an effect
+  (runoff with a higher EC, or a lower pH) resets the count, so the latch
+  may not trip while it does so at least every fourth watered round; a
+  watering pump the hub does not know makes no round watered: bind it as
+  the watering pump.
 - **A large refill no longer ends in the open-time latch** (#155,
   SD-082): a fill planned longer than the valve may stay open used to be
   cut by that limit, which latched the inlet. That also stopped a large

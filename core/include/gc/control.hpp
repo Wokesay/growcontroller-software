@@ -46,6 +46,7 @@ struct ControlEnv {
   bool refillDue = false;    // a fill is due and waits for a dose to settle: no new round meanwhile (SD-090)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
+  bool watering = false;     // the watering pump runs or its state is not known, or was so less than 10 min ago, or it was bound or the hub started less than 10 min ago (SD-103)
 };
 
 // Where EC control aims: its target minus what the pH− dose that follows adds (RAT-053); NaN without
@@ -108,7 +109,10 @@ class EcController {
   // The recipe a round doses is gone (deleted, left out of an import) or a new one took its ID: the
   // round learns nothing (SD-092, RAT-057)
   void recipeGone(const std::string& id) {
-    if (id == roundRecipe_) clean_ = false;
+    if (id == roundRecipe_) {
+      clean_ = false;
+      disturbed_ = true;
+    }
     if (id == small_.recipe) small_ = {};
   }
   // What was learned for a recipe is forgotten (a higher reference on the same parts, SD-092): its
@@ -125,7 +129,7 @@ class EcController {
  private:
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
   std::vector<DoseStep> queue_;
-  int round_ = 0, noEffect_ = 0, seq_ = 0;
+  int round_ = 0, noEffect_ = 0, seq_ = 0;  // noEffect_ in points: 2 a judged clean rise (a round or a sum of small ones), 1 one with watering in it (SD-103)
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
   bool limited_ = false;    // the round was made smaller to fit the partial-run limit (SD-102)
   double expectedRise_ = kNaN;  // what the round should raise EC by, at the effect it was planned on (SD-102)
@@ -135,15 +139,18 @@ class EcController {
   struct SmallRounds {
     double rise = 0, expected = 0;
     double mlPerL = 0;       // each round's millilitres on its own litres
-    bool learnable = true;   // every round knew its litres
+    bool learnable = true;   // every round knew its litres and was clean
+    bool watered = false;    // a round only watering made unclean is in it: it counts half (SD-103)
     std::string recipe;
   } small_;
+  bool disturbed_ = false;  // something other than watering came in between: the round does not count at all
   bool cut_ = false;        // a Stop cut the round: settle it once the circulation pump runs
   bool cutByMix_ = false;   // … or a mix was cut with nutrients in (settleFirst)
   bool quiet_ = false;      // … with no round of its own to judge when it has settled
   Ms cutFloor_ = 0;         // the least the cut settles (settleFirst)
   bool wantsCirc_ = false;  // the cut round waits for the circulation pump
   double ecBefore_ = kNaN, mlRound_ = 0, startEc_ = kNaN, target_ = kNaN;
+  double volRound_ = kNaN;  // the volume the round's dose went into, read when it started (SD-103)
   std::string roundRecipe_;  // the recipe the round doses: its effect is learned, whatever the phase is now (RAT-057, SD-092)
   Ms circWaitSince_ = 0;  // seit wann die Runde auf die Umwälzpumpe wartet
   Ms cutWaitSince_ = 0;   // since when the cut round waits for the circulation pump
@@ -181,13 +188,15 @@ class PhController {
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
   bool pendingCirc_ = false;
   bool clean_ = true;
+  bool disturbed_ = false;  // as in EcController
   bool cut_ = false;     // as in EcController
   bool cutByMix_ = false;
   bool quiet_ = false;
   Ms cutFloor_ = 0;
   Ms cutWaitSince_ = 0;
-  int doses_ = 0, noEffect_ = 0, seq_ = 0;
+  int doses_ = 0, noEffect_ = 0, seq_ = 0;  // noEffect_ in points, as in EcController
   double phBefore_ = kNaN, mlLast_ = 0, startPh_ = kNaN;
+  double volLast_ = kNaN;  // the volume the dose went into, read when it started (SD-103)
   Ms settleUntil_ = 0;
   Epoch cooldownUntil_ = 0;
   CtlStatus st_;
