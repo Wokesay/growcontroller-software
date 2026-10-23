@@ -152,6 +152,10 @@ labels follow Home Assistant's developer documentation for apps
   is picked, nothing is learned yet: then a value goes stale after 10 min.
   All these numbers are own rules (SD-035). A sensor that reports only on
   a change goes stale once its value stays the same for longer than that.
+  For ebb and flow, a level sensor should report every 30 s or faster: the
+  refill tells water still draining back after watering from a calm level
+  only by at least three reports in 90 s, and with fewer it waits the full
+  half hour after every watering (SD-099).
   "unavailable" in Home Assistant shows at once as "Gerät antwortet nicht"
   (device not answering).
 - **VPD** is computed while air temperature and humidity are both valid,
