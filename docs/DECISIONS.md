@@ -3904,7 +3904,10 @@ Decided by the project owner on 2026-10-15 in the software session
     gap before the next latch.
   - A circulation pump in interval mode holds water outside the tank in
     NFT and RDWC, and ebb and flow drains back for longer than 3 min:
-    both can make a fill look short or overfill past the target.
+    both can make a fill look short or overfill past the target. Changed
+    by SD-099 for the irrigation pump: after irrigation a fill waits
+    until the level stops rising, at most the same 30 min; the
+    circulation pump's case stays open.
   - A level sensor that reads low by a fixed amount but follows the rise
     passes; the computed gap is then filled in steps.
   - Fills not judged count across refills until one passes: an
@@ -5137,6 +5140,100 @@ SD-057's point on way 2; the rest of SD-057 stands.
 Not chosen: the reference alone with a warning above 25 % of the chart
 (misses a slip the grow carried into the target); a floor at the start
 effect as in SD-092 (a weak product would never reach its target).
+
+---
+
+
+## SD-099: After irrigation a fill waits until the level stops rising (ebb and flow drains back)
+
+Decided by the project owner on 2026-10-22 in the software session
+("umsetzen" for #294), along the product side's answer to that question
+(option 3, a proposal under SD-091) and the `domain` review: the calm
+criterion and the fixed upper bound as recommended, and that the readings
+count from 3 min after the pump stops (the settle time of RAT-038;
+`domain` had proposed 2 min, the reading's lag).
+Changes SD-082 for the drain-back it named as a residual risk.
+
+- **The wait after irrigation:** a fill that falls due after the
+  irrigation pump ran waits 3 min after the pump stops, as before (the
+  level reading lags 1.5–2 min, RAT-038). It then also waits until the
+  level has stopped rising: the median of the readings of the last 90 s
+  is at most 0.3 L above the median of the 90 s before. The readings count
+  from 3 min after the pump stopped, when the lagging reading has caught
+  up; counted from the stop, the still-falling reading of the flood looks
+  like a fall and hides the water coming back. So the first verdict comes
+  6 min after the stop, also in a run-to-waste drip system, where nothing
+  comes back and a fall counts as calm. The value is taken once a second
+  while a fill may wait for it; both windows must be spanned, and each
+  must hold at least three reports the sensor made within it, so a value
+  held between rare reports is not taken as calm: a sensor that reports
+  less often than every 30 s never counts as calm and waits the full
+  half hour. The values are assumptions (RAT-038): with a drain-back that
+  fades with a time constant of about 5 min, the fill can end up about
+  0.75 L past the target (with the lag, about 0.5 L still coming back and
+  the reading about 0.25 L low; up to about 0.9 L with a report every
+  20–30 s), within the 1 L the target keeps below the capacity.
+- **Upper bound:** 30 min, fixed in code, from when the fill began to
+  wait or from the pump's stop, whichever comes first; then the fill goes
+  ahead, marked as irrigated (SD-082). The product side's "upper bound
+  per system type" waits for the system types (M4); there is none yet, and
+  no setting for it.
+- **Only after irrigation:** a Stop, maintenance, a start, an inlet latch,
+  the function switched off or a valve opened by hand keep the plain
+  3 min (SD-088, SD-090). The readings are not kept across a restart
+  (R6): after one the plain 3 min apply.
+- **The line** says that water may still run back after watering and
+  that the fill starts once the level stops rising, with the time left
+  at most. EC and pH wait meanwhile, as for any fill that waits to settle
+  (SD-090).
+- **Residual risks:**
+  - a drain-back slower than assumed is filled on top of what is still
+    to come: about 1.1 L at a time constant of 7 min, 1.7 L at 10 min; one
+    still running after 30 min is filled on top as well. The 1 L margin
+    is what is left; the inlet's capacity cut-off closes the inlet at the
+    capacity, but water that drains back afterwards can still pass it;
+  - a long flood counts against the 30 min, as the fill is usually due
+    from the flood's start: a 15 min run leaves 15 min for the drain-back;
+  - a level sensor reporting less often than every 30 s, or a hub that
+    ticks less often, waits the full half hour after every watering, also
+    in a drip system (`docs/HOME_ASSISTANT.md`);
+  - watering switched by a timer the hub does not switch gets no wait,
+    and water a circulation pump in interval mode holds outside the tank
+    (NFT, RDWC) stays SD-082's residual risk;
+  - a flood or drain-back of more than 20 L within 5 min locks the level
+    as a jump and can cut the watering pump mid-flood (#324);
+  - the twin's irrigation draws no water and its level reading follows at
+    once and every 5 s unless a test sets a lag or a report interval, so
+    the tests change the tank's volume themselves and run the
+    ebb-and-flow case without a lag, with a lag of 105 s and with a report
+    every 45 s.
+
+---
+
+## SD-100: The demo goes to a wider public only after 0.1.0-proto.5, which starts in English
+
+Decided by the project owner on 2026-10-22 in the software session, after
+the reviews of the docs for newcomers (#304) by `reviewer`, `qa`, `ux`
+and `security`.
+
+- **#302 is a precondition of 0.1.0-proto.5** (SD-055, #143): the demo,
+  its sign-in page, its console window and `--help` start in English for
+  an English visitor. On `main`, "English first" (SD-083) shows the hub's
+  language from the sign-in page on, and the demo hub is German, so
+  without #302 proto.5 would show every visitor a German demo.
+- **The demo is announced to a wider public** (hobby, grow and Home
+  Assistant communities) **only once proto.5 is released.** Until then
+  the download is 0.1.0-proto.4: it lacks most of the polish block, and
+  its Home Assistant app still has the first-password weakness fixed
+  under `[Unreleased]`.
+- The docs for newcomers may merge before that: they describe `main` and
+  say how the download differs.
+- How the announcement and the FAQ speak about the hardware is product
+  question #303; signing the downloads is product question #306.
+
+Not chosen: pulling proto.5 forward without steps 4 to 6 of SD-057
+(it would change SD-055's order); announcing now with proto.4 (an older
+demo in German, and a known weakness in its Home Assistant app).
 
 ---
 

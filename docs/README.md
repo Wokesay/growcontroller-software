@@ -1,7 +1,12 @@
 # Documentation
 
+New here? Start with [DEMO.md](DEMO.md) (try the simulator) and
+[FAQ.md](FAQ.md).
+
 | File | Content |
 |---|---|
+| [DEMO.md](DEMO.md) | Try the demo: download, start, a short tour, troubleshooting, building it yourself, feedback |
+| [FAQ.md](FAQ.md) | Frequently asked questions: status, hardware, safety, how the project is built, SD/PD/RAT numbers |
 | [CONCEPT.md](CONCEPT.md) | Goal, platform (ESP32-S3, option C), layers, rules R1–R8, status of the prototype |
 | [RATIONALE.md](RATIONALE.md) | Rationale register: one entry per domain rule with its reason and evidence (RAT-001 …) |
 | [INVARIANTS.md](INVARIANTS.md) | Domain rules (M1–M15) with implementation and test evidence |

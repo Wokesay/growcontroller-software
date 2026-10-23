@@ -1,18 +1,19 @@
 # growcontroller-software
 
-Standalone software for a hydroponic grow controller: platform-neutral C++
-core with setup wizard, sensor catalog, pH/EC dosing, refill and
-circulation control, watchdog and logging. Includes ESP32-S3 firmware, a
-web app for browser and mobile, and a simulator (digital twin) for testing
-without hardware.
+Free software that mixes nutrient solution for your tank, keeps pH and
+EC on target and refills the water, and tells you in plain words why it
+doses or why not. For hydroponics, greenhouses and indoor growing. It is
+made to run on a small device of its own, the hub (built on an ESP32-S3
+board, in development), with its own web app: no cloud, no account, no
+Home Assistant required.
 
----
+**It is a prototype.** Today it runs as a simulator on your computer:
+**[try the demo](docs/DEMO.md)** on Windows, macOS or Linux, about 15
+minutes, no hardware needed. On a phone? Read the
+[short tour](docs/DEMO.md#5-a-short-tour) now and try it later on a
+computer.
 
-Universal plant automation for greenhouses, indoor growing and
-hydroponics: mix nutrient solution, control pH and EC, fill the tank – and
-step by step light, climate and irrigation. The software runs on the hub
-(ESP32-S3) and brings its own web app – no cloud, no account, no Home
-Assistant required.
+![The web app in the demo: tank with pH, EC and water temperature, the control rows with their state, room climate and switched outputs](docs/images/overview.png)
 
 > **For testing only:** this version does not meet the requirements of
 > the EU Cyber Resilience Act (CRA).
@@ -28,18 +29,91 @@ Assistant required.
 > can cause overdosing, overflow, water damage or fire. You use it at your
 > own risk; see sections 15 and 16 of the [`LICENSE`](LICENSE).
 
-## Try it without installing
+## Try the demo
 
-**Releases** offers the simulator for Windows, macOS and Linux: one file,
-unpack, double-click. The browser opens the
-demo (password `demo-passwort`). Notes on Windows SmartScreen and macOS
-are in `README.txt` inside the package. Use only packages from
-Releases: CI runs also store packages as artifacts, but those of pull
-requests are built from code nobody has reviewed yet.
+1. Download the simulator for Windows, macOS or Linux from
+   [Releases](https://github.com/Wokesay/growcontroller-software/releases)
+   (one zip file per system).
+2. Unpack it and start `growcontroller-simulator`. Windows warns once
+   (**More info › Run anyway**); macOS needs one Terminal command first
+   ([start on macOS](docs/DEMO.md#2-start)).
+3. Your browser opens the demo. Sign in with the password
+   `demo-passwort`.
+
+A tank that has been running for two days, with pumps, probes, history
+and a panel to speed up time and cause faults. Step by step, with a short
+tour and help when it does not start: the
+[step-by-step guide](docs/DEMO.md). Download only from the Releases page.
 
 With Home Assistant (OS or Supervised), growcontroller also installs as
 an app that reads your sensors and switches nothing:
 [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md).
+
+## What it does
+
+These work in the simulator (as of the code on `main`; the newest
+download lags behind in places), and will on the hub from its first
+firmware release:
+
+- **Guided mixing:** recipes from your bottles, including A and B pairs,
+  for a new batch or a top-up. With a circulation pump it mixes by
+  itself; without one it tells you when to stir. If a mix stops halfway,
+  it says what is in the tank and what is missing.
+- **pH and EC:** corrects in small doses, waits for the tank to settle,
+  and learns how much each dose moves the reading.
+- **Refill and circulation:** refills by a calculated amount, with the
+  level sensor as the emergency cut-off; circulates on a schedule or when
+  needed.
+- **Safety rules on the device:** every dose and every opening of the
+  inlet has a time limit; a reading that jumps, freezes or stops updating blocks the
+  control that depends on it; a missing reading is never treated as 0;
+  after a power cut, pumps, valves and the light stay off; STOP in the
+  app switches everything off at once.
+- **It explains itself:** each control function has a checklist that
+  answers "why is it dosing now, or why not?", and the monitoring says
+  what is wrong in words.
+- **Guided setup:** devices are detected, not typed in; the hub says what
+  works with your hardware and what is missing.
+- **History and data:** readings, doses and events, CSV export, a backup
+  of your settings, and a diagnostic package for bug reports.
+
+Planned: automatic light, climate and watering (today you switch them by
+hand), notifications without a vendor cloud, and Home Assistant
+integration ([roadmap](docs/ROADMAP.md)).
+
+| Part | Status |
+|---|---|
+| Software in the simulator, web app in English and German | works; tested automatically on every change |
+| Home Assistant app | reads sensors, switches nothing |
+| Firmware for the hub (ESP32-S3) | in development, not released |
+| Control of real pumps and valves | not yet |
+
+## Feedback and help
+
+Feedback on the demo is the most useful contribution right now.
+
+- **Questions, ideas, feedback:** [Discussions](https://github.com/Wokesay/growcontroller-software/discussions)
+- **Something does not work:** in the app under "Settings › Report a
+  problem" (with a report number), or a
+  [bug report](https://github.com/Wokesay/growcontroller-software/issues/new?template=bug.yml)
+- **A device you use:** the
+  [device form](https://github.com/Wokesay/growcontroller-software/issues/new?template=device.yml)
+- **Vulnerabilities:** never in public, see [`SECURITY.md`](SECURITY.md)
+- More: [FAQ](docs/FAQ.md), [getting help](SUPPORT.md),
+  [contributing](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md),
+  [changes](CHANGELOG.md)
+
+## How this project is made
+
+growcontroller is built in the open by one maintainer with an AI coding
+assistant (Claude Code), which writes most of the code, tests and docs;
+the commits say so. AI review agents check every change, the automated
+tests and checks below must pass, and the maintainer approves every
+release and every logic change to the pump gateway and the protective
+cut-offs. Each rule taken from growing practice is written down with its
+reason, most of them with a test, and each decision is recorded. Codes
+like SD-050, PD-022 or RAT-042 point to those records
+([what they mean](docs/FAQ.md#what-do-sd--pd--rat--and-m1-mean)).
 
 ## Build it yourself (no hardware needed)
 
@@ -56,7 +130,9 @@ tools/dev.sh
 This starts the digital twin with a set-up tank and 48 hours of history.
 `SCENARIO=neu tools/dev.sh` starts an empty hub with first-time setup. The
 **Simulator** button in the app offers time-lapse, faults (pH jump, pump
-blocked, power loss, wrong plug …) and scenarios.
+blocked, power loss, wrong plug …) and scenarios. What to install on
+Linux, macOS, Windows or a Raspberry Pi:
+[`docs/DEMO.md`](docs/DEMO.md#8-build-it-yourself-instead).
 
 ## Layout
 
@@ -83,14 +159,6 @@ tools/ci.sh            # architecture rules, licenses, core with sanitizers, C++
 E2E=1 tools/ci.sh      # plus the browser tests against the simulator
 ```
 
-## Contributing, bugs, security
-
-- Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Bugs: in the app under "Settings › Report a problem" (with a report ID),
-  or an issue with the "Bug report" template
-- Never report vulnerabilities as an issue: [`SECURITY.md`](SECURITY.md)
-- Changes: [`CHANGELOG.md`](CHANGELOG.md)
-
 ## Hardware: which way fits you
 
 From the first firmware release (M1) on, an ESP32-S3 does all control;
@@ -106,7 +174,7 @@ Home Assistant is an option on top (SD-050).
   Control stays on the ESP.
 - **Try it today:** the simulator needs no hardware. The Home Assistant app
   shows sensors you already have in Home Assistant and switches nothing
-  (see "Try it without installing" above).
+  (see "Try the demo" above).
 
 Does my hardware work?
 

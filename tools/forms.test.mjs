@@ -34,7 +34,9 @@ test("every release's notes send testers to the demo guide and the support page 
   const line = release.split("\n").find((l) => l.includes("**Testers: start here:**"));
   assert.ok(line, "release.yml adds the testers' line");
   assert.match(line, />> out\/NOTES\.md$/);
-  // the pages come with #304
-  for (const page of ["docs/DEMO.md", "SUPPORT.md"]) assert.ok(line.includes(`https://github.com/Wokesay/growcontroller-software/blob/main/${page}`), page);
+  for (const page of ["docs/DEMO.md", "SUPPORT.md"]) {
+    assert.ok(line.includes(`https://github.com/Wokesay/growcontroller-software/blob/main/${page}`), page);
+    assert.ok(read(page).length > 0, `${page} exists`);
+  }
   assert.ok(release.indexOf("**Testers: start here:**") < release.indexOf('echo "notes='), "before the notes' checksum");
 });

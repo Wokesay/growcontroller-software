@@ -611,6 +611,11 @@ constexpr double kJudgeMinL = 4.0;         // a smaller fill is judged together 
 constexpr int kMaxUnjudged = 2;            // fills in a row that could not be judged, then a person looks
 constexpr Ms kSettleMs = 3 * kMinute;      // the level reading lags 1.5–2 min behind the level
 constexpr Ms kSettleMaxMs = 30 * kMinute;  // a reading that never settles that long: the fill goes ahead, marked
+// After irrigation the level is calm once the median of its last 90 s is at most 0.3 L above that of the
+// 90 s before; a fall is calm. The readings count from 3 min after the pump stopped, when the lagging
+// reading has caught up, so the first verdict comes at 6 min (SD-099, RAT-038). Assumptions, not measured.
+constexpr Ms kCalmWindowMs = 90 * kSecond;
+constexpr double kCalmRiseL = 0.3;
 constexpr Epoch kLevelGraceS = 3 * 60;     // a check due without a valid level (right after a start) waits this long
 constexpr double kFollowsL = 1.0;          // a reading that moved this much since a person's work follows the tank (RAT-030, RAT-078)
 
@@ -636,6 +641,36 @@ double judgeBound(const Ctx& c, double startL) {
   return isNum(startL) && startL <= first ? std::max(kJudgeMinL, 2.0 * first) : kJudgeMinL;
 }
 
+
+// Needs at least one value
+double median(std::vector<double> v) {
+  std::sort(v.begin(), v.end());
+  const size_t n = v.size();
+  return n % 2 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
+}
+
+// Water that drains back after irrigation (ebb and flow) makes the level rise for a while: it is calm
+// once the median of the last 90 s is at most 0.3 L above that of the 90 s before. A fall is calm
+// (run-to-waste drip). Readings that do not yet span both windows are not, nor a window with fewer than
+// three reports of the sensor: a value held between reports would look calm while the level still rises,
+// so a sensor reporting less often than every 30 s waits the full half hour (SD-099).
+template <typename Seen>
+bool levelCalm(const std::deque<Seen>& readings, Ms since, Ms now) {
+  if (readings.empty() || now - since < 2 * kCalmWindowMs) return false;
+  std::vector<double> before, last;
+  std::set<Ms> reportsBefore, reportsLast;
+  for (const auto& r : readings) {
+    if (r.at > now - kCalmWindowMs) {
+      last.push_back(r.litres);
+      if (r.reported > now - kCalmWindowMs) reportsLast.insert(r.reported);
+    } else if (r.at > now - 2 * kCalmWindowMs) {
+      before.push_back(r.litres);
+      if (r.reported > now - 2 * kCalmWindowMs) reportsBefore.insert(r.reported);
+    }
+  }
+  if (reportsBefore.size() < 3 || reportsLast.size() < 3) return false;
+  return median(last) - median(before) <= kCalmRiseL;
+}
 
 // The irrigation pump draws from the tank. Bound and on, or in a state not known, it may have run.
 enum class Irrigation { None, On, Unknown };
@@ -740,8 +775,9 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
   // What disturbs the level reading; a fill waits until it has settled. A start counts as one: what
   // happened before it is not known, and so do a Stop, the function switched off (SD-090) and an inlet
   // latch up to the tick that sees it released: a person may be at the tank, so the first fill after a
-  // release plans from a level read after it (SD-088). Only irrigation may end the wait early: it reads
-  // the level too high, so a fill comes out smaller; a hand fill or draining could make it larger
+  // release plans from a level read after it (SD-088). Only irrigation may end the wait early, after half
+  // an hour: irrigation every few minutes must not keep the tank short, and the wait for the level to
+  // stop rising covers water draining back (SD-099); a hand fill or draining could make it larger
   // (RAT-038, SD-082).
   const bool latched = c.rt.latches.count("inlet.fault") > 0;
   if (!booted_ || c.stopped || c.epoch < c.maintenanceUntil || !enabled(c, "refill") || env.levelCalibrating ||
@@ -749,6 +785,19 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     disturbedMs_ = c.now;
   latchSeen_ = latched;
   if (irr == Irrigation::On) irrigatedMs_ = c.now;
+  // The level from 3 min after the pump stopped, for the drain-back that follows it: once a second while
+  // a fill may wait for it, the value repeated when the sensor reports only a change (SD-099)
+  {
+    const auto& lv = c.truth.get("tank.level");
+    if (irr == Irrigation::On) {
+      drainBack_.clear();
+      calmSeen_ = false;
+    } else if (!calmSeen_ && lv.usable() && c.now - irrigatedMs_ >= kSettleMs && (drainBack_.empty() || c.now - drainBack_.back().at >= kSecond)) {
+      if (drainBack_.empty()) drainSince_ = c.now;
+      drainBack_.push_back({c.now, *lv.value, lv.ts});
+    }
+    while (!drainBack_.empty() && drainBack_.front().at <= c.now - 2 * kCalmWindowMs) drainBack_.pop_front();
+  }
   const Ms settleSince = settleSince_;
   settleSince_ = -1;  // kept only by a tick that waits for the reading to settle
   if (irr != Irrigation::None)
@@ -1065,12 +1114,24 @@ void RefillController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - disturbedMs_))}});
     return;
   }
-  if (c.now - irrigatedMs_ < kSettleMs) {
+  // After irrigation it waits until the level has stopped rising as well: in ebb and flow water drains
+  // back from the table for a while, and a fill planned from the low level would overfill once it is
+  // back (SD-099). Half an hour from the start of the wait or from the pump's stop, whichever comes
+  // first, ends it: irrigation every few minutes must not keep the tank short. A drain-back still running
+  // then is filled on top; the 1 L margin below the capacity is what is left.
+  if (!calmSeen_ && levelCalm(drainBack_, drainSince_, c.now)) calmSeen_ = true;
+  if (!calmSeen_ && c.now - irrigatedMs_ >= kSettleMaxMs) {
+    calmSeen_ = true;
+    unsettled = true;  // not calm after half an hour: the fill goes ahead, marked as irrigated
+  }
+  if (c.now - irrigatedMs_ < kSettleMs || !calmSeen_) {
     settleSince_ = settleSince < 0 ? c.now : settleSince;
     if (c.now - settleSince_ < kSettleMaxMs) {
       settling_ = true;
       st_.state = "waiting";
-      st_.line = say("refill.settle", {{"left", mmss(kSettleMs - (c.now - irrigatedMs_))}});
+      const Ms left = std::min(kSettleMaxMs - (c.now - settleSince_), kSettleMaxMs - (c.now - irrigatedMs_));
+      st_.line = c.now - irrigatedMs_ < kSettleMs ? say("refill.settle", {{"left", mmss(kSettleMs - (c.now - irrigatedMs_))}})
+                                                   : say("refill.drain_back", {{"left", mmss(left)}});
       return;
     }
     unsettled = true;
