@@ -692,15 +692,18 @@ listed in every release under "Security".
   pump runs, while its state is not known, and until 10 min after
   either or after the hub started: it learns nothing, and counts half
   towards the "no effect" latch, which then latches after 2 clean rounds
-  or 4 watered ones without effect; the first step of a mix to the
-  target learns nothing either when watering overlaps it. A pH dose without a measurable fall,
-  clean or watered, now sets the learned pH effect to at least its start
-  and never lowers it, so the next doses do not grow; before, a clean one
-  could make the next dose several times bigger. A clean round
-  learns over the volume its dose went into, read when it started, not
-  when it had settled. The "no effect" texts say "after the last few
-  rounds" instead of "after two", and pH's name its pump among what to
-  check.
+  or 4 watered ones without effect. With slow pumps, a sum of small
+  rounds with a watered one in it counts half the same way, so the latch
+  still trips when every round is watered. The first step of a mix to
+  the target learns nothing either when watering overlaps it, but is
+  still judged at once. A pH dose without a measurable fall, clean or
+  watered, now sets the learned pH effect to at least its start and
+  never lowers it, so the next doses do not grow; before, a clean one
+  could make the next dose several times bigger. A clean round, and a
+  mix's first step, learns over the volume its dose went into, read when
+  it started, not when it had settled. The "no effect" texts say "after
+  the last few rounds" instead of "after two", and pH's name its pump
+  among what to check.
 - **A flood no longer locks the level and cuts the watering pump**
   (#324, SD-101): in ebb and flow, a flood can take more than 20 L out of
   the tank within minutes, and the drain-back brings it back as fast.

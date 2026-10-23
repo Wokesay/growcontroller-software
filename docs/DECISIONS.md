@@ -5549,8 +5549,10 @@ Decided by the project owner on 2026-10-23 in the software session
 under SD-091, each question as recommended: when a round counts as
 watered and the volume it learns over; after the reviews of
 `reviewer`, `qa` and `domain`, how such a round counts towards "no
-effect" and that learning keeps a tail of its own. How it fits SD-102,
-merged meanwhile, follows from these rules (below). Changes RAT-057 and
+effect" and that learning keeps a tail of its own; after SD-102 was
+merged meanwhile and `security` and `domain` reviewed the fit, that a
+sum of small rounds with a watered round in it counts half, as
+recommended. Changes RAT-057 and
 what RAT-041 and RAT-055 count; closes SD-092's "Not covered" point on
 the volume and SD-101's residual risk on learning during a flood.
 
@@ -5569,7 +5571,7 @@ the volume and SD-101's residual risk on learning during a flood.
   and until 10 min after either, the time SD-101 gives the drain-back.
   The same 10 min run from the first tick the pump is bound, also after
   a restart, which may have cut a flood (R6). A watered round learns
-  nothing. The 10 min were set for the level; for EC and pH they are an
+  nothing, apart from the pH floor below. The 10 min were set for the level; for EC and pH they are an
   assumption, not measured (the table's water mixing in, its own EC and
   pH).
 - **"No effect" counts it half:** a watered round without effect counts
@@ -5603,14 +5605,30 @@ the volume and SD-101's residual risk on learning during a flood.
 - **Only learning and the count change:** the round still doses, settles
   and decides as before; watering itself waits for a dose to mix in
   (SD-093).
-- **With SD-102:** the first step of a mix to the target, EC control's
-  round 1 (D7), learns nothing when watering overlaps it, by the same
-  tail, from when its parts go in until the hand-over; it is still
-  judged at once (D6). A round made smaller for slow pumps and too small
-  to judge alone that watering made unclean is left out of the sum like
-  any round not clean: it neither counts nor resets, and the sum goes
-  on; a watered round judged alone counts half. Each small round's
-  millilitres per litre are taken over the volume at its start.
+- **With SD-102:**
+  - The first step of a mix to the target, EC control's round 1 (D7),
+    learns nothing when watering overlaps it, by the same tail, from
+    when its parts go in until the hand-over, and it learns over the
+    litres it was planned on. It is still judged at once, at full weight
+    (D6): a dry or misplaced probe reads about 0 whatever drains back,
+    and the litres cannot move far while it runs (watering waits while
+    it measures; more than 10 % ends it, D3, D4). Drain-back far below
+    the tank's EC (a top-up after the substrate was flushed with plain
+    water) can lock a working step, on the safe side; runoff above it
+    can hide a part that delivered nothing, which the next rounds catch.
+  - A round made smaller for slow pumps and too small to judge alone
+    that watering made unclean still joins the sum, for counting only:
+    the sum learns nothing and, once judged, counts half (1 point) if
+    any round in it was watered, 2 if all were clean (decided by the
+    owner after the reviews). Leaving such rounds out would switch the
+    latch off for slow pumps while every round is watered (a plug
+    offline, frequent drip shots): `security` and `domain` found that a
+    dry probe could then let EC control dose without end. A round
+    something else made unclean stays out, as SD-102 has it. A watered
+    round too big for the sum counts half on its own and leaves the sum
+    as it is.
+  - Each small round's millilitres per litre are taken over the volume
+    at its start, as its expected rise is.
 - **Residual risks:**
   - a pump the hub does not see (not bound, a drain valve, a second
     pump, a shot shorter than the interval at which the hub reads the
@@ -5624,8 +5642,10 @@ the volume and SD-101's residual risk on learning during a flood.
     switching the plug at the device or in the network), the latch needs
     4 rounds instead of 2: for EC up to twice as much goes in before a
     probe fault latches (4 × the largest EC step instead of 2, each round
-    capped); for pH the first dose is as in the clean case and the doses
-    after it stay at the start size or smaller: 2 more than clean, each
+    capped; with slow pumps 4 sums of small rounds instead of 2, about 8
+    rounds of under 0.06 mS/cm each); for pH the first dose is as in the
+    clean case and the doses after it stay at the start size or
+    smaller: 2 more than clean, each
     at most 0.06 ml/L (about 0.3 pH at the start effect), so at most
     twice the clean case, and at most 0.42 ml/L instead of 0.30 ml/L at
     the lowest learned effect;
@@ -5652,7 +5672,9 @@ the volume and SD-101's residual risk on learning during a flood.
     reach a clean round, and its learned effect can come out too low: up
     to about 20 % the 0.8 aim absorbs it, beyond that the next dose
     overshoots, for pH beyond undoing (a longer tail for learning, or a
-    mixing time before the start reading, is a follow-up);
+    mixing time before the start reading, is a follow-up, #337); the
+    same holds for large tanks whose mixing time is longer than 10 min
+    (the hub's own model gives 100 s per 20 L, about 17 min at 200 L);
   - the twin's watering draws no water, so the tests check only how
     rounds are counted; the volume test takes 8 L out at once during the
     settle, and the twin keeps the concentration (water taken out, not

@@ -2251,7 +2251,7 @@ void Hub::handOver(Ctx& c) {
     in.ecBefore = before;
     in.ecNow = *ec.value;
     in.ml = all;
-    in.litres = tankVolume();
+    in.litres = jnum(j.info, "tankL");  // the litres the step was planned on and went into (SD-103)
     in.expectedRise = expected - before;
     in.learn = !j.dirty;
     in.judge = !j.diluted;

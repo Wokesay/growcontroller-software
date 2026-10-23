@@ -211,37 +211,44 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     // A round made smaller for slow pumps that should raise EC by less than 0.06 mS/cm says too little on
     // its own: clean ones of one recipe are judged and learned together once they should raise EC by 0.06
     // between them, so any pump stays usable and a dry probe is still caught (SD-102, PD-317). Each round's
-    // rise counts from its own start, so what happens to the tank between rounds stays out; a round that
-    // is not clean is left out, and the sum goes on.
+    // rise counts from its own start, so what happens to the tank between rounds stays out; a round
+    // something other than watering made unclean is left out, and the sum goes on. One only watering made
+    // unclean joins it for counting: the sum then learns nothing and counts half (SD-103).
     const bool tiny = limited_ && isNum(expectedRise_) && expectedRise_ < kSmallRoundEc;
+    const bool watered = !clean_ && !disturbed_;  // only watering made the round unclean (SD-103)
     // over the volume the dose went into, read when the round started (SD-103)
     const double mlPerL = isNum(volRound_) && volRound_ > 0 ? mlRound_ / volRound_ : kNaN;
     double judged = kNaN, judgedMlPerL = kNaN;  // the rise judged and learned now, and the ml per litre behind it
+    bool judgedWatered = false;                 // … with watering in it: it counts half and learns nothing
     if (small_.recipe != roundRecipe_ || (clean_ && !tiny)) small_ = {};
     if (clean_ && !tiny) {
       judged = rise;
       judgedMlPerL = mlPerL;
-    } else if (clean_) {
+    } else if (tiny && (clean_ || watered)) {
       small_.recipe = roundRecipe_;
       small_.rise += rise;
       small_.expected += expectedRise_;
-      if (isNum(mlPerL)) small_.mlPerL += mlPerL;
+      small_.watered = small_.watered || watered;
+      if (clean_ && isNum(mlPerL)) small_.mlPerL += mlPerL;
       else small_.learnable = false;
       if (small_.expected >= kSmallRoundEc) {
         judged = small_.rise;
+        judgedWatered = small_.watered;
         judgedMlPerL = small_.learnable ? small_.mlPerL : kNaN;
         small_ = {};
       }
+    } else if (watered) {  // judged alone, for counting only
+      judged = rise;
+      judgedWatered = true;
     }
     // Learned for the recipe the round dosed, within the band, below it that recipe's start (SD-092, RAT-057)
     if (const RecipeCfg* dosed = c.cfg.recipe(roundRecipe_); dosed && isNum(judged) && isNum(judgedMlPerL) && judgedMlPerL > 0) {
       const double observed = judged / judgedMlPerL;
       c.rt.ecEffects[roundRecipe_] = c.rt.ecEffect = clampEcEffect(observed, recipeEffect(*dosed, kNaN).start);
     }
-    // "No effect" counts a judged rise 2 points and the rise of a round only watering made unclean 1 (SD-103);
-    // a small round that is not clean is left out, as above, and a disturbed round counts nothing
-    if (isNum(judged)) noEffect_ = judged < 0.02 ? noEffect_ + 2 : 0;
-    else if (!clean_ && !disturbed_ && !tiny) noEffect_ = rise < 0.02 ? noEffect_ + 1 : 0;
+    // "No effect" counts a judged clean rise 2 points and one with watering in it 1 (SD-103); a disturbed
+    // round counts nothing
+    if (isNum(judged)) noEffect_ = judged < 0.02 ? noEffect_ + (judgedWatered ? 1 : 2) : 0;
     if (noEffect_ >= kNoEffectPoints) {
       c.rt.latches["ec.no_effect"] = {{"at", c.epoch}};
       noEffect_ = 0;  // after the acknowledgement, 4 points again (2 clean or 4 watered rounds)
@@ -381,7 +388,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     double ml = 0;
     for (const auto& s : plan.steps) ml += isNum(s.ml) ? s.ml : 0;
     // at the effect the round is planned on: a recipe that learned a small effect is not expected to do more
-    expectedRise_ = isNum(env.volumeL) && env.volumeL > 0 ? eff.dose * ml / env.volumeL : kNaN;
+    expectedRise_ = isNum(volRound_) && volRound_ > 0 ? eff.dose * ml / volRound_ : kNaN;
   }
   queue_ = plan.steps;
   phase_ = Phase::Dosing;

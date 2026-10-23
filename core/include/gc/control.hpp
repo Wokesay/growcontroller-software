@@ -46,7 +46,7 @@ struct ControlEnv {
   bool refillDue = false;    // a fill is due and waits for a dose to settle: no new round meanwhile (SD-090)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
-  bool watering = false;     // the watering pump runs or its state is not known, or either, or its binding or the hub's start, was less than 10 min ago (SD-103)
+  bool watering = false;     // the watering pump runs or its state is not known, or was so less than 10 min ago, or it was bound or the hub started less than 10 min ago (SD-103)
 };
 
 // Where EC control aims: its target minus what the pH− dose that follows adds (RAT-053); NaN without
@@ -129,7 +129,7 @@ class EcController {
  private:
   enum class Phase { Idle, Dosing, Settling } phase_ = Phase::Idle;
   std::vector<DoseStep> queue_;
-  int round_ = 0, noEffect_ = 0, seq_ = 0;  // noEffect_ in points: 2 a clean round, 1 one watering made unclean (SD-103)
+  int round_ = 0, noEffect_ = 0, seq_ = 0;  // noEffect_ in points: 2 a judged clean rise (a round or a sum of small ones), 1 one with watering in it (SD-103)
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
   bool limited_ = false;    // the round was made smaller to fit the partial-run limit (SD-102)
   double expectedRise_ = kNaN;  // what the round should raise EC by, at the effect it was planned on (SD-102)
@@ -139,7 +139,8 @@ class EcController {
   struct SmallRounds {
     double rise = 0, expected = 0;
     double mlPerL = 0;       // each round's millilitres on its own litres
-    bool learnable = true;   // every round knew its litres
+    bool learnable = true;   // every round knew its litres and was clean
+    bool watered = false;    // a round only watering made unclean is in it: it counts half (SD-103)
     std::string recipe;
   } small_;
   bool disturbed_ = false;  // something other than watering came in between: the round does not count at all

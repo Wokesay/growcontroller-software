@@ -230,7 +230,7 @@ struct Job {
   bool pumpStands = false;            // … and the card says so now
   Ms pumpOffSince = 0;                // since when the pump reads off or unknown while it measures or mixes in; 0: it runs
   bool cutMarked = false;             // EC and pH were told to settle what went in (Hub::mixCut)
-  bool dirty = false;                 // way 1: the mix resumed, its recipe changed, the inlet opened or a probe was calibrated: nothing is learned (RAT-057)
+  bool dirty = false;                 // way 1: resumed, its recipe changed, the inlet, a calibration, maintenance or watering (SD-103) came in between: nothing is learned (RAT-057)
   bool diluted = false;               // … the inlet opened or a probe was calibrated: the rise says nothing, so it is not judged either (SD-102 D6)
   Ms measureFrom = 0;                 // way 1: when the pump first ran while it measures; 0: not yet
   bool ecDosed = false;               // way 1 stopped part way: EC control has started a round since, so it is not resumed

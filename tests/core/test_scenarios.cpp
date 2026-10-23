@@ -829,14 +829,14 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
       c.ok("POST", "/api/v1/recipes", veg);
     };
   }
-  SUBCASE("0.3 ml/min, the watering pump pressed while round 2 settles: rounds 2 and 3, which watering made unclean, are left out, the sum goes on (SD-103)") {
+  SUBCASE("0.3 ml/min, the watering pump pressed while round 2 settles: rounds 2 and 3, which watering made unclean, make the sums they are in count half (SD-103)") {
     // EC control off until a watering pump is bound and its 10 min from binding have run out
     c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
     const std::string plug = irrigationPlug(s, c);
     s.step(11 * 60 * 1000, 5000);
     c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
     slow(0.3);
-    expected = 6;  // round 3 starts less than 10 min after the press
+    expected = 6;  // 1 and 2, 3 and 4 count 1 point each (round 3 starts less than 10 min after the press), 5 and 6 count 2
     whileRound2Settles = [&s, plug] {
       std::lock_guard<std::recursive_mutex> l(s.mutex());
       auto& o = s.world().netPlug(plug)->outlets[0];
@@ -844,6 +844,17 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
       o.onSince = s.world().now();
       ++o.switchOns;
     };
+  }
+  SUBCASE("0.3 ml/min, the watering pump's plug offline for the whole series: every round watered, each sum counts half, the lock after 8 rounds (SD-103)") {
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    const std::string plug = irrigationPlug(s, c);
+    s.step(11 * 60 * 1000, 5000);
+    s.control("fault", {{"device", plug}, {"fault", "offline"}});
+    s.step(60 * 1000, 5000);
+    REQUIRE(c.state()["outputs"]["zone.irrigation_pump"].is_null());  // its state not known
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+    slow(0.3);
+    expected = 8;
   }
   const auto before = c.state()["eventId"].get<std::uint64_t>();
   auto rounds = [&] {
@@ -3853,14 +3864,21 @@ TEST_CASE("Scenario: an EC or pH round that watering overlaps learns nothing: th
   SUBCASE("a mix to the target's first step, EC control's round 1 (SD-102 D7)") {
     w.control("ph_control", false);
     w.water("ec_control", 0.02, 6.5);  // fresh water
+    bool pressed = false, dead = false;
+    SUBCASE("without watering it learns") {}
+    SUBCASE("the pump read as on while its first part doses: not learned") { pressed = true; }
+    SUBCASE("products without effect, the pump read as on while its first part doses: still judged, EC control locks at once (D6)") {
+      pressed = dead = true;
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      for (const char* liquid : {"grow_a", "grow_b", "calmag"}) s.world().liquids[liquid].ecPerMlL = 0;
+    }
     const json before = c.state()["effects"]["ecByRecipe"].value("veg", json());
     startMeasured(c);
     REQUIRE(soon(s, [&] { return c.state()["job"]["state"] != "measuring"; }, 30 * 60 * 1000, 5000));
-    SUBCASE("without watering it learns") {}
-    SUBCASE("the pump read as on while it mixes in: judged, not learned") { w.press(); }
-    const bool pressed = w.count("block", "ev.irrigation.dose") > 0;
+    if (pressed) w.press();
     REQUIRE(soon(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
-    CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_handover");
+    CHECK(c.state()["lastJob"]["message"]["key"] == (dead ? "mix.done_handover_locked" : "mix.done_handover"));
+    CHECK(c.state()["latches"].contains("ec.no_effect") == dead);
     s.step(30 * 1000, 5000);
     const json learned = c.state()["effects"]["ecByRecipe"].value("veg", json());
     CHECK((learned == before) == pressed);
