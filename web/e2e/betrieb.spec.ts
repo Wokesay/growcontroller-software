@@ -417,14 +417,22 @@ test("Problem melden erzeugt ein Diagnosepaket ohne Geheimnisse", async ({ page 
   const diag = await (await page.request.get("/api/v1/diagnostics")).text();
   expect(diag).not.toContain("salt");
   expect(diag).not.toContain("demo-passwort");
-  // The public issue is English even from a German page (PD-034) and carries
-  // only title, labels and the short body – no diagnostic data.
-  const href = await page.getByRole("link", { name: "Öffentlich auf GitHub melden" }).getAttribute("href");
+  // The link opens the bug form with its text fields filled in and carries no diagnostic
+  // data; no labels, which would answer 404 to anyone outside the project (SD-094)
+  await page.getByLabel("Was ist passiert?").fill("Mischen blieb bei Teil B stehen");
+  const link = page.getByRole("link", { name: "Öffentlich auf GitHub melden" });
+  await expect(link).toHaveAttribute("href", /what=Mischen/);
+  const href = await link.getAttribute("href");
   const url = new URL(href!);
-  expect([...url.searchParams.keys()].sort()).toEqual(["body", "labels", "title"]);
-  expect(url.searchParams.get("body")).toContain("**Description**");
-  expect(url.searchParams.get("body")).not.toContain("Beschreibung");
-  expect(url.searchParams.get("body")).not.toContain("events");
+  expect(url.origin + url.pathname).toBe("https://github.com/Wokesay/growcontroller-software/issues/new");
+  expect([...url.searchParams.keys()].sort()).toEqual(["report", "template", "title", "version", "what"]);
+  expect(url.searchParams.get("template")).toBe("bug.yml");
+  const id = url.searchParams.get("report")!;
+  expect(id).toMatch(/^GC-/);
+  expect(url.searchParams.get("title")).toBe(`[${id}] Mischen blieb bei Teil B stehen`);
+  expect(url.searchParams.get("what")).toBe("Mischen blieb bei Teil B stehen");
+  expect(url.searchParams.get("version")).toMatch(/^\d+\.\d+\.\d+/);
+  expect(href).not.toContain("events");
 });
 
 test("English page: sign-in, recipes and settings speak English (#18)", async ({ page }) => {

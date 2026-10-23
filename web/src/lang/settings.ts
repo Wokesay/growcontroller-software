@@ -23,7 +23,6 @@ export const de = {
   // Report a problem
   // Always sent in English: the repository is English (PD-034).
   "settings.issueTitle": "Problem report",
-  "settings.issueBody": "**Description**\n{text}\n\n**Version:** {version}\n**Platform:** {platform}\n**Report:** {id}\n\n(Please share the diagnostic package only when asked – issues are public.)",
   "settings.reportIntro": "Beschreibe kurz, was passiert ist. Der Hub erstellt ein Diagnosepaket mit Version, Einstellungen, Zuständen und den Ereignissen der letzten 72 Stunden – ohne Passwort, Sitzungen und WLAN-Zugang. Du siehst vorher, was drin ist.",
   "settings.whatHappened": "Was ist passiert?",
   "settings.whatHappenedHint": "z. B. Mischlauf hielt bei Teil B an",
@@ -37,7 +36,7 @@ export const de = {
   "settings.viewContents": "Inhalt ansehen",
   "settings.download": "Herunterladen",
   "settings.reportPublic": "Öffentlich auf GitHub melden",
-  "settings.publicWarn": "GitHub-Issues sind öffentlich. Das Diagnosepaket nicht dort anhängen, nur die Vorgangsnummer nennen.",
+  "settings.publicWarn": "GitHub-Issues sind öffentlich. Nenn dort nur die Vorgangsnummer. Häng das Diagnosepaket nur an, wenn wir darum bitten, und schau vorher hinein.",
 
   // System and access
   "settings.system": "System",
@@ -99,7 +98,6 @@ export const en: Record<keyof typeof de, string> = {
   "settings.install": "Install",
 
   "settings.issueTitle": "Problem report",
-  "settings.issueBody": "**Description**\n{text}\n\n**Version:** {version}\n**Platform:** {platform}\n**Report:** {id}\n\n(Please share the diagnostic package only when asked – issues are public.)",
   "settings.reportIntro": "Briefly describe what happened. The hub creates a diagnostic package with version, settings, states and the last 72 hours of events – no passwords, sessions or Wi-Fi credentials. You can look inside before you share it.",
   "settings.whatHappened": "What happened?",
   "settings.whatHappenedHint": "e.g. the mix stopped at part B",
@@ -113,7 +111,7 @@ export const en: Record<keyof typeof de, string> = {
   "settings.viewContents": "View contents",
   "settings.download": "Download",
   "settings.reportPublic": "Report publicly on GitHub",
-  "settings.publicWarn": "GitHub issues are public. Don't attach the diagnostic package there – just give the report number.",
+  "settings.publicWarn": "GitHub issues are public. Give only the report number there. Attach the diagnostic package only if we ask, after you have looked inside.",
 
   "settings.system": "System",
   "settings.handLimit": "Limit per manual dose",

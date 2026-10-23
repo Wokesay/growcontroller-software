@@ -16,6 +16,15 @@ body:
     validations:
       required: true
   - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, one step per line, so that we can try it too.
+      placeholder: |
+        1. Simulator, demo scenario
+        2. Mixing › 40 L › Start mixing
+        3. …
+  - type: textarea
     id: expected
     attributes:
       label: What did you expect?

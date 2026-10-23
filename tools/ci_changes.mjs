@@ -9,7 +9,8 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // The same paths that ci.yml skipped with paths-ignore before SD-030.
-const DOCS_ONLY = [/^docs\//, /\.md$/, /^LICENSES\//, /^\.claude\//, /^\.github\/ISSUE_TEMPLATE\//];
+// The forms of issues and discussions are checked by the quick checks (tools/forms.test.mjs).
+const DOCS_ONLY = [/^docs\//, /\.md$/, /^LICENSES\//, /^\.claude\//, /^\.github\/ISSUE_TEMPLATE\//, /^\.github\/DISCUSSION_TEMPLATE\//];
 
 export function needsFullCi(files) {
   return files.some((f) => f !== "" && !DOCS_ONLY.some((re) => re.test(f)));

@@ -8,6 +8,9 @@ listed in every release under "Security".
 ## [Unreleased]
 
 ### Added
+- **Testers find where to start** (SD-094): every release's notes point
+  to the demo guide and the page on help and feedback, and the bug form
+  asks for the steps that led there.
 - **A prototype says it is for testing only** (SD-096, from #250): the
   sign-in page (also when the first password is set), the Home Assistant
   app's introduction and Settings › Display and info say "For testing
@@ -615,6 +618,13 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **"Report publicly on GitHub" works for anyone** (SD-094): the link in
+  Settings › Report a problem asked GitHub to set labels, which only the
+  project may do, so GitHub answered "Not Found" to everyone else. It now
+  opens the bug form with the description, the version and the report ID
+  filled in, and still sends no diagnostic data (#305). The note next to
+  it says to give only the report number there, and to attach the
+  diagnostic package only when asked, after looking inside.
 - **A fill after watering waits until the water has run back** (#294,
   SD-099): in ebb and flow, water runs back from the table into the tank
   for a while after the watering pump stops. A fill planned 3 min after
