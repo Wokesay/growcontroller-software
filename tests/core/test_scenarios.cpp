@@ -801,6 +801,7 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
   bool slowed = false;
   int expected = 2;  // rounds until the lock
   std::function<void()> whileRound2Settles;  // what happens to round 2
+  std::optional<json> keeps;                 // the recipe's learned effect, when no round may learn
   auto slow = [&](double mlPerMin) {
     std::lock_guard<std::recursive_mutex> l(s.mutex());
     for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow = s.world().cap(id)->storedFlow = mlPerMin;
@@ -852,6 +853,7 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
     s.control("fault", {{"device", plug}, {"fault", "offline"}});
     s.step(60 * 1000, 5000);
     REQUIRE(c.state()["outputs"]["zone.irrigation_pump"].is_null());  // its state not known
+    keeps = c.state()["effects"]["ecByRecipe"].value("veg", json());  // a sum with watering in it learns nothing
     c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
     slow(0.3);
     expected = 8;
@@ -875,6 +877,7 @@ TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds ma
   CHECK(happened == static_cast<bool>(whileRound2Settles));
   CHECK(limited == slowed);  // the slowed rounds were made smaller (D10), the normal ones not
   CHECK(rounds() == expected);
+  if (keeps) CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == *keeps);
   CHECK(eventsSince(c, "alarm", before, "ev.ec.no_effect").size() == 1);
   s.step(3600 * 1000, 10000);  // locked: nothing more goes in
   CHECK(rounds() == expected);
