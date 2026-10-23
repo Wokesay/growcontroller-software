@@ -1178,6 +1178,82 @@ TEST_CASE("Restart: a job started while job.json is kept writes it anew, so a re
   CHECK(mixNeedsConfirmation(h));  // the window counts from the restart
 }
 
+namespace {
+// What the hub says after a restart that cut this job off, as job.json last held it
+json rebootText(const json& job) {
+  gc::MemoryStorage store;
+  test::Clock clk;
+  store.write("job.json", job.dump());
+  gc::Catalog cat = gc::Catalog::builtin();
+  test::FakeBus bus;
+  gc::Hub h(cat, bus, store, clk, fakeRandom);
+  h.boot();
+  const json events = h.events(0, 9999999999, "", 2000)["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.mix_reboot") || sameEvent(e, "ev.job_reboot")) return e["text"];
+  return nullptr;
+}
+}  // namespace
+
+TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, with what is known of its amount (#310, SD-102)") {
+  const json a = {{"name", "Teil A"}, {"ml", 20.0}, {"mlDone", 20.0}, {"state", "done"}};
+  const auto mix = [](const json& steps) {
+    return json{{"type", "mix"}, {"state", "running"}, {"index", steps.size() - 1}, {"steps", steps}};
+  };
+  // The one part named as partly in, with these arguments
+  const auto partly = [](const json& text, const std::string& key, const json& args) {
+    REQUIRE(text["args"]["partly"].size() == 1);
+    CHECK(text["args"]["partly"][0]["key"] == key);
+    CHECK(text["args"]["partly"][0]["args"] == args);
+  };
+  SUBCASE("the second part, the first one in") {
+    const json text = rebootText(mix({a, {{"name", "Teil B"}, {"ml", 20.0}, {"mlDone", 0}, {"state", "running"}}}));
+    CHECK(text["key"] == "ev.reboot.text_partly");
+    REQUIRE(text["args"]["done"].size() == 1);
+    CHECK(text["args"]["done"][0]["args"] == json{{"name", "Teil A"}, {"ml", 20.0}});
+    partly(text, "reboot.partly", {{"name", "Teil B"}, {"max", 20.0}});
+    CHECK(text["args"]["next"]["key"] == "reboot.next_plain");  // no control here: mixed by hand first
+  }
+  SUBCASE("a part resumed after a cut, with some of it in already: at least that, at most the plan") {
+    const json text = rebootText(mix({{{"name", "Teil A"}, {"ml", 20.0}, {"mlDone", 8.0}, {"state", "running"}}}));
+    CHECK(text["key"] == "ev.reboot.text_partly_only");
+    CHECK(text["args"]["done"].empty());
+    partly(text, "reboot.partly_min", {{"name", "Teil A"}, {"min", 8.0}, {"max", 20.0}});
+  }
+  SUBCASE("a planned amount that is not known, or that cannot be right: no upper bound") {
+    partly(rebootText(mix({{{"name", "Teil A"}, {"ml", nullptr}, {"mlDone", 0}, {"state", "running"}}})), "reboot.partly_open",
+           {{"name", "Teil A"}});
+    partly(rebootText(mix({{{"name", "Teil A"}, {"ml", 0}, {"mlDone", 0}, {"state", "running"}}})), "reboot.partly_open",
+           {{"name", "Teil A"}});
+    partly(rebootText(mix({{{"name", "Teil A"}, {"ml", 8.0}, {"mlDone", 12.0}, {"state", "running"}}})), "reboot.partly_least",
+           {{"name", "Teil A"}, {"min", 12.0}});
+  }
+  SUBCASE("two parts marked as running, as a damaged file can: both named") {
+    const json text = rebootText(mix({{{"name", "Teil A"}, {"ml", 20.0}, {"mlDone", 5.0}, {"state", "running"}},
+                                       {{"name", "Teil B"}, {"ml", 20.0}, {"mlDone", 0}, {"state", "running"}}}));
+    REQUIRE(text["args"]["partly"].size() == 2);
+    CHECK(text["args"]["partly"][0]["args"]["name"] == "Teil A");
+    CHECK(text["args"]["partly"][1]["args"]["name"] == "Teil B");
+  }
+  SUBCASE("an ended part without its amount: in, amount unknown, never nothing (R5)") {
+    const json text = rebootText(mix({{{"name", "Teil A"}, {"ml", 20.0}, {"state", "done"}},
+                                       {{"name", "Teil B"}, {"ml", 20.0}, {"mlDone", 0}, {"state", "pending"}}}));
+    CHECK(text["key"] == "ev.reboot.text");
+    REQUIRE(text["args"]["done"].size() == 1);
+    CHECK(text["args"]["done"][0]["key"] == "amount.unknown");
+  }
+  // Not what the hub writes (it saves a calibration only once it waits for the cup): it guards that
+  // only a mix names a running part
+  SUBCASE("a calibration pumps into a cup, not into the tank: said as before") {
+    const json text = rebootText({{"type", "calibration"},
+                                  {"state", "running"},
+                                  {"index", 0},
+                                  {"steps", {{{"name", "Teil A"}, {"ml", nullptr}, {"mlDone", 0}, {"state", "running"}}}}});
+    CHECK(text["key"] == "ev.reboot.text_none");
+    CHECK_FALSE(text["args"].contains("partly"));
+  }
+}
+
 TEST_CASE("Restart: a password file that cannot be read locks the first password and never says to reset (SD-081)") {
   LockedStorage store;
   test::Clock clk;

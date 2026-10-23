@@ -150,7 +150,7 @@ nutrient solution". This comes straight from the resolver.
 | Very small dose | warning below 1 ml; pump runs under 1 s are blocked |
 | pH bottle in the recipe | the recipe editor does not list pH bottles; the bottle editor does not save a bottle a recipe holds as a pH bottle and says how to take it out (#159) |
 | Pump blocks in the middle of a pair | "Part B not fully dosed … Part A is already in … Complete part B" |
-| Power failure during a run | everything off; event "Mix run interrupted by restart at step 2/3. In the tank: …" |
+| Power failure during a run | everything off; event "Mix interrupted by a restart": the step, what is in, and the part that was running as "up to … ml of it may be in – how much is unknown"; then to mix first (or that EC and pH wait for the circulation pump), measure EC and add only what is missing (SD-102) |
 | Walked away during a guided mix without a circulation pump | after 30 min without "Continue" the mix stops, names a part of a pair still missing with its amount, offers "Resume mix" / "End mix"; the minutes left show while it waits (SD-057, SD-089) |
 | Water's EC not entered for a mix to a target EC | never taken as 0: said at its field, Start off; 0 is entered for RO water, a value above the EC target's range is refused as a likely µS/cm (SD-098) |
 | A target EC the recipe's amounts cannot reach, or a chart EC typed too low | at most the recipe's amounts without measuring; the plan says it cannot reach the target and names the EC to expect, worked out, not measured (SD-098) |

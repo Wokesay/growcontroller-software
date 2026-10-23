@@ -215,6 +215,7 @@ constexpr Entry kMessages[] = {
     // Building blocks
     {"ev.plain", "{text}"},
     {"amount", "{name} {ml:1} ml"},
+    {"amount.unknown", "{name}, amount unknown"},
     // Number and unit on one line (#106)
     {"span.s", "{n}\u00a0s"},
     {"span.min", "{n}\u00a0min"},
@@ -247,6 +248,14 @@ constexpr Entry kMessages[] = {
     {"ev.job_reboot", "Dosing interrupted by a restart"},
     {"ev.reboot.text", "Stopped at step {step} of {total}. In the tank: {done}. Not resumed automatically."},
     {"ev.reboot.text_none", "Stopped at step {step} of {total}. Nothing went into the tank. Not resumed automatically."},
+    {"ev.reboot.text_partly", "Stopped at step {step} of {total}. In the tank: {done}. {partly}. {next}. Not resumed automatically."},
+    {"ev.reboot.text_partly_only", "Stopped at step {step} of {total}. {partly}. {next}. Not resumed automatically."},
+    {"reboot.partly", "{name} was running: up to {max:1} ml of it may be in – how much is unknown"},
+    {"reboot.partly_min", "{name} was running: between {min:1} and {max:1} ml of it is in – how much exactly is unknown"},
+    {"reboot.partly_least", "{name} was running: at least {min:1} ml of it is in – how much exactly is unknown"},
+    {"reboot.partly_open", "{name} was running: some of it may be in – how much is unknown"},
+    {"reboot.next_control", "Control waits until the circulation pump has mixed the tank. Before you dose by hand, measure EC and add only what is missing"},
+    {"reboot.next_plain", "Mix the tank, measure EC, then add only what is missing"},
     {"ev.reboot.text_settling", "All parts were in ({done}); only the mixing was cut short. Control waits until the circulation pump has mixed the tank."},
     {"ev.reboot.text_settling_plain", "All parts were in ({done}); only the mixing was cut short – mix before you measure."},
     {"ev.started", "Hub started"},

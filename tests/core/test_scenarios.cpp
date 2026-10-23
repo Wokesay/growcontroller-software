@@ -254,6 +254,39 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
   }
 }
 
+TEST_CASE("Scenario: a restart in a part resumed after it failed names it between what was in and its plan (#310, SD-102)") {
+  sim::Simulation s(test::opts("neu"));
+  Client c{s};
+  setupStage0(s, c);
+  for (const char* id : {kA, kB, kC}) calibrate(s, c, id);
+  s.world().fill(20, 0.02, 7.0);
+  const std::string id = c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}})["job"]["id"];
+  REQUIRE(until(s, [&] { return s.world().cap(kB)->state == 1; }, 10 * 60 * 1000, 200));
+  s.step(5000);
+  s.world().cap(kB)->blocked = true;  // part B stops part way
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 180000));
+  const json failed = c.state()["job"];  // held: a loop over a temporary's part dangles
+  json partB;
+  for (const auto& st : failed["steps"])
+    if (st["name"] == "Teil B") partB = st;
+  REQUIRE_MESSAGE(partB["mlDone"].get<double>() > 0, failed.dump());
+  s.world().cap(kB)->blocked = false;
+  c.ok("POST", "/api/v1/jobs/" + id + "/resume");
+  REQUIRE(until(s, [&] { return s.world().cap(kB)->state == 1; }, 60000, 200));
+  s.reboot();
+  Client again{s};
+  again.ok("POST", "/api/v1/auth/login", {{"password", "mein-passwort"}});
+  json text;
+  for (const auto& e : findEvents(again, "mix"))
+    if (e["title"]["key"] == "ev.mix_reboot") text = e["text"];
+  REQUIRE_MESSAGE(text.is_object(), "reported");
+  CHECK(text["key"] == "ev.reboot.text_partly");  // part A was in before
+  REQUIRE(text["args"]["partly"].size() == 1);
+  CHECK(text["args"]["partly"][0]["key"] == "reboot.partly_min");
+  CHECK(text["args"]["partly"][0]["args"]["min"] == partB["mlDone"]);
+  CHECK(text["args"]["partly"][0]["args"]["max"] == partB["ml"]);
+}
+
 TEST_CASE("Szenario: Pumpe blockiert im Mischlauf → Paar-Fehler, nachholen nach Behebung") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
@@ -281,6 +314,9 @@ TEST_CASE("Szenario: Stromausfall im Lauf → alles aus, nicht fortgesetzt, geme
   s.world().fill(20, 0.02, 7.0);
   c.ok("POST", "/api/v1/mix/start", {{"recipe", "wachstum"}, {"waterL", 20}, {"guided", false}});
   REQUIRE(until(s, [&] { return s.world().cap(kA)->state == 1; }, 10000, 200));
+  const json partA = c.state()["job"]["steps"][0];
+  REQUIRE(partA["state"] == "running");
+  s.step(10000);  // part A runs for 10 s
   s.reboot();
   CHECK(s.world().cap(kA)->state != 1);
   Client again{s};
@@ -288,9 +324,18 @@ TEST_CASE("Szenario: Stromausfall im Lauf → alles aus, nicht fortgesetzt, geme
   s.step(120000);
   for (const char* id : {kA, kB, kC}) CHECK(s.world().cap(id)->state != 1);
   CHECK(again.state()["job"].is_null());
-  bool reported = false;
-  for (const auto& e : findEvents(again, "mix")) reported = reported || e["title"]["key"] == "ev.mix_reboot";
-  CHECK(reported);
+  json text;
+  for (const auto& e : findEvents(again, "mix"))
+    if (e["title"]["key"] == "ev.mix_reboot") text = e["text"];
+  REQUIRE_MESSAGE(text.is_object(), "reported");
+  // Part A went in partly, how much is not known: named so, at most its planned amount, never as
+  // "nothing went in" (#310, SD-102)
+  CHECK(text["key"] == "ev.reboot.text_partly_only");
+  REQUIRE(text["args"]["partly"].size() == 1);
+  CHECK(text["args"]["partly"][0]["key"] == "reboot.partly");
+  CHECK(text["args"]["partly"][0]["args"]["name"] == partA["name"]);
+  CHECK(text["args"]["partly"][0]["args"]["max"] == partA["ml"]);
+  CHECK_FALSE(text["args"]["partly"][0]["args"].contains("min"));
 }
 
 namespace {
@@ -576,12 +621,25 @@ TEST_CASE("Scenario: a mix cut with nutrients in leaves EC to settle with the ci
     s.step(2000);
     CHECK(c.state()["lastJob"]["message"]["key"] == "job.internal");
   }
-  SUBCASE("restarted after the first part") {
+  SUBCASE("restarted after the first part: what is in, as before") {
     id = startMix(c)["id"];
     REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000, 5000));
     s.reboot();
     relogin();
     CHECK(logged(c, "ev.mix_reboot"));
+    CHECK(logged(c, "ev.reboot.text", "text"));
+  }
+  SUBCASE("restarted while the first part runs: named as partly in, and the controllers' wait said (#310, SD-102)") {
+    id = startMix(c)["id"];
+    REQUIRE(c.state()["job"]["steps"][0]["state"] == "running");
+    s.step(2000);
+    s.reboot();
+    relogin();
+    json text;
+    for (const auto& e : findEvents(c, "mix"))
+      if (e["title"]["key"] == "ev.mix_reboot") text = e["text"];
+    CHECK(text["key"] == "ev.reboot.text_partly_only");
+    CHECK(text["args"]["next"]["key"] == "reboot.next_control");
   }
   SUBCASE("restarted while it mixes in at its end: said so") {
     id = startMix(c)["id"];

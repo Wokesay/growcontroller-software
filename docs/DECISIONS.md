@@ -5355,6 +5355,53 @@ risk SD-099 named for it.
 
 ---
 
+## SD-102: After a restart cut a mix, the part that was running is named as possibly in, its amount unknown
+
+Decided by the project owner on 2026-10-23 in the software session, for
+#310 (a control detail under SD-091; "name the part, amount unknown",
+as recommended). The wording, and that the report says to mix before
+measuring, follow the reviews of `reviewer` and `domain`.
+
+- **What the report says:** a mix cut by a restart while a part ran
+  names that part: up to its planned amount of it may be in, how much is
+  unknown; for a part resumed after a cut, between what was in already
+  and the plan. The parts in before are listed as before, an ended part
+  without its amount as "amount unknown", never as nothing (R5). A cut
+  between two parts, or while the mix mixes in at its end, is said as
+  before.
+- **What to do next:** with EC or pH control on, the report says that
+  they wait until the circulation pump has mixed the tank; without, it
+  says to mix the tank first. Either way: measure EC and add only what is
+  missing, as a second mix would dose every part again.
+- **No amount is guessed and none is saved while a part runs:** the
+  moment of the cut is not known, so an estimate from the run time could
+  only overstate or understate what went in, and saving the progress
+  during a run would write to the flash while it doses.
+- **Afterwards** EC and pH settle first with the circulation pump, as
+  after any mix cut with nutrients in (SD-057, SD-073, RAT-052): before,
+  a restart during the first part counted as nothing in, and they dosed
+  on the unmixed tank.
+- **Not covered:** a dose by hand, a prime and the run of a calibration
+  are not in `job.json` while they run, so a restart during one is not
+  reported at all; nor is a restart in the moment after a part's pump
+  started and before the mix saved it as running. Both are #329.
+- **Residual risks:** "up to" includes nothing; the hub cannot tell
+  whether the pump had started before the cut, and the grower measures.
+  Until #333, the part of a pair still missing is not named after a
+  restart, unlike after a cancel or the stir timeout (RAT-054), and a
+  part dosed in many runs has its whole planned amount as the upper
+  bound.
+- **Decided to follow** (by the project owner on 2026-10-23, #333): the
+  restart report names each part of a pair started and not complete,
+  with what is missing, as an alarm; and the hub keeps the amount in
+  `job.json` after each finished partial run of a mix part, one small
+  write per minute of dosing, so the bound is at most one run wide.
+
+Not chosen: an estimate from the run time; saving the amount during
+the run.
+
+---
+
 ## Drafts (waiting for "entschieden")
 
 | # | Draft | Core | Needs PD |

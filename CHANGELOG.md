@@ -1055,7 +1055,7 @@ severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Four are safety and robustness
+and the fourth refers to AMD's CVE-2025-62626. Five are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -1213,6 +1213,20 @@ Safety and robustness fixes, no vulnerability:
   - Remedy: update to 0.1.0-proto.5. Until then, after ending or
     shortening maintenance mode, restart the app or the simulator ("Power
     cut / restart") while no mix or dose runs.
+- **After a restart cut a mix, the part that was running is named** (#310,
+  SD-102): when the restart came while the first part ran, the report
+  said "Nothing went into the tank", and a part resumed after a cut was
+  listed with only what was in before. Now the report names that part:
+  up to its planned amount of it may be in, how much is unknown. It says
+  to mix the tank first, or that EC and pH wait for the circulation pump,
+  then to measure EC and add only what is missing. The wait for EC and
+  pH after a cut mix, added in this release, now covers this case too.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4.
+  - Impact: needs a restart while a part of a mix runs; a grower who
+    trusted the report could mix again and dose that part twice.
+  - Severity: low; no CVSS, as it is not exploitable by an attacker.
+  - Remedy: update to 0.1.0-proto.5. Until then, after a restart during
+    a mix, mix the tank and measure EC before you add anything.
 
 A protective cut-off added:
 
