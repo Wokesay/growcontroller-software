@@ -3,13 +3,14 @@
 // at the start: a --web folder is no web app, so it starts without it (with
 // the embedded web app or the "not built" page); a --data folder runs it in
 // memory only and is left alone (SD-074). A bad option value or a data folder
-// it cannot create ends or says so (#213). The session comes from the one
-// cookie named exactly gc_session. Runs the built server (tools/ci.sh
-// builds it first).
+// it cannot create ends or says so (#213). A second start on a data folder in
+// use ends and names the first, and the lock file follows no link (#311). The
+// session comes from the one cookie named exactly gc_session. Runs the built
+// server (tools/ci.sh builds it first).
 //   node --test tools/sim_server.test.mjs      (GC_SIM_SERVER=<binary> for another build)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, chownSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { get } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -174,12 +175,145 @@ test("--data holding a file it cannot read: memory only, and every file stays as
   for (const f of ["config.json", "state.json"]) assert.equal(readFileSync(join(data, f), "utf8"), '{"kept":true}', f);
 });
 
+test("a second simulator on the same data folder does not start: it names the first and leaves its data alone (#311)", { skip, timeout: 180000 }, async () => {
+  const data = join(mkdtempSync(join(tmp, "data-")), "data");
+  await startsWith(["--data", data], async (port) => {
+    const second = spawnSync(bin, ["--host", "127.0.0.1", "--port", String(await freePort()), "--scenario", "neu", "--prefill", "0", "--data", data], {
+      cwd: tmp,
+      encoding: "utf8",
+      timeout: 15000,
+    });
+    assert.deepEqual([second.status, second.signal], [0, null], second.stdout + second.stderr);
+    assert.ok(second.stdout.split("\n").includes(`Already running with this data folder: http://127.0.0.1:${port}`), second.stdout);
+    assert.doesNotMatch(second.stdout, /Starting simulator/, "it loads nothing");
+    assert.equal((await fetchStatus(port, "/api/v1/info"))?.status, 200, "the first one still answers");
+    assert.equal(readFileSync(join(data, "simulator.lock"), "utf8"), `http://127.0.0.1:${port}\n`, "the folder stays the first one's");
+  });
+  // Once the first one has ended, the folder is free again
+  const again = await startsWith(["--data", data]);
+  assert.ok(again.split("\n").includes(`Data: ${data}`), again);
+});
+
+test("two simulators started at the same moment on a new data folder: one runs, the other ends; a crash frees the folder (#311)", { skip, timeout: 180000 }, async () => {
+  const data = join(mkdtempSync(join(tmp, "data-")), "data");
+  const start = async () => {
+    const child = spawn(bin, ["--host", "127.0.0.1", "--port", String(await freePort()), "--scenario", "neu", "--prefill", "0", "--data", data], {
+      cwd: tmp,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const c = { child, out: "", exit: null };
+    child.stdout.on("data", (d) => (c.out += d));
+    child.stderr.on("data", (d) => (c.out += d));
+    c.ended = new Promise((resolve) => child.on("close", (code, signal) => resolve((c.exit = { code, signal }))));
+    return c;
+  };
+  const both = await Promise.all([start(), start()]);
+  try {
+    // Until one has ended and the other runs
+    for (let i = 0; i < 120 && !(both.some((c) => c.exit) && both.some((c) => / running: http/.test(c.out))); i++)
+      await new Promise((r) => setTimeout(r, 250));
+    const ended = both.filter((c) => c.exit);
+    assert.equal(ended.length, 1, both.map((c) => c.out).join("\n---\n"));
+    assert.deepEqual(ended[0].exit, { code: 0, signal: null }, ended[0].out);
+    assert.match(ended[0].out, /^(Another simulator is using|Already running with) this data folder: /m);
+    // The one that runs ends without a word, as by a crash or a power cut: the system frees its lock
+    const running = both.find((c) => !c.exit);
+    running.child.kill("SIGKILL");
+    await running.ended;
+  } finally {
+    for (const c of both) if (!c.exit) c.child.kill("SIGKILL");
+  }
+  await startsWith(["--data", data], async (port) => {
+    assert.equal(readFileSync(join(data, "simulator.lock"), "utf8"), `http://127.0.0.1:${port}\n`);
+  });
+});
+
+test("--data holding a file it cannot read keeps a simulator.lock as it was (SD-074, #311)", { skip, timeout: 120000 }, async (t) => {
+  const data = mkdtempSync(join(tmp, "data-"));
+  writeFileSync(join(data, "config.json"), '{"kept":true}');
+  writeFileSync(join(data, "simulator.lock"), "http://127.0.0.1:1\n");  // left by an earlier run
+  chmodSync(join(data, "config.json"), 0o000);
+  try {
+    readFileSync(join(data, "config.json"));
+    return t.skip("this process reads any file");
+  } catch {}
+  dataSaysWhy(await startsWith(["--data", data]));
+  chmodSync(join(data, "config.json"), 0o600);
+  assert.deepEqual(readdirSync(data).sort(), ["config.json", "simulator.lock"]);
+  assert.equal(readFileSync(join(data, "simulator.lock"), "utf8"), "http://127.0.0.1:1\n");
+});
+
+test("a planted simulator.lock that is a link is not followed: what it points to stays as it was (#311)", { skip, timeout: 180000 }, async () => {
+  const dir = mkdtempSync(join(tmp, "data-"));
+  const data = join(dir, "data");
+  mkdirSync(data);
+  const outside = join(dir, "outside");
+  writeFileSync(outside, "kept");
+  symlinkSync(outside, join(data, "simulator.lock"));
+  const unlocked = /^The data folder cannot be locked \(simulator\.lock is a link or not a plain file/m;
+  assert.match(await startsWith(["--data", data]), unlocked);
+  assert.ok(lstatSync(join(data, "simulator.lock")).isSymbolicLink());
+  assert.equal(readFileSync(outside, "utf8"), "kept");
+  rmSync(join(data, "simulator.lock"));
+  linkSync(outside, join(data, "simulator.lock"));  // a hard link: the same file under a second name
+  assert.match(await startsWith(["--data", data]), unlocked);
+  assert.equal(readFileSync(outside, "utf8"), "kept");
+});
+
+test("a second start opens only a local address from simulator.lock, and only one it can read as an address (#311)", { skip, timeout: 180000 }, async () => {
+  const data = join(mkdtempSync(join(tmp, "data-")), "data");
+  // A browser opener that writes down what it was asked to open
+  const bins = mkdtempSync(join(tmp, "bin-"));
+  const asked = join(bins, "asked");
+  for (const name of ["xdg-open", "open"]) {
+    writeFileSync(join(bins, name), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${asked}"\n`);
+    chmodSync(join(bins, name), 0o755);
+  }
+  const second = async () =>
+    spawnSync(bin, ["--host", "127.0.0.1", "--port", String(await freePort()), "--scenario", "neu", "--prefill", "0", "--data", data, "--open"], {
+      cwd: tmp,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bins}:${process.env.PATH}` },
+    });
+  await startsWith(["--data", data], async (port) => {
+    const lock = join(data, "simulator.lock");  // written over in place: the first one keeps its lock
+    let out = await second();
+    assert.ok(out.stdout.split("\n").includes(`Already running with this data folder: http://127.0.0.1:${port}`), out.stdout);
+    assert.equal(readFileSync(asked, "utf8"), `http://127.0.0.1:${port}\n`, "its own address is opened");
+    rmSync(asked);
+    const crafted = [`http://127.0.0.1:1/";touch pwned;"\n`, "http://127.0.0.1:1\x1b]0;x\x07\n", `http://127.0.0.1:${port}/x\n`,
+      "http://127.0.0.1:99999\n", "http://127.0.0.1\n", "http://:80\n", `http://127.0.0.1:${port}`, "\n", ""];  // the one without a line end: read while written
+    for (const content of crafted) {
+      writeFileSync(lock, content);
+      out = await second();
+      assert.equal(out.status, 0, JSON.stringify(content));
+      assert.ok(out.stdout.split("\n").includes(`Another simulator is using this data folder: ${data}`), JSON.stringify(content) + out.stdout);
+      assert.ok(!existsSync(asked), JSON.stringify(content));
+      assert.ok(!existsSync(join(tmp, "pwned")), "no shell ran it");
+    }
+    writeFileSync(lock, "http://example.com:80\n");  // an address, but not on this computer: said, not opened
+    out = await second();
+    assert.ok(out.stdout.split("\n").includes("Already running with this data folder: http://example.com:80"), out.stdout);
+    assert.ok(!existsSync(asked));
+    if (process.getuid?.() === 0) {
+      // Another user's lock file: its address is not taken at all
+      writeFileSync(lock, `http://127.0.0.1:${port}\n`);
+      chownSync(lock, 65534, 65534);
+      out = await second();
+      assert.ok(out.stdout.split("\n").includes(`Another simulator is using this data folder: ${data}`), out.stdout);
+      assert.ok(!existsSync(asked));
+    }
+  });
+});
+
 test("--data it can use is named as its data folder, and nothing is said about it", { skip, timeout: 120000 }, async () => {
   // what the cases above rule out
   const data = join(mkdtempSync(join(tmp, "data-")), "data");
   const out = await startsWith(["--data", data]);
   assert.ok(out.split("\n").includes(`Data: ${data}`), out);
   assert.doesNotMatch(out, /Data cannot be/);
+  assert.doesNotMatch(out, /cannot be locked/);
 });
 
 test("an option value that is no number, or out of range, ends with a message naming the range (#213)", { skip }, () => {

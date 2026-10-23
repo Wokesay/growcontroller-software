@@ -615,6 +615,16 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **A second simulator on the same data folder does not start** (#311):
+  started again while it runs, for example by a second double-click, the
+  simulator loaded the same files as the first and both overwrote each
+  other's. Now the second one ends at once, says "Already running with
+  this data folder" with the first one's address and, started plainly,
+  opens it in the browser, if it is a local address. The first
+  holds a lock on `simulator.lock` in the data folder, which the system
+  frees when it ends, also after a crash. A link planted under that name
+  is not followed, and a data folder it cannot read stays as it was
+  (SD-074).
 - **The simulator builds on a Mac again** (#309): Apple's compiler
   stopped `tools/dev.sh` at a warning about a C++20 extension in the
   sensor truth's sign-of-life check, which GCC did not report. The code
