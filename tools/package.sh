@@ -3,7 +3,8 @@
 # Packs the simulator as a download and tests the package:
 #   1. start with arguments (API and embedded web app answer),
 #   2. plain start without arguments as by double-click (port, data folder
-#      next to the program),
+#      next to the program); a second plain start on the same folder ends
+#      at once and names the first (#311),
 #   3. plain start with a data folder it cannot read (SD-074, #214),
 #   4. plain start that finds neither its own folder nor the working folder
 #      (#213);
@@ -36,7 +37,7 @@ stop() {
   wait "$1" 2> /dev/null || true
 }
 logs() {
-  for f in sim einfach unreadable no-folder; do echo "--- $f.log"; cat "build-pkg/$f.log" 2> /dev/null || true; done
+  for f in sim einfach second unreadable no-folder; do echo "--- $f.log"; cat "build-pkg/$f.log" 2> /dev/null || true; done
 }
 # On a failure: the logs, and no simulator left running
 trap 'logs; kill "${pid:-}" 2> /dev/null || true' ERR
@@ -80,6 +81,17 @@ answers build-pkg/einfach.log
 grep -q "Demo password" build-pkg/einfach.log
 for _ in $(seq 1 30); do [ -f "$e/growcontroller-daten/config.json" ] && break; sleep 1; done
 test -f "$e/growcontroller-daten/config.json"
+# The second ends by itself; one that runs on is stopped and fails the job
+"./$e/$bin" > build-pkg/second.log 2>&1 &
+second=$!
+for _ in $(seq 1 30); do kill -0 "$second" 2> /dev/null || break; sleep 1; done
+if kill -0 "$second" 2> /dev/null; then
+  echo "::error::a second plain start on the same data folder did not end"
+  stop "$second"
+  false
+fi
+wait "$second"
+grep -q "^Already running with this data folder: $url" build-pkg/second.log
 stop "$pid"
 
 if [ "$windows" = 0 ]; then

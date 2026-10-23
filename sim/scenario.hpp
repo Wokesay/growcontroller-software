@@ -4,9 +4,11 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -24,6 +26,12 @@ namespace sim {
 // zero a Zen 5 processor reports as success (AMD-SB-7055). Aborts rather
 // than going on without.
 void randomBytes(std::uint8_t* p, size_t n);
+
+// Why the data in this folder cannot be read, if it cannot: the status of
+// one of its files fails (a folder it may not enter, a link loop), or a file
+// there cannot be opened (e.g. root's after a start with sudo). Such a folder
+// runs in memory only and is left as it is (SD-074).
+std::optional<std::string> whyUnreadable(const std::filesystem::path& dir);
 
 // Files in a data folder (#68); without a folder in memory only.
 //   write():  on disk when it returns true – temporary file, fsync, rename,

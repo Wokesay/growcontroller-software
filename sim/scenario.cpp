@@ -277,9 +277,8 @@ gc::Epoch realNow() {
   return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-// Why the data in this folder cannot be read, if it cannot: the status of
-// one of its files fails (a folder it may not enter, a link loop), or a file
-// there cannot be opened (e.g. root's after a start with sudo).
+}  // namespace
+
 std::optional<std::string> whyUnreadable(const fs::path& dir) {
   std::vector<std::string> names = gc::Hub::files();
   names.push_back("world.json");
@@ -287,8 +286,6 @@ std::optional<std::string> whyUnreadable(const fs::path& dir) {
     if (auto why = cannotRead(dir / name)) return (dir / name).string() + ": " + *why;
   return std::nullopt;
 }
-
-}  // namespace
 
 void randomBytes(std::uint8_t* p, size_t n) {
 #ifdef _WIN32

@@ -88,8 +88,9 @@ this repository's Releases page.
 A console window opens. At the first start the demo first calculates
 48 hours of history, which takes a few seconds, then your browser opens
 `http://127.0.0.1:8080` (8081 and up if that port is taken). Keep the
-console window open: closing it ends the demo. Start it only once at a
-time: a second copy would use the same data folder.
+console window open: closing it ends the demo. Starting it again while
+it runs opens the running demo in the browser instead of starting a
+second copy, which would use the same data folder.
 
 Sign in with the password **`demo-passwort`** (German for "demo
 password"). The demo starts in English; German is under **Settings ›

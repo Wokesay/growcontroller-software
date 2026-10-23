@@ -14,8 +14,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #endif
+#include <algorithm>
 #include <atomic>
-#include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -24,10 +25,20 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
+#include <string>
 #include <thread>
 
 #include <httplib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "gc/embedded.hpp"
 #include "gc/messages.hpp"
@@ -75,24 +86,227 @@ void usage() {
             << "Without arguments: the demo, data next to the program, the browser opens.\n";
 }
 
-// Browser mit der Adresse öffnen (nur Simulator, nie auf dem Gerät). Die
-// Adresse geht in eine Shell; deshalb nur harmlose Zeichen.
-void openBrowser(const std::string& url) {
-  for (char c : url)
-    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == ':' || c == '/' || c == '.' || c == '-' || c == '[' || c == ']')) return;
+// The host of an address as this simulator writes it, http://<host>:<port>
+// with nothing after: a name or IPv4 address of ASCII letters, digits, dots
+// and dashes, or an IPv6 address in brackets. Empty for anything else: only
+// such an address goes to a shell or to the console.
+std::string hostOf(const std::string& url) {
+  const std::string scheme = "http://";
+  const size_t colon = url.rfind(':');
+  if (url.compare(0, scheme.size(), scheme) != 0 || colon == std::string::npos || colon <= scheme.size()) return "";
+  const std::string host = url.substr(scheme.size(), colon - scheme.size()), port = url.substr(colon + 1);
+  auto digit = [](char c) { return c >= '0' && c <= '9'; };
+  auto hex = [&](char c) { return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); };
+  auto nameChar = [&](char c) { return digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '-'; };
+  if (port.empty() || port.size() > 5 || !std::all_of(port.begin(), port.end(), digit) || std::stoi(port) < 1 ||
+      std::stoi(port) > 65535)
+    return "";
+  const bool v6 = host.size() > 2 && host.front() == '[' && host.back() == ']' &&
+                  std::all_of(host.begin() + 1, host.end() - 1, [&](char c) { return hex(c) || c == ':'; });
+  const bool name = !host.empty() && std::all_of(host.begin(), host.end(), nameChar);
+  return v6 || name ? host : "";
+}
+
+// Opens the browser at the address (simulator only, never on the device) and
+// returns once it has been asked. The address goes to a shell: only one that
+// hostOf reads.
+void openBrowserNow(const std::string& url) {
+  if (hostOf(url).empty()) return;
 #if defined(_WIN32)
-  std::string cmd = "start \"\" \"" + url + "\"";
+  const std::string cmd = "start \"\" \"" + url + "\"";
 #elif defined(__APPLE__)
-  std::string cmd = "open \"" + url + "\" >/dev/null 2>&1";
+  const std::string cmd = "open \"" + url + "\" >/dev/null 2>&1";
 #else
-  std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1";
+  const std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1";
 #endif
-  std::thread([cmd] {
+  int rc = std::system(cmd.c_str());
+  (void)rc;
+}
+
+// The same in a moment, once the server listens
+void openBrowser(const std::string& url) {
+  std::thread([url] {
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
-    int rc = std::system(cmd.c_str());
-    (void)rc;
+    openBrowserNow(url);
   }).detach();
 }
+
+// One simulator per data folder (#311): two would load the same files and
+// overwrite each other's. The first holds a lock on simulator.lock in the
+// folder while it runs, which the system frees when the process ends, also
+// after a crash, and writes its address into the file, so a second start can
+// name it. The file stays: removing it at the end would let a start that has
+// it open take a lock on a file no one else finds. A link under that name, or
+// anything but a plain file with one name, is not followed, as FileStorage
+// writes through none: it is left as it is. An address is taken only from a
+// file of this user's. Without a lock (such a file, a file or folder it may
+// not write, a file system without locks) the simulator still starts, and
+// says so if it saves to the folder.
+class FolderLock {
+ public:
+  enum class State { Held, Taken, None };
+
+  explicit FolderLock(const std::filesystem::path& dir) : file_(dir / "simulator.lock") {
+    std::error_code ec;
+    // Created as FileStorage::ready creates it: for the owner only
+    if (std::filesystem::create_directories(dir, ec) && !ec) {
+#ifndef _WIN32
+      std::error_code ignored;
+      std::filesystem::permissions(dir, std::filesystem::perms::owner_all, ignored);
+#endif
+    }
+    if (ec) {
+      why_ = ec.message();
+      return;
+    }
+#ifdef _WIN32
+    // No sharing for writes: a second open for writing fails while this one holds it. The link
+    // itself, not what it points to: refused below.
+    h_ = CreateFileW(file_.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+                     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (h_ != INVALID_HANDLE_VALUE) {
+      created_ = GetLastError() != ERROR_ALREADY_EXISTS;
+      if (!plain(h_)) {
+        refuse();
+        return;
+      }
+      state_ = State::Held;
+      announce("");  // no address of an earlier run while this one starts
+      return;
+    }
+    if (const DWORD err = GetLastError(); err != ERROR_SHARING_VIOLATION) {
+      why_ = std::system_category().message(static_cast<int>(err));
+      return;
+    }
+    state_ = State::Taken;
+    HANDLE r = CreateFileW(file_.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (r == INVALID_HANDLE_VALUE) return;
+    char buf[kMaxAddress + 1];
+    DWORD n = 0;
+    if (plain(r) && ReadFile(r, buf, sizeof buf, &n, nullptr) && n <= kMaxAddress) other_.assign(buf, n);
+    CloseHandle(r);
+#else
+    // O_CLOEXEC: a browser started from here must not inherit the lock. O_NOFOLLOW: a link is not
+    // followed; O_NONBLOCK: a planted pipe does not hold the start.
+    // O_EXCL: also no link followed. Twice: a file removed between the two opens
+    // (by a start that ran in memory only) is made anew.
+    const int flags = O_RDWR | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+    for (int attempt = 0; attempt < 2 && fd_ < 0; ++attempt) {
+      fd_ = ::open(file_.c_str(), flags | O_CREAT | O_EXCL, 0600);
+      created_ = fd_ >= 0;
+      if (fd_ < 0 && errno == EEXIST) fd_ = ::open(file_.c_str(), flags);
+      if (fd_ >= 0 || errno != ENOENT) break;
+    }
+    if (fd_ < 0) {
+      if (errno == ELOOP) refuse();
+      else why_ = std::generic_category().message(errno);
+      return;
+    }
+    struct stat st {};
+    if (::fstat(fd_, &st) != 0 || !S_ISREG(st.st_mode) || st.st_nlink != 1) {
+      refuse();
+      return;
+    }
+    ::fchmod(fd_, S_IRUSR | S_IWUSR);  // only the owner writes the address in it
+    if (::flock(fd_, LOCK_EX | LOCK_NB) == 0) {
+      state_ = State::Held;
+      announce("");  // no address of an earlier run while this one starts
+      return;
+    }
+    if (errno == EWOULDBLOCK) {
+      state_ = State::Taken;
+      // Another user's file could name any page on this computer
+      char buf[kMaxAddress + 1];
+      const ssize_t n = st.st_uid == ::geteuid() ? ::pread(fd_, buf, sizeof buf, 0) : 0;
+      if (n > 0 && n <= static_cast<ssize_t>(kMaxAddress)) other_.assign(buf, static_cast<size_t>(n));
+    } else {
+      why_ = std::generic_category().message(errno);
+    }
+    close();
+#endif
+  }
+  ~FolderLock() { close(); }
+  FolderLock(const FolderLock&) = delete;
+  FolderLock& operator=(const FolderLock&) = delete;
+
+  State state() const { return state_; }
+  // Why there is no lock, if it is known
+  const std::string& why() const { return why_; }
+  // The address the simulator holding it wrote, if it is one: a whole line,
+  // so a read while it writes is no address
+  std::string other() const {
+    if (other_.empty() || other_.back() != '\n') return "";
+    const std::string url = other_.substr(0, other_.size() - 1);
+    return hostOf(url).empty() ? std::string() : url;
+  }
+
+  // This simulator's address, for a second start
+  void announce(const std::string& url) {
+    const std::string line = url.empty() ? url : url + "\n";
+#ifdef _WIN32
+    if (h_ == INVALID_HANDLE_VALUE) return;
+    DWORD n = 0;
+    if (SetFilePointer(h_, 0, nullptr, FILE_BEGIN) != INVALID_SET_FILE_POINTER && SetEndOfFile(h_))
+      WriteFile(h_, line.data(), static_cast<DWORD>(line.size()), &n, nullptr);
+#else
+    if (fd_ < 0 || ::ftruncate(fd_, 0) != 0) return;
+    const ssize_t n = ::pwrite(fd_, line.data(), line.size(), 0);
+    (void)n;
+#endif
+  }
+
+  // Memory only after all: a lock file this start made goes again (SD-074).
+  // Removed while still held, so no start takes a lock on it meanwhile;
+  // Windows removes no file that is open.
+  void drop() {
+    if (state_ != State::Held) return;
+    std::error_code ec;
+#ifdef _WIN32
+    close();
+    if (created_) std::filesystem::remove(file_, ec);
+#else
+    if (created_) std::filesystem::remove(file_, ec);
+    close();
+#endif
+    state_ = State::None;
+  }
+
+ private:
+  static constexpr size_t kMaxAddress = 256;
+
+  void refuse() {
+    why_ = "simulator.lock is a link or not a plain file, left as it is";
+    close();
+  }
+#ifdef _WIN32
+  static bool plain(HANDLE h) {
+    BY_HANDLE_FILE_INFORMATION info;
+    return GetFileInformationByHandle(h, &info) &&
+           !(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) && info.nNumberOfLinks == 1;
+  }
+#endif
+
+  void close() {
+#ifdef _WIN32
+    if (h_ != INVALID_HANDLE_VALUE) CloseHandle(h_);
+    h_ = INVALID_HANDLE_VALUE;
+#else
+    if (fd_ >= 0) ::close(fd_);
+    fd_ = -1;
+#endif
+  }
+
+  std::filesystem::path file_;
+  State state_ = State::None;
+  bool created_ = false;  // this start made the file
+  std::string other_, why_;
+#ifdef _WIN32
+  HANDLE h_ = INVALID_HANDLE_VALUE;
+#else
+  int fd_ = -1;
+#endif
+};
 
 }  // namespace
 
@@ -173,10 +387,33 @@ int main(int argc, char** argv) {
     }
   }
 
+  // A second start on a data folder in use ends here, before it reads a
+  // file, and names the first; started plainly or with --open it opens the
+  // first one in the browser (#311). A folder it cannot read is left as it
+  // is, without a lock: it runs in memory only (SD-074).
+  std::optional<FolderLock> lock;
+  if (!opts.dataDir.empty() && !sim::whyUnreadable(opts.dataDir)) lock.emplace(opts.dataDir);
+  if (lock && lock->state() == FolderLock::State::Taken) {
+    const std::string first = lock->other();
+    if (first.empty()) {
+      std::cout << "Another simulator is using this data folder: " << opts.dataDir << "\n";
+    } else {
+      std::cout << "Already running with this data folder: " << first << "\n";
+      // Opened only on this computer or at the address asked for: anyone who can write the
+      // folder could have put another one there
+      const std::string at = hostOf(first);
+      if (open && (at == "127.0.0.1" || at == "[::1]" || at == "localhost" || at == host)) openBrowserNow(first);
+    }
+    return 0;
+  }
+
   std::cout << "Starting simulator (scenario " << opts.scenario << ") …" << std::flush;
   sim::Simulation simulation(opts);
   simulation.speed = speed;
   std::cout << " done.\n";
+  if (lock && !simulation.storage().persistent()) lock->drop();
+  if (lock && lock->state() == FolderLock::State::None && simulation.storage().persistent())
+    std::cerr << "The data folder cannot be locked (" << lock->why() << "): a second simulator could use it too.\n";
 
   // Ist der Port belegt, die nächsten neun versuchen. Ein fehlgeschlagener
   // Bind legt einen httplib-Server still, darum je Versuch ein neuer. Ohne
@@ -364,6 +601,7 @@ int main(int argc, char** argv) {
   });
 
   const std::string url = "http://" + (host == "0.0.0.0" ? std::string("127.0.0.1") : host) + ":" + std::to_string(bound);
+  if (lock) lock->announce(url);
   std::cout << "growcontroller Simulator " << gc::embedded::kVersion << " running: " << url << "\n";
   if (opts.scenario == "demo" && !simulation.demoPassword().empty())
     std::cout << "Demo password: " << simulation.demoPassword() << " (simulator only)\n";

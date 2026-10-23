@@ -23,7 +23,9 @@ Demo password: demo-passwort
 Data is stored in the folder "growcontroller-daten" next to the program.
 Delete the folder to start the demo over. If the folder cannot be created,
 or it or a file in it cannot be read, the demo runs in memory only and
-leaves the folder as it is.
+leaves the folder as it is. Started again while it runs, the program
+opens the running demo in the browser instead of starting a second copy.
+Close the demo before you delete the folder.
 Stop: close the window or press Ctrl+C.
 
 More options: growcontroller-simulator --help
@@ -61,7 +63,10 @@ Der Browser öffnet http://127.0.0.1:8080. Passwort der Demo: demo-passwort
 Die Daten liegen im Ordner „growcontroller-daten“ neben dem Programm;
 Ordner löschen = Demo von vorn. Lässt sich der Ordner nicht anlegen oder
 er oder eine Datei darin nicht lesen, läuft die Demo nur im Speicher und
-lässt den Ordner, wie er ist. Beenden: Fenster schließen oder Strg+C.
+lässt den Ordner, wie er ist. Startest du den Simulator noch einmal,
+während er läuft, öffnet sich die laufende Demo im Browser, statt dass
+eine zweite startet. Vor dem Löschen des Ordners die Demo beenden.
+Beenden: Fenster schließen oder Strg+C.
 Sprache: Die Demo startet auf Englisch. Auf Deutsch umstellen in der App
 unter Settings › Display and info › Language, auf Deutsch heißt das
 Einstellungen › Darstellung und Info › Sprache. Ein Demo-Ordner einer
