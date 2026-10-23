@@ -26,7 +26,12 @@ TEST_CASE("Catalog: every device attaches to a hub port, the dosing block, the h
   // There is no collection box any more (PD-078).
   const std::set<std::string> kinds{"hub_port", "dosing_port", "builtin", "net"};
   const Catalog c = Catalog::builtin();
-  for (const auto& [id, d] : c.deviceClasses) CHECK_MESSAGE(kinds.count(d.attach) == 1, (id + ": " + d.attach));
+  // No structured binding: CHECK_MESSAGE reads its message in a lambda (#309)
+  for (const auto& entry : c.deviceClasses) {
+    const std::string& id = entry.first;
+    const auto& d = entry.second;
+    CHECK_MESSAGE(kinds.count(d.attach) == 1, (id + ": " + d.attach));
+  }
   CHECK(c.deviceClasses.at("head_climate").attach == "hub_port");
   CHECK(c.deviceClasses.at("head_co2").attach == "hub_port");
 }

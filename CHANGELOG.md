@@ -615,6 +615,12 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **The simulator builds on a Mac again** (#309): Apple's compiler
+  stopped `tools/dev.sh` at a warning about a C++20 extension in the
+  sensor truth's sign-of-life check, which GCC did not report. The code
+  is plain C++17 now, with the same behaviour, and so are eleven places in
+  the tests. CI builds every target with clang too, so the next such case
+  fails there; the workaround in `docs/DEMO.md` is gone.
 - **A fill after watering waits until the water has run back** (#294,
   SD-099): in ebb and flow, water runs back from the table into the tank
   for a while after the watering pump stops. A fill planned 3 min after

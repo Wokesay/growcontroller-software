@@ -759,7 +759,9 @@ TEST_CASE("Scenario: while a job or EC control doses, a manual dose, a pump cali
   // A job of the user: the demo starts with a mix
   const gc::json job = c.state()["job"];
   REQUIRE_FALSE(job.is_null());
-  for (const auto& [path, body] : calls) {
+  for (const auto& call : calls) {
+    const std::string& path = call.first;  // no structured binding: CAPTURE reads it in a lambda (#309)
+    const gc::json& body = call.second;
     CAPTURE(path);
     auto [st, res] = c.call("POST", path, body);
     CHECK(st == 409);
@@ -774,7 +776,9 @@ TEST_CASE("Scenario: while a job or EC control doses, a manual dose, a pump cali
   REQUIRE(until(s, [&] { return !c.state()["dosing"].is_null(); }, 2 * 3600 * 1000, 500));
   REQUIRE(c.state()["dosing"]["purpose"] == "ec");
   // EC control dosing
-  for (const auto& [path, body] : calls) {
+  for (const auto& call : calls) {
+    const std::string& path = call.first;  // no structured binding: CAPTURE reads it in a lambda (#309)
+    const gc::json& body = call.second;
     CAPTURE(path);
     auto [st, res] = c.call("POST", path, body);
     CHECK(st == 409);
@@ -1390,7 +1394,9 @@ TEST_CASE("Scenario: a stored time of the last self-release that is not plausibl
 
 TEST_CASE("Scenario: the release level grows with the tank: 0.5 L at least, 2 % of the capacity above 25 L (SD-067)") {
   // A tank without a capacity gets the 0.5 L floor
-  for (const auto& [capacity, min, back] : std::vector<std::tuple<json, double, double>>{{10, 3, 3.5}, {200, 3, 7.0}, {nullptr, 3, 3.5}}) {
+  for (const auto& row : std::vector<std::tuple<json, double, double>>{{10, 3, 3.5}, {200, 3, 7.0}, {nullptr, 3, 3.5}}) {
+    const json& capacity = std::get<0>(row);  // no structured binding: CAPTURE reads it in a lambda (#309)
+    const double min = std::get<1>(row), back = std::get<2>(row);
     CAPTURE(capacity.dump());
     sim::Simulation s(test::opts("demo"));
     Client c{s};
@@ -2000,7 +2006,9 @@ TEST_CASE("Scenario: the irrigation pump and the rise check of a refill (#155, S
   SUBCASE("ebb and flow: while water drains back the fill waits until the level stops rising, so it does not overfill (#294, SD-099)") {
     // The twin's own level reading follows at once; the real one lags 1.5–2 min (RAT-038). A sensor that
     // reports every 45 s never counts as calm and waits the full half hour.
-    for (const auto& [lagS, reportS] : std::vector<std::pair<double, int>>{{0.0, 5}, {105.0, 5}, {0.0, 45}}) {
+    for (const auto& timing : std::vector<std::pair<double, int>>{{0.0, 5}, {105.0, 5}, {0.0, 45}}) {
+      const double lagS = timing.first;  // no structured binding: CAPTURE reads it in a lambda (#309)
+      const int reportS = timing.second;
       CAPTURE(lagS);
       CAPTURE(reportS);
       sim::Simulation s(test::opts("demo"));

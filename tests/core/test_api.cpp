@@ -388,8 +388,10 @@ TEST_CASE("API: where one key had several texts, each refusal has its own key (S
   gc::json cfg = c.ok("GET", "/api/v1/config/export");
   cfg["calibrations"]["PHEC-3F2A91"]["ph"] = {{"points", "kaputt"}};
   cfg["calibrations"]["LVL-77B210"]["ec"] = {{"factor", 1.0}};
-  auto [ist, ibody] = c.call("POST", "/api/v1/config/import", cfg);
-  CHECK(ist == 422);
+  // No structured binding: CHECK_MESSAGE reads its message in a lambda (#309)
+  const auto imported = c.call("POST", "/api/v1/config/import", cfg);
+  const gc::json& ibody = imported.second;
+  CHECK(imported.first == 422);
   bool reason = false, offered = false;
   for (const auto& e : ibody["errors"]) {
     reason = reason || (e["key"] == "cfg.calibration" && e["args"]["reason"]["key"] == "calib.ph" && e["args"]["device"] == "PHEC-3F2A91");
@@ -521,8 +523,9 @@ TEST_CASE("API: an imported number is a whole number in range: grow phase, chann
   const size_t phases = cfg["grow"]["phases"].size();
   REQUIRE(phases >= 2);
   auto refused = [&](const gc::json& file, const std::string& key) {
-    auto [st, body] = c.call("POST", "/api/v1/config/import", file);
-    CHECK(st == 422);
+    const auto res = c.call("POST", "/api/v1/config/import", file);
+    const gc::json& body = res.second;
+    CHECK(res.first == 422);
     CHECK_MESSAGE(body.dump().find("\"" + key + "\"") != std::string::npos, body.dump());
   };
   // The running phase is one of its phases: a whole number from 0 to the last
@@ -571,13 +574,15 @@ TEST_CASE("API: an imported number is a whole number in range: grow phase, chann
     CHECK(gc::validateConfig(gc::configFromJson(ok), cat).empty());
   }
   // A time of the grow cycle the hub cannot have written is not set
-  for (const auto& [v, want] : std::vector<std::pair<gc::json, gc::Epoch>>{{gc::json(9223372036854775808.0), 0},
-                                                                           {gc::json(18446744073709551615ULL), 0},
-                                                                           {gc::json(-9223372036854775807LL - 1), 0},
-                                                                           {gc::json(1e300), 0},
-                                                                           {gc::json("1790000000"), 0},
-                                                                           {gc::json(1790000000.0), 1790000000},
-                                                                           {gc::json(1790000000), 1790000000}}) {
+  for (const auto& vw : std::vector<std::pair<gc::json, gc::Epoch>>{{gc::json(9223372036854775808.0), 0},
+                                                                    {gc::json(18446744073709551615ULL), 0},
+                                                                    {gc::json(-9223372036854775807LL - 1), 0},
+                                                                    {gc::json(1e300), 0},
+                                                                    {gc::json("1790000000"), 0},
+                                                                    {gc::json(1790000000.0), 1790000000},
+                                                                    {gc::json(1790000000), 1790000000}}) {
+    const gc::json& v = vw.first;  // no structured binding: CAPTURE reads it in a lambda (#309)
+    const gc::Epoch want = vw.second;
     CAPTURE(v.dump());
     gc::json t = cfg;
     t["grow"]["startedAt"] = v;

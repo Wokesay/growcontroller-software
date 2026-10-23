@@ -1049,7 +1049,8 @@ TEST_CASE("Restart: a journal is not written while its snapshot is kept, also be
   test::Clock clk;
   finishedRun(store, clk, true);
   store.MemoryStorage::write("config.json", "not json");
-  for (const auto& [snapshot, journal] : {std::pair{"events.json", "events.log"}, std::pair{"history.bin", "history.log"}}) {
+  for (const auto& files : {std::pair{"events.json", "events.log"}, std::pair{"history.bin", "history.log"}}) {
+    const auto snapshot = files.first, journal = files.second;  // no structured binding: CAPTURE reads it in a lambda (#309)
     CAPTURE(snapshot);
     LockedStorage copy = store;
     const auto snapshotBefore = copy.held(snapshot), journalBefore = copy.held(journal);

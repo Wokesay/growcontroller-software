@@ -44,7 +44,7 @@ test("ci.yml starts always and gates the heavy jobs on the filter", () => {
   // continue-on-error could hide a failed job from ci-ok.
   assert.doesNotMatch(yml, /^\s*paths(-ignore)?:/m);
   assert.doesNotMatch(yml, /continue-on-error/);
-  for (const id of ["checks", "firmware", "packages"]) {
+  for (const id of ["checks", "firmware", "packages", "clang"]) {
     const block = jobs.match(new RegExp(`^ {2}${id}:\\n((?: {4}.*\\n|\\s*\\n)*)`, "m"));
     assert.ok(block, id);
     assert.match(block[1], /^ {4}needs: changes$/m, id);

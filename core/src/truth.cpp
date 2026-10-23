@@ -262,10 +262,11 @@ void SensorTruth::update(const Config& cfg, const IBus& bus, RuntimeState& rt, M
     const bool life = s && s->life != Sample::Life::None && tr.ownSchedule;
     tr.life = life;
     if (life) {
+      // r.role, not roleId: C++17 does not let a lambda capture a structured binding (#309)
       auto lifeStale = [&](Msg why) {
         r.quality = Quality::Stale;
         r.reason = std::move(why);
-        readings_[roleId] = r;
+        readings_[r.role] = r;
       };
       if (s->lifeText && now - s->lifeAt > kLifeLimit) {  // the device sends nothing at all: one cause for all its sensors
         lifeStale(say("truth.life_silent", {{"ageS", (now - s->lifeAt + kSecond - 1) / kSecond}}));  // kDeviceSilent (tested)
