@@ -1195,7 +1195,7 @@ json rebootText(const json& job) {
 }
 }  // namespace
 
-TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, with what is known of its amount (#310, SD-102)") {
+TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, with what is known of its amount (#310, SD-103)") {
   const json a = {{"name", "Teil A"}, {"ml", 20.0}, {"mlDone", 20.0}, {"state", "done"}};
   const auto mix = [](const json& steps) {
     return json{{"type", "mix"}, {"state", "running"}, {"index", steps.size() - 1}, {"steps", steps}};
@@ -1234,6 +1234,24 @@ TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, 
     REQUIRE(text["args"]["partly"].size() == 2);
     CHECK(text["args"]["partly"][0]["args"]["name"] == "Teil A");
     CHECK(text["args"]["partly"][1]["args"]["name"] == "Teil B");
+  }
+  SUBCASE("a pair with a part in and its partner still to come: the partner named as missing, as an alarm (SD-102)") {
+    const json b = {{"name", "Teil B"}, {"pair", "AB"}, {"ml", 20.0}, {"mlDone", 0}, {"state", "pending"}};
+    const json resumed = rebootText(mix({{{"name", "Teil A"}, {"pair", "AB"}, {"ml", 20.0}, {"mlDone", 5.0}, {"state", "running"}}, b}));
+    CHECK(resumed["key"] == "ev.reboot.text_pair_partly_only");
+    CHECK(resumed["args"]["partly"][0]["key"] == "reboot.partly_min");
+    REQUIRE(resumed["args"]["partners"].size() == 1);
+    CHECK(resumed["args"]["partners"][0]["args"]["name"] == "Teil B");
+    const json other = rebootText(mix({{{"name", "Teil A"}, {"pair", "AB"}, {"ml", 20.0}, {"mlDone", 20.0}, {"state", "done"}},
+                                       {{"name", "CalMag"}, {"ml", 10.0}, {"mlDone", 0}, {"state", "running"}}, b}));
+    CHECK(other["key"] == "ev.reboot.text_pair_partly");
+    CHECK(other["args"]["partly"][0]["args"]["name"] == "CalMag");
+    CHECK(other["args"]["partners"][0]["args"]["name"] == "Teil B");
+    // The partner itself running: named above with what may be in, not as missing too
+    const json running = rebootText(mix({{{"name", "Teil A"}, {"pair", "AB"}, {"ml", 20.0}, {"mlDone", 20.0}, {"state", "done"}},
+                                         {{"name", "Teil B"}, {"pair", "AB"}, {"ml", 20.0}, {"mlDone", 0}, {"state", "running"}}}));
+    CHECK(running["key"] == "ev.reboot.text_partly");
+    CHECK_FALSE(running["args"].contains("partners"));
   }
   SUBCASE("an ended part without its amount: in, amount unknown, never nothing (R5)") {
     const json text = rebootText(mix({{{"name", "Teil A"}, {"ml", 20.0}, {"state", "done"}},

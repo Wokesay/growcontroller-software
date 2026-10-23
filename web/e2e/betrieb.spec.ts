@@ -240,6 +240,8 @@ test("A Stop after the session has run out: the sign-in page says it was not car
 test("The German mix page shows the hub's notes in German", async ({ page }) => {
   await login(page);
   await page.goto("/#/mischen");
+  // the recipe's amounts: with EC top-up on the probe's way may be preselected and refused at its aim (SD-102)
+  await page.getByRole("tablist", { name: "Mengen" }).getByRole("tab", { name: "Laut Rezept" }).click();
   await page.locator("input[name=water]").fill("40");
   const preview = page.getByTestId("mix-preview");
   await expect(preview.locator("table")).toBeVisible();

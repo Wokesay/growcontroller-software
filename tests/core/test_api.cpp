@@ -1045,6 +1045,9 @@ TEST_CASE("Recipes: each recipe learns its own EC effect; a round learns into th
     settle();
     CHECK(learned(bloom));
     CHECK(effects()["ecByRecipe"]["veg"].get<double>() == doctest::Approx(veg));
+    // Only the chart EC raised, on the same parts, above what it learned: forgotten too (SD-092)
+    c.ok("POST", "/api/v1/recipes", {{"id", "veg"}, {"refEc", 2.0}});  // 2.0 over 4.6 ml/L: 0.43
+    CHECK_FALSE(learned("veg"));
   }
   SUBCASE("its recipe edited while it settles: it learns nothing, though EC control doses another now") {
     c.ok("POST", "/api/v1/recipes", {{"id", bloom}, {"steps", bloomSteps(1.2, false)}, {"refEc", 2.4}});
@@ -1137,6 +1140,59 @@ TEST_CASE("Mix: a fixed pattern to a target EC is planned from the recipe's char
   const gc::json events = c.ok("GET", "/api/v1/events?limit=5&type=mix")["events"];
   for (const auto& ev : events) logged = logged || ev["text"]["key"] == "ev.mix.started.target_new";
   CHECK(logged);
+}
+
+TEST_CASE("Mix: to the target with the probe is planned from the hub's own probe and EC control's aim, only with EC control's recipe; a target or water EC from the request is refused (SD-057, SD-102, R5)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+  for (int i = 0; i < 360 && !c.state()["job"].is_null(); ++i) s.step(5000);  // the demo's own mix first
+  auto plan = [&](const gc::json& extra) {
+    gc::json req = {{"recipe", "veg"}, {"waterL", 20}, {"mode", "new"}, {"confirmRepeat", true}, {"amounts", "measured"}};
+    req.update(extra);
+    return c.ok("POST", "/api/v1/mix/plan", req);
+  };
+  auto keys = [](const gc::json& list) {
+    std::set<std::string> out;
+    for (const auto& m : list) out.insert(m["key"].get<std::string>());
+    return out;
+  };
+  const gc::json st = c.state();
+  REQUIRE(st["readings"]["tank.ec"]["usable"] == true);
+  gc::json p = plan(gc::json::object());
+  CHECK(p["amounts"] == "measured");
+  CHECK(p["waterEc"].get<double>() == doctest::Approx(st["readings"]["tank.ec"]["value"].get<double>()));
+  CHECK(p["targetEc"].get<double>() == doctest::Approx(st["controllers"]["ec"]["info"]["targetEffective"].get<double>()));
+  CHECK(p["ecTarget"].get<double>() == doctest::Approx(st["controllers"]["ec"]["info"]["target"].get<double>()));
+  CHECK(p["litresFrom"] == "level");
+  // What the mix page offers: the hardware is there, EC control's recipe as the hub picks it (D1, D2)
+  CHECK(st["mixWay1"]["hardware"] == true);
+  CHECK(st["controllers"]["ec"]["info"]["recipe"] == "veg");
+  CHECK(st["mixWay1"]["recipe"] == "veg");  // what the page preselects for it
+  CHECK(st["mixWay1"]["blocked"].is_null());  // only what blocks way 1 itself, not a refused plan
+  // Only EC control's own recipe: it closes the rest with it (D2)
+  std::string other;
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& r : cfg["recipes"])
+    if (r["id"] != "veg") other = r["id"];
+  REQUIRE_FALSE(other.empty());
+  CHECK(keys(plan({{"recipe", other}})["errors"]).count("mix.measured_recipe") == 1);
+  // The water's EC and the target come from the hub, never from the request
+  CHECK(keys(plan({{"targetEc", 1.0}})["errors"]).count("mix.amounts") == 1);
+  CHECK(keys(plan({{"waterEc", 0.0}})["errors"]).count("mix.amounts") == 1);
+  // In maintenance every jump is explained and EC control holds: the first step would never be judged (D6)
+  c.ok("POST", "/api/v1/maintenance", {{"minutes", 30}});
+  CHECK(keys(plan(gc::json::object())["errors"]).count("mix.measured_maintenance") == 1);
+  CHECK(c.state()["mixWay1"]["blocked"]["key"] == "mix.measured_maintenance");  // the page says why, under the tabs
+  c.ok("POST", "/api/v1/maintenance", {{"minutes", 0}});
+  // EC control off: way 1 is refused, way 2 is the one without measuring (SD-098)
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+  CHECK(keys(plan(gc::json::object())["errors"]).count("mix.measured_off") == 1);
+  // A start is planned the same way: refused with the plan's first reason
+  for (int i = 0; i < 120 && !c.state()["dosing"].is_null(); ++i) s.step(5000);  // nothing of control's own dosing
+  const auto r = c.call("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", 20}, {"confirmRepeat", true}, {"amounts", "measured"}});
+  CHECK(r.first == 422);
+  CHECK(r.second["error"]["key"] == "mix.measured_off");
 }
 
 TEST_CASE("Templates: the recipe is stored in the language of the request, by default the system language (#32)") {

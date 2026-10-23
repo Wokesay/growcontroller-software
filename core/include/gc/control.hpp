@@ -36,6 +36,7 @@ struct ControlEnv {
   Doser& doser;
   SensorTruth& truth;
   bool userJob = false;      // a mix, manual dose, pump calibration or tube priming is active
+  bool pairOpen = false;     // a mix to the target stopped with a pair half in: EC and pH wait until it is resumed or ended (SD-102)
   bool circulationOn = false;
   double volumeL = kNaN;     // Füllstand, sonst bekanntes Volumen aus Mischläufen
   Epoch lastEcDoseAt = 0;
@@ -46,6 +47,10 @@ struct ControlEnv {
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
 };
+
+// Where EC control aims: its target minus what the pH− dose that follows adds (RAT-053); NaN without
+// a target. A mix to the target aims at the same point (SD-102).
+double ecAim(const Ctx& c);
 
 class EcController {
  public:
@@ -81,6 +86,19 @@ class EcController {
     reset();
   }
   bool dosing() const { return phase_ == Phase::Dosing; }
+  // The first step of a mix to the target (way 1, SD-102), mixed in by the mix, as this controller's round 1
+  // (D7): judged at once (D6) and, when clean, learned from the rise over all ml that went in, the fixed
+  // parts taken as strong as the rest, as the plan counts them (D5); then decided in this tick's own run of
+  // tick, which follows the mix's, as after a round's settle time (D8). A rise below the larger of 0.02 mS/cm and a quarter of the one expected
+  // locks at once and learns nothing: a dry or misplaced probe reads about 0 and counts as usable. Not
+  // judged after the inlet opened or a probe was calibrated, not learned after anything unclean (RAT-057).
+  struct FirstStepIn {
+    std::string recipe;
+    double ecBefore = kNaN, ecNow = kNaN, ml = kNaN, litres = kNaN, expectedRise = kNaN;
+    bool learn = false, judge = false;
+  };
+  enum class FirstStep { Adopted, Locked };
+  FirstStep adoptFirstStep(const Ctx& c, const FirstStepIn& in);
   // The parts of the recipe a round doses, or their ratio, changed under it (an edit or an import): it
   // doses no part that is fixed now and learns nothing, so the effect stays on the parts EC control
   // scales now (RAT-085, RAT-057, SD-092). A fixed part is never one of a pair, so no pair is split. A
@@ -91,6 +109,12 @@ class EcController {
   // round learns nothing (SD-092, RAT-057)
   void recipeGone(const std::string& id) {
     if (id == roundRecipe_) clean_ = false;
+    if (id == small_.recipe) small_ = {};
+  }
+  // What was learned for a recipe is forgotten (a higher reference on the same parts, SD-092): its
+  // small rounds were expected at it
+  void effectForgotten(const std::string& id) {
+    if (id == small_.recipe) small_ = {};
   }
   // The wall clock stepped by `d`: keep the distance of the pauses.
   void shiftClock(Epoch d) {
@@ -103,6 +127,17 @@ class EcController {
   std::vector<DoseStep> queue_;
   int round_ = 0, noEffect_ = 0, seq_ = 0;
   bool clean_ = true;  // Wirkung nur aus sauberen Gaben lernen (ohne Zulauf dazwischen)
+  bool limited_ = false;    // the round was made smaller to fit the partial-run limit (SD-102)
+  double expectedRise_ = kNaN;  // what the round should raise EC by, at the effect it was planned on (SD-102)
+  // Clean rounds of one recipe made smaller for slow pumps, each too small to judge on its own: summed
+  // until they should raise EC by kSmallRoundEc between them, then judged and learned as one round
+  // (SD-102, PD-317)
+  struct SmallRounds {
+    double rise = 0, expected = 0;
+    double mlPerL = 0;       // each round's millilitres on its own litres
+    bool learnable = true;   // every round knew its litres
+    std::string recipe;
+  } small_;
   bool cut_ = false;        // a Stop cut the round: settle it once the circulation pump runs
   bool cutByMix_ = false;   // … or a mix was cut with nutrients in (settleFirst)
   bool quiet_ = false;      // … with no round of its own to judge when it has settled

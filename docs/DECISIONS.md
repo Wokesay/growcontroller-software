@@ -1447,7 +1447,8 @@ simulator numbers per `docs/SIMULATOR.md`.
      (review). If the EC fails during the mix,
      the mix stops and says why; it does not go on as a fixed pattern
      without the user (review). Water at or above the target gets
-     nothing, with a note.
+     nothing, with a note. Changed by SD-102: the details of measuring,
+     the first step, the hand-over and its check.
   2. **A fixed pattern** (no valid EC in the water being mixed: no probe,
      or no circulation): the user enters the litres and either the
      recipe's amounts per litre, or a target EC within the catalog's range
@@ -5112,9 +5113,10 @@ SD-057's point on way 2; the rest of SD-057 stands.
   over the one asked for. Until mixing to the target with the probe is
   built (way 1, step 6), the hub refuses a fixed pattern to a target EC
   then, and the mix page offers only the recipe's amounts, says why and
-  how to switch EC control off. A locked EC control that a person
-  releases after a fixed pattern takes the tank to its own target then;
-  a person acts there.
+  how to switch EC control off. Changed by SD-102: with EC control on
+  and free, way 1 is offered instead, the recipe's amounts as the second
+  choice. A locked EC control that a person releases after a fixed
+  pattern takes the tank to its own target then; a person acts there.
 - **The water's EC** comes from a meter, is entered as 0 for
   reverse-osmosis water, or on a new fill is the probe's valid reading,
   taken over with one tap (SD-089, S20); the page asks that the fresh water is
@@ -5353,9 +5355,194 @@ risk SD-099 named for it.
     volume itself, with the reading following at once and with a lag of
     105 s.
 
+## SD-102: Mixing to the target with the hub's probe: measure first, a capped first step, then EC control closes the rest
+
+Decided by the project owner on 2026-10-22 in the software session, ten
+control details (SD-091) for step 6 of SD-057 (#143), each presented on
+its own after `domain` planned the step, and eleven follow-ups after the
+reviews, on 2026-10-22 and 2026-10-23 (in D3, D4, D8, three times in D10 and the first
+step below, each as recommended). Way 1 of SD-057 is EC
+control's first round done as a mix: the parts go in the recipe's order
+with mixing between them, fixed parts per litre of fresh water, the first
+step without a partial-run limit and converted with the largest known
+effect (SD-089 S4), and the mix's own mixing-in time. This changes
+SD-057's point on way 1 and SD-098's "until way 1 is built"; the rest
+stands.
+
+- **Offered (D1):** with EC control switched on and free and an EC probe
+  and a circulation pump assigned, the mix page offers "To target with
+  probe" and preselects it while it can run: a valid EC of the tank, no
+  probe calibration open, the circulation pump not blocked, the inlet
+  closed, no maintenance mode (it explains every jump and holds EC
+  control, so the first step would never be judged) and no round of EC
+  control still settling (the first step becomes its round 1). Otherwise
+  the recipe's amounts are preselected and the page says why; until the
+  user taps a choice it follows what the hub can do. The recipe's amounts
+  stay the second choice, with a warning when its chart EC plus the
+  water's EC lands above EC control's target plus tolerance, since EC is
+  never lowered (RAT-012). A fixed pattern (way 2, SD-098) stays for EC
+  control off or locked; with the hardware there, the page says when way
+  1 is offered.
+- **The recipe (D2):** only EC control's own recipe (the phase's), so the
+  rest is closed in the same ratio and what is learned goes to that
+  recipe (SD-092); another recipe gets only its amounts, with the reason.
+- **Measuring first (D3):** the job first circulates for 100 s per 20 L,
+  at least 100 s and at least EC control's settle time (the user's own
+  statement of how long the system takes to mix, follow-up), at most
+  60 min, counted from when the pump runs (fixed in code, R7; the scaling
+  with volume is the same assumption as the mix's mixing-in time), then
+  reads the tank's EC, taken since the pump runs, plans again with it
+  (every refusal and the stock checked again) and doses without a further
+  confirmation; the card shows the time left, what it measured and the new
+  amounts. A pump that does not come on within 2 min, or stops for 10 s
+  once it ran (RAT-037, RAT-039), a probe calibration started, the inlet
+  opening or a refill starting, a reading not usable, or none taken since
+  the pump runs within 5 min after the measuring time end the mix with
+  nothing in and the reason. Watering waits while it measures; a running
+  watering pump stops as routine. EC and pH are announced while it measures, as for
+  every mix (follow-up, changes the decision of D3 that a jump while
+  measuring locks): fresh water not yet mixed moves the probes, which
+  would end most top-ups; the step limit and the first-step lock (D6)
+  bound a probe at fault to one step at the step limit, then lock
+  (RAT-042).
+- **The litres (D4):** a usable level reading, else the litres entered:
+  the fresh water on a new fill, and on a top-up the litres in the tank
+  now, fresh water included, which the page asks for and the hub then
+  keeps as the tank's volume (follow-up, replaces "known plus fresh":
+  what was used since the last mix would count as still there, and the
+  first step would raise EC by that ratio more than the step limit). The
+  fresh water is in before the start. Fixed parts on the fresh litres.
+  The plan names the source; on a new fill it warns when the entered
+  litres and the level differ by more than 10 % (an assumption). Litres
+  above the tank's capacity are refused (a level read too high named as
+  such), and litres that moved by more than 10 % while it measured end
+  the mix with nothing in.
+- **The aim (D5):** where EC control aims, its target minus the reserve
+  for what pH− adds (RAT-053); "at the target" from the aim minus the
+  tolerance. Plan and controller share one function. Water at the aim
+  gets only the fixed parts, with a note; without fixed parts the mix is
+  refused as at the target.
+- **The first step:** 0.8 × the gap (aim − water's EC − what the fixed
+  parts add, counted at the same effect), at most the step limit
+  (`max_ec_step`), both converted with the largest of the start effect,
+  the recipe's reference and its learned effect (SD-089 S4, RAT-056); not
+  bounded by the recipe's amounts, since feedback follows, except while
+  the recipe has neither a chart EC (inside the band) nor a learned
+  effect: then nobody knows how strong the product is, and round 1 doses
+  at most the recipe's own amounts for the fresh water (on a new fill all
+  the tank's litres), with a note (follow-ups; a product up to four times
+  the start effect would otherwise raise EC by up to four times the step
+  limit, which only diluting undoes). The step limit binds the scaled
+  parts; the fixed parts add what their amounts give. On a new fill the
+  fixed parts go on the litres it doses on (all the water is fresh), on a
+  top-up on the fresh water; a top-up with more fresh water than the level
+  reads is refused.
+- **When the EC fails (D6):** the probe's own verdict (not usable, a
+  probe calibration open): while measuring the mix ends with nothing in
+  and gives the reason; once a part is in, the step is finished without
+  cutting a pair (RAT-054) and handed over, and EC control waits for the
+  probe. It never goes on as a fixed pattern. At the hand-over the first
+  step's rise is judged at once, before anything is learned: below the
+  larger of 0.02 mS/cm and a quarter of the rise expected (the band's
+  bottom, RAT-056), EC control locks (`ec.no_effect`) with its own text:
+  is the probe in the water, do the pumps deliver, are the litres right?
+  A dry or misplaced probe reads about 0 and counts as usable, so without
+  this check up to two more rounds at the full step limit would follow. A
+  rise above four times the expected gives a warning. A step during which
+  the inlet opened, a refill ran, a probe was calibrated or maintenance
+  mode was on (also while the mix waited, failed) is not judged, as its
+  rise says nothing; a resumed one is.
+- **Learning (D7):** the first step counts as EC control's first round:
+  it learns into the recipe when clean (no inlet opened, no Stop or
+  resume, no failed part, the pump ran, no probe calibration or
+  maintenance, the recipe not edited meanwhile; RAT-057), from the rise
+  over all the millilitres that went in, the fixed parts taken as strong
+  as the rest, as the plan counts them (D5); counted over the scaled parts
+  alone, a fixed part's rise would be learned as theirs. A fixed part much
+  weaker than the rest (a cleanser) makes the learned effect low by its
+  share, so the next round is somewhat larger; small in practice, as round
+  1 is usually at the step limit and the next clean round corrects it. It
+  counts for `max_doses`.
+- **The end of the mix (D8):** when the first step has mixed in; the card
+  says what happened: handed over ("round 1 in, EC X; EC top-up takes over
+  the rest to Y", then EC control's own line), locked by D6, EC control
+  off or locked meanwhile (the rest waits), or the probe not usable (EC
+  control waits for it). A way-1 mix that ends with nothing in (cancelled,
+  stopped, restarted, refused after measuring, or at the target once
+  measured, which the card says as "nothing needed") undoes the window
+  against mixing twice it opened at the start (RAT-003), when it is still
+  its own; the litres it booked stay, as the fresh water is in before the
+  start (follow-up; the litres from before would let EC control's next
+  round raise EC by their ratio more than the step limit). One that
+  failed with a pair half in holds EC and pH control, whose line says to
+  resume or end it, so the part still missing goes in (follow-up,
+  RAT-054; ended, the card, a Stop and the report after a restart name it
+  with its millilitres, the last as an alarm, follow-up); one
+  that failed with the pair complete is not resumed once EC control has
+  started a round since, as the rest would go in on top of it; the card
+  says so instead of offering it. A mix whose pump stood still while it
+  mixed in hands nothing over: EC and pH settle first, as after every mix
+  cut with nutrients in (SD-057), and EC control starts afresh, so its
+  own no-effect lock applies then, not D6.
+- **Temperature (D9):** built on the reading EC control uses today; the
+  plan always says it is not temperature compensated and that cold fresh
+  water reads low, so the tank gets more. When SD-060 is built, way 1
+  follows its gate.
+- **Large tanks (D10):** an EC round that would need more partial runs
+  than allowed (6) is made smaller by one factor for all its scaled parts
+  instead of refused (RAT-054 names partial-run limits among those a pair
+  scales at); the round count and the 30-min pause bound the rest. This
+  changes EC control for every round. A round made smaller that should
+  raise EC by less than 0.06 mS/cm (three times the no-effect threshold)
+  is not judged or learned on its own, so pumps far too slow for the
+  tank do not look broken and stay usable (follow-up, PD-317). What a
+  round should raise EC by is reckoned at the effect it was planned on,
+  the one learned for its recipe or else the recipe's start, not at the
+  largest known one, so a recipe that learned a small effect is not
+  expected to do more and a working probe is not locked for it (follow-up after
+  the fourth review, 2026-10-23; not chosen: the largest effect with a
+  named residual risk, or 0.12 instead of 0.06). Clean rounds of one
+  recipe that are too small are added up instead: once they should raise
+  EC by 0.06 between them, their rises, each counted from its own
+  round's start, are judged as one round against 0.02 and learned from
+  the summed rise over the summed millilitres per litre, each round on
+  its own litres; so a dry or misplaced probe, an empty bottle or a pump
+  that delivers nothing still locks EC control with any pump, after less
+  than about 0.24 mS/cm at the effect planned on (follow-up after the
+  fourth review, 2026-10-23; not chosen: leaving it as a named residual
+  risk, or counting small rounds singly again). A round that is not
+  clean (the inlet, a refill, a hand dose, a mix) or has no valid reading
+  at its settle end is left out, and the sum goes on, so a refill that
+  comes back again and again cannot keep it from being judged. The sum
+  starts afresh with a round of another recipe, a round large enough to
+  judge alone, a calibration, the lock, a first step of a mix that is
+  judged, an edit of the recipe's scaled parts or their ratio, the
+  recipe deleted, left out of an import or replaced under its ID, and a
+  higher reference that forgets what it learned; never only because a
+  reading lies in the band, which a misplaced probe could bring about
+  again and again. Remaining: a restart clears the sum, as it clears the
+  count of rounds without effect (R6); a recipe whose effect lies below a
+  quarter of the start effect falls back to its start (RAT-055), so its
+  small rounds are expected at the start and can lock a working probe,
+  as its rounds judged alone can; with slow pumps the rounds of a series
+  hold watering for hours, as each run holds it until mixed in (SD-093).
+- A first step that does not raise EC locks, and the rounds change at
+  the run limit, so this step waits for the project owner's "mergen"
+  (SD-033).
+
+Not chosen: way 1 only, or the recipe's amounts as the default (D1); any
+recipe, or EC control switching recipe for the mix (D2); the reading at
+the start, or a stability check that can block (D3); the smaller of the
+entered and level litres, or a refusal above 10 % (D4); the plain target
+(D5); only the probe's verdict, or a stop between the parts of a pair
+(D6); no learning, or learning only a larger effect (D7); keeping the job
+open until EC control is done (D8); waiting for SD-060, or a tick per mix
+(D9); a warning up front, or leaving large tanks short of the target
+(D10).
+
 ---
 
-## SD-102: After a restart cut a mix, the part that was running is named as possibly in, its amount unknown
+## SD-103: After a restart cut a mix, the part that was running is named as possibly in, its amount unknown
 
 Decided by the project owner on 2026-10-23 in the software session, for
 #310 (a control detail under SD-091; "name the part, amount unknown",
@@ -5387,15 +5574,18 @@ measuring, follow the reviews of `reviewer` and `domain`.
   started and before the mix saved it as running. Both are #329.
 - **Residual risks:** "up to" includes nothing; the hub cannot tell
   whether the pump had started before the cut, and the grower measures.
-  Until #333, the part of a pair still missing is not named after a
-  restart, unlike after a cancel or the stir timeout (RAT-054), and a
+  A part of a pair still to come is named as missing, as an alarm, once
+  another part of the pair is in (SD-102); the running part itself is
+  named with what may be in, not as missing too. Until #333, a pair
+  whose only started part was running is not named as half in, and a
   part dosed in many runs has its whole planned amount as the upper
   bound.
 - **Decided to follow** (by the project owner on 2026-10-23, #333): the
   restart report names each part of a pair started and not complete,
-  with what is missing, as an alarm; and the hub keeps the amount in
-  `job.json` after each finished partial run of a mix part, one small
-  write per minute of dosing, so the bound is at most one run wide.
+  a running one too, with what is missing, as an alarm; and the hub
+  keeps the amount in `job.json` after each finished partial run of a
+  mix part, one small write per minute of dosing, so the bound is at
+  most one run wide.
 
 Not chosen: an estimate from the run time; saving the amount during
 the run.

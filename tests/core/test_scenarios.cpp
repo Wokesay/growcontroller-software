@@ -254,7 +254,7 @@ TEST_CASE("Scenario: right after a mix that took longer than 30 minutes, another
   }
 }
 
-TEST_CASE("Scenario: a restart in a part resumed after it failed names it between what was in and its plan (#310, SD-102)") {
+TEST_CASE("Scenario: a restart in a part resumed after it failed names it between what was in and its plan (#310, SD-103)") {
   sim::Simulation s(test::opts("neu"));
   Client c{s};
   setupStage0(s, c);
@@ -329,7 +329,7 @@ TEST_CASE("Szenario: Stromausfall im Lauf → alles aus, nicht fortgesetzt, geme
     if (e["title"]["key"] == "ev.mix_reboot") text = e["text"];
   REQUIRE_MESSAGE(text.is_object(), "reported");
   // Part A went in partly, how much is not known: named so, at most its planned amount, never as
-  // "nothing went in" (#310, SD-102)
+  // "nothing went in" (#310, SD-103)
   CHECK(text["key"] == "ev.reboot.text_partly_only");
   REQUIRE(text["args"]["partly"].size() == 1);
   CHECK(text["args"]["partly"][0]["key"] == "reboot.partly");
@@ -362,6 +362,583 @@ json startMix(Client& c, double waterL = 20) {
   return c.ok("POST", "/api/v1/mix/start", {{"recipe", "veg"}, {"waterL", waterL}, {"guided", false}, {"confirmRepeat", true}})["job"];
 }
 }  // namespace
+
+namespace {
+// Way 1 on the demo (SD-102): fresh water in, refill off, the probe's reading usable again after the jump.
+// EC control is off meanwhile, else it would raise the fresh water itself; startMeasured switches it on
+// and starts in the same moment, with no tick between
+void freshForWay1(sim::Simulation& s, Client& c, double litres = 40) {
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+  s.world().fill(litres, 0.02, 6.5);
+  REQUIRE(until(s, [&] {
+    const json r = c.state()["readings"]["tank.ec"];
+    return r["usable"] == true && r["value"].get<double>() < 0.2;  // the fresh water's reading, not the old one
+  }, 60 * 60 * 1000, 10000));
+}
+json measuredPlan(Client& c, double waterL = 40, json extra = json::object()) {
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+  json body = {{"recipe", "veg"}, {"waterL", waterL}, {"confirmRepeat", true}, {"amounts", "measured"}};
+  body.update(extra);
+  return c.ok("POST", "/api/v1/mix/plan", body);
+}
+json startMeasured(Client& c, double waterL = 40, json extra = json::object()) {
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", true}});
+  json body = {{"recipe", "veg"}, {"waterL", waterL}, {"guided", false}, {"confirmRepeat", true}, {"amounts", "measured"}};
+  body.update(extra);
+  return c.ok("POST", "/api/v1/mix/start", body)["job"];
+}
+// The events of one kind since an event ID, with the given title key
+json eventsSince(Client& c, const std::string& type, std::uint64_t since, const std::string& key) {
+  json out = json::array();
+  for (const auto& e : findEvents(c, type))
+    if (e["id"].get<std::uint64_t>() > since && e["title"]["key"] == key) out.push_back(e);
+  return out;
+}
+}  // namespace
+
+TEST_CASE("Scenario: mixing to the target with the probe measures first for the measuring time, doses a capped first step in the recipe's ratio from what it measured, and hands it to EC control, which learns it and closes the rest (SD-057, SD-102, RAT-054, RAT-056, RAT-057, RAT-088)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c);
+  c.ok("PATCH", "/api/v1/functions/ec_control", {{"params", {{"max_ec_step", 0.5}, {"settle_min", 5}}}});
+  const json plan = measuredPlan(c);
+  REQUIRE(plan["ok"] == true);
+  CHECK(plan["waterEc"].get<double>() == doctest::Approx(c.state()["readings"]["tank.ec"]["value"].get<double>()));
+  CHECK(plan["litresFrom"] == "level");
+  CHECK(plan["capped"] == true);  // 0.8 × the gap of about 1.2 is above the step limit of 0.5
+  CHECK(plan["expectedEc"].get<double>() == doctest::Approx(plan["waterEc"].get<double>() + 0.5));
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  const auto dosesBefore = lastDoseId(c);
+  const json learnedBefore = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  const json job = startMeasured(c);
+  CHECK(job["state"] == "measuring");
+  CHECK(job["message"]["key"] == "mix.measuring");
+  s.step(5000);
+  const int left = c.state()["job"]["waitLeftS"].get<int>();
+  CHECK(left > 280);  // the longer of EC control's 5 min settle time and 100 s per 20 L, from when the pump runs (D3)
+  CHECK(left <= 300);
+  CHECK(c.state()["outputs"]["tank.circulation"] == true);
+  // Water not yet mixed moves the probe while it measures: announced, no jump lock, the plan follows it (D3)
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.world().tank.ec = 0.6;
+  }
+  s.step(280 * 1000);
+  CHECK(c.state()["job"]["state"] == "measuring");
+  CHECK(lastDoseId(c) == dosesBefore);  // nothing doses while it measures
+  REQUIRE(until(s, [&] { return c.state()["job"]["state"] != "measuring"; }, 30 * 60 * 1000, 2000));
+  CHECK(eventsSince(c, "block", before, "ev.jump").empty());
+  const json measuredEv = eventsSince(c, "mix", before, "ev.mix.measured");
+  REQUIRE(measuredEv.size() == 1);
+  const double measuredEc = measuredEv[0]["data"]["ec"].get<double>();
+  CHECK(measuredEc == doctest::Approx(0.6).epsilon(0.05));
+  CHECK(c.state()["job"]["info"]["capped"] == true);
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+  const json last = c.state()["lastJob"];
+  CHECK(last["state"] == "done");
+  CHECK(last["message"]["key"] == "mix.done_handover");
+  CHECK(last["message"]["args"]["after"]["key"] == "mix.after_handover_auto");
+  double a = 0, b = 0;
+  for (const auto& e : findEvents(c, "dose"))
+    if (e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "mix") {
+      if (e["data"]["canister"] == "part-a") a += e["data"]["ml"].get<double>();
+      if (e["data"]["canister"] == "part-b") b += e["data"]["ml"].get<double>();
+    }
+  REQUIRE(a > 0);
+  CHECK(a / b == doctest::Approx(1.0).epsilon(0.03));  // the pair in its ratio (RAT-054)
+  // EC control judges the first step as its first round and learns it into the recipe (D7)
+  s.step(30 * 1000);
+  const json learned = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  REQUIRE(learned.is_number());
+  CHECK(learned != learnedBefore);
+  CHECK(learned.get<double>() == doctest::Approx(0.27).epsilon(0.15));  // the twin's A, B and CalMag (RAT-055, RAT-080)
+  // … and closes the rest to its target in rounds of its own
+  REQUIRE(until(s, [&] {
+    return !eventsSince(c, "control", before, "ev.ec.done").empty() || !eventsSince(c, "control", before, "ev.ec.max").empty();
+  }, 4 * 3600 * 1000, 30000));
+  const json done = eventsSince(c, "control", before, "ev.ec.done");
+  REQUIRE(done.size() == 1);
+  CHECK(done[0]["data"]["from"].get<double>() == doctest::Approx(measuredEc).epsilon(0.05));  // from what it measured, not the first step
+  CHECK(done[0]["data"]["rounds"].get<int>() >= 2);  // round 1 was the mix's
+  CHECK(c.state()["latches"].count("ec.no_effect") == 0);
+}
+
+TEST_CASE("Scenario: mixing to the target with the probe judges its first step: a probe that reads about 0 or pumps that deliver too little lock EC control at once and learn nothing; one far too strong is named; after fresh water or in maintenance it is neither judged nor learned; the inlet while it measures ends it; a probe lost at the hand-over leaves EC control waiting (SD-102 D6, D7, RAT-057, RAT-088)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c);
+  auto probeFault = [&](const char* fault) {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", fault}});
+  };
+  auto flowTimes = [&](double k) {  // the pumps deliver k times what their calibration says
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow *= k;
+  };
+  const json learnedBefore = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  auto locked = [&] { return c.state()["latches"].count("ec.no_effect") == 1; };
+  auto handedOver = [&] {
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+    return c.state()["lastJob"]["message"];
+  };
+  SUBCASE("a dry probe: the first step goes in, EC does not rise, EC control locks at once") {
+    probeFault("ec_zero");
+    s.step(60 * 1000);
+    REQUIRE(until(s, [&] { return c.state()["readings"]["tank.ec"]["usable"] == true; }, 60 * 60 * 1000, 10000));
+    startMeasured(c);
+    CHECK(handedOver()["key"] == "mix.done_handover_locked");  // the card says so, not that EC top-up closes the rest
+    CHECK(locked());
+    CHECK(eventsSince(c, "alarm", before, "ev.ec.first_no_effect").size() == 1);
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);  // an invalid rise is never learned
+    const auto doses = lastDoseId(c);
+    s.step(60 * 60 * 1000);
+    CHECK(lastDoseId(c) == doses);  // no round at the full step limit follows
+  }
+  SUBCASE("pumps delivering a sixth: a rise above 0.02 but below a quarter of the one expected locks at once") {
+    flowTimes(1.0 / 6);
+    startMeasured(c);
+    CHECK(handedOver()["key"] == "mix.done_handover_locked");
+    CHECK(locked());
+    const json ev = eventsSince(c, "alarm", before, "ev.ec.first_no_effect");
+    REQUIRE(ev.size() == 1);
+    CHECK(ev[0]["text"]["key"] == "ev.ec.first_no_effect.text");
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);
+  }
+  SUBCASE("pumps delivering half: no lock, EC control closes the rest") {
+    flowTimes(0.5);
+    startMeasured(c);
+    CHECK(handedOver()["key"] == "mix.done_handover");
+    s.step(60 * 1000);
+    CHECK_FALSE(locked());
+  }
+  SUBCASE("pumps delivering five times as much on a small gap: named, not locked") {
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().tank.ec = 0.95;  // about 0.3 below the aim: a first step of about 0.25 expected
+    }
+    REQUIRE(until(s, [&] {  // the jump lock over, nothing of control's own dosing
+      const json st = c.state();
+      return st["readings"]["tank.ec"]["usable"] == true && st["dosing"].is_null();
+    }, 60 * 60 * 1000, 10000));
+    flowTimes(5);
+    startMeasured(c);
+    CHECK(handedOver()["key"] == "mix.done_handover");
+    CHECK(eventsSince(c, "control", before, "ev.ec.first_strong").size() == 1);
+    CHECK_FALSE(locked());
+  }
+  SUBCASE("a dry probe with the inlet opened while it doses: the rise says nothing, neither judged nor learned") {
+    probeFault("ec_zero");
+    s.step(60 * 1000);
+    REQUIRE(until(s, [&] { return c.state()["readings"]["tank.ec"]["usable"] == true; }, 60 * 60 * 1000, 10000));
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "running"; }, 30 * 60 * 1000, 2000));
+    c.ok("POST", "/api/v1/roles/tank.inlet/test");
+    CHECK(handedOver()["key"] == "mix.done_handover");
+    s.step(60 * 1000);
+    CHECK(eventsSince(c, "alarm", before, "ev.ec.first_no_effect").empty());
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);
+  }
+  SUBCASE("a dry probe with maintenance mode on while it doses: work at the tank, neither judged nor learned") {
+    probeFault("ec_zero");
+    s.step(60 * 1000);
+    REQUIRE(until(s, [&] { return c.state()["readings"]["tank.ec"]["usable"] == true; }, 60 * 60 * 1000, 10000));
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "running"; }, 30 * 60 * 1000, 2000));
+    c.ok("POST", "/api/v1/maintenance", {{"minutes", 1}});
+    handedOver();
+    CHECK(eventsSince(c, "alarm", before, "ev.ec.first_no_effect").empty());
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);
+  }
+  SUBCASE("the litres fall by more than a tenth while it measures: nothing confirmed them, it ends with nothing in") {
+    const auto doses = lastDoseId(c);
+    startMeasured(c);
+    for (int i = 0; i < 20; ++i) {  // a slow leak or a flood drawn off, below any jump
+      {
+        std::lock_guard<std::recursive_mutex> l(s.mutex());
+        s.world().tank.volumeL -= 0.4;
+      }
+      s.step(10000, 5000);
+    }
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 5000));
+    CHECK(c.state()["lastJob"]["message"]["args"]["reason"]["key"] == "mix.measure_litres");
+    CHECK(lastDoseId(c) == doses);
+  }
+  SUBCASE("the inlet opened while it measures: more water on top of what it measures ends it with nothing in") {
+    const auto doses = lastDoseId(c);
+    startMeasured(c);
+    c.ok("POST", "/api/v1/roles/tank.inlet/test");
+    s.step(5000);
+    CHECK(c.state()["lastJob"]["message"]["key"] == "mix.measure_inlet");
+    CHECK(lastDoseId(c) == doses);
+  }
+  SUBCASE("the probe goes offline while the mix mixes in: EC control waits for it, nothing judged or learned") {
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "settling"; }, 60 * 60 * 1000, 5000));
+    probeFault("offline");
+    const json m = handedOver();
+    CHECK(m["key"] == "mix.done_handover_no_ec");
+    s.step(60 * 1000);
+    CHECK_FALSE(locked());
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);
+  }
+  SUBCASE("EC top-up switched off while it doses: the rest waits, said so") {
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "running"; }, 30 * 60 * 1000, 2000));
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    CHECK(handedOver()["key"] == "mix.done_handover_off");
+    CHECK(c.state()["effects"]["ecByRecipe"].value("veg", json()) == learnedBefore);
+  }
+}
+
+TEST_CASE("Scenario: mixing to the target with the probe learns from all it put in, a fixed part as strong as the rest (SD-102 D7, RAT-085)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c);
+  c.ok("POST", "/api/v1/recipes",
+       {{"id", "veg"},
+        {"steps",
+         {{{"canister", "part-a"}, {"mlPerL", 2.0}}, {{"canister", "part-b"}, {"mlPerL", 2.0}}, {{"canister", "calmag"}, {"mlPerL", 0.6}, {"fixed", true}}}}});
+  startMeasured(c);
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+  REQUIRE(c.state()["lastJob"]["message"]["key"] == "mix.done_handover");
+  s.step(30 * 1000);
+  const json learned = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  REQUIRE(learned.is_number());
+  // Over the scaled parts alone it would read about 0.32: the fixed part's rise counted as theirs
+  CHECK(learned.get<double>() == doctest::Approx(0.275).epsilon(0.12));
+}
+
+TEST_CASE("Scenario: mixing to the target with the probe ends with nothing in, as never started: cancelled, stopped, restarted, the probe lost, refused or at the target after measuring, or a calibration while it measures; its window undone, its litres kept (SD-102, R6, RAT-003)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c);
+  // Without a level the hub keeps the litres itself: what way 1 booked must come back
+  c.call("DELETE", "/api/v1/roles/tank.level");
+  s.step(5000);
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  const json lastMixBefore = c.state()["lastMixAt"];
+  const json job = startMeasured(c);
+  const std::string id = job["id"];
+  CHECK(c.state()["tank"]["volumeL"].get<double>() == doctest::Approx(40));
+  const auto doses = lastDoseId(c);
+  std::string key;
+  SUBCASE("cancelled") {
+    c.ok("POST", "/api/v1/jobs/" + id + "/abort");
+    key = "job.aborted_none";
+  }
+  SUBCASE("stopped") {
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    key = "job.emergency_stop";
+    c.ok("POST", "/api/v1/resume");
+  }
+  SUBCASE("restarted: said so") {
+    s.reboot();
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.step(5000);
+    CHECK(!eventsSince(c, "mix", 0, "ev.mix_reboot").empty());
+    bool said = false;
+    for (const auto& e : findEvents(c, "mix")) said = said || e["text"]["key"] == "ev.reboot.text_measuring";
+    CHECK(said);
+    key = "";  // the card of a mix the restart cut is not kept
+  }
+  SUBCASE("EC top-up switched off while it measures: refused after measuring") {
+    c.ok("PATCH", "/api/v1/functions/ec_control", {{"enabled", false}});
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 2000));
+    CHECK(c.state()["lastJob"]["message"]["args"]["reason"]["key"] == "mix.measured_off");
+    key = "mix.measure_refused";
+  }
+  SUBCASE("the tank at the target once measured: nothing needed, said as such") {
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.world().tank.ec = 1.45;  // water already mixed to the target lay apart from the probe
+    }
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 2000));
+    key = "mix.measure_at_target";
+  }
+  SUBCASE("the probe goes offline while it measures: the reason is named") {
+    {
+      std::lock_guard<std::recursive_mutex> l(s.mutex());
+      s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "offline"}});
+    }
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 30 * 60 * 1000, 2000));
+    key = "mix.measure_failed";
+  }
+  SUBCASE("a probe calibration started while it measures") {
+    c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ec"}, {"action", "start"}});
+    s.step(5000);
+    key = "mix.measure_calibrating";
+    c.ok("POST", "/api/v1/probe", {{"device", "PHEC-3F2A91"}, {"kind", "ec"}, {"action", "cancel"}});
+  }
+  s.step(5000);
+  const json st = c.state();
+  if (!key.empty()) {
+    CHECK(st["lastJob"]["state"] == "aborted");
+    CHECK(st["lastJob"]["message"]["key"] == key);
+  }
+  CHECK(lastDoseId(c) == doses);
+  CHECK(st["tank"]["volumeL"].get<double>() == doctest::Approx(40));  // the fresh water is in: its litres stay (D8)
+  CHECK(st["lastMixAt"] == lastMixBefore);  // the window against mixing twice is undone (RAT-003)
+  // Nothing went in, so EC control is not told to settle a cut mix first (SD-057)
+  CHECK(st["controllers"]["ec"]["line"]["key"].get<std::string>().rfind("ec.mixcut", 0) != 0);
+  CHECK(eventsSince(c, "mix", before, "ev.mix.measured").empty());
+}
+
+TEST_CASE("Scenario: a top-up to the target with the probe and no usable level asks for the litres in the tank now and doses on them (SD-102 D4, RAT-011)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c, 30);
+  c.call("DELETE", "/api/v1/roles/tank.level");
+  s.step(5000);
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.world().fill(10, 0.02, 6.5);  // 10 L of fresh water on top: 40 L in the tank, the hub knew 30 from the last mix or nothing
+  }
+  json plan = measuredPlan(c, 10, {{"mode", "topup"}});
+  CHECK(plan["ok"] == false);
+  bool asked = false;
+  for (const auto& e : plan["errors"]) asked = asked || e["key"] == "mix.measured_tank_now";
+  CHECK(asked);
+  plan = measuredPlan(c, 10, {{"mode", "topup"}, {"tankNowL", 40}});
+  REQUIRE(plan["ok"] == true);
+  CHECK(plan["tankL"].get<double>() == doctest::Approx(40));
+  CHECK(plan["litresFrom"] == "entered");
+  startMeasured(c, 10, {{"mode", "topup"}, {"tankNowL", 40}});
+  CHECK(c.state()["tank"]["volumeL"].get<double>() == doctest::Approx(40));  // as entered, not known plus fresh
+  REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+  CHECK(c.state()["lastJob"]["message"]["key"] == "mix.done_handover");
+}
+
+TEST_CASE("Scenario: a mix to the target with the probe stopped with a pair half in holds EC and pH until it is resumed, which completes the pair; one stopped with the pair complete is not resumed once EC control has dosed (SD-102, RAT-054)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  freshForWay1(s, c);
+  auto block = [&](const char* cap, bool on) {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.world().cap(cap)->blocked = on;
+  };
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  SUBCASE("part B fails: EC control waits, resuming completes B in the pair's ratio") {
+    block("CAP-1F02B7", true);
+    const std::string id = startMeasured(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 60 * 60 * 1000, 5000));
+    s.step(30 * 60 * 1000, 10000);
+    const json st = c.state();
+    CHECK(st["controllers"]["ec"]["line"]["key"] == "ec.wait_pair");
+    bool said = false;  // the checklist says why, not that a mix is running
+    for (const auto& ch : st["controllers"]["ec"]["checks"]) said = said || ch.dump().find("check.pair_open") != std::string::npos;
+    CHECK(said);
+    CHECK(st["controllers"]["refill"]["line"]["key"] != "refill.wait_dose");  // the refill is not held by it
+    CHECK_FALSE(st["job"].contains("noResume"));
+    for (const auto& e : findEvents(c, "dose")) CHECK_FALSE((e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec"));
+    block("CAP-1F02B7", false);
+    c.ok("POST", "/api/v1/jobs/" + id + "/resume");
+    REQUIRE(until(s, [&] { return c.state()["job"].is_null(); }, 2 * 3600 * 1000, 10000));
+    double a = 0, b = 0;
+    for (const auto& e : findEvents(c, "dose"))
+      if (e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "mix") {
+        if (e["data"]["canister"] == "part-a") a += e["data"]["ml"].get<double>();
+        if (e["data"]["canister"] == "part-b") b += e["data"]["ml"].get<double>();
+      }
+    REQUIRE(b > 0);
+    CHECK(a / b == doctest::Approx(1.0).epsilon(0.03));
+  }
+  SUBCASE("part B fails, then a restart: the report names the part still missing, as an alarm") {
+    block("CAP-1F02B7", true);
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 60 * 60 * 1000, 5000));
+    s.reboot();
+    c.ok("POST", "/api/v1/auth/login", {{"password", "demo-passwort"}});
+    s.step(5000);
+    bool named = false;
+    for (const auto& e : findEvents(c, "mix"))
+      if (e["text"]["key"] == "ev.reboot.text_pair") named = e["severity"] == "alarm" && e["text"].dump().find("Part B") != std::string::npos;
+    CHECK(named);
+  }
+  SUBCASE("part B fails, then a Stop: the Stop's message names the part still missing") {
+    block("CAP-1F02B7", true);
+    startMeasured(c);
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 60 * 60 * 1000, 5000));
+    c.ok("POST", "/api/v1/stop");
+    s.step(5000);
+    const json last = c.state()["lastJob"];
+    CHECK(last["message"]["key"] == "job.emergency_stop_pair");
+    CHECK(last["message"]["args"]["partners"].dump().find("Part B") != std::string::npos);
+    c.ok("POST", "/api/v1/resume");
+  }
+  SUBCASE("CalMag fails after the pair: EC control goes on, and the mix is not resumed over its rounds") {
+    block("CAP-1F02C1", true);
+    const std::string id = startMeasured(c)["id"];
+    REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "failed"; }, 60 * 60 * 1000, 5000));
+    block("CAP-1F02C1", false);
+    REQUIRE(until(s, [&] { return lastDose(c).value("data", json::object()).value("purpose", "") == "ec"; }, 60 * 60 * 1000, 5000));
+    CHECK(c.state()["job"]["noResume"]["key"] == "mix.resume_ec_dosed");  // the card says so instead of offering it
+    const auto r = c.call("POST", "/api/v1/jobs/" + id + "/resume");
+    CHECK(r.first == 409);
+    CHECK(r.second["error"]["key"] == "mix.resume_ec_dosed");
+  }
+}
+
+TEST_CASE("Scenario: an EC round that would need more partial runs than allowed is made smaller by one factor and says so (SD-102, RAT-054)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow = s.world().cap(id)->storedFlow = 5;  // slow pumps
+  }
+  s.world().fill(40, 0.02, 6.5);
+  const auto filled = c.state()["eventId"].get<std::uint64_t>();
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.dosing_limited"; }, 2 * 3600 * 1000, 5000));
+  CHECK(c.state()["controllers"]["ec"]["line"]["args"]["runs"] == 6);
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] != "ec.dosing_limited"; }, 3600 * 1000, 5000));
+  double a = 0, b = 0;
+  for (const auto& e : findEvents(c, "dose"))
+    if (e["id"].get<std::uint64_t>() > filled && e["data"]["purpose"] == "ec") {
+      if (e["data"]["canister"] == "part-a") a += e["data"]["ml"].get<double>();
+      if (e["data"]["canister"] == "part-b") b += e["data"]["ml"].get<double>();
+    }
+  REQUIRE(b > 0);
+  CHECK(a / b == doctest::Approx(1.0).epsilon(0.03));  // one factor for the pair (RAT-054)
+}
+
+TEST_CASE("Scenario: pumps far too slow for the tank: rounds made smaller that raise EC by less than 0.06 each are judged and learned together and do not lock EC control (SD-102, RAT-055, PD-317)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow = s.world().cap(id)->storedFlow = 0.5;
+  }
+  s.world().fill(200, 0.4, 6.0);
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.dosing_limited"; }, 2 * 3600 * 1000, 5000));
+  const json learnedBefore = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  s.step(4 * 3600 * 1000, 10000);  // rounds raising EC by about 0.01 each, judged and learned 7 at a time
+  CHECK(c.state()["latches"].count("ec.no_effect") == 0);
+  int rounds = 0;
+  for (const auto& e : findEvents(c, "dose")) rounds += e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec" && e["data"]["canister"] == "part-a";
+  CHECK(rounds >= 7);
+  const json learned = c.state()["effects"]["ecByRecipe"].value("veg", json());
+  REQUIRE(learned.is_number());
+  CHECK(learned != learnedBefore);  // learned from the rounds together
+  CHECK(learned.get<double>() == doctest::Approx(0.27).epsilon(0.3));
+}
+
+TEST_CASE("Scenario: EC control locks after two rounds without effect; rounds made smaller for slow pumps that are too small to judge alone count together (SD-102, RAT-055)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    s.control("fault", {{"device", "PHEC-3F2A91"}, {"fault", "ec_zero"}});  // dry: reads about 0 whatever goes in
+  }
+  bool slowed = false;
+  int expected = 2;  // rounds until the lock
+  std::function<void()> whileRound2Settles;  // what happens to round 2
+  auto slow = [&](double mlPerMin) {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow = s.world().cap(id)->storedFlow = mlPerMin;
+    slowed = true;
+  };
+  SUBCASE("normal pumps") {}
+  SUBCASE("pumps slowed to 3 ml/min: rounds made smaller, each should still raise EC by far more than 0.06") { slow(3); }
+  SUBCASE("pumps slowed to 0.3 ml/min: each round should raise EC by less than 0.06, two of them together by more") {
+    slow(0.3);
+    expected = 4;
+  }
+  SUBCASE("0.3 ml/min, a hand dose while round 2 settles: round 2 is not clean and left out, the sum goes on") {
+    slow(0.3);
+    expected = 5;
+    whileRound2Settles = [&] { c.ok("POST", "/api/v1/dose", {{"canister", "calmag"}, {"ml", 0.3}}); };
+  }
+  SUBCASE("0.3 ml/min, the recipe's ratio edited while round 2 settles: the sum starts afresh (RAT-057)") {
+    slow(0.3);
+    expected = 6;
+    whileRound2Settles = [&] {
+      gc::json veg;
+      const gc::json cfg = c.ok("GET", "/api/v1/config");
+      for (const auto& r : cfg["recipes"])
+        if (r["id"] == "veg") veg = r;
+      veg["steps"][2]["mlPerL"] = 0.5;
+      c.ok("POST", "/api/v1/recipes", veg);
+    };
+  }
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  auto rounds = [&] {
+    int n = 0;
+    for (const auto& e : findEvents(c, "dose")) n += e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec" && e["data"]["canister"] == "part-a";
+    return n;
+  };
+  bool limited = false, happened = false;
+  REQUIRE(until(s, [&] {
+    const gc::json st = c.state();
+    limited = limited || st["controllers"]["ec"]["line"]["key"] == "ec.dosing_limited";
+    if (whileRound2Settles && !happened && st["controllers"]["ec"]["line"]["key"] == "ec.settling" && rounds() == 2) {
+      whileRound2Settles();
+      happened = true;
+    }
+    return st["latches"].count("ec.no_effect") == 1;
+  }, 6 * 3600 * 1000, 10000));
+  CHECK(happened == static_cast<bool>(whileRound2Settles));
+  CHECK(limited == slowed);  // the slowed rounds were made smaller (D10), the normal ones not
+  CHECK(rounds() == expected);
+  CHECK(eventsSince(c, "alarm", before, "ev.ec.no_effect").size() == 1);
+  s.step(3600 * 1000, 10000);  // locked: nothing more goes in
+  CHECK(rounds() == expected);
+}
+
+TEST_CASE("Scenario: a recipe that learned a small effect: slow pumps' small rounds are expected at that effect and do not lock a working probe (SD-102, RAT-055, RAT-057)") {
+  sim::Simulation s(test::opts("demo"));
+  Client c{s};
+  demoCalm(s, c);
+  c.ok("PATCH", "/api/v1/functions/refill", {{"enabled", false}});
+  // A weak line: the chart EC implies 0.6 per ml/L, the twin's parts give 0.1
+  gc::json veg;
+  const gc::json cfg = c.ok("GET", "/api/v1/config");
+  for (const auto& r : cfg["recipes"])
+    if (r["id"] == "veg") veg = r;
+  veg["refEc"] = 2.8;
+  c.ok("POST", "/api/v1/recipes", veg);
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* liquid : {"grow_a", "grow_b", "calmag"}) s.world().liquids[liquid].ecPerMlL = 0.1;
+  }
+  s.world().fill(31, 0.4, 6.0);
+  auto learned = [&] { return c.state()["effects"]["ecByRecipe"].value("veg", json()); };
+  // A round at the pumps' own speed learns the small effect; the pumps slow down once it is in
+  REQUIRE(until(s, [&] { return c.state()["controllers"]["ec"]["line"]["key"] == "ec.settling"; }, 2 * 3600 * 1000, 5000));
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    for (const char* id : {"CAP-1F02A4", "CAP-1F02B7", "CAP-1F02C1"}) s.world().cap(id)->trueFlow = s.world().cap(id)->storedFlow = 0.15;
+  }
+  const auto before = c.state()["eventId"].get<std::uint64_t>();
+  REQUIRE(until(s, [&] { return learned().is_number() && learned().get<double>() < 0.2; }, 3600 * 1000, 10000));
+  CHECK(learned().get<double>() == doctest::Approx(0.1).epsilon(0.3));
+  auto rounds = [&] {
+    int n = 0;
+    for (const auto& e : findEvents(c, "dose")) n += e["id"].get<std::uint64_t>() > before && e["data"]["purpose"] == "ec" && e["data"]["canister"] == "part-a";
+    return n;
+  };
+  // At the chart's 0.6 two rounds would make a sum that rose by a sixth of what it should, twice: a lock
+  // after 4. At the learned 0.1 about ten make one, and it rose as it should.
+  const json afterRound1 = learned();
+  bool limited = false;
+  REQUIRE(until(s, [&] {
+    limited = limited || c.state()["controllers"]["ec"]["line"]["key"] == "ec.dosing_limited";
+    return learned() != afterRound1 || c.state()["latches"].count("ec.no_effect") == 1;
+  }, 8 * 3600 * 1000, 10000));
+  CHECK(limited);
+  CHECK(c.state()["latches"].count("ec.no_effect") == 0);
+  CHECK(rounds() >= 9);  // the small rounds it took to make a sum
+  CHECK(learned().get<double>() == doctest::Approx(0.1).epsilon(0.3));  // learned from the sum
+}
 
 TEST_CASE("Scenario: a mix with the circulation pump ends only once mixed in; control and refill wait for it (SD-057, RAT-052)") {
   sim::Simulation s(test::opts("demo"));
@@ -621,15 +1198,15 @@ TEST_CASE("Scenario: a mix cut with nutrients in leaves EC to settle with the ci
     s.step(2000);
     CHECK(c.state()["lastJob"]["message"]["key"] == "job.internal");
   }
-  SUBCASE("restarted after the first part: what is in, as before") {
+  SUBCASE("restarted after the first part: what is in, and the partner of its pair still missing (SD-102)") {
     id = startMix(c)["id"];
     REQUIRE(until(s, [&] { return c.state()["job"]["state"] == "mixing"; }, 5 * 60 * 1000, 5000));
     s.reboot();
     relogin();
     CHECK(logged(c, "ev.mix_reboot"));
-    CHECK(logged(c, "ev.reboot.text", "text"));
+    CHECK(logged(c, "ev.reboot.text_pair", "text"));
   }
-  SUBCASE("restarted while the first part runs: named as partly in, and the controllers' wait said (#310, SD-102)") {
+  SUBCASE("restarted while the first part runs: named as partly in, and the controllers' wait said (#310, SD-103)") {
     id = startMix(c)["id"];
     REQUIRE(c.state()["job"]["steps"][0]["state"] == "running");
     s.step(2000);

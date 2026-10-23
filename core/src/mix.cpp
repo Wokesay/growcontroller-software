@@ -21,7 +21,9 @@ void to_json(json& j, const MixPlan& p) {
        {"errors", p.errors}, {"warnings", p.warnings},         {"after", p.after},
        {"totalMl", p.totalMl}, {"totalMs", p.totalMs},
        {"amounts", p.amounts}, {"targetEc", numOrNull(p.targetEc)}, {"waterEc", numOrNull(p.waterEc)},
-       {"factor", numOrNull(p.factor)}, {"expectedEc", numOrNull(p.expectedEc)}, {"infos", p.infos}};
+       {"factor", numOrNull(p.factor)}, {"expectedEc", numOrNull(p.expectedEc)}, {"infos", p.infos},
+       {"tankL", numOrNull(p.tankL)}, {"litresFrom", p.litresFrom}, {"effect", numOrNull(p.effect)}, {"capped", p.capped},
+       {"ecTarget", numOrNull(p.ecTarget)}};
 }
 
 std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, int maxRuns, Msg& err) {
@@ -57,6 +59,22 @@ std::vector<Ms> splitRuns(double ml, double flowMlPerMin, const Limits& limits, 
 // fill gets a note that part of the target comes from the water
 constexpr double kChartWaterEcMax = 0.4;
 
+std::vector<Msg> measuredBlocks(const MixRequest& req) {
+  std::vector<Msg> out;
+  if (!req.ecControlOn) out.push_back(say("mix.measured_off"));
+  else if (!isNum(req.ecAim)) out.push_back(say("mix.measured_no_target"));
+  // Maintenance explains every jump and holds EC control, so the first step would never be judged (D6)
+  if (req.maintenance) out.push_back(say("mix.measured_maintenance"));
+  // The first step becomes EC control's round 1: never over a round, or a cut, it still settles
+  if (req.ecControlOn && req.ecBusy) out.push_back(say("mix.measured_ec_busy"));
+  if (req.probeCalibrating) out.push_back(say("mix.measured_calibrating"));
+  else if (!isNum(req.probeEc)) out.push_back(say("mix.measured_no_ec", {{"reason", req.probeReason}}));  // never 0 (R5)
+  if (!req.circulationBound) out.push_back(say("mix.measured_no_circ"));
+  else if (!req.circulationOk) out.push_back(say("mix.measured_circ_blocked", {{"reason", req.circulationReason}}));
+  if (req.inletOpen) out.push_back(say("mix.measured_inlet"));
+  return out;
+}
+
 MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps, const MixRequest& req, Epoch now,
                 bool phControlActive) {
   MixPlan p;
@@ -80,6 +98,8 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
   // never more than the recipe's own amounts; fixed parts per litre of fresh water; no feedback
   p.amounts = req.amounts;
   double factor = 1.0;
+  double scaledL = req.waterL;  // the litres the scaled parts are worked out on
+  double fixedL = req.waterL;   // … and the fixed parts: the fresh water's
   if (req.amounts == "target") {
     p.targetEc = req.targetEc;
     p.waterEc = req.waterEc;
@@ -122,16 +142,119 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     else if (phControlActive)
       p.infos.push_back(say("mix.ph_adds_ec"));
     p.after = say(phControlActive && !phGate ? "mix.after_auto_target" : "mix.after_manual_target");
+  } else if (req.amounts == "measured") {
+    // To EC control's aim with the tank's own probe (SD-057 way 1, SD-102): a first step of 0.8 × the gap,
+    // at most the step limit, both at the largest known effect (SD-089 S4, RAT-056), on the tank's litres;
+    // fixed parts per litre of fresh water, counted in the gap. EC control closes the rest. Not bounded by
+    // the recipe's amounts: feedback follows. Planned again once the hub has measured the mixed water.
+    p.factor = kNaN;
+    p.waterEc = req.probeEc;
+    p.targetEc = req.ecAim;
+    p.ecTarget = req.ecControlTarget;
+    p.tankL = req.tankL;
+    p.litresFrom = req.litresFrom;
+    for (auto& m : measuredBlocks(req)) p.errors.push_back(std::move(m));
+    const RecipeCfg* own = cfg.recipe(req.ecRecipe);
+    if (req.ecControlOn && req.recipe != req.ecRecipe) p.errors.push_back(say("mix.measured_recipe", {{"name", own ? own->name : req.ecRecipe}}));
+    // A top-up without a usable level: the litres in the tank now, as entered, fresh water included (D4);
+    // with one, the fresh water is part of what it reads
+    if (req.mode == "topup" && req.litresFrom != "level") {
+      if (!isNum(req.tankNowL) || req.tankNowL <= 0) p.errors.push_back(say("mix.measured_tank_now"));
+      else if (isNum(req.waterL) && req.tankNowL < req.waterL) p.errors.push_back(say("mix.measured_tank_now_low", {{"water", req.waterL}}));
+    } else if (req.litresFrom == "level" && isNum(req.tankL) && req.tankL < 1.0) {
+      p.errors.push_back(say("mix.measured_tank_empty", {{"level", std::max(0.0, req.tankL)}}));  // under a litre: nothing to mix in
+    } else if (!isNum(req.tankL) || req.tankL <= 0) {
+      p.errors.push_back(say("mix.measured_no_litres"));
+    } else if (req.mode == "topup" && isNum(req.waterL) && req.waterL > req.tankL) {
+      p.errors.push_back(say("mix.measured_fresh_above_level", {{"water", req.waterL}, {"level", req.tankL}}));
+    }
+    // More than the tank holds first, before anything is worked out on it: a level read too high, or litres
+    // typed too high (what was typed for a new fill counts too)
+    const double cap = cfg.tank().capacityL;
+    if (isNum(cap) && req.litresFrom == "level" && isNum(req.tankL) && req.tankL > cap)
+      p.errors.push_back(say("mix.measured_level_high", {{"level", req.tankL}, {"capacityL", cap}}));
+    else if (isNum(cap) && std::max(isNum(req.tankL) ? req.tankL : 0.0, req.mode == "new" && isNum(req.waterL) ? req.waterL : 0.0) > cap)
+      p.errors.push_back(say("mix.over_capacity", {{"capacityL", cap}}));
+    double scaled = 0, fixedMl = 0;
+    for (const auto& s : r->steps)
+      if (isNum(s.mlPerL) && s.mlPerL > 0) (s.fixed ? fixedMl : scaled) += s.mlPerL;
+    if (scaled <= 0) p.errors.push_back(say("ec.recipe_no_scaled", {{"name", r->name}}));
+    if (!p.errors.empty()) return p;
+    const double learned = learnedEcEffect(rt, r->id);
+    const double e = recipeEffect(*r, learned).largest;
+    p.effect = e;
+    scaledL = req.tankL;
+    // A new fill is fresh water throughout: the fixed parts on the litres it doses on, not on a figure typed
+    // that the level contradicts (D4); a top-up's on its fresh water
+    if (req.mode == "new") fixedL = req.tankL;
+    const double fixedEc = e * fixedMl * fixedL / req.tankL;  // the fixed parts on the fresh litres, in the whole tank
+    const double gap = req.ecAim - req.probeEc - fixedEc;
+    const double tol = isNum(req.ecTolerance) && req.ecTolerance > 0 ? req.ecTolerance : 0;
+    const json at = {{"water", req.probeEc}, {"target", numOrNull(req.ecControlTarget)}};
+    if (req.probeEc + fixedEc >= req.ecAim - tol) {
+      factor = 0;  // at the aim with the fixed parts, as EC control judges it (SD-102 D5)
+      if (fixedMl <= 0) {
+        // a new batch planned before the old tank is drained reads the old tank: the next step is to drain
+        p.errors.push_back(req.mode == "new" ? say("mix.measured_at_target_new", at) : say("mix.measured_at_target", at));
+        return p;
+      }
+      p.warnings.push_back(say("mix.measured_at_target_fixed", at));
+    } else {
+      const double step = isNum(req.maxEcStep) && req.maxEcStep > 0 ? req.maxEcStep : 1.0;  // never without a cap (RAT-056)
+      p.capped = 0.8 * gap > step;
+      factor = std::min(0.8 * gap, step) / e / scaled;
+      if (p.capped) p.infos.push_back(say("mix.measured_capped", {{"step", step}}));
+      // Neither a chart EC (inside the band) nor a learned effect: how strong the product is nobody knows yet,
+      // so round 1 doses at most the recipe's own amounts on the fresh litres (on a new fill all the tank's);
+      // EC control raises the rest (SD-102)
+      const double recipeCap = fixedL / scaledL;
+      if (!isNum(patternEffect(*r, kNaN)) && !isNum(learned) && factor > recipeCap) {
+        factor = recipeCap;
+        p.infos.push_back(say("mix.measured_recipe_cap"));
+      }
+    }
+    p.factor = factor;
+    p.expectedEc = req.probeEc + e * scaled * factor + fixedEc;
+    // A new fill: what was entered against the level the hub works with (on a top-up the fresh water alone
+    // says nothing about the tank)
+    if (req.mode == "new" && req.litresFrom == "level" && isNum(req.enteredL) && std::fabs(req.enteredL - req.tankL) > 0.1 * req.tankL)
+      p.warnings.push_back(say("mix.measured_litres", {{"entered", req.enteredL}, {"level", req.tankL}}));
+    if (req.mode == "new" && req.probeEc > kChartWaterEcMax) p.warnings.push_back(say("mix.water_ec_high", {{"ec", req.probeEc}}));
+    const bool phGate = phControlActive && isNum(req.phEcFloor) && req.ecAim < req.phEcFloor;
+    if (phGate) p.warnings.push_back(say("mix.ph_gate", {{"ec", req.ecAim}, {"floor", req.phEcFloor}}));
+    p.infos.push_back(say("mix.measured_uncompensated"));  // no compensation built yet (SD-054, SD-060; SD-102 D9)
+    p.after = say(phControlActive && !phGate ? "mix.after_handover_auto" : "mix.after_handover_manual");
   } else {
     if (req.amounts != "recipe") p.errors.push_back(say("mix.amounts"));
+    // EC control raises the tank to its target afterwards but never lowers it: the recipe's amounts landing
+    // above it are named (SD-102 D1, RAT-012); the chart EC is taken on top of the water's
+    if (req.ecControlOn && req.mode == "new" && isNum(req.probeEc) && isNum(r->refEc) && isNum(req.ecControlTarget)) {
+      const double expected = r->refEc + req.probeEc;
+      const double tol = isNum(req.ecTolerance) ? req.ecTolerance : 0;
+      // the tank already at EC control's aim: an old batch not drained yet, the next step is to drain
+      const bool full = isNum(req.ecAim) && req.probeEc >= req.ecAim - tol;
+      const bool way1 = !full && req.recipe == req.ecRecipe && measuredBlocks(req).empty();  // the better way only where it is one
+      if (full)
+        p.warnings.push_back(say("mix.recipe_on_full_tank", {{"water", req.probeEc}, {"expected", expected}, {"target", req.ecControlTarget}}));
+      else if (expected > req.ecControlTarget + tol)
+        p.warnings.push_back(way1 ? say("mix.recipe_above_target", {{"expected", expected}, {"target", req.ecControlTarget}})
+                                  : say("mix.recipe_above_target_plain", {{"expected", expected}, {"target", req.ecControlTarget}}));
+    }
     p.after = say(phControlActive ? "mix.after_auto" : "mix.after_manual");
   }
   const auto& tank = cfg.tank();
   double after = req.mode == "topup" && isNum(rt.tankVolumeL) ? rt.tankVolumeL + req.waterL : req.waterL;
-  if (isNum(tank.capacityL) && after > tank.capacityL)
+  // (way 1 checked its litres above, SD-102)
+  if (req.amounts != "measured" && isNum(tank.capacityL) && after > tank.capacityL)
     p.errors.push_back(say("mix.over_capacity", {{"capacityL", tank.capacityL}}));
-  if (rt.lastMixAt > 0 && now - rt.lastMixAt < 30 * 60 && !req.confirmRepeat)
-    p.errors.push_back(say("mix.recent", {{"minutesAgo", (now - rt.lastMixAt) / 60}}));
+  if (rt.lastMixAt > 0 && now - rt.lastMixAt < 30 * 60 && !req.confirmRepeat) {
+    const json ago = {{"minutesAgo", (now - rt.lastMixAt) / 60}};
+    // way 1 measures and doses only the gap: only fixed parts would go in twice
+    const bool fixedParts = std::any_of(r->steps.begin(), r->steps.end(), [](const RecipeStep& s) { return s.fixed; });
+    p.errors.push_back(req.amounts != "measured" ? say("mix.recent", ago)
+                       : fixedParts              ? say("mix.recent_measured", ago)
+                                                 : say("mix.recent_measured_plain", ago));
+  }
 
   for (const auto& s : r->steps) {
     DoseStep d;
@@ -155,7 +278,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
       p.errors.push_back(say("mix.amount_missing", {{"name", k->name}, {"canister", k->id}}));
       continue;
     }
-    d.ml = s.mlPerL * (s.fixed ? 1.0 : factor) * req.waterL;  // amounts count on the fresh water (RAT-011)
+    d.ml = s.fixed ? s.mlPerL * fixedL : s.mlPerL * factor * scaledL;  // fixed on the fresh water (RAT-011)
     if (!s.fixed && factor == 0) continue;  // a scaled part with nothing to add: the water is at the target (SD-098)
     if (k->pump.empty()) {
       p.errors.push_back(say("mix.no_pump", {{"name", k->name}, {"canister", k->id}}));
@@ -183,6 +306,7 @@ MixPlan planMix(const Config& cfg, const RuntimeState& rt, const PumpMap& pumps,
     p.steps.push_back(d);
   }
   p.ok = p.errors.empty() && !p.steps.empty();
+  if (!p.ok && p.amounts == "measured") p.factor = p.expectedEc = kNaN;  // refused: nothing to expect (R5)
   return p;
 }
 
@@ -234,6 +358,21 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
     ds.flowMlPerMin = pit == pumps.end() ? kNaN : pit->second.flowMlPerMin;
     d.steps.push_back(ds);
   }
+  // A round one part of which needs more partial runs than allowed is made smaller by one factor for
+  // all parts, as at every limit, instead of refused; the rounds and their pause bound the rest
+  // (SD-102, RAT-054). A part too small or without a flow still refuses the whole round.
+  const Limits lim = cfg.limits.bounded();
+  const double maxMs = lim.maxPartialRuns * lim.maxRunS * 1000.0;
+  double scale = 1.0;
+  for (const auto& ds : d.steps)
+    if (isNum(ds.flowMlPerMin) && ds.flowMlPerMin > 0 && isNum(ds.ml) && ds.ml > 0)
+      scale = std::min(scale, maxMs / (ds.ml / ds.flowMlPerMin * 60000.0));
+  if (scale < 1.0) {
+    scale *= 1.0 - 1e-9;  // just inside the limit, whatever the rounding of the run times
+    for (auto& ds : d.steps) ds.ml *= scale;
+    d.factor *= scale;
+    d.limited = true;
+  }
   // Teilläufe: ist ein Bestandteil zu klein oder zu groß, gilt das für alle
   // gemeinsam (nie einzeln kappen, RAT-054).
   for (auto& ds : d.steps) {
@@ -245,7 +384,7 @@ EcDose planEcDose(const Config& cfg, const PumpMap& pumps, const RecipeCfg& reci
       return d;
     }
     Msg err;
-    ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, cfg.limits.bounded().maxPartialRuns, err);
+    ds.runs = splitRuns(ds.ml, ds.flowMlPerMin, cfg.limits, lim.maxPartialRuns, err);
     if (!err.key.empty()) {
       d.reason = say("mix.part", {{"name", ds.name}, {"reason", err}, {"canister", ds.canister}});
       d.steps.clear();
