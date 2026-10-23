@@ -227,6 +227,46 @@ TEST_CASE("Sensorwahrheit: eigene Gabe erklärt die Änderung (M8-3)") {
   CHECK(f.run("tank.ph").quality == Quality::Ok);
 }
 
+TEST_CASE("Sensor truth: a change announced up to a bound explains a reading at or below it, not one above it; a bound not known explains nothing (RAT-042, SD-101)") {
+  Fix f;
+  f.cfg.devices.push_back({"LVL-1", "head_level", "Level"});
+  f.cfg.tank().roles["tank.level"] = {"LVL-1", 0};
+  f.cfg.calibrations["LVL-1"]["tank_curve"] = {{"points", {{0.0, 0.0}, {1.0, 100.0}}}};
+  f.bus.head("LVL-1", true, "head_level");
+  const auto level = [&](double litres) {
+    f.clk.ms += 5000;
+    f.bus.set("LVL-1", "measure.level", litres / 100.0, f.clk.ms);
+    return f.run("tank.level").quality;
+  };
+  for (int i = 0; i < 6; ++i) level(50.0 + 0.1 * i);
+  SUBCASE("a fall and a rise back up to the bound are explained") {
+    f.truth.expectChangeUpTo("tank.level", f.clk.ms + 10 * kMinute, 52.0);
+    CHECK(level(20.0) == Quality::Ok);
+    CHECK(level(52.0) == Quality::Ok);
+  }
+  SUBCASE("a reading above the bound is judged as any change") {
+    f.truth.expectChangeUpTo("tank.level", f.clk.ms + 10 * kMinute, 30.0);
+    CHECK(level(20.0) == Quality::Ok);
+    CHECK(level(35.0) == Quality::Ok);  // 15 L above the reading before: no jump
+    CHECK(level(45.0) == Quality::Jump);  // 25 L above the last explained reading
+  }
+  SUBCASE("a bound not known explains nothing") {
+    f.truth.expectChangeUpTo("tank.level", f.clk.ms + 10 * kMinute, kNaN);
+    CHECK(level(20.0) == Quality::Jump);
+  }
+  SUBCASE("it ends at its time") {
+    f.truth.expectChangeUpTo("tank.level", f.clk.ms + kMinute, 52.0);
+    for (int i = 0; i < 13; ++i) level(50.5);
+    CHECK(level(20.0) == Quality::Jump);
+  }
+  SUBCASE("an announcement without a bound explains past it") {
+    f.truth.expectChangeUpTo("tank.level", f.clk.ms + 10 * kMinute, 30.0);
+    f.truth.expectChange("tank.level", f.clk.ms + 10 * kMinute);
+    CHECK(level(20.0) == Quality::Ok);
+    CHECK(level(45.0) == Quality::Ok);
+  }
+}
+
 TEST_CASE("Sensorwahrheit: stillstehender Rohwert wird erkannt (RAT-023)") {
   Fix f;
   f.ph(6.18);

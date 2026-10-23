@@ -533,6 +533,14 @@ TEST_CASE("Gießpumpe: fällt der Füllstand im Lauf unter den Mindestfüllstand
     s.control("water", {{"volumeL", 2.0}});
   }
   REQUIRE(until(s, [&] { return !outlet(s, id, 0).on; }, 60000));
+  // The running pump explains the fall (SD-101): the level stays usable, and the cut is the minimum's
+  // own, not "level invalid"
+  CHECK(c.state()["readings"]["tank.level"]["quality"] == "ok");
+  std::string why;
+  const json events = c.ok("GET", "/api/v1/events?limit=200")["events"];
+  for (const auto& e : events)
+    if (sameEvent(e, "ev.irrigation.off")) why = e["text"]["args"]["why"]["key"];
+  CHECK(why == "why.irrigation_low");
 }
 
 TEST_CASE("Gießpumpe: Füllstand wird im Lauf ungültig → aus, einmal gemeldet") {
