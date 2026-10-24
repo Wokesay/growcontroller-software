@@ -180,7 +180,7 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
   // Learn the effect only from clean doses: no inlet, no foreign dose in between (RAT-057), no watering
   // and no drain-back after it (SD-103). A round only watering made unclean still counts towards "no
   // effect", by half.
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ec-"))) {
+  if (phase_ != Phase::Idle && (env.refilling || env.inletUnknown || env.userJob || env.pairOpen || foreignDose(env, "ec-"))) {
     clean_ = false;
     disturbed_ = true;
   }
@@ -353,9 +353,10 @@ void EcController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say(env.userJob ? "ec.wait_job" : "ec.wait_pair");
     return;
   }
-  if (env.refilling || env.refillDue) {
+  // An inlet whose state is not known may let water in, as an open one does (SD-104)
+  if (env.refilling || env.refillDue || env.inletUnknown) {
     st_.state = "waiting";
-    st_.line = say("ec.wait_refill");
+    st_.line = say(env.refilling || env.refillDue ? "ec.wait_refill" : "ec.wait_inlet_unknown");
     return;
   }
   if (env.phBusy) {
@@ -546,7 +547,7 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
       return;
     }
   }
-  if (phase_ != Phase::Idle && (env.refilling || env.userJob || env.pairOpen || foreignDose(env, "ph-"))) {
+  if (phase_ != Phase::Idle && (env.refilling || env.inletUnknown || env.userJob || env.pairOpen || foreignDose(env, "ph-"))) {
     clean_ = false;
     disturbed_ = true;
   }
@@ -646,9 +647,9 @@ void PhController::tick(const Ctx& c, ControlEnv& env) {
     st_.line = say(env.userJob ? "ph.wait_job" : "ph.wait_pair");
     return;
   }
-  if (env.refilling || env.refillDue) {
+  if (env.refilling || env.refillDue || env.inletUnknown) {  // as in EcController (SD-104)
     st_.state = "waiting";
-    st_.line = say("ph.wait_refill");
+    st_.line = say(env.refilling || env.refillDue ? "ph.wait_refill" : "ph.wait_inlet_unknown");
     return;
   }
   if (!down) return block(say("ph.no_down"));
