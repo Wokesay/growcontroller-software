@@ -1,5 +1,13 @@
 # growcontroller-software
 
+> **No longer developed.** The product has changed course, and its
+> successor is developed privately. This repository stays as it is: there
+> will be no further releases and no security updates. Open
+> vulnerabilities of the published prototypes are disclosed as security
+> advisories, each with a workaround, without a fixed release
+> ([`SECURITY.md`](SECURITY.md)). Do not use this software to control real
+> hardware.
+
 Free software that mixes nutrient solution for your tank, keeps pH and
 EC on target and refills the water, and tells you in plain words why it
 doses or why not. For hydroponics, greenhouses and indoor growing. It is

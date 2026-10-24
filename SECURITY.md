@@ -58,9 +58,10 @@ there too, without an advisory (SD-079).
 
 | Version | Security updates |
 |---|---|
-| 0.x (prototype) | only the latest pre-release, including the Home Assistant app: a fix comes in the next pre-release; do not dose or switch real hardware with it |
+| 0.x (prototype) | none: the project is no longer developed and there will be no further pre-release. Vulnerabilities of the published prototypes are disclosed as advisories, each with a workaround, without a fixed release. Do not dose or switch real hardware with it |
 
-**Support period for devices:** every board with our firmware gets
+**Support period for devices** (no longer applies: the project ends before
+a device with its firmware is offered): every board with our firmware gets
 security updates for 7 years from the delivery of that board, also boards
 delivered before 2027-12-11. The end is stated per delivery year and falls
 in December: a board delivered in 2028 gets security updates until at

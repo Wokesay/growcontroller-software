@@ -7,6 +7,13 @@ listed in every release under "Security".
 
 ## [Unreleased]
 
+### Changed
+- **No longer developed.** The product has changed course and its
+  successor is developed privately. No further releases or security
+  updates; open vulnerabilities of the published prototypes are disclosed
+  as advisories with workarounds, without a fixed release (`README.md`,
+  `SECURITY.md`).
+
 ### Added
 - **Mixing to the target with the probe** (#143, SD-057, step 6, SD-102,
   RAT-088): with EC top-up on and a probe and circulation pump assigned,
