@@ -1195,7 +1195,7 @@ json rebootText(const json& job) {
 }
 }  // namespace
 
-TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, with what is known of its amount (#310, SD-103)") {
+TEST_CASE("Restart: a mix cut while a part runs names that part as possibly in, with what is known of its amount (#310, SD-104)") {
   const json a = {{"name", "Teil A"}, {"ml", 20.0}, {"mlDone", 20.0}, {"state", "done"}};
   const auto mix = [](const json& steps) {
     return json{{"type", "mix"}, {"state", "running"}, {"index", steps.size() - 1}, {"steps", steps}};

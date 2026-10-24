@@ -59,7 +59,7 @@ constexpr Entry kMessages[] = {
 
     // pH correction
     {"ph.off", "Switched off in Functions"},
-    {"ph.latched", "Needs release: pH didn't drop after two doses – check the pH− bottle and probe"},
+    {"ph.latched", "Needs release: pH didn't drop after the last few doses – check the pH− bottle, pump and probe"},
     {"ph.settling", "Controlling: pH {from:2} → {target:2} · partial dose {n} of {max:0} · waiting {left} for mixing"},
     {"ph.invalid", "Blocked: pH – {reason}"},
     {"ph.dosing", "Controlling: pH {from:2} → {target:2} · partial dose {n} · dosing"},
@@ -434,7 +434,7 @@ constexpr Entry kMessages[] = {
     {"ev.ec.first_no_effect.text_plain", "The mix's round 1 raised EC only from {from:2} to {to:2} mS/cm. Probe in the water, pumps delivering, litres right? Then tap \"Release\" under Tank & control."},
     {"ev.ec.first_strong", "EC rose more than expected"},
     {"ev.ec.first_strong.text", "Round 1 raised EC by {rise:2} mS/cm, about {expected:2} mS/cm was expected. Check the recipe's chart EC and the litres in the tank; if EC is above the target, add fresh water."},
-    {"ev.ec.no_effect.text", "EC didn't rise after two rounds. Check the probe, pumps and bottles, then tap \"Release\" under Tank & control."},
+    {"ev.ec.no_effect.text", "EC didn't rise after the last few rounds. Check the probe, pumps and bottles, then tap \"Release\" under Tank & control."},
     {"ev.ec.done", "EC topped up"},
     {"ev.ec.max", "EC top-up: round limit reached"},
     {"ev.ec.rounds_one", "EC {from:2} → {to:2} mS/cm in {n} round"},
@@ -443,7 +443,7 @@ constexpr Entry kMessages[] = {
     {"ev.ec.round_cancelled.text", "The circulation pump didn't start. No dosing without mixing."},
     {"ev.ec.aborted", "EC top-up interrupted"},
     {"ev.ph.no_effect", "pH doses have no effect"},
-    {"ev.ph.no_effect.text", "pH didn't drop after two doses. Check the pH− bottle and probe, then tap \"Release\" under Tank & control."},
+    {"ev.ph.no_effect.text", "pH didn't drop after the last few doses. Check the pH− bottle, pump and probe, then tap \"Release\" under Tank & control."},
     {"ev.ph.done", "pH corrected"},
     {"ev.ph.max", "pH correction: dose limit reached"},
     {"ev.ph.doses_one", "pH {from:2} → {to:2} in {n} dose"},
