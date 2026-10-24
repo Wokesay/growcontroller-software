@@ -667,6 +667,13 @@ listed in every release under "Security".
   tool only) follow the Node that CI runs, 22.
 
 ### Fixed
+- **EC and pH wait while the inlet's state is not known** (#229, SD-104):
+  with the inlet on a socket that went offline, EC and pH control took
+  it as closed and dosed, while fresh water may have been flowing in and
+  diluting the dose. Now they wait as while the inlet is open, and the
+  line says "Waiting: the inlet's state is not known"; a round it came
+  into learns nothing and counts nothing towards "no effect". An inlet
+  that is not assigned stays as before.
 - **A second simulator on the same data folder does not start** (#311):
   started again while it runs, for example by a second double-click, the
   simulator loaded the same files as the first and both overwrote each
@@ -1134,7 +1141,7 @@ severity and remedy (SD-079). Four are vulnerabilities: someone without
 the needed rights, a device in the network or a crafted file, could
 trigger them. Each gets a GitHub Security Advisory (GHSA), published
 with this release; we request a CVE from GitHub for the three of our own,
-and the fourth refers to AMD's CVE-2025-62626. Five are safety and robustness
+and the fourth refers to AMD's CVE-2025-62626. Six are safety and robustness
 fixes: normal use, a faulty probe or someone with the password triggers
 them, so they get no advisory.
 
@@ -1292,6 +1299,17 @@ Safety and robustness fixes, no vulnerability:
   - Remedy: update to 0.1.0-proto.5. Until then, after ending or
     shortening maintenance mode, restart the app or the simulator ("Power
     cut / restart") while no mix or dose runs.
+- **EC and pH no longer dose while the inlet's state is not known**
+  (#229, SD-104): an inlet whose socket went offline counted as closed,
+  so EC and pH control dosed into water that may have been flowing in,
+  and judged and learned from a rise or fall that was not their dose's
+  own. Now they wait as while it is open.
+  - Affected: the simulator, 0.1.0-proto.2 to 0.1.0-proto.4, with the
+    inlet assigned to a socket.
+  - Impact: concerns the hub's own probes, which only the simulator has
+    so far.
+  - Severity: low; no CVSS, as it is not a vulnerability.
+  - Remedy: update to 0.1.0-proto.5.
 - **EC and pH control no longer learn a wrong effect from watering, and
   pH doses no longer grow after one without a fall** (#301, SD-103):
   a round that watering overlapped learned its effect from what the

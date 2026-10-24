@@ -2276,6 +2276,24 @@ std::string irrigationPlug(sim::Simulation& s, Client& c) {
   c.ok("PUT", "/api/v1/roles/zone.irrigation_pump", {{"device", id}, {"channel", 0}});
   return id;
 }
+// The inlet on a socket instead of the hub's own output, so its state can be lost (#229)
+std::string inletPlug(sim::Simulation& s, Client& c) {
+  json r;
+  {
+    std::lock_guard<std::recursive_mutex> l(s.mutex());
+    r = s.control("net_add", {{"class", "shelly_plug"}, {"loads", json::array({{{"load", "inlet"}, {"watts", 5}}})}});
+  }
+  const std::string id = r["id"];
+  REQUIRE(until(s, [&] {
+    const json st = c.state();
+    for (const auto& d : st["devices"])
+      if (d["id"] == id && d["online"] == true) return true;
+    return false;
+  }, 10000));
+  c.ok("POST", "/api/v1/devices/" + id + "/accept", {{"name", ""}});
+  c.ok("PUT", "/api/v1/roles/tank.inlet", {{"device", id}, {"channel", 0}});
+  return id;
+}
 int refills(Client& c) {
   int n = 0;
   for (const auto& e : findEvents(c, "tank")) n += e["title"]["key"] == "ev.refilled" ? 1 : 0;
@@ -3892,7 +3910,8 @@ TEST_CASE("Scenario: \"no effect\" latches after two clean rounds without effect
   // Points: a clean round without effect 2, a watered one 1, the latch at 4; a judged round with an effect
   // resets the count; another disturbance (here the inlet opened by hand) neither counts nor resets. The
   // twin's products do nothing (an empty bottle, a blocked line, a probe in a cup read the same), except in
-  // a round marked with an effect. Each plan: c clean, w watered, d disturbed, W watered with an effect.
+  // a round marked with an effect. Each plan: c clean, w watered, d disturbed, u the inlet's state not known
+  // for a while (#229), W watered with an effect.
   struct Plan {
     const char* name;
     const char* rounds;
@@ -3902,6 +3921,7 @@ TEST_CASE("Scenario: \"no effect\" latches after two clean rounds without effect
                         {"watered rounds count half: three do not latch, the fourth does", "wwww", 4},
                         {"one clean and two watered rounds latch", "cww", 3},
                         {"a disturbed round neither counts nor resets", "cddc", 4},
+                        {"a round the inlet's state was not known in neither counts nor resets (#229, SD-104)", "cuuc", 4},
                         // the rounds after it watered too, as a clean one would start only 10 min after the press
                         {"a round with an effect resets the count, also a watered one", "cWwwww", 6}};
   for (const std::string kind : {"ec", "ph"})
@@ -3923,6 +3943,7 @@ TEST_CASE("Scenario: \"no effect\" latches after two clean rounds without effect
           s.world().liquids["ph_down"].phPerMlL = on ? -4.0 : 0;
         };
         const std::string rounds = plan.rounds;
+        const std::string inlet = rounds.find('u') != std::string::npos ? inletPlug(s, c) : std::string();
         effective(rounds[0] == 'W');
         w.control(fn, true);
         for (size_t k = 0; k < rounds.size(); ++k) {
@@ -3935,11 +3956,43 @@ TEST_CASE("Scenario: \"no effect\" latches after two clean rounds without effect
             s.step(10000, 5000);
             c.ok("POST", "/api/v1/roles/tank.inlet/switch", {{"on", false}});
           }
+          if (rounds[k] == 'u') {  // the inlet's socket offline for 30 s
+            s.control("fault", {{"device", inlet}, {"fault", "offline"}});
+            s.step(30000, 5000);
+            s.control("fault", {{"device", inlet}, {"fault", "none"}});
+          }
           REQUIRE(soon(s, [&] { return w.line(kind.c_str()) != settling; }, 7 * 60 * 1000, 5000));
           s.step(5000, 5000);
           CHECK(c.state()["latches"].contains(latch) == (k + 1 == static_cast<size_t>(plan.latchAfter)));
         }
       }
+}
+
+TEST_CASE("Scenario: EC and pH wait while the inlet's state is not known, as while it is open, and say why; known again, they go on (#229, SD-104, RAT-055)") {
+  // A socket offline may still let water flow: fresh water would dilute what EC or pH dose
+  Watered w;
+  auto& s = w.s();
+  auto& c = w.c();
+  const std::string inlet = inletPlug(s, c);
+  for (const std::string kind : {"ec", "ph"})
+    SUBCASE(kind.c_str()) {
+      const bool ec = kind == "ec";
+      const char* fn = ec ? "ec_control" : "ph_control";
+      w.control(ec ? "ph_control" : "ec_control", false);
+      w.water(fn, ec ? 0.9 : 1.4, ec ? 5.9 : 6.6);  // far from the targets (EC 1.4, pH 5.8)
+      s.control("fault", {{"device", inlet}, {"fault", "offline"}});
+      s.step(60 * 1000, 5000);
+      REQUIRE(c.state()["outputs"]["tank.inlet"].is_null());  // its state not known
+      const auto doses = lastDoseId(c);
+      w.control(fn, true);
+      s.step(10 * 60 * 1000, 5000);
+      CHECK(w.line(kind.c_str()) == kind + ".wait_inlet_unknown");
+      CHECK(c.state()["controllers"][kind]["state"] == "waiting");
+      CHECK(lastDoseId(c) == doses);  // nothing dosed
+      s.control("fault", {{"device", inlet}, {"fault", "none"}});
+      CHECK(soon(s, [&] { return w.line(kind.c_str()) == kind + ".settling"; }, 10 * 60 * 1000, 5000));
+      CHECK(lastDoseId(c) != doses);
+    }
 }
 
 TEST_CASE("Scenario: a pH dose without a measurable fall, clean or watered, sets the learned pH effect to at least its start and never lowers it, so doses do not grow (#301, SD-103, RAT-041)") {

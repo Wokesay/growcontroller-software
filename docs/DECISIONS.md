@@ -5689,6 +5689,36 @@ the volume and SD-101's residual risk on learning during a flood.
   (SD-033). Without a bound watering pump the latch behaves as before (2
   clean rounds).
 
+## SD-104: EC and pH wait while the inlet's state is not known, as while it is open
+
+Decided by the project owner on 2026-10-24 in the software session
+(#229, from the `security` review of #215), a control detail under
+SD-091, as recommended. Changes RAT-055.
+
+- **What it fixes:** EC and pH control took an inlet whose state is not
+  known (its socket offline, its device not reporting) as closed and
+  started rounds, while fresh water may have been flowing in and
+  diluting what they dosed: the rise or fall they judged and learned
+  from was then not their dose's own (R5: a missing value is never a
+  default).
+- **The rule:** while the inlet is bound and its state is not known,
+  EC and pH control start no round, as while it is open, and their line
+  says so ("Waiting: the inlet's state is not known"). A round already
+  running finishes; one the unknown state came into is disturbed: it
+  learns nothing and neither counts nor resets the "no effect" count
+  (RAT-057, SD-103). Known again, they go on. An inlet that is not bound
+  stays "closed", as before.
+- **Not chosen:** dosing on and only learning nothing, which doses into
+  water that may be flowing in and hides a probe fault meanwhile;
+  waiting only after a minute, which lets a round start in that minute
+  for more logic.
+- **Not covered:** a mix to the target (way 1) and a recipe mix still
+  take an inlet whose state is not known as closed (`MixRequest`
+  `inletOpen`); the refill handles the unknown state on its own (it
+  switches the inlet off and latches as before).
+- **Residual risk:** a socket that drops out often holds EC and pH for
+  as long as each dropout lasts; the line says why.
+
 ---
 
 ## Drafts (waiting for "entschieden")

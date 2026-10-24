@@ -43,6 +43,7 @@ struct ControlEnv {
   bool ecBusy = false;
   bool phBusy = false;       // pH dosiert oder schwingt ein: EC-Runde wartet (RAT-057)
   bool refilling = false;    // Zulauf offen: Wirkung nicht messbar, nicht dosieren (RAT-055)
+  bool inletUnknown = false; // the inlet is bound and its state is not known: EC and pH wait as while it is open (SD-104)
   bool refillDue = false;    // a fill is due and waits for a dose to settle: no new round meanwhile (SD-090)
   bool calibrating = false;  // Sonde in Pufferlösung: Messwerte gelten nicht für den Tank
   bool levelCalibrating = false;  // the level head is being calibrated: its readings say nothing about a refill (SD-082)
