@@ -359,26 +359,50 @@ void Hub::boot() {
       } else if (mix) {
         rt_.lastMixAt = std::max<Epoch>({rt_.lastMixAt, bootEpoch_, 1});  // 1: a clock at 0 still counts (lastMixAt 0 is "never")
       }
-      double idxNum = jnum(j, "index", 0);
-      size_t idx = isNum(idxNum) && idxNum >= 0 ? static_cast<size_t>(idxNum) : 0;
       const json steps = j.contains("steps") && j["steps"].is_array() ? j["steps"] : json::array();
-      size_t total = steps.size();
-      json done = json::array();
+      const size_t total = steps.size();
+      const double idxNum = jnum(j, "index", 0);
+      const size_t idx = isNum(idxNum) && idxNum >= 0 && total > 0 ? static_cast<size_t>(std::min<double>(idxNum, total - 1)) : 0;
+      json done = json::array(), partly = json::array();
       for (const auto& st : steps) {
-        double ml = jnum(st, "mlDone", 0);
-        if (isNum(ml) && ml > 0) done.push_back(say("amount", {{"name", jstr(st, "name")}, {"ml", ml}}));
+        const std::string stepState = jstr(st, "state"), name = jstr(st, "name");
+        const double in = jnum(st, "mlDone", kNaN);
+        const bool someIn = isNum(in) && in > 0;
+        if (mix && stepState == "running") {
+          // The part that was running went in partly: how much is not saved while it runs, and the
+          // moment of the cut is not known, so no amount is guessed from the time (#310, SD-104)
+          const double planned = jnum(st, "ml", kNaN);
+          const bool upTo = isNum(planned) && planned > 0 && (!someIn || planned >= in);
+          json args{{"name", name}};
+          if (upTo) args["max"] = planned;
+          if (someIn) args["min"] = in;
+          partly.push_back(say(upTo && someIn ? "reboot.partly_min"
+                               : upTo         ? "reboot.partly"
+                               : someIn       ? "reboot.partly_least"
+                                              : "reboot.partly_open",
+                               args));
+        } else if (someIn) {
+          done.push_back(say("amount", {{"name", name}, {"ml", in}}));
+        } else if (mix && !isNum(in) && (stepState == "done" || stepState == "failed")) {
+          done.push_back(say("amount.unknown", {{"name", name}}));  // ended without its amount: never "nothing" (R5)
+        }
       }
-      json at{{"step", idx + 1}, {"total", total}, {"done", done}};
-      const bool none = done.empty();
+      const bool none = done.empty() && partly.empty();
       // All parts were in when the restart cut its time to mix in: said so, not as a part missing
       const bool allIn = state == "settling";
       const bool ctl = controlOn();
+      json at{{"step", idx + 1}, {"total", total}, {"done", done}};
+      if (!partly.empty()) {
+        at["partly"] = partly;
+        at["next"] = say(ctl ? "reboot.next_control" : "reboot.next_plain");  // mixed first, then measured
+      }
       // A pair half in is named with what is missing, as a Stop and a cancel do: after the restart control doses
-      // the pair in its ratio and never the part still missing (SD-102, RAT-054)
+      // the pair in its ratio and never the part still missing (SD-102, RAT-054). A part that was running is
+      // named above with what may be in.
       json partners = json::array();
       for (const auto& st : steps) {
-        const std::string pair = jstr(st, "pair");
-        if (pair.empty() || jstr(st, "state") == "done") continue;
+        const std::string pair = jstr(st, "pair"), stepState = jstr(st, "state");
+        if (pair.empty() || stepState == "done" || (mix && stepState == "running")) continue;
         const bool pairStarted = std::any_of(steps.begin(), steps.end(), [&](const json& o) {
           const double in = jnum(o, "mlDone", 0);
           return jstr(o, "pair") == pair && isNum(in) && in > 0;
@@ -386,13 +410,25 @@ void Hub::boot() {
         const double ml = jnum(st, "ml"), mlDone = jnum(st, "mlDone", 0);
         if (pairStarted) partners.push_back(say("amount", {{"name", jstr(st, "name")}, {"ml", numOrNull(isNum(ml) ? std::max(0.0, ml - (isNum(mlDone) ? mlDone : 0)) : kNaN)}}));
       }
-      if (mix && !partners.empty() && !allIn)
-        log_.add(bootEpoch_, "mix", "alarm", say("ev.mix_reboot"), say("ev.reboot.text_pair", {{"done", done}, {"partners", partners}}));
-      else
+      const bool noPartly = partly.empty(), noDone = done.empty();
+      if (mix && !partners.empty() && !allIn) {
+        at["partners"] = partners;
+        log_.add(bootEpoch_, "mix", "alarm", say("ev.mix_reboot"),
+                 say(noPartly ? "ev.reboot.text_pair"
+                     : noDone ? "ev.reboot.text_pair_partly_only"
+                              : "ev.reboot.text_pair_partly",
+                     at));
+      } else {
         log_.add(bootEpoch_, "mix", "warn", say(mix ? "ev.mix_reboot" : "ev.job_reboot"),
-                 measuring ? say("ev.reboot.text_measuring")
-                 : allIn   ? say(ctl ? "ev.reboot.text_settling" : "ev.reboot.text_settling_plain", at)
-                           : say(none ? "ev.reboot.text_none" : "ev.reboot.text", at));
+                 say(measuring        ? "ev.reboot.text_measuring"
+                     : allIn && ctl   ? "ev.reboot.text_settling"
+                     : allIn          ? "ev.reboot.text_settling_plain"
+                     : none           ? "ev.reboot.text_none"
+                     : noPartly       ? "ev.reboot.text"
+                     : noDone         ? "ev.reboot.text_partly_only"
+                                      : "ev.reboot.text_partly",
+                     at));
+      }
       // Nutrients went in that nothing settled: EC and pH wait for the circulation pump first (SD-057, R6)
       if (mix && !none) settleControllersFirst(false);
       j["state"] = "aborted";
